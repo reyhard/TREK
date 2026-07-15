@@ -14,8 +14,10 @@ import {
     revokeToken as serviceRevokeToken,
     verifyPKCE,
     getUserByAccessToken,
+    isAllowedOAuthRedirectUri,
+    validateOAuthResourceAndScopes,
 } from '../services/oauthService';
-import { ALL_SCOPES } from './scopes';
+import { ALL_SCOPES, validateScopes } from './scopes';
 import { getMcpSafeUrl } from '../services/notifications';
 import { writeAudit } from '../services/auditLog';
 
@@ -48,11 +50,10 @@ function assertValidRedirectUris(uris: string[]): void {
         }
         if (DANGEROUS_SCHEMES.has(url.protocol))
             throw new InvalidClientMetadataError(`Dangerous redirect URI scheme: ${u}`);
-        if (url.protocol === 'https:') continue;
-        if (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')) continue;
+        if (isAllowedOAuthRedirectUri(url)) continue;
         const scheme = url.protocol.slice(0, -1);
         if (/^[a-z][a-z0-9+.-]*$/i.test(scheme) && scheme.includes('.')) continue;
-        throw new InvalidClientMetadataError('redirect_uris must be HTTPS, loopback HTTP, or a private custom scheme');
+        throw new InvalidClientMetadataError('redirect_uris must be HTTPS, approved HTTP, loopback HTTP, or a private custom scheme');
     }
 }
 
@@ -95,9 +96,11 @@ export const trekClientsStore: OAuthRegisteredClientsStore = {
 
         // When scope is absent (ChatGPT DCR), default to all scopes.
         // The user still grants only what they approve at the consent screen.
-        const rawScopes = metadata.scope ? metadata.scope.split(' ') : ALL_SCOPES;
-        const scopes = rawScopes.filter(s => (ALL_SCOPES as string[]).includes(s));
-        if (scopes.length === 0) throw new InvalidClientMetadataError('No valid scopes requested');
+        const scopes = metadata.scope ? metadata.scope.split(' ').filter(Boolean) : ALL_SCOPES;
+        const validation = validateScopes(scopes);
+        if (scopes.length === 0 || !validation.valid) {
+            throw new InvalidClientMetadataError(`Invalid scopes requested: ${validation.invalid.join(', ')}`);
+        }
 
         const result = createOAuthClient(null, name, uris, scopes, null, { isPublic, createdVia: 'dcr' });
         if (result.error) throw new InvalidClientMetadataError(result.error);
@@ -128,10 +131,13 @@ export const trekOAuthProvider: OAuthServerProvider = {
         const mcpResource = `${getMcpSafeUrl().replace(/\/+$/, '')}/mcp`;
         const resource = params.resource ? params.resource.href.replace(/\/+$/, '') : mcpResource;
 
-        if (resource !== mcpResource) {
+        const compatibility = validateOAuthResourceAndScopes(resource, params.scopes);
+        if (!compatibility.valid) {
             const url = new URL(params.redirectUri);
-            url.searchParams.set('error', 'invalid_target');
-            url.searchParams.set('error_description', 'Requested resource must be the TREK MCP endpoint');
+            url.searchParams.set('error', compatibility.error === 'invalid_scope' ? 'invalid_scope' : 'invalid_target');
+            url.searchParams.set('error_description', compatibility.error === 'invalid_scope'
+                ? 'Requested scopes are not valid for this resource'
+                : 'Requested resource is not a valid TREK resource');
             if (params.state) url.searchParams.set('state', params.state);
             res.redirect(302, url.toString());
             return;

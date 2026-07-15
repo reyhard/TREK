@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { oauthApi } from '../../api/client'
-import { SCOPE_GROUPS } from '../../api/oauthScopes'
+import { getScopeDisplay } from '../../api/oauthScopes'
 import { useTranslation } from '../../i18n'
 
 interface ValidateResult {
@@ -141,8 +141,7 @@ export function useOAuthAuthorize() {
     const requested = validation?.scopes || []
     const groups: Record<string, string[]> = {}
     for (const s of requested) {
-      const keys = SCOPE_GROUPS[s]
-      const group = keys ? t(keys.groupKey) : 'Other'
+      const group = getScopeDisplay(s, t).group
       if (!groups[group]) groups[group] = []
       groups[group].push(s)
     }

@@ -7,6 +7,7 @@ import { User } from '../types';
 import { writeAudit, logWarn } from './auditLog';
 import { revokeUserSessionsForClient } from '../mcp/sessionManager';
 import { getMcpSafeUrl } from './notifications';
+import { parsePluginResource, parsePluginScope } from './oauthResources';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -75,6 +76,7 @@ interface OAuthTokenRow {
   refresh_token_expires_at: string;
   revoked_at: string | null;
   parent_token_id: number | null;
+  user_password_version: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +101,35 @@ function generateAccessToken(): string {
 
 function generateRefreshToken(): string {
   return 'trekrf_' + randomBytes(32).toString('hex');
+}
+
+function currentPasswordVersion(userId: number): number {
+  const row = db.prepare('SELECT password_version FROM users WHERE id = ?').get(userId) as { password_version?: number } | undefined;
+  return typeof row?.password_version === 'number' ? row.password_version : 0;
+}
+
+export function validateOAuthResourceAndScopes(
+  resource: string,
+  scopes: string[],
+): { valid: boolean; error?: 'invalid_target' | 'invalid_scope' } {
+  if (scopes.length === 0 || !validateScopes(scopes).valid) return { valid: false, error: 'invalid_scope' };
+
+  const normalized = resource.replace(/\/+$/, '');
+  const mcpResource = `${getMcpSafeUrl().replace(/\/+$/, '')}/mcp`;
+  if (normalized === mcpResource) {
+    return scopes.some((scope) => parsePluginScope(scope) !== null)
+      ? { valid: false, error: 'invalid_scope' }
+      : { valid: true };
+  }
+
+  const plugin = parsePluginResource(resource);
+  if (!plugin) return { valid: false, error: 'invalid_target' };
+  const installed = db.prepare('SELECT 1 FROM plugins WHERE id = ?').get(plugin.pluginId);
+  if (!installed) return { valid: false, error: 'invalid_target' };
+  if (!scopes.every((scope) => parsePluginScope(scope)?.pluginId === plugin.pluginId)) {
+    return { valid: false, error: 'invalid_scope' };
+  }
+  return { valid: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +170,7 @@ export function createOAuthClient(
     } catch {
       return { error: `Invalid redirect URI: ${uri}`, status: 400 };
     }
-    if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+    if (!isAllowedOAuthRedirectUri(parsed)) {
       return { error: `Redirect URI must use HTTPS (localhost exempt): ${uri}`, status: 400 };
     }
   }
@@ -192,6 +223,20 @@ export function createOAuthClient(
       ...(rawSecret ? { client_secret: rawSecret } : {}),
     },
   };
+}
+
+export function isAllowedOAuthRedirectUri(parsed: URL): boolean {
+  if (parsed.username || parsed.password) return false;
+  if (parsed.protocol === 'https:') return true;
+  if (parsed.protocol !== 'http:') return false;
+  if (['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) return true;
+  const allowedLanHosts = new Set(
+    (process.env.OAUTH_HTTP_REDIRECT_HOSTS ?? '')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return allowedLanHosts.has(parsed.hostname.toLowerCase());
 }
 
 export function rotateOAuthClientSecret(
@@ -312,9 +357,9 @@ export function issueTokens(
 
   db.prepare(`
     INSERT INTO oauth_tokens
-      (client_id, user_id, access_token_hash, refresh_token_hash, scopes, audience, access_token_expires_at, refresh_token_expires_at, parent_token_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(clientId, userId, accessHash, refreshHash, JSON.stringify(scopes), audience, accessExpiry.toISOString(), refreshExpiry.toISOString(), parentTokenId);
+      (client_id, user_id, access_token_hash, refresh_token_hash, scopes, audience, access_token_expires_at, refresh_token_expires_at, parent_token_id, user_password_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(clientId, userId, accessHash, refreshHash, JSON.stringify(scopes), audience, accessExpiry.toISOString(), refreshExpiry.toISOString(), parentTokenId, currentPasswordVersion(userId));
 
   return {
     access_token:  rawAccess,
@@ -350,9 +395,9 @@ export function issueClientCredentialsToken(
 
   db.prepare(`
     INSERT INTO oauth_tokens
-      (client_id, user_id, access_token_hash, refresh_token_hash, scopes, audience, access_token_expires_at, refresh_token_expires_at, parent_token_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(clientId, userId, accessHash, placeholderHash, JSON.stringify(scopes), audience, accessExpiry.toISOString(), now.toISOString(), null);
+      (client_id, user_id, access_token_hash, refresh_token_hash, scopes, audience, access_token_expires_at, refresh_token_expires_at, parent_token_id, user_password_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(clientId, userId, accessHash, placeholderHash, JSON.stringify(scopes), audience, accessExpiry.toISOString(), now.toISOString(), null, currentPasswordVersion(userId));
 
   return {
     access_token: rawAccess,
@@ -377,15 +422,17 @@ export function getUserByAccessToken(rawToken: string): OAuthTokenInfo | null {
   const hash = hashToken(rawToken);
   const row = db.prepare(`
     SELECT ot.scopes, ot.audience, ot.revoked_at, ot.access_token_expires_at,
-           ot.user_id, ot.client_id, u.username, u.email, u.role
+           ot.user_id, ot.client_id, ot.user_password_version,
+           u.username, u.email, u.role, u.password_version AS current_password_version
     FROM oauth_tokens ot
     JOIN users u ON ot.user_id = u.id
     WHERE ot.access_token_hash = ?
-  `).get(hash) as (OAuthTokenRow & { username: string; email: string; role: string }) | undefined;
+  `).get(hash) as (OAuthTokenRow & { username: string; email: string; role: string; current_password_version: number }) | undefined;
 
   if (!row) return null;
   if (row.revoked_at) return null;
   if (new Date(row.access_token_expires_at) < new Date()) return null;
+  if (row.user_password_version !== row.current_password_version) return null;
 
   return {
     user: { id: row.user_id, username: row.username, email: row.email, role: row.role as 'admin' | 'user' },
@@ -445,12 +492,20 @@ export function refreshTokens(
 
   const hash = hashToken(rawRefreshToken);
   const row = db.prepare(`
-    SELECT id, client_id, user_id, scopes, audience, refresh_token_expires_at, revoked_at, parent_token_id
-    FROM oauth_tokens WHERE refresh_token_hash = ?
+    SELECT ot.id, ot.client_id, ot.user_id, ot.scopes, ot.audience,
+           ot.refresh_token_expires_at, ot.revoked_at, ot.parent_token_id,
+           ot.user_password_version, u.password_version AS current_password_version
+    FROM oauth_tokens ot JOIN users u ON u.id = ot.user_id
+    WHERE ot.refresh_token_hash = ?
   `).get(hash) as OAuthTokenRow | undefined;
 
   if (!row) return { error: 'invalid_grant', status: 400 };
   if (row.client_id !== clientId) return { error: 'invalid_grant', status: 400 };
+
+  if (row.user_password_version !== (row as OAuthTokenRow & { current_password_version: number }).current_password_version) {
+    writeAudit({ userId: row.user_id, action: 'oauth.token.invalidated_password_version', details: { client_id: clientId }, ip });
+    return { error: 'invalid_grant', status: 400 };
+  }
 
   // ---- Replay detection (C3) ----
   if (row.revoked_at) {
@@ -580,6 +635,34 @@ export interface ValidateAuthorizeResult {
   scopeSelectable?: boolean;
 }
 
+/**
+ * OAuth native/desktop clients bind a temporary loopback listener and therefore
+ * cannot know its port when the client is registered. RFC 8252 requires an
+ * authorization server to allow any port for loopback IP redirect URIs while
+ * still comparing every other URI component exactly.
+ */
+function redirectUriMatches(registered: string, requested: string): boolean {
+  if (registered === requested) return true;
+  let allowed: URL;
+  let actual: URL;
+  try {
+    allowed = new URL(registered);
+    actual = new URL(requested);
+  } catch {
+    return false;
+  }
+  const loopbackHosts = new Set(['127.0.0.1', '[::1]']);
+  return allowed.protocol === 'http:'
+    && actual.protocol === 'http:'
+    && loopbackHosts.has(allowed.hostname)
+    && actual.hostname === allowed.hostname
+    && actual.username === allowed.username
+    && actual.password === allowed.password
+    && actual.pathname === allowed.pathname
+    && actual.search === allowed.search
+    && actual.hash === allowed.hash;
+}
+
 export function validateAuthorizeRequest(
   params: AuthorizeParams,
   userId: number | null,
@@ -611,22 +694,15 @@ export function validateAuthorizeRequest(
   }
 
   const allowedUris: string[] = JSON.parse(client.redirect_uris);
-  if (!params.redirect_uri || !allowedUris.includes(params.redirect_uri)) {
+  if (!params.redirect_uri || !allowedUris.some((uri) => redirectUriMatches(uri, params.redirect_uri))) {
     return { valid: false, error: 'invalid_redirect_uri', error_description: 'redirect_uri does not match any registered URI' };
   }
 
-  // RFC 8707 resource indicator: if provided, must identify the TREK
-  // MCP endpoint exactly. If the client didn't supply `resource`, we
-  // bind the token to the MCP endpoint by default — previously this
-  // left `audience = null`, and the audience-bind check on MCP requests
-  // then treated a null audience as "valid for any resource".
+  // RFC 8707 resource indicator. If absent, retain the MCP endpoint default.
   const mcpResource = `${getMcpSafeUrl().replace(/\/+$/, '')}/mcp`;
   const resource = params.resource
     ? params.resource.replace(/\/+$/, '')
     : mcpResource;
-  if (resource !== mcpResource) {
-    return { valid: false, error: 'invalid_target', error_description: 'Requested resource must be the TREK MCP endpoint' };
-  }
 
   const requestedScopes = (params.scope || '').split(' ').filter(Boolean);
   if (requestedScopes.length === 0) {
@@ -639,6 +715,17 @@ export function validateAuthorizeRequest(
   const grantedScopes = requestedScopes.filter(s => allowedScopes.includes(s));
   if (grantedScopes.length === 0) {
     return { valid: false, error: 'invalid_scope', error_description: 'None of the requested scopes are permitted for this client' };
+  }
+
+  const compatibility = validateOAuthResourceAndScopes(resource, grantedScopes);
+  if (!compatibility.valid) {
+    return {
+      valid: false,
+      error: compatibility.error,
+      error_description: compatibility.error === 'invalid_scope'
+        ? 'Requested scopes are not valid for this resource'
+        : 'Requested resource is not a valid TREK resource',
+    };
   }
 
   if (userId === null) {

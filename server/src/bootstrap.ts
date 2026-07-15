@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import type { INestApplication } from '@nestjs/common';
+import express from 'express';
+import type { Request } from 'express';
 import { AppModule } from './nest/app.module';
 import { applyGlobalMiddleware } from './middleware/globalMiddleware';
 import { applyPlatformUploads, applyPlatformTransport, applyPlatformStatic } from './nest/platform/platform.routes';
@@ -41,9 +43,17 @@ export async function buildApp(): Promise<INestApplication> {
   // rawBody keeps the unparsed request bytes on req.rawBody so a plugin webhook
   // route can verify a provider's HMAC signature over the exact payload (the
   // parsed JSON alone can't be re-serialised byte-for-byte).
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(), { rawBody: true });
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(), { bodyParser: false });
   const instance = app.getHttpAdapter().getInstance();
   applyGlobalMiddleware(instance, { bodyParser: false });
+  const captureRawBody = (req: Request & { rawBody?: Buffer }, _res: unknown, buffer: Buffer): void => {
+    req.rawBody = buffer;
+  };
+  // Plugin sync/import routes may carry bounded bulk metadata. All ordinary
+  // application JSON retains the stricter 100 KiB ceiling.
+  instance.use('/api/plugins', express.json({ limit: '10mb', verify: captureRawBody }));
+  instance.use(express.json({ limit: '100kb', verify: captureRawBody }));
+  instance.use(express.urlencoded({ extended: true, limit: '100kb', verify: captureRawBody }));
   applyPlatformUploads(instance);
   applyPlatformTransport(instance);
   applyPlatformStatic(instance);

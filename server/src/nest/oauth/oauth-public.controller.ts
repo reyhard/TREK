@@ -113,6 +113,16 @@ export class OauthPublicController {
         grantedScopes = allowedScopes;
       }
       const audience = resource ? resource.replace(/\/+$/, '') : `${this.oauth.mcpSafeUrl().replace(/\/+$/, '')}/mcp`;
+      const validation = this.oauth.validateOAuthResourceAndScopes(audience, grantedScopes);
+      if (!validation.valid) {
+        res.status(400).json({
+          error: validation.error === 'invalid_scope' ? 'invalid_scope' : 'invalid_target',
+          error_description: validation.error === 'invalid_scope'
+            ? 'Requested scopes are not valid for this resource'
+            : 'Requested resource is not a valid TREK resource',
+        });
+        return;
+      }
       const tokens = this.oauth.issueClientCredentialsToken(client_id, client.user_id, grantedScopes, audience);
       writeAudit({ userId: client.user_id, action: 'oauth.token.issue', details: { client_id, scopes: grantedScopes, audience, grant: 'client_credentials' }, ip });
       res.json(tokens);

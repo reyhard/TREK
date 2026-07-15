@@ -323,7 +323,17 @@ export interface PasskeyCredential {
   last_used_at: string | null
 }
 
+export interface OAuthPluginResource {
+  pluginId: string
+  resource: string
+  scopes: string[]
+  routes: Array<{ method: string; path: string; access: 'read' | 'write' }>
+}
+
 export const oauthApi = {
+  pluginResources: () => apiClient.get('/oauth/plugin-resources')
+    .then(r => r.data as { resources: OAuthPluginResource[] }),
+
   /** Validate OAuth authorize params — called by consent page on load */
   validate: (params: {
     response_type: string

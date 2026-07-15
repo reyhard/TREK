@@ -48,12 +48,45 @@ export const ALL_SCOPES = Object.keys(SCOPE_GROUPS)
 // Group all scopes for the client registration form
 export const SCOPE_GROUP_NAMES = [...new Set(Object.values(SCOPE_GROUPS).map(s => s.groupKey))]
 
-export function getScopesByGroup(t: (key: string) => string): Record<string, Array<{ scope: string } & ScopeInfo>> {
+const PLUGIN_SCOPE_RE = /^plugin:([a-z][a-z0-9-]{2,39}):(read|write)$/
+
+export function pluginScopeParts(scope: string): { pluginId: string; access: 'read' | 'write' } | null {
+  const match = PLUGIN_SCOPE_RE.exec(scope)
+  return match ? { pluginId: match[1], access: match[2] as 'read' | 'write' } : null
+}
+
+export function getScopeDisplay(scope: string, t: (key: string) => string): ScopeInfo {
+  const staticKeys = SCOPE_GROUPS[scope]
+  if (staticKeys) {
+    return {
+      label: t(staticKeys.labelKey),
+      description: t(staticKeys.descriptionKey),
+      group: t(staticKeys.groupKey),
+    }
+  }
+
+  const plugin = pluginScopeParts(scope)
+  if (plugin) {
+    const operation = plugin.access === 'write' ? 'read and write' : 'read'
+    return {
+      label: `${plugin.pluginId} plugin access`,
+      description: `Allow this client to ${operation} the ${plugin.pluginId} plugin proxy`,
+      group: `Plugin: ${plugin.pluginId}`,
+    }
+  }
+
+  return { label: scope, description: 'Unrecognized scope', group: 'Other' }
+}
+
+export function getScopesByGroup(
+  t: (key: string) => string,
+  scopes: string[] = ALL_SCOPES,
+): Record<string, Array<{ scope: string } & ScopeInfo>> {
   const groups: Record<string, Array<{ scope: string } & ScopeInfo>> = {}
-  for (const [scope, keys] of Object.entries(SCOPE_GROUPS)) {
-    const group = t(keys.groupKey)
-    if (!groups[group]) groups[group] = []
-    groups[group].push({ scope, label: t(keys.labelKey), description: t(keys.descriptionKey), group })
+  for (const scope of [...new Set(scopes)]) {
+    const display = getScopeDisplay(scope, t)
+    if (!groups[display.group]) groups[display.group] = []
+    groups[display.group].push({ scope, ...display })
   }
   return groups
 }

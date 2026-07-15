@@ -173,6 +173,17 @@ describe('Request body size limit', () => {
     // body-parser rejects oversized payloads with 413
     expect(res.status).toBe(413);
   });
+
+  it('allows bounded large JSON bodies through the plugin proxy parser', async () => {
+    const pluginPayload = { data: 'x'.repeat(2 * 1024 * 1024) };
+
+    const res = await request(app)
+      .post('/api/plugins/not-installed/source-sync/v1/preview')
+      .send(pluginPayload);
+
+    // The inactive plugin is still 404, but its bounded payload passed parsing.
+    expect(res.status).toBe(404);
+  });
 });
 
 describe('File download path traversal', () => {

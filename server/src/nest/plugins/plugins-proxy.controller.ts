@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import { extractToken, verifyJwtAndLoadUser } from '../../middleware/auth';
 import { pluginsEnabled } from './kill-switch';
 import { PluginRuntimeService } from './plugin-runtime.service';
+import { getUserByAccessToken } from '../../services/oauthService';
+import { isPluginScopeAllowed, pluginResourceUri } from '../../services/oauthResources';
 
 /**
  * Proxies a plugin's own HTTP routes at /api/plugins/:id/* (#plugins, M2).
@@ -44,6 +46,12 @@ function pickInboundHeaders(raw: Record<string, unknown> | undefined): Record<st
     out[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
   }
   return out;
+}
+
+function bearerHeader(req: Request): string | null {
+  const raw = req.headers.authorization;
+  if (typeof raw !== 'string') return null;
+  return /^Bearer\s+(\S+)$/i.exec(raw)?.[1] ?? null;
 }
 
 // Origin used only to parse a plugin-supplied redirect target. Any host works as
@@ -92,13 +100,27 @@ export class PluginsProxyController {
     // Per-route auth: default-on; `auth:false` routes are public (OAuth cb/webhook).
     let user: { id: number; username: string; is_admin?: boolean } | null = null;
     if (route.auth) {
-      const token = extractToken(req);
-      const loaded = token ? verifyJwtAndLoadUser(token) : null;
-      if (!loaded) {
-        res.status(401).json({ error: 'Access token required', code: 'AUTH_REQUIRED' });
-        return;
+      const oauthRaw = route.oauthScope ? bearerHeader(req) : null;
+      if (oauthRaw?.startsWith('trekoa_')) {
+        const info = getUserByAccessToken(oauthRaw);
+        if (!info || info.audience !== pluginResourceUri(pluginId)) {
+          res.status(401).json({ error: 'Invalid or expired token', code: 'AUTH_REQUIRED' });
+          return;
+        }
+        if (!isPluginScopeAllowed(info.scopes, pluginId, route.oauthScope!)) {
+          res.status(403).json({ error: 'OAuth scope required', code: 'OAUTH_SCOPE_REQUIRED' });
+          return;
+        }
+        user = { id: info.user.id, username: info.user.username, is_admin: info.user.role === 'admin' };
+      } else {
+        const token = extractToken(req);
+        const loaded = token ? verifyJwtAndLoadUser(token) : null;
+        if (!loaded) {
+          res.status(401).json({ error: 'Access token required', code: 'AUTH_REQUIRED' });
+          return;
+        }
+        user = loaded;
       }
-      user = loaded;
     }
 
     try {

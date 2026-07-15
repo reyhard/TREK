@@ -14,7 +14,12 @@ import type { OauthService } from '../../../src/nest/oauth/oauth.service';
 import type { User } from '../../../src/types';
 
 function osvc(o: Partial<OauthService> = {}): OauthService {
-  return { mcpEnabled: vi.fn().mockReturnValue(true), mcpSafeUrl: vi.fn().mockReturnValue('https://app'), ...o } as unknown as OauthService;
+  return {
+    mcpEnabled: vi.fn().mockReturnValue(true),
+    mcpSafeUrl: vi.fn().mockReturnValue('https://app'),
+    validateOAuthResourceAndScopes: vi.fn().mockReturnValue({ valid: true }),
+    ...o,
+  } as unknown as OauthService;
 }
 function rl(): RateLimitService { return new RateLimitService(); }
 function makeRes() {
@@ -38,6 +43,21 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
 
 const user = { id: 1, email: 'u@example.test' } as User;
 beforeEach(() => vi.clearAllMocks());
+
+describe('OauthApiController plugin resources', () => {
+  it('lists active OAuth-enabled plugin resources from the runtime', () => {
+    const resources = [{
+      pluginId: 'mymap-sync',
+      resource: 'https://app/api/plugins/mymap-sync',
+      scopes: ['plugin:mymap-sync:read'],
+      routes: [{ method: 'GET', path: '/source-sync/v1/trips', access: 'read' as const }],
+    }];
+    const runtime = { oauthResources: vi.fn(() => resources) };
+    const controller = new OauthApiController(osvc(), rl(), runtime as never);
+    expect(controller.listPluginResources()).toEqual({ resources });
+    expect(runtime.oauthResources).toHaveBeenCalledOnce();
+  });
+});
 
 describe('OauthPublicController /token', () => {
   function reqWith(body: Record<string, string>): Request { return { ip: '7.7.7.7', body } as Request; }

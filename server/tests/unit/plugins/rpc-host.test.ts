@@ -227,6 +227,9 @@ describe('PluginRpcHost — capability enforcement', () => {
     const allowed = await host.dispatch(req('trips.getPlaces', { tripId: 1 }), 42);
     expect(ok(allowed)).toBe(true);
     expect((allowed as RpcResponse).result).toEqual([{ id: 7, name: 'Place' }]);
+    expect(deps.db.prepare).toHaveBeenCalledWith(
+      'SELECT * FROM places WHERE trip_id = ? ORDER BY id',
+    );
   });
 
   it('db:read:packing / db:read:files delegate to the service, membership-checked, and stay separate scopes', async () => {

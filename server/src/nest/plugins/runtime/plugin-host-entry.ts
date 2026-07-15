@@ -102,7 +102,13 @@ async function boot(config: Record<string, unknown>): Promise<void> {
     // Report the declared routes (with their index = routeId) and jobs (id + cron
     // schedule) so the host can proxy HTTP and SCHEDULE the jobs without re-parsing
     // the manifest.
-    const routes = (def.routes ?? []).map((r, i) => ({ i, method: r.method, path: r.path, auth: r.auth !== false }));
+    const routes = (def.routes ?? []).map((r, i) => ({
+      i,
+      method: r.method,
+      path: r.path,
+      auth: r.auth !== false,
+      ...(r.oauthScope ? { oauthScope: r.oauthScope } : {}),
+    }));
     const jobs = (def.jobs ?? []).map((j) => ({ id: j.id, schedule: j.schedule }));
     const hooks = Object.keys((def.hooks ?? {}) as Record<string, unknown>);
     const events = (def.events ?? []).map((e) => e.on);

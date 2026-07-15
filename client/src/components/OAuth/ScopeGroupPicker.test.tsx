@@ -116,4 +116,20 @@ describe('ScopeGroupPicker', () => {
     // Count badge like "(1/N)" should be visible
     expect(screen.getByText(/\(\d+\/\d+\)/)).toBeInTheDocument();
   });
+
+  it('renders active plugin scopes and preserves an inactive selected scope', async () => {
+    const user = userEvent.setup();
+    render(
+      <ScopeGroupPicker
+        selected={['plugin:inactive-plugin:read']}
+        availableScopes={['trips:read', 'plugin:mymap-sync:write']}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Plugin: mymap-sync/i })).toBeInTheDocument();
+    const inactiveGroup = screen.getByRole('button', { name: /Plugin: inactive-plugin/i });
+    await user.click(inactiveGroup);
+    expect(screen.getByText('inactive-plugin plugin access')).toBeInTheDocument();
+  });
 });

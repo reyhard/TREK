@@ -196,4 +196,34 @@ describe('OAuthAuthorizePage', () => {
     // No checkboxes in read-only mode
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   });
+
+  it('renders plugin scope descriptions and submits the exact scope strings', async () => {
+    const user = userEvent.setup();
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.get('/api/oauth/authorize/validate', () =>
+        HttpResponse.json({
+          ...VALIDATE_OK,
+          client: {
+            name: 'MyMap Sync',
+            allowed_scopes: ['plugin:mymap-sync:read', 'plugin:mymap-sync:write'],
+          },
+          scopes: ['plugin:mymap-sync:read', 'plugin:mymap-sync:write'],
+        })
+      ),
+      http.post('/api/oauth/authorize', async ({ request }) => {
+        body = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({ redirect: 'http://localhost:4000/callback?code=plugin' });
+      })
+    );
+
+    render(<OAuthAuthorizePage />);
+    expect((await screen.findAllByText('mymap-sync plugin access')).length).toBe(2);
+    expect(screen.getByText('Allow this client to read the mymap-sync plugin proxy')).toBeInTheDocument();
+    expect(screen.getByText('Allow this client to read and write the mymap-sync plugin proxy')).toBeInTheDocument();
+    await user.click(screen.getByText('Approve Access'));
+    await waitFor(() => {
+      expect(body.scope).toBe('plugin:mymap-sync:read plugin:mymap-sync:write');
+    });
+  });
 });

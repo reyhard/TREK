@@ -26,6 +26,7 @@ import { PluginRegistryService } from './registry/registry.service';
 import { isAddonEnabled } from '../../services/adminService';
 import type { PluginDependency } from './install/manifest';
 import type { VersionMismatch, PluginDepRow } from './dependencies';
+import { pluginResourceUri, pluginScope, type PluginOAuthAccess } from '../../services/oauthResources';
 import { parseDependencies, disabledRequiredAddons, resolveDependencyState, enableOrder, findDependentsTransitive, DependencyCycleError } from './dependencies';
 
 const HTTP_OUTBOUND = 'http:outbound:';
@@ -789,6 +790,24 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
   }
   routesOf(id: string): PluginRouteInfo[] {
     return this.supervisor.routesOf(id);
+  }
+  oauthResources(): Array<{
+    pluginId: string;
+    resource: string;
+    scopes: string[];
+    routes: Array<{ method: string; path: string; access: PluginOAuthAccess }>;
+  }> {
+    return this.supervisor.activeIds().flatMap((pluginId) => {
+      const routes = this.supervisor.routesOf(pluginId)
+        .filter((route): route is PluginRouteInfo & { oauthScope: PluginOAuthAccess } => route.oauthScope !== undefined)
+        .map((route) => ({ method: route.method, path: route.path, access: route.oauthScope }));
+      if (routes.length === 0) return [];
+      const scopes = [...new Set(routes.flatMap((route) => [
+        pluginScope(pluginId, route.access),
+        ...(route.access === 'write' ? [pluginScope(pluginId, 'read')] : []),
+      ]))];
+      return [{ pluginId, resource: pluginResourceUri(pluginId), scopes, routes }];
+    });
   }
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
     return this.supervisor.invoke(id, method, params, { actingUserId });

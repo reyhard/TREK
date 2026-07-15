@@ -5,13 +5,19 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { pluginsEnabledMock, extractTokenMock, verifyMock } = vi.hoisted(() => ({
+const { pluginsEnabledMock, extractTokenMock, verifyMock, oauthTokenMock } = vi.hoisted(() => ({
   pluginsEnabledMock: vi.fn(() => true),
   extractTokenMock: vi.fn(() => 'tok'),
   verifyMock: vi.fn(() => ({ id: 5, username: 'ada', is_admin: false })),
+  oauthTokenMock: vi.fn(() => ({
+    user: { id: 9, username: 'oauth-user', email: 'oauth@example.com', role: 'user' },
+    scopes: ['plugin:mymap-sync:read'], clientId: 'client-1',
+    audience: 'http://localhost:3001/api/plugins/mymap-sync',
+  })),
 }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled: pluginsEnabledMock }));
 vi.mock('../../../src/middleware/auth', () => ({ extractToken: extractTokenMock, verifyJwtAndLoadUser: verifyMock }));
+vi.mock('../../../src/services/oauthService', () => ({ getUserByAccessToken: oauthTokenMock }));
 
 import { PluginsProxyController } from '../../../src/nest/plugins/plugins-proxy.controller';
 import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
@@ -46,9 +52,65 @@ beforeEach(() => {
   pluginsEnabledMock.mockClear().mockReturnValue(true);
   verifyMock.mockClear().mockReturnValue({ id: 5, username: 'ada', is_admin: false });
   extractTokenMock.mockClear().mockReturnValue('tok');
+  oauthTokenMock.mockClear().mockReturnValue({
+    user: { id: 9, username: 'oauth-user', email: 'oauth@example.com', role: 'user' },
+    scopes: ['plugin:mymap-sync:read'], clientId: 'client-1',
+    audience: 'http://localhost:3001/api/plugins/mymap-sync',
+  });
 });
 
 describe('PluginsProxyController', () => {
+  it('authorizes an opted-in route with a plugin OAuth token and binds its user', async () => {
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 3, method: 'GET', path: '/status', auth: true, oauthScope: 'read' }]) } as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('mymap-sync', fakeReq('GET', '/status', { headers: { authorization: 'Bearer trekoa_access' } }), res as never);
+    expect(res.statusCode).toBe(200);
+    expect(runtime.invoke).toHaveBeenCalledWith('mymap-sync', 'invoke.route', expect.objectContaining({
+      routeId: 3,
+      req: expect.objectContaining({ user: { id: 9, username: 'oauth-user', isAdmin: false } }),
+    }), 9);
+  });
+
+  it('rejects a plugin OAuth token with a wrong audience or insufficient scope', async () => {
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 0, method: 'POST', path: '/apply', auth: true, oauthScope: 'write' }]) } as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('mymap-sync', fakeReq('POST', '/apply', { headers: { authorization: 'Bearer trekoa_access' } }), res as never);
+    expect(res.statusCode).toBe(403);
+    expect(runtime.invoke).not.toHaveBeenCalled();
+
+    oauthTokenMock.mockReturnValue({ user: { id: 9, username: 'oauth-user', email: '', role: 'user' }, scopes: ['places:read'], clientId: 'mcp', audience: 'http://localhost:3001/mcp' });
+    const wrongAudience = fakeRes();
+    await new PluginsProxyController(runtime).proxy('mymap-sync', fakeReq('POST', '/apply', { headers: { authorization: 'Bearer trekoa_access' } }), wrongAudience as never);
+    expect(wrongAudience.statusCode).toBe(401);
+  });
+
+  it('rejects invalid OAuth credentials without falling back to session JWT auth', async () => {
+    oauthTokenMock.mockReturnValue(null);
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 0, method: 'GET', path: '/status', auth: true, oauthScope: 'read' }]) } as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('mymap-sync', fakeReq('GET', '/status', { headers: { authorization: 'Bearer trekoa_fake' } }), res as never);
+    expect(res.statusCode).toBe(401);
+    expect(verifyMock).not.toHaveBeenCalled();
+    expect(runtime.invoke).not.toHaveBeenCalled();
+  });
+
+  it('keeps session auth compatible on an OAuth-enabled route', async () => {
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 0, method: 'GET', path: '/status', auth: true, oauthScope: 'read' }]) } as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('mymap-sync', fakeReq('GET', '/status', { headers: {}, cookies: { trek_session: 'session' } }), res as never);
+    expect(res.statusCode).toBe(200);
+    expect(verifyMock).toHaveBeenCalledWith('tok');
+    expect(oauthTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('does not enable OAuth on a session-only route', async () => {
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 0, method: 'GET', path: '/status', auth: true }]) } as never);
+    verifyMock.mockReturnValue(null as never);
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('mymap-sync', fakeReq('GET', '/status', { headers: { authorization: 'Bearer trekoa_access' } }), res as never);
+    expect(res.statusCode).toBe(401);
+    expect(oauthTokenMock).not.toHaveBeenCalled();
+  });
   it('404 when the runtime is disabled', async () => {
     pluginsEnabledMock.mockReturnValue(false);
     const res = fakeRes();

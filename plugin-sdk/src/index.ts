@@ -334,6 +334,8 @@ export interface PluginRoute {
   path: string;
   /** Default true. Set false for OAuth callbacks / webhooks (public route). */
   auth?: boolean;
+  /** Allow a plugin-resource OAuth token on this authenticated route. */
+  oauthScope?: 'read' | 'write';
   handler(req: PluginRequest, ctx: PluginContext): Promise<PluginResponse>;
 }
 export interface PluginJob {

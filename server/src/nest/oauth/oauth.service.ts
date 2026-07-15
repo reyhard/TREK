@@ -22,6 +22,7 @@ export class OauthService {
   refreshTokens(...args: Parameters<typeof oauth.refreshTokens>) { return oauth.refreshTokens(...args); }
   revokeToken(...args: Parameters<typeof oauth.revokeToken>) { return oauth.revokeToken(...args); }
   getUserByAccessToken(token: string) { return oauth.getUserByAccessToken(token); }
+  validateOAuthResourceAndScopes(...args: Parameters<typeof oauth.validateOAuthResourceAndScopes>) { return oauth.validateOAuthResourceAndScopes(...args); }
 
   validateAuthorizeRequest(params: oauth.AuthorizeParams, userId: number | null) { return oauth.validateAuthorizeRequest(params, userId); }
   saveConsent(...args: Parameters<typeof oauth.saveConsent>) { return oauth.saveConsent(...args); }

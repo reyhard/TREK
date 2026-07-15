@@ -1,6 +1,6 @@
 // FE-OAUTH-SCOPES-001 to FE-OAUTH-SCOPES-010
 import { describe, it, expect } from 'vitest'
-import { SCOPE_GROUPS, ALL_SCOPES, SCOPE_GROUP_NAMES, getScopesByGroup } from './oauthScopes'
+import { SCOPE_GROUPS, ALL_SCOPES, SCOPE_GROUP_NAMES, getScopeDisplay, getScopesByGroup, pluginScopeParts } from './oauthScopes'
 
 describe('SCOPE_GROUPS', () => {
   it('FE-OAUTH-SCOPES-001: contains all expected scope keys', () => {
@@ -98,5 +98,24 @@ describe('getScopesByGroup', () => {
     const groups = getScopesByGroup(t)
     expect(groups['Trips']).toBeDefined()
     expect(groups['oauth.scope.group.trips']).toBeUndefined()
+  })
+})
+
+describe('dynamic plugin scopes', () => {
+  const identity = (key: string) => key
+
+  it('parses and displays valid plugin read/write scopes', () => {
+    expect(pluginScopeParts('plugin:mymap-sync:read')).toEqual({ pluginId: 'mymap-sync', access: 'read' })
+    expect(getScopeDisplay('plugin:mymap-sync:write', identity)).toEqual({
+      label: 'mymap-sync plugin access',
+      description: 'Allow this client to read and write the mymap-sync plugin proxy',
+      group: 'Plugin: mymap-sync',
+    })
+  })
+
+  it('retains static translations and rejects malformed plugin scopes', () => {
+    expect(getScopeDisplay('trips:read', identity).label).toBe('oauth.scope.trips:read.label')
+    expect(pluginScopeParts('plugin:mymap_sync:read')).toBeNull()
+    expect(getScopeDisplay('plugin:mymap_sync:read', identity).group).toBe('Other')
   })
 })

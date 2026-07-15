@@ -210,6 +210,20 @@ reads them off your loaded definition (a route's array index is its internal id)
 The `routes` block the scaffold writes into `trek-plugin.json` is only a
 declaration for readers — the manifest parser does not consume it.
 
+### OAuth access to plugin routes
+
+Authenticated routes are session-only by default. To allow an external OAuth
+client to call a specific route, keep `auth: true` and add `oauthScope: 'read'`
+or `oauthScope: 'write'`. Write scope also grants access to read routes; read
+scope never grants access to write routes. Public `auth: false` routes cannot
+opt into OAuth.
+
+OAuth route scopes are a coarse transport boundary. They do not replace the
+manifest permission, trip-membership, addon, egress, or plugin-owned checks
+that continue to run for the authenticated user. See
+[Plugin OAuth Proxy Access](Plugin-OAuth-Proxy) for the complete client,
+resource, scope, revocation, and security contract.
+
 ### The `ctx` object
 
 | Area | Methods | Requires |

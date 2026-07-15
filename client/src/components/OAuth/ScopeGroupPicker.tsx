@@ -1,18 +1,21 @@
 import React, { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { getScopesByGroup } from '../../api/oauthScopes'
+import { ALL_SCOPES, getScopesByGroup } from '../../api/oauthScopes'
 import { useTranslation } from '../../i18n'
 
 interface Props {
   selected: string[]
   onChange: (scopes: string[]) => void
+  availableScopes?: string[]
 }
 
-export default function ScopeGroupPicker({ selected, onChange }: Props): React.ReactElement {
+export default function ScopeGroupPicker({ selected, onChange, availableScopes }: Props): React.ReactElement {
   const { t } = useTranslation()
   const [open, setOpen] = useState<Record<string, boolean>>({})
 
-  const scopesByGroup = getScopesByGroup(t)
+  // Keep previously selected scopes visible if a plugin is currently inactive.
+  const pickerScopes = [...new Set([...(availableScopes ?? ALL_SCOPES), ...selected])]
+  const scopesByGroup = getScopesByGroup(t, pickerScopes)
   const allScopeKeys = Object.values(scopesByGroup).flat().map(s => s.scope)
   const allSelected  = allScopeKeys.every(s => selected.includes(s))
 

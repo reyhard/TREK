@@ -86,6 +86,18 @@ Create a client in TREK using the appropriate preset (Cursor, VS Code, Windsurf,
 
 Each user can have up to **10 OAuth clients**.
 
+### Plugin proxy resources are separate from MCP
+
+An OAuth client may also be configured for routes explicitly exposed by an
+active plugin. These tokens use the exact resource
+`https://<your-trek-instance>/api/plugins/<plugin-id>` and scopes such as
+`plugin:<plugin-id>:read` or `plugin:<plugin-id>:write`.
+
+The `/mcp` resource accepts only MCP scopes, and plugin resources accept only
+matching scopes for that plugin. Do not send an MCP-audienced token to a plugin
+proxy or combine MCP scopes with a plugin resource. See
+[Plugin OAuth Proxy Access](Plugin-OAuth-Proxy) for setup and MyMap examples.
+
 ## Option B: Machine client — no browser login (for AI agents and scripts)
 
 Use this when your AI agent or automation script needs to authenticate silently without any browser interaction. Instead of going through an OAuth consent flow, the client exchanges a `client_id` and `client_secret` directly for an access token ([RFC 6749 §4.4 — Client Credentials grant](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4)).
@@ -152,5 +164,6 @@ Each user can create up to **10 static tokens**.
 
 - [MCP-Overview](MCP-Overview)
 - [MCP-Scopes](MCP-Scopes)
+- [Plugin OAuth Proxy Access](Plugin-OAuth-Proxy)
 - [Admin-MCP-Tokens](Admin-MCP-Tokens)
 - [Environment-Variables](Environment-Variables)

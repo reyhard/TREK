@@ -304,7 +304,7 @@ export class PluginRpcHost {
         this.tripRead(p, uid, () => deps.db.prepare('SELECT * FROM trips WHERE id = ?').get(num(p.tripId, 'tripId'))),
       );
       this.methods.set('trips.getPlaces', (p, uid) =>
-        this.tripRead(p, uid, () => deps.db.prepare('SELECT * FROM places WHERE trip_id = ? ORDER BY day_id, position').all(num(p.tripId, 'tripId'))),
+        this.tripRead(p, uid, () => deps.db.prepare('SELECT * FROM places WHERE trip_id = ? ORDER BY id').all(num(p.tripId, 'tripId'))),
       );
       // Hydrated like the REST list (endpoints, day_positions, joins, normalized
       // accommodation_id) — a strict superset of the raw row, so older callers

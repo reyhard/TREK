@@ -1,5 +1,5 @@
 import React from 'react'
-import { SCOPE_GROUPS } from '../api/oauthScopes'
+import { getScopeDisplay } from '../api/oauthScopes'
 import { Lock, ShieldCheck, AlertTriangle, Loader2, LogIn } from 'lucide-react'
 import { useTranslation } from '../i18n'
 import { useOAuthAuthorize } from './oauthAuthorize/useOAuthAuthorize'
@@ -148,7 +148,7 @@ export default function OAuthAuthorizePage(): React.ReactElement {
                                   </label>
                                   <div className="divide-y" style={{ borderColor: 'var(--border-primary)' }}>
                                     {groupScopes.map(s => {
-                                      const keys = SCOPE_GROUPS[s]
+                                      const display = getScopeDisplay(s, t)
                                       return (
                                           <label
                                               key={s}
@@ -163,8 +163,8 @@ export default function OAuthAuthorizePage(): React.ReactElement {
                                     {s.endsWith(':delete') ? '🗑️' : s.endsWith(':write') ? '✏️' : '👁️'}
                                   </span>
                                             <div className="min-w-0">
-                                              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{keys ? t(keys.labelKey) : s}</p>
-                                              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{keys ? t(keys.descriptionKey) : ''}</p>
+                                              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{display.label}</p>
+                                              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{display.description}</p>
                                             </div>
                                           </label>
                                       )
@@ -182,15 +182,15 @@ export default function OAuthAuthorizePage(): React.ReactElement {
                                 <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>{group}</p>
                                 <div className="space-y-1.5">
                                   {groupScopes.map(s => {
-                                    const keys = SCOPE_GROUPS[s]
+                                    const display = getScopeDisplay(s, t)
                                     return (
                                         <div key={s} className="flex items-start gap-2.5 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
                                 <span className="mt-0.5 text-base leading-none flex-shrink-0">
                                   {s.endsWith(':delete') ? '🗑️' : s.endsWith(':write') ? '✏️' : '👁️'}
                                 </span>
                                           <div className="min-w-0">
-                                            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{keys ? t(keys.labelKey) : s}</p>
-                                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{keys ? t(keys.descriptionKey) : ''}</p>
+                                            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{display.label}</p>
+                                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{display.description}</p>
                                           </div>
                                         </div>
                                     )

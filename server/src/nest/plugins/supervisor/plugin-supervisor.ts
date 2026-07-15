@@ -13,6 +13,16 @@ export interface PluginRouteInfo {
   method: string;
   path: string;
   auth: boolean;
+  oauthScope?: 'read' | 'write';
+}
+
+function isPluginRouteInfo(value: unknown): value is PluginRouteInfo {
+  if (!value || typeof value !== 'object') return false;
+  const route = value as Record<string, unknown>;
+  if (!Number.isSafeInteger(route.i) || typeof route.method !== 'string' || typeof route.path !== 'string' || typeof route.auth !== 'boolean') return false;
+  if (route.oauthScope !== undefined && route.oauthScope !== 'read' && route.oauthScope !== 'write') return false;
+  if (route.oauthScope !== undefined && route.auth === false) return false;
+  return true;
 }
 
 /**
@@ -579,7 +589,7 @@ export class PluginSupervisor {
             routes?: PluginRouteInfo[]; jobs?: ScheduledJob[]; hooks?: string[]; events?: string[];
             exports?: string[]; subscriptions?: Array<{ plugin: string; event: string }>;
           };
-          sup.routes = d.routes ?? [];
+          sup.routes = Array.isArray(d.routes) ? d.routes.filter(isPluginRouteInfo) : [];
           sup.jobs = Array.isArray(d.jobs)
             ? d.jobs.filter((j): j is ScheduledJob => !!j && typeof j.id === 'string' && typeof j.schedule === 'string')
             : [];

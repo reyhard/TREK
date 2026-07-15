@@ -9,6 +9,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { getClientIp } from '../../services/auditLog';
 import type { User } from '../../types';
 import type { AuthorizeParams } from '../../services/oauthService';
+import { PluginRuntimeService } from '../plugins/plugin-runtime.service';
 
 const MIN = 60_000;
 
@@ -22,7 +23,7 @@ const MIN = 60_000;
  */
 @Controller('api/oauth')
 export class OauthApiController {
-  constructor(private readonly oauth: OauthService, private readonly rl: RateLimitService) {}
+  constructor(private readonly oauth: OauthService, private readonly rl: RateLimitService, private readonly runtime: PluginRuntimeService) {}
 
   private requireMcp403(): void {
     if (!this.oauth.mcpEnabled()) {
@@ -121,6 +122,13 @@ export class OauthApiController {
   listClients(@CurrentUser() user: User) {
     this.requireMcp403();
     return { clients: this.oauth.listOAuthClients(user.id) };
+  }
+
+  @Get('plugin-resources')
+  @UseGuards(JwtAuthGuard)
+  listPluginResources() {
+    this.requireMcp403();
+    return { resources: this.runtime.oauthResources() };
   }
 
   @Post('clients')

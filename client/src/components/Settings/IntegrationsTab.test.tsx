@@ -1,4 +1,4 @@
-// FE-COMP-INTEGRATIONS-001 to FE-COMP-INTEGRATIONS-032
+// FE-COMP-INTEGRATIONS-001 to FE-COMP-INTEGRATIONS-033
 import { render, screen, waitFor } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -43,6 +43,7 @@ beforeEach(() => {
     http.get('/api/addons', () => HttpResponse.json({ addons: [] })),
     http.get('/api/oauth/clients', () => HttpResponse.json({ clients: [] })),
     http.get('/api/oauth/sessions', () => HttpResponse.json({ sessions: [] })),
+    http.get('/api/oauth/plugin-resources', () => HttpResponse.json({ resources: [] })),
   );
 });
 
@@ -650,5 +651,24 @@ describe('IntegrationsTab', () => {
     await user.type(screen.getByPlaceholderText(/https:\/\/your-app/i), 'http://localhost');
     await user.click(screen.getByRole('button', { name: /Register Client/i }));
     await screen.findByText(/Failed to register/i);
+  });
+
+  it('FE-COMP-INTEGRATIONS-033: active plugin scopes appear in the client scope picker', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/oauth/plugin-resources', () => HttpResponse.json({
+        resources: [{
+          pluginId: 'mymap-sync',
+          resource: 'http://localhost:3001/api/plugins/mymap-sync',
+          scopes: ['plugin:mymap-sync:read', 'plugin:mymap-sync:write'],
+          routes: [],
+        }],
+      }))
+    );
+    enableMcp();
+    render(<IntegrationsTab />);
+    await screen.findByText('MCP Configuration');
+    await user.click(screen.getByRole('button', { name: /New Client/i }));
+    expect(await screen.findByRole('button', { name: /Plugin: mymap-sync/i })).toBeInTheDocument();
   });
 });

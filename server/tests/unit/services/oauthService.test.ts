@@ -72,7 +72,10 @@ import {
   saveConsent,
   getConsent,
   isConsentSufficient,
+  validateOAuthResourceAndScopes,
 } from '../../../src/services/oauthService';
+import { isPluginScopeAllowed, parsePluginResource, parsePluginScope, pluginResourceUri, pluginScope } from '../../../src/services/oauthResources';
+import { validateScopes } from '../../../src/mcp/scopes';
 import { isAddonEnabled } from '../../../src/services/adminService';
 
 beforeAll(() => {
@@ -91,6 +94,26 @@ beforeEach(() => {
 
 afterAll(() => {
   testDb.close();
+});
+
+describe('plugin OAuth resources', () => {
+  it('builds and parses only canonical plugin resources and scopes', () => {
+    expect(pluginResourceUri('mymap-sync')).toBe('http://localhost:3001/api/plugins/mymap-sync');
+    expect(pluginScope('mymap-sync', 'read')).toBe('plugin:mymap-sync:read');
+    expect(parsePluginScope('plugin:mymap-sync:write')).toEqual({ pluginId: 'mymap-sync', access: 'write' });
+    expect(parsePluginScope('plugin:mymap_sync:read')).toBeNull();
+    expect(validateScopes(['plugin:mymap_sync:read']).valid).toBe(false);
+    expect(parsePluginResource('http://localhost:3001/api/plugins/mymap-sync/')).toEqual({ pluginId: 'mymap-sync' });
+    expect(parsePluginResource('http://localhost:3001/api/plugins/mymap-sync?x=1')).toBeNull();
+    expect(isPluginScopeAllowed(['plugin:mymap-sync:write'], 'mymap-sync', 'read')).toBe(true);
+  });
+
+  it('validates installed plugin resource and scope compatibility', () => {
+    testDb.prepare("INSERT INTO plugins (id, name, version, status) VALUES ('mymap-sync', 'MyMap Sync', '1.0.0', 'active')").run();
+    expect(validateOAuthResourceAndScopes(pluginResourceUri('mymap-sync'), ['plugin:mymap-sync:read'])).toEqual({ valid: true });
+    expect(validateOAuthResourceAndScopes(`${pluginResourceUri('mymap-sync')}`, ['trips:read']).valid).toBe(false);
+    expect(validateOAuthResourceAndScopes('http://localhost:3001/mcp', ['plugin:mymap-sync:read']).valid).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,6 +210,30 @@ describe('createOAuthClient', () => {
     const result = createOAuthClient(user.id, 'Test', ['http://127.0.0.1:5000/callback'], ['trips:read']);
     expect(result.error).toBeUndefined();
     expect(result.client).toBeDefined();
+  });
+
+  it('allows only explicitly configured HTTP LAN redirect hosts', () => {
+    const { user } = createUser(testDb);
+    process.env.OAUTH_HTTP_REDIRECT_HOSTS = 'mylocalmap.com';
+    try {
+      const allowed = createOAuthClient(
+        user.id,
+        'MyMap LAN',
+        ['http://mylocalmap.com/api/mymap-trek/v1/oauth/callback'],
+        ['trips:read'],
+      );
+      expect(allowed.error).toBeUndefined();
+
+      const denied = createOAuthClient(
+        user.id,
+        'Other LAN',
+        ['http://other.example/callback'],
+        ['trips:read'],
+      );
+      expect(denied.status).toBe(400);
+    } finally {
+      delete process.env.OAUTH_HTTP_REDIRECT_HOSTS;
+    }
   });
 
   it('returns 400 error if no scopes provided', () => {
@@ -392,6 +439,16 @@ describe('issueTokens + getUserByAccessToken', () => {
     revokeToken(access_token, clientId);
     expect(getUserByAccessToken(access_token)).toBeNull();
   });
+
+  it('binds tokens to the issuing password version', () => {
+    const { user } = createUser(testDb);
+    const created = makeClient(user.id);
+    const tokens = issueTokens(created.client!.client_id as string, user.id, ['trips:read']);
+    const row = testDb.prepare('SELECT user_password_version FROM oauth_tokens').get() as { user_password_version: number };
+    expect(row.user_password_version).toBe(0);
+    testDb.prepare('UPDATE users SET password_version = password_version + 1 WHERE id = ?').run(user.id);
+    expect(getUserByAccessToken(tokens.access_token)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -399,6 +456,14 @@ describe('issueTokens + getUserByAccessToken', () => {
 // ---------------------------------------------------------------------------
 
 describe('refreshTokens', () => {
+  it('rejects refresh after the password version changes', () => {
+    const { user } = createUser(testDb);
+    const created = makeClient(user.id);
+    const tokens = issueTokens(created.client!.client_id as string, user.id, ['trips:read']);
+    testDb.prepare('UPDATE users SET password_version = password_version + 1 WHERE id = ?').run(user.id);
+    expect(refreshTokens(tokens.refresh_token, created.client!.client_id as string, created.client!.client_secret as string).error).toBe('invalid_grant');
+  });
+
   it('exchanges a refresh token for a new token pair', () => {
     const { user } = createUser(testDb);
     const created = makeClient(user.id);
@@ -603,6 +668,25 @@ describe('validateAuthorizeRequest', () => {
     );
     expect(result.valid).toBe(false);
     expect(result.error).toBe('invalid_redirect_uri');
+  });
+
+  it('allows an ephemeral port only for an exact loopback IP redirect', () => {
+    const { user } = createUser(testDb);
+    const created = makeClient(user.id, { redirectUris: ['http://127.0.0.1/callback'] });
+    const clientId = created.client!.client_id as string;
+
+    expect(validateAuthorizeRequest(
+      makeParams({ client_id: clientId, redirect_uri: 'http://127.0.0.1:49152/callback' }),
+      user.id,
+    ).valid).toBe(true);
+    expect(validateAuthorizeRequest(
+      makeParams({ client_id: clientId, redirect_uri: 'http://127.0.0.1:49152/other' }),
+      user.id,
+    ).error).toBe('invalid_redirect_uri');
+    expect(validateAuthorizeRequest(
+      makeParams({ client_id: clientId, redirect_uri: 'http://localhost:49152/callback' }),
+      user.id,
+    ).error).toBe('invalid_redirect_uri');
   });
 
   it('validates scope against client allowed_scopes', () => {

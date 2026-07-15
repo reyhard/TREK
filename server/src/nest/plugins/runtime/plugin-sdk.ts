@@ -332,6 +332,7 @@ export interface PluginRoute {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
   auth?: boolean;
+  oauthScope?: 'read' | 'write';
   handler(req: PluginRequest, ctx: PluginContext): Promise<PluginResponse>;
 }
 export interface PluginJob {

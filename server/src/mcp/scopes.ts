@@ -2,6 +2,8 @@
 // OAuth 2.1 scope definitions for TREK MCP
 // ---------------------------------------------------------------------------
 
+import { isPluginScope } from '../services/oauthResources';
+
 export const SCOPES = {
   TRIPS_READ:          'trips:read',
   TRIPS_WRITE:         'trips:write',
@@ -114,6 +116,6 @@ export function canShareJourneys(scopes: string[] | null): boolean {
 }
 
 export function validateScopes(requestedScopes: string[]): { valid: boolean; invalid: string[] } {
-  const invalid = requestedScopes.filter(s => !ALL_SCOPES.includes(s as Scope));
+  const invalid = requestedScopes.filter(s => !ALL_SCOPES.includes(s as Scope) && !isPluginScope(s));
   return { valid: invalid.length === 0, invalid };
 }

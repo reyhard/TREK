@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n'
 import { useToast } from '../shared/Toast'
 import { Trash2, Copy, Terminal, Plus, Check, KeyRound, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
-import { authApi, oauthApi } from '../../api/client'
+import { authApi, oauthApi, type OAuthPluginResource } from '../../api/client'
 import { useAddonStore } from '../../store/addonStore'
 import PhotoProvidersSection from './PhotoProvidersSection'
 import AirTrailConnectionSection from './AirTrailConnectionSection'
@@ -137,6 +137,11 @@ function useIntegrations() {
   // oauthScopesOpen is managed internally by ScopeGroupPicker
   const [oauthScopesExpanded, setOauthScopesExpanded] = useState<Record<string, boolean>>({})
   const [oauthIsMachine, setOauthIsMachine] = useState(false)
+  const [oauthPluginResources, setOauthPluginResources] = useState<OAuthPluginResource[]>([])
+  const availableOAuthScopes = [...new Set([
+    ...ALL_SCOPES,
+    ...oauthPluginResources.flatMap(resource => resource.scopes),
+  ])]
 
   // MCP sub-tab state
   const [activeMcpTab, setActiveMcpTab] = useState<'oauth' | 'apitokens'>('oauth')
@@ -230,6 +235,9 @@ function useIntegrations() {
     if (mcpEnabled) {
       oauthApi.clients.list().then(d => setOauthClients(d.clients || [])).catch(() => {})
       oauthApi.sessions.list().then(d => setOauthSessions(d.sessions || [])).catch(() => {})
+      oauthApi.pluginResources()
+        .then(d => setOauthPluginResources(d.resources || []))
+        .catch(() => setOauthPluginResources([]))
     }
   }, [mcpEnabled])
 
@@ -295,13 +303,13 @@ function useIntegrations() {
 
 
   return {
-    t, locale, toast, mcpEnabled, airtrailEnabled, llmEnabled, oauthClients, setOauthClients, oauthSessions, setOauthSessions, oauthCreateOpen, setOauthCreateOpen, oauthNewName, setOauthNewName, oauthNewUris, setOauthNewUris, oauthNewScopes, setOauthNewScopes, oauthCreating, oauthCreatedClient, setOauthCreatedClient, oauthDeleteId, setOauthDeleteId, oauthRevokeId, setOauthRevokeId, oauthRotateId, setOauthRotateId, oauthRotatedSecret, setOauthRotatedSecret, oauthRotating, oauthScopesExpanded, setOauthScopesExpanded, oauthIsMachine, setOauthIsMachine, activeMcpTab, setActiveMcpTab, configOpenOAuth, setConfigOpenOAuth, configOpenToken, setConfigOpenToken, mcpTokens, setMcpTokens, mcpModalOpen, setMcpModalOpen, mcpNewName, setMcpNewName, mcpCreatedToken, setMcpCreatedToken, mcpCreating, mcpDeleteId, setMcpDeleteId, copiedKey, mcpEndpoint, mcpJsonConfigOAuth, mcpJsonConfig, handleCreateMcpToken, handleDeleteMcpToken, handleCopy, handleCreateOAuthClient, handleDeleteOAuthClient, handleRotateSecret, handleRevokeSession,
+    t, locale, toast, mcpEnabled, airtrailEnabled, llmEnabled, oauthClients, setOauthClients, oauthSessions, setOauthSessions, oauthCreateOpen, setOauthCreateOpen, oauthNewName, setOauthNewName, oauthNewUris, setOauthNewUris, oauthNewScopes, setOauthNewScopes, oauthCreating, oauthCreatedClient, setOauthCreatedClient, oauthDeleteId, setOauthDeleteId, oauthRevokeId, setOauthRevokeId, oauthRotateId, setOauthRotateId, oauthRotatedSecret, setOauthRotatedSecret, oauthRotating, oauthScopesExpanded, setOauthScopesExpanded, oauthIsMachine, setOauthIsMachine, availableOAuthScopes, activeMcpTab, setActiveMcpTab, configOpenOAuth, setConfigOpenOAuth, configOpenToken, setConfigOpenToken, mcpTokens, setMcpTokens, mcpModalOpen, setMcpModalOpen, mcpNewName, setMcpNewName, mcpCreatedToken, setMcpCreatedToken, mcpCreating, mcpDeleteId, setMcpDeleteId, copiedKey, mcpEndpoint, mcpJsonConfigOAuth, mcpJsonConfig, handleCreateMcpToken, handleDeleteMcpToken, handleCopy, handleCreateOAuthClient, handleDeleteOAuthClient, handleRotateSecret, handleRevokeSession,
   }
 }
 
 function IntegrationsMcpSection(props: any) {
   const {
-    t, locale, toast, mcpEnabled, oauthClients, setOauthClients, oauthSessions, setOauthSessions, oauthCreateOpen, setOauthCreateOpen, oauthNewName, setOauthNewName, oauthNewUris, setOauthNewUris, oauthNewScopes, setOauthNewScopes, oauthCreating, oauthCreatedClient, setOauthCreatedClient, oauthDeleteId, setOauthDeleteId, oauthRevokeId, setOauthRevokeId, oauthRotateId, setOauthRotateId, oauthRotatedSecret, setOauthRotatedSecret, oauthRotating, oauthScopesExpanded, setOauthScopesExpanded, oauthIsMachine, setOauthIsMachine, activeMcpTab, setActiveMcpTab, configOpenOAuth, setConfigOpenOAuth, configOpenToken, setConfigOpenToken, mcpTokens, setMcpTokens, mcpModalOpen, setMcpModalOpen, mcpNewName, setMcpNewName, mcpCreatedToken, setMcpCreatedToken, mcpCreating, mcpDeleteId, setMcpDeleteId, copiedKey, mcpEndpoint, mcpJsonConfigOAuth, mcpJsonConfig, handleCreateMcpToken, handleDeleteMcpToken, handleCopy, handleCreateOAuthClient, handleDeleteOAuthClient, handleRotateSecret, handleRevokeSession,
+    t, locale, toast, mcpEnabled, oauthClients, setOauthClients, oauthSessions, setOauthSessions, oauthCreateOpen, setOauthCreateOpen, oauthNewName, setOauthNewName, oauthNewUris, setOauthNewUris, oauthNewScopes, setOauthNewScopes, oauthCreating, oauthCreatedClient, setOauthCreatedClient, oauthDeleteId, setOauthDeleteId, oauthRevokeId, setOauthRevokeId, oauthRotateId, setOauthRotateId, oauthRotatedSecret, setOauthRotatedSecret, oauthRotating, oauthScopesExpanded, setOauthScopesExpanded, oauthIsMachine, setOauthIsMachine, availableOAuthScopes, activeMcpTab, setActiveMcpTab, configOpenOAuth, setConfigOpenOAuth, configOpenToken, setConfigOpenToken, mcpTokens, setMcpTokens, mcpModalOpen, setMcpModalOpen, mcpNewName, setMcpNewName, mcpCreatedToken, setMcpCreatedToken, mcpCreating, mcpDeleteId, setMcpDeleteId, copiedKey, mcpEndpoint, mcpJsonConfigOAuth, mcpJsonConfig, handleCreateMcpToken, handleDeleteMcpToken, handleCopy, handleCreateOAuthClient, handleDeleteOAuthClient, handleRotateSecret, handleRevokeSession,
   } = props
   return (
         <Section title={t('settings.mcp.title')} icon={Terminal}>
@@ -622,7 +630,7 @@ function McpTokenModals(props: any) {
 
 function OAuthClientModals(props: any) {
   const {
-    t, locale, toast, mcpEnabled, oauthClients, setOauthClients, oauthSessions, setOauthSessions, oauthCreateOpen, setOauthCreateOpen, oauthNewName, setOauthNewName, oauthNewUris, setOauthNewUris, oauthNewScopes, setOauthNewScopes, oauthCreating, oauthCreatedClient, setOauthCreatedClient, oauthDeleteId, setOauthDeleteId, oauthRevokeId, setOauthRevokeId, oauthRotateId, setOauthRotateId, oauthRotatedSecret, setOauthRotatedSecret, oauthRotating, oauthScopesExpanded, setOauthScopesExpanded, oauthIsMachine, setOauthIsMachine, activeMcpTab, setActiveMcpTab, configOpenOAuth, setConfigOpenOAuth, configOpenToken, setConfigOpenToken, mcpTokens, setMcpTokens, mcpModalOpen, setMcpModalOpen, mcpNewName, setMcpNewName, mcpCreatedToken, setMcpCreatedToken, mcpCreating, mcpDeleteId, setMcpDeleteId, copiedKey, mcpEndpoint, mcpJsonConfigOAuth, mcpJsonConfig, handleCreateMcpToken, handleDeleteMcpToken, handleCopy, handleCreateOAuthClient, handleDeleteOAuthClient, handleRotateSecret, handleRevokeSession,
+    t, locale, toast, mcpEnabled, oauthClients, setOauthClients, oauthSessions, setOauthSessions, oauthCreateOpen, setOauthCreateOpen, oauthNewName, setOauthNewName, oauthNewUris, setOauthNewUris, oauthNewScopes, setOauthNewScopes, oauthCreating, oauthCreatedClient, setOauthCreatedClient, oauthDeleteId, setOauthDeleteId, oauthRevokeId, setOauthRevokeId, oauthRotateId, setOauthRotateId, oauthRotatedSecret, setOauthRotatedSecret, oauthRotating, oauthScopesExpanded, setOauthScopesExpanded, oauthIsMachine, setOauthIsMachine, availableOAuthScopes, activeMcpTab, setActiveMcpTab, configOpenOAuth, setConfigOpenOAuth, configOpenToken, setConfigOpenToken, mcpTokens, setMcpTokens, mcpModalOpen, setMcpModalOpen, mcpNewName, setMcpNewName, mcpCreatedToken, setMcpCreatedToken, mcpCreating, mcpDeleteId, setMcpDeleteId, copiedKey, mcpEndpoint, mcpJsonConfigOAuth, mcpJsonConfig, handleCreateMcpToken, handleDeleteMcpToken, handleCopy, handleCreateOAuthClient, handleDeleteOAuthClient, handleRotateSecret, handleRevokeSession,
   } = props
   return (
     <>
@@ -685,7 +693,7 @@ function OAuthClientModals(props: any) {
                 <div>
                   <label className="block text-sm font-medium mb-1 text-content-secondary">{t('settings.oauth.modal.scopes')}</label>
                   <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>{t('settings.oauth.modal.scopesHint')}</p>
-                  <ScopeGroupPicker selected={oauthNewScopes} onChange={setOauthNewScopes} />
+                  <ScopeGroupPicker selected={oauthNewScopes} onChange={setOauthNewScopes} availableScopes={availableOAuthScopes} />
                 </div>
 
                 <div className="flex gap-2 justify-end pt-1">
