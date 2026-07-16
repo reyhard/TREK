@@ -99,7 +99,7 @@ export function normalizeTransitItinerary(input: unknown): TransitItinerary {
   const geometrySize = item.legs.reduce((sum, leg) => sum + (leg.geometry?.length ?? 0), 0);
   if (geometrySize > 250_000) throw new Error('Selected itinerary geometry is too large');
 
-  return {
+  const normalized = {
     ...item,
     duration: Math.round((endMs - startMs) / 1000),
     walkSeconds: item.legs
@@ -108,6 +108,12 @@ export function normalizeTransitItinerary(input: unknown): TransitItinerary {
     transfers: Math.max(0, transitLegs.length - 1),
     legs: item.legs.map((leg) => ({ ...leg } as TransitLeg)),
   };
+
+  const normalizedResult = transitItinerarySchema.safeParse(normalized);
+  if (!normalizedResult.success) {
+    throw new Error(`Selected itinerary is invalid: ${normalizedResult.error.issues[0]?.message ?? 'validation failed'}`);
+  }
+  return normalizedResult.data;
 }
 
 export function rankTransitItineraries(

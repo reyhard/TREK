@@ -58,6 +58,23 @@ describe('transit itinerary normalization', () => {
     expect(normalized.transfers).toBe(0);
   });
 
+  it('rejects a recomputed wall-clock duration above the itinerary limit', () => {
+    expect(() => normalizeTransitItinerary(route({
+      endTime: '2026-10-09T08:00:01.000Z',
+    }))).toThrow('Selected itinerary is invalid');
+  });
+
+  it('rejects recomputed walking time above the itinerary limit', () => {
+    const itinerary = route();
+    itinerary.legs = [
+      { ...itinerary.legs[0], duration: 302_400.5 },
+      { ...itinerary.legs[0], duration: 302_400.5 },
+      itinerary.legs[1],
+    ];
+
+    expect(() => normalizeTransitItinerary(itinerary)).toThrow('Selected itinerary is invalid');
+  });
+
   it('rejects a route with no transit leg', () => {
     expect(() => normalizeTransitItinerary(route({ legs: [route().legs[0]] })))
       .toThrow('Selected itinerary must include at least one transit leg');
