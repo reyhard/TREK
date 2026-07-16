@@ -66,5 +66,6 @@ test-data
 
 .run
 .full-review
+.worktrees/
 # Wiki offline snapshot is baked in at build, not committed (duplicates wiki/)
 server/assets/wiki/
