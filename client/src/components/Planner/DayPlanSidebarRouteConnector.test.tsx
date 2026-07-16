@@ -58,6 +58,29 @@ describe('RouteConnector transit action', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['Enter', '{Enter}'],
+    ['Space', ' '],
+  ])('opens with %s and focuses the action', async (_keyName, key) => {
+    const user = userEvent.setup()
+    render(
+      <RouteConnector
+        seg={seg}
+        profile="walking"
+        transitAction={transitAction()}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', {
+      name: 'Plan public transit: Origin → Destination',
+    })
+    trigger.focus()
+    await user.keyboard(key)
+
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(screen.getByRole('menuitem')).toHaveFocus()
+  })
+
   it('closes on Escape and restores focus to the trigger', async () => {
     const user = userEvent.setup()
     render(
@@ -137,5 +160,61 @@ describe('RouteConnector transit action', () => {
     expect(menu).toHaveStyle({ maxWidth: 'calc(100vw - 16px)' })
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+  })
+
+  it('clamps horizontally and vertically using the rendered menu bounds', async () => {
+    const user = userEvent.setup()
+    const originalWidth = window.innerWidth
+    const originalHeight = window.innerHeight
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 240 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 120 })
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function () {
+        if (this.getAttribute('role') === 'menu') {
+          return {
+            x: 0,
+            y: 0,
+            top: 0,
+            right: 220,
+            bottom: 76,
+            left: 0,
+            width: 220,
+            height: 76,
+            toJSON: () => ({}),
+          }
+        }
+        return {
+          x: 220,
+          y: 80,
+          top: 80,
+          right: 240,
+          bottom: 100,
+          left: 220,
+          width: 20,
+          height: 20,
+          toJSON: () => ({}),
+        }
+      })
+
+    render(
+      <RouteConnector
+        seg={seg}
+        profile="walking"
+        transitAction={transitAction()}
+      />,
+    )
+    await user.click(screen.getByRole('button', {
+      name: 'Plan public transit: Origin → Destination',
+    }))
+
+    expect(screen.getByRole('menu')).toHaveStyle({
+      boxSizing: 'border-box',
+      left: '12px',
+      top: '36px',
+    })
+
+    rectSpy.mockRestore()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight })
   })
 })

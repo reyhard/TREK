@@ -34,19 +34,30 @@ export function RouteConnector({
   }
 
   useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
+    if (!open || !triggerRef.current || !menuRef.current) return
+    const triggerBounds = triggerRef.current.getBoundingClientRect()
+    const menuBounds = menuRef.current.getBoundingClientRect()
     const viewportPadding = 8
     const width = Math.min(210, Math.max(0, window.innerWidth - viewportPadding * 2))
-    const maximumLeft = Math.max(viewportPadding, window.innerWidth - width - viewportPadding)
-    setPosition({
-      top: Math.max(viewportPadding, Math.min(rect.bottom + 5, window.innerHeight - 52)),
+    const renderedWidth = menuBounds.width || width
+    const renderedHeight = menuBounds.height
+    const maximumLeft = Math.max(viewportPadding, window.innerWidth - renderedWidth - viewportPadding)
+    const maximumTop = Math.max(viewportPadding, window.innerHeight - renderedHeight - viewportPadding)
+    const nextPosition = {
+      top: Math.max(viewportPadding, Math.min(triggerBounds.bottom + 5, maximumTop)),
       left: Math.max(
         viewportPadding,
-        Math.min(rect.left + rect.width / 2 - width / 2, maximumLeft),
+        Math.min(triggerBounds.left + triggerBounds.width / 2 - renderedWidth / 2, maximumLeft),
       ),
       width,
-    })
+    }
+    setPosition(current => (
+      current.top === nextPosition.top &&
+      current.left === nextPosition.left &&
+      current.width === nextPosition.width
+        ? current
+        : nextPosition
+    ))
   }, [open])
 
   useEffect(() => {
@@ -143,6 +154,7 @@ export function RouteConnector({
           className="trek-popover-enter"
           style={{
             position: 'fixed',
+            boxSizing: 'border-box',
             top: position.top,
             left: position.left,
             zIndex: 999999,

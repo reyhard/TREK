@@ -20,3 +20,17 @@
 - Preservation check: `HotelRouteConnector` tail matched the base exactly (`sha256 458fa4eb388e7d3d7748624740cebfe0f083f55770505b218b98db791d7c01cd`).
 - Commit: `feat(transit): add route connector action menu`
 - Status: complete
+- Reviewer: CHANGES REQUESTED — the portal used content-box sizing while horizontal placement assumed its nominal width, vertical placement used a hardcoded height, and explicit Enter/Space coverage was missing.
+
+### Task 2 review fix: Clamp the connector action menu
+
+- Base commit: `919201abb0cf9fac6a324207f701ec095eefcde6`
+- Red: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebarRouteConnector.test.tsx` — failed 1 of 10 tests as expected: rendered menu bounds required `left: 12px`, `top: 36px`, and border-box sizing, but the implementation produced `left: 22px`, `top: 68px`, and content-box sizing. Explicit Enter and Space tests passed through native button behavior.
+- Green: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebarRouteConnector.test.tsx` — passed, 1 file and 10 tests.
+- Adjacent verification: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebar.test.tsx` — passed, 1 file and 105 tests.
+- Typecheck: `npm run typecheck --workspace=client` — passed.
+- Changed-file lint: `npm exec --workspace=client -- eslint src/components/Planner/DayPlanSidebarRouteConnector.tsx src/components/Planner/DayPlanSidebarRouteConnector.test.tsx` — passed.
+- Diff check: `git diff --check` — passed.
+- Preservation check: `HotelRouteConnector` tail matched the base exactly (`sha256 458fa4eb388e7d3d7748624740cebfe0f083f55770505b218b98db791d7c01cd`).
+- Commit: `fix(transit): clamp connector action menu`
+- Status: complete
