@@ -28,8 +28,15 @@ vi.mock('../../../src/services/oauthService', () => oauth);
 const { isAddonEnabled } = vi.hoisted(() => ({ isAddonEnabled: vi.fn() }));
 vi.mock('../../../src/services/adminService', () => ({ isAddonEnabled }));
 
-const { getMcpSafeUrl } = vi.hoisted(() => ({ getMcpSafeUrl: vi.fn() }));
-vi.mock('../../../src/services/notifications', () => ({ getMcpSafeUrl }));
+const { getAppUrl, getMcpSafeUrl } = vi.hoisted(() => ({
+  getAppUrl: vi.fn(() => 'https://trek.example.com'),
+  getMcpSafeUrl: vi.fn(),
+}));
+vi.mock('../../../src/services/notifications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/notifications')>()),
+  getAppUrl,
+  getMcpSafeUrl,
+}));
 
 import { OauthService } from '../../../src/nest/oauth/oauth.service';
 import { ADDON_IDS } from '../../../src/addons';
