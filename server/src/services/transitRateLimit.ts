@@ -16,6 +16,13 @@ const buckets: Record<TransitUsageKind, Map<string, Attempt>> = {
 export function checkTransitUsage(kind: TransitUsageKind, callerKey: string, now = Date.now()): boolean {
   const bucket = buckets[kind];
   const limit = TRANSIT_RATE_LIMITS[kind];
+
+  for (const [key, attempt] of bucket) {
+    if (now - attempt.first >= TRANSIT_RATE_WINDOW_MS) {
+      bucket.delete(key);
+    }
+  }
+
   const record = bucket.get(callerKey);
 
   if (record && record.count >= limit && now - record.first < TRANSIT_RATE_WINDOW_MS) {

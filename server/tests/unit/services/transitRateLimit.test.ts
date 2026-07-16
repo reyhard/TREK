@@ -30,4 +30,16 @@ describe('transitRateLimit', () => {
     expect(checkTransitUsage('plan', 'http:127.0.0.1', 1_000)).toBe(false);
     expect(checkTransitUsage('plan', 'http:127.0.0.1', 1_000 + TRANSIT_RATE_WINDOW_MS)).toBe(true);
   });
+
+  it('removes an expired caller when a different caller uses the same bucket', () => {
+    for (let i = 0; i < TRANSIT_RATE_LIMITS.plan; i++) {
+      checkTransitUsage('plan', 'mcp:user:expired', 1_000);
+    }
+    expect(checkTransitUsage('plan', 'mcp:user:expired', 1_000)).toBe(false);
+
+    expect(checkTransitUsage('plan', 'mcp:user:active', 1_000 + TRANSIT_RATE_WINDOW_MS)).toBe(true);
+
+    // This deliberately non-monotonic clock probes whether the stale record was removed above.
+    expect(checkTransitUsage('plan', 'mcp:user:expired', 1_001)).toBe(true);
+  });
 });
