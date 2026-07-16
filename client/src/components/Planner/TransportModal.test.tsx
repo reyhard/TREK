@@ -16,7 +16,7 @@ import {
   buildReservation,
   buildTripFile,
 } from '../../../tests/helpers/factories';
-import { TransportModal } from './TransportModal';
+import { connectorPlacementForDay, TransportModal } from './TransportModal';
 
 vi.mock('react-router-dom', async (importActual) => {
   const actual = await importActual<typeof import('react-router-dom')>();
@@ -417,6 +417,15 @@ describe('TransportModal', () => {
     await userEvent.click(fromInput);
     expect(screen.getByText('Louvre')).toBeInTheDocument();
     expect(screen.queryByText('Eiffel Tower')).not.toBeInTheDocument();
+  });
+
+  it('omits a stale connector placement after the transit day changes', () => {
+    const prefill = {
+      placement: { dayId: 10, position: 0.5 },
+    };
+
+    expect(connectorPlacementForDay(prefill, 10)).toEqual(prefill.placement);
+    expect(connectorPlacementForDay(prefill, 11)).toBeUndefined();
   });
 
   it('FE-PLANNER-TRANSMODAL-024: editing shows no Manual/Automated switch', () => {

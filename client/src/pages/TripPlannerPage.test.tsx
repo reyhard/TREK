@@ -10,6 +10,7 @@ import { usePluginStore } from '../store/pluginStore';
 import TripPlannerPage from './TripPlannerPage';
 import { server } from '../../tests/helpers/msw/server';
 import { http, HttpResponse } from 'msw';
+import { reservationsApi } from '../api/client';
 
 // Mock Leaflet-dependent components
 vi.mock('../components/Map/MapView', () => ({
@@ -119,6 +120,16 @@ vi.mock('../components/Planner/ReservationsPanel', () => ({
   },
 }));
 
+const capturedTransportModalProps: { current: Record<string, any> } = { current: {} };
+vi.mock('../components/Planner/TransportModal', () => ({
+  TransportModal: (props: Record<string, any>) => {
+    capturedTransportModalProps.current = props;
+    return props.isOpen
+      ? React.createElement('div', { 'data-testid': 'transport-modal' })
+      : null;
+  },
+}));
+
 const capturedPlaceFormModalProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/Planner/PlaceFormModal', () => ({
   default: (props: Record<string, any>) => {
@@ -210,12 +221,12 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
 }
 
 // Helper to render TripPlannerPage with route params
-function renderPlannerPage(tripId: number | string) {
+function renderPlannerPage(tripId: number | string, suffix = '') {
   return render(
     <Routes>
       <Route path="/trips/:id" element={<TripPlannerPage />} />
     </Routes>,
-    { initialEntries: [`/trips/${tripId}`] },
+    { initialEntries: [`/trips/${tripId}${suffix}`] },
   );
 }
 
@@ -230,6 +241,7 @@ beforeEach(() => {
   capturedDayPlanSidebarProps.current = {};
   capturedPlacesSidebarProps.current = {};
   capturedReservationsPanelProps.current = {};
+  capturedTransportModalProps.current = {};
   capturedPlaceFormModalProps.current = {};
   capturedReservationModalProps.current = {};
   capturedConfirmDialogProps.current = {};
@@ -1590,6 +1602,150 @@ describe('TripPlannerPage', () => {
       expect(screen.getAllByTestId('day-plan-sidebar').length).toBe(2);
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('connector transit placement', () => {
+    const datedTrip = () => {
+      const { trip, day } = seedTripStore({ id: 42 });
+      seedStore(useTripStore, {
+        trip: { ...trip, start_date: '2026-07-16', end_date: '2026-07-20' },
+        days: [{ ...day, id: 10, date: '2026-07-16' }],
+      } as any);
+    };
+
+    const openConnectorTransit = async () => {
+      const prefill = {
+        from: { name: 'Origin', lat: 1, lng: 2 },
+        to: { name: 'Destination', lat: 3, lng: 4 },
+        time: '17:45',
+        placement: { dayId: 10, position: 0.5 },
+      };
+      await act(async () => capturedDayPlanSidebarProps.current.onPlanTransit(10, prefill));
+      await waitFor(() => expect(screen.getByTestId('transport-modal')).toBeInTheDocument());
+      return prefill;
+    };
+
+    it('forwards connector prefill into Automated transport mode', async () => {
+      vi.useFakeTimers();
+      datedTrip();
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      const prefill = await openConnectorTransit();
+
+      expect(capturedTransportModalProps.current.selectedDayId).toBe(10);
+      expect(capturedTransportModalProps.current.initialAutomated).toBe(true);
+      expect(capturedTransportModalProps.current.transitPrefill).toEqual(prefill);
+    });
+
+    it('persists a created transit journey at the connector position', async () => {
+      vi.useFakeTimers();
+      datedTrip();
+      const addReservation = vi.fn(async (_tripId, data) => {
+        const reservation = { id: 301, trip_id: 42, ...data } as any;
+        useTripStore.setState(state => ({ reservations: [reservation, ...state.reservations] }));
+        return reservation;
+      });
+      useTripStore.setState({ addReservation } as any);
+      const updatePositions = vi.spyOn(reservationsApi, 'updatePositions').mockResolvedValue({});
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await openConnectorTransit();
+
+      await act(async () => {
+        await capturedTransportModalProps.current.onSave({
+          title: 'Origin → Destination', type: 'transit', status: 'confirmed', day_id: 10,
+          _connectorPlacement: { dayId: 10, position: 0.5 },
+        });
+      });
+
+      expect(addReservation).toHaveBeenCalledWith(42, {
+        title: 'Origin → Destination', type: 'transit', status: 'confirmed', day_id: 10,
+      });
+      expect(updatePositions).toHaveBeenCalledWith(
+        42,
+        [{ id: 301, day_plan_position: 0.5 }],
+        10,
+      );
+      expect(useTripStore.getState().reservations.find(r => r.id === 301)?.day_positions)
+        .toEqual({ 10: 0.5 });
+    });
+
+    it('strips connector placement from edit payloads', async () => {
+      vi.useFakeTimers();
+      datedTrip();
+      const updateReservation = vi.fn().mockResolvedValue({ id: 301 });
+      useTripStore.setState({ updateReservation } as any);
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await act(async () => capturedDayPlanSidebarProps.current.onEditTransport({
+        id: 301, day_id: 10, title: 'Train', type: 'train', status: 'confirmed',
+      }));
+      await waitFor(() => expect(screen.getByTestId('transport-modal')).toBeInTheDocument());
+      await act(async () => capturedTransportModalProps.current.onSave({
+        title: 'Train', type: 'train', day_id: 10,
+        _connectorPlacement: { dayId: 10, position: 0.5 },
+      }));
+
+      expect(updateReservation).toHaveBeenCalledWith(42, 301, {
+        title: 'Train', type: 'train', day_id: 10,
+      });
+    });
+
+    it('clears connector state before a later manual create', async () => {
+      vi.useFakeTimers();
+      datedTrip();
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await openConnectorTransit();
+
+      await act(async () => capturedDayPlanSidebarProps.current.onAddTransport(10));
+
+      expect(capturedTransportModalProps.current.initialAutomated).toBe(false);
+      expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
+    });
+
+    it('opens URL-requested transport creation in clean manual state', async () => {
+      vi.useFakeTimers();
+      datedTrip();
+      renderPlannerPage(42, '?create=transport');
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(screen.getByTestId('transport-modal')).toBeInTheDocument());
+      expect(capturedTransportModalProps.current.initialAutomated).toBe(false);
+      expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
+    });
+
+    it('keeps the created reservation and closes when connector positioning fails', async () => {
+      vi.useFakeTimers();
+      datedTrip();
+      const addReservation = vi.fn(async (_tripId, data) => {
+        const reservation = { id: 302, trip_id: 42, ...data } as any;
+        useTripStore.setState(state => ({ reservations: [reservation, ...state.reservations] }));
+        return reservation;
+      });
+      useTripStore.setState({ addReservation } as any);
+      vi.spyOn(reservationsApi, 'updatePositions').mockRejectedValue(new Error('Position failed'));
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await openConnectorTransit();
+
+      await act(async () => capturedTransportModalProps.current.onSave({
+        title: 'Origin → Destination', type: 'transit', day_id: 10,
+        _connectorPlacement: { dayId: 10, position: 0.5 },
+      }));
+
+      expect(useTripStore.getState().reservations.some(r => r.id === 302)).toBe(true);
+      expect(screen.queryByTestId('transport-modal')).not.toBeInTheDocument();
     });
   });
 

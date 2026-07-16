@@ -45,4 +45,18 @@
 - Locale parity script: `node shared/scripts/i18n-parity.mjs` — passed (`File parity: OK`, `Key parity: OK`).
 - Typecheck: `npm run typecheck --workspace=client` — passed.
 - Regression: a first-class `transit` row without rich `metadata.transit` suppresses both adjacent route connectors.
+- Status: complete
+- Task 3 reviewer: APPROVED
+
+## Task 4: Forward endpoint/time prefill and persist exact connector placement
+
+- Base commit: `6c88158e`
+- Red transit panel: `npm run test --workspace=client -- src/components/Planner/TransitSearchPanel.test.tsx` — failed as expected because the connector time stayed at `09:00`.
+- Red planner page: `npm run test --workspace=client -- src/pages/TripPlannerPage.test.tsx` — failed as expected because full prefill was not forwarded and `_connectorPlacement` leaked into create/edit payloads.
+- Green transit panel: `npm run test --workspace=client -- src/components/Planner/TransitSearchPanel.test.tsx` — passed, 1 file and 10 tests.
+- Green planner page: `npm run test --workspace=client -- src/pages/TripPlannerPage.test.tsx` — passed, 1 file and 59 tests.
+- Adjacent sidebar verification: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebar.test.tsx` — passed, 1 file and 109 tests.
+- Stale-day/modal verification: `npm run test --workspace=client -- src/components/Planner/TransportModal.test.tsx` — passed, 1 file and 37 tests.
+- Typecheck: `npm run typecheck --workspace=client` — passed.
+- Regressions: create uses real store insertion; create/edit payloads strip the client-only hint; a changed transit day omits stale placement; manual and URL create paths reset connector state; failed positioning retains the created reservation and closes the modal.
 - Status: implementation complete; task review pending.

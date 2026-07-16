@@ -7,7 +7,7 @@ import { getCached, fetchPhoto } from '../../services/photoService'
 import { useToast } from '../../components/shared/Toast'
 import { Map, Ticket, PackageCheck, Wallet, FolderOpen, Users, Train, Blocks } from 'lucide-react'
 import { useTranslation, translateApiError } from '../../i18n'
-import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi, healthApi, airtrailApi, mapsApi, placesApi } from '../../api/client'
+import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi, healthApi, airtrailApi, mapsApi, placesApi, reservationsApi } from '../../api/client'
 import { parsedItemToDraft, isTransportItem, type BookingReviewDraft } from '../../components/Planner/parsedItemToDraft'
 import type { BookingImportPreviewItem } from '@trek/shared'
 import { accommodationRepo } from '../../repo/accommodationRepo'
@@ -24,6 +24,7 @@ import { useAirtrailConnection } from '../../hooks/useAirtrailConnection'
 import { usePluginStore } from '../../store/pluginStore'
 import type { Accommodation, TripMember, Day, Place, Reservation } from '../../types'
 import { resolvePoolAssignmentId } from './tripPlannerModel'
+import type { TransitPlacementHint, TransitSearchPrefill } from '../../components/Planner/transitSearchTypes'
 
 /**
  * Trip planner page logic — the big one. Owns the trip store wiring, addon
@@ -196,7 +197,7 @@ export function useTripPlanner() {
   // Public transit (#1065): open the TransportModal in its Automated mode, seed
   // the search (change-route), and show the journey view for a saved entry.
   const [transportModalAutomated, setTransportModalAutomated] = useState<boolean>(false)
-  const [transitPrefill, setTransitPrefill] = useState<{ from?: { name: string; lat: number; lng: number } | null; to?: { name: string; lat: number; lng: number } | null } | null>(null)
+  const [transitPrefill, setTransitPrefill] = useState<TransitSearchPrefill | null>(null)
   const [transitJourney, setTransitJourney] = useState<Reservation | null>(null)
 
   // The bottom-nav "+" is context-aware per tab: on the Bookings / Transports tabs
@@ -208,7 +209,8 @@ export function useTripPlanner() {
       setEditingReservation(null); setBookingForAssignmentId(null); setShowReservationModal(true)
       setSearchParams(p => { p.delete('create'); return p }, { replace: true })
     } else if (intent === 'transport') {
-      setEditingTransport(null); setTransportModalDayId(null); setShowTransportModal(true)
+      setEditingTransport(null); setTransportModalDayId(null); setTransitPrefill(null)
+      setTransportModalAutomated(false); setShowTransportModal(true)
       setSearchParams(p => { p.delete('create'); return p }, { replace: true })
     }
   }, [searchParams])
@@ -713,22 +715,53 @@ export function useTripPlanner() {
   }
 
   const handleSaveTransport = async (data: Record<string, any> & { title: string }) => {
+    const { _connectorPlacement, ...reservationData } = data as Record<string, any> & {
+      title: string
+      _connectorPlacement?: TransitPlacementHint
+    }
     try {
       if (editingTransport) {
-        const r = await tripActions.updateReservation(tripId, editingTransport.id, data)
+        const r = await tripActions.updateReservation(tripId, editingTransport.id, reservationData)
         toast.success(t('trip.toast.reservationUpdated'))
         setShowTransportModal(false)
         setEditingTransport(null)
         setTransportModalDayId(null)
+        setTransitPrefill(null)
+        setTransportModalAutomated(false)
         return r
       } else {
-        const r = await tripActions.addReservation(tripId, data)
+        const r = await tripActions.addReservation(tripId, reservationData)
+        if (r?.id && _connectorPlacement) {
+          try {
+            await reservationsApi.updatePositions(
+              tripId,
+              [{ id: r.id, day_plan_position: _connectorPlacement.position }],
+              _connectorPlacement.dayId,
+            )
+            useTripStore.setState(state => ({
+              reservations: state.reservations.map(reservation => reservation.id === r.id
+                ? {
+                    ...reservation,
+                    day_plan_position: _connectorPlacement.position,
+                    day_positions: {
+                      ...(reservation.day_positions || {}),
+                      [_connectorPlacement.dayId]: _connectorPlacement.position,
+                    },
+                  }
+                : reservation),
+            }))
+          } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : t('common.unknownError'))
+          }
+        }
         toast.success(t('trip.toast.reservationAdded'))
         setShowTransportModal(false)
         setEditingTransport(null)
         setTransportModalDayId(null)
+        setTransitPrefill(null)
+        setTransportModalAutomated(false)
         // Surface the auto-created linked cost without a reload (no budget:created echo to us).
-        if (data.create_budget_entry) await tripActions.loadBudgetItems?.(tripId)
+        if (reservationData.create_budget_entry) await tripActions.loadBudgetItems?.(tripId)
         return r
       }
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) }
@@ -785,6 +818,7 @@ export function useTripPlanner() {
     if (isTransportItem(item)) {
       setShowReservationModal(false); setEditingReservation(null); setReservationPrefill(null)
       setEditingTransport(null); setTransportModalDayId(null)
+      setTransitPrefill(null); setTransportModalAutomated(false)
       setTransportPrefill(draft); setShowTransportModal(true)
     } else {
       setShowTransportModal(false); setEditingTransport(null); setTransportPrefill(null); setTransportModalDayId(null)

@@ -18,8 +18,16 @@ import { parseReservationMetadata, orderedEndpoints } from '../../utils/flightLe
 import { BookingCostsSection } from './BookingCostsSection'
 import type { BookingExpenseRequest } from './BookingCostsSection.types'
 import type { BookingReviewDraft } from './parsedItemToDraft'
-import TransitSearchPanel, { type PickedPlace } from './TransitSearchPanel'
+import type { TransitSearchPrefill } from './transitSearchTypes'
+import TransitSearchPanel from './TransitSearchPanel'
 import { typeToCostCategory } from '@trek/shared'
+
+export function connectorPlacementForDay(
+  prefill: TransitSearchPrefill | null,
+  dayId: number,
+) {
+  return prefill?.placement?.dayId === dayId ? prefill.placement : undefined
+}
 
 const TRANSPORT_TYPES = ['flight', 'train', 'bus', 'car', 'taxi', 'bicycle', 'cruise', 'ferry', 'transit', 'transport_other'] as const
 type TransportType = typeof TRANSPORT_TYPES[number]
@@ -159,7 +167,7 @@ interface TransportModalProps {
   /** Transit search needs real dates to depart on, so the Automated mode is hidden on a dateless trip. */
   tripHasDates?: boolean
   /** Pre-seed the transit search — used by "change route" on an existing journey. */
-  transitPrefill?: { from?: PickedPlace | null; to?: PickedPlace | null } | null
+  transitPrefill?: TransitSearchPrefill | null
 }
 
 export function TransportModal({ isOpen, onClose, onSave, reservation, days, selectedDayId, files = [], onFileUpload, onFileDelete, onOpenExpense, prefill = null, places = [], assignments = {}, accommodations = [], initialAutomated = false, transitPrefill = null, tripHasDates = true }: TransportModalProps) {
@@ -645,6 +653,7 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
           {(() => {
             const transitDay = days.find(d => d.id === Number(form.start_day_id))
             if (!transitDay) return <div className="text-content-faint" style={{ fontSize: 'calc(13px * var(--fs-scale-body, 1))', padding: '4px 2px 12px' }}>{t('transit.pickDay')}</div>
+            const connectorPlacement = connectorPlacementForDay(transitPrefill, transitDay.id)
             // Quick picks offer the chosen day's itinerary, not the whole trip (#1460).
             const dayPlaces = (assignments[String(transitDay.id)] || [])
               .slice().sort((a, b) => a.order_index - b.order_index)
@@ -656,9 +665,15 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
                 days={days}
                 places={dayPlaces}
                 accommodations={accommodations}
-                onAdd={(payload) => onSave(payload as Record<string, any> & { title: string })}
+                onAdd={(payload) => onSave({
+                  ...payload,
+                  ...(connectorPlacement
+                    ? { _connectorPlacement: connectorPlacement }
+                    : {}),
+                } as Record<string, any> & { title: string })}
                 initialFrom={transitPrefill?.from ?? null}
                 initialTo={transitPrefill?.to ?? null}
+                initialTime={transitPrefill?.time ?? null}
               />
             )
           })()}

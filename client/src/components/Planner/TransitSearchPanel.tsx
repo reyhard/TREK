@@ -8,6 +8,8 @@ import { useSettingsStore } from '../../store/settingsStore'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 import type { Day, Place, Accommodation } from '../../types'
+import type { PickedPlace } from './transitSearchTypes'
+export type { PickedPlace } from './transitSearchTypes'
 
 /**
  * Public transit route search (#1065), backed by Transitous (MOTIS) through the
@@ -33,8 +35,6 @@ export interface TransitItinerary {
 }
 
 interface TransitPlaceResult { name: string; lat: number; lng: number; type: string; area: string | null }
-
-export interface PickedPlace { name: string; lat: number; lng: number }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -316,9 +316,10 @@ interface TransitSearchPanelProps {
   /** Pre-seed from/to — used by "change route" on an existing journey. */
   initialFrom?: PickedPlace | null
   initialTo?: PickedPlace | null
+  initialTime?: string | null
 }
 
-export default function TransitSearchPanel({ day, days, places, accommodations = [], onAdd, initialFrom = null, initialTo = null }: TransitSearchPanelProps) {
+export default function TransitSearchPanel({ day, days, places, accommodations = [], onAdd, initialFrom = null, initialTo = null, initialTime = null }: TransitSearchPanelProps) {
   const { t } = useTranslation()
   const toast = useToast()
   const is12h = useSettingsStore(s => s.settings.time_format) === '12h'
@@ -326,7 +327,7 @@ export default function TransitSearchPanel({ day, days, places, accommodations =
 
   const [from, setFrom] = useState<PickedPlace | null>(initialFrom)
   const [to, setTo] = useState<PickedPlace | null>(initialTo)
-  const [time, setTime] = useState('09:00')
+  const [time, setTime] = useState(initialTime ?? '09:00')
   const [arriveBy, setArriveBy] = useState(false)
   const [activeModes, setActiveModes] = useState<Set<string>>(() => new Set(MODE_GROUPS.map(m => m.key)))
   const [pref, setPref] = useState<'best' | 'transfers' | 'walking'>('best')

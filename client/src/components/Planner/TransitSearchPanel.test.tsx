@@ -65,6 +65,26 @@ beforeEach(() => {
 })
 
 describe('TransitSearchPanel', () => {
+  it('shows connector endpoints and origin end time without searching automatically', () => {
+    render(<TransitSearchPanel {...makeProps({
+      initialFrom: { name: 'Origin', lat: 1, lng: 2 },
+      initialTo: { name: 'Destination', lat: 3, lng: 4 },
+      initialTime: '17:45',
+    })} />)
+
+    expect(screen.getByDisplayValue('Origin')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Destination')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('17:45')).toBeInTheDocument()
+    expect(transitApiMock.plan).not.toHaveBeenCalled()
+  })
+
+  it('retains the existing 09:00 default when no initial time is supplied', () => {
+    render(<TransitSearchPanel {...makeProps()} />)
+
+    expect(screen.getByDisplayValue('09:00')).toBeInTheDocument()
+    expect(transitApiMock.plan).not.toHaveBeenCalled()
+  })
+
   it('FE-PLANNER-TRANSIT-001: renders from/to pickers, modes and preferences', () => {
     render(<TransitSearchPanel {...makeProps()} />)
     expect(screen.getAllByPlaceholderText('Search stop or station…')).toHaveLength(2)
