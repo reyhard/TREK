@@ -3667,7 +3667,12 @@ function runMigrations(db: Database.Database): void {
 
     // Bind OAuth access and refresh tokens to the password-version invalidation gate.
     () => {
-      db.exec('ALTER TABLE oauth_tokens ADD COLUMN user_password_version INTEGER NOT NULL DEFAULT 0');
+      const hasColumn = db
+        .prepare("SELECT 1 FROM pragma_table_info('oauth_tokens') WHERE name = 'user_password_version'")
+        .get();
+      if (!hasColumn) {
+        db.exec('ALTER TABLE oauth_tokens ADD COLUMN user_password_version INTEGER NOT NULL DEFAULT 0');
+      }
       db.exec(`
         UPDATE oauth_tokens
         SET user_password_version = COALESCE(
