@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import tzlookup from 'tz-lookup'
-import { ArrowLeftRight, ArrowRight, Bus, CableCar, ChevronDown, ChevronUp, Clock, Footprints, MapPin, Sailboat, Search, Train, TramFront, TrainFront } from 'lucide-react'
+import { ArrowLeftRight, ArrowRight, Bus, CableCar, CheckCircle2, ChevronDown, ChevronUp, Clock, Footprints, MapPin, Sailboat, Search, Train, TramFront, TrainFront } from 'lucide-react'
 import CustomTimePicker from '../shared/CustomTimePicker'
 import { TransitMetaBadges } from './transitDisplay'
 import { transitApi } from '../../api/client'
@@ -133,15 +133,17 @@ function StopPicker({ label, value, onPick, quickPicks, near, placeholder }: {
     <div ref={rootRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
       <label className="block text-[11px] font-semibold text-content-faint mb-[5px] uppercase tracking-[0.03em]">{label}</label>
       <div className="bg-surface-input border border-edge" style={{ display: 'flex', alignItems: 'center', gap: 7, borderRadius: 10, padding: '0 10px', height: 38 }}>
-        <MapPin size={14} className="text-content-faint" style={{ flexShrink: 0 }} />
+        <MapPin size={14} className={value ? 'text-accent' : 'text-content-faint'} style={{ flexShrink: 0 }} />
         <input
           value={display}
+          data-location-selected={value ? 'true' : 'false'}
           onChange={e => search(e.target.value)}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
           className="text-content"
           style={{ border: 0, background: 'none', outline: 'none', fontSize: 'calc(13px * var(--fs-scale-body, 1))', width: '100%', fontFamily: 'inherit' }}
         />
+        {value && <CheckCircle2 size={14} className="text-accent" style={{ flexShrink: 0 }} aria-hidden="true" />}
       </div>
       {open && (results.length > 0 || (!value && text.trim().length < 2 && quickPicks.length > 0)) && (
         <div className="bg-surface-card border border-edge" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.14)', zIndex: 30, overflow: 'hidden', maxHeight: 240, overflowY: 'auto' }}>

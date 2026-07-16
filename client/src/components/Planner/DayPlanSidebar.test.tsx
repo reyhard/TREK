@@ -2013,6 +2013,47 @@ describe('DayPlanSidebar', () => {
     })
   })
 
+  it('ignores notes between POIs when opening connector transit planning', async () => {
+    const user = userEvent.setup()
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 2, end_time: '09:45' })
+    const destination = buildPlace({ id: 102, name: 'Destination', lat: 3, lng: 4 })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+    mockDayNotesState.dayNotes = {
+      '10': [buildDayNote({ id: 55, day_id: 10, sort_order: 0.5, text: 'Buy tickets' })],
+    }
+    const onPlanTransit = vi.fn()
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit,
+    })} />)
+
+    expect(screen.getByText('Buy tickets')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', {
+      name: 'Plan public transit: Origin → Destination',
+    }))
+    await user.click(screen.getByRole('menuitem', { name: 'Plan public transit' }))
+
+    expect(onPlanTransit).toHaveBeenCalledWith(10, {
+      from: { name: 'Origin', lat: 1, lng: 2 },
+      to: { name: 'Destination', lat: 3, lng: 4 },
+      time: '09:45',
+      placement: { dayId: 10, position: 0.5 },
+    })
+  })
+
   it('keeps the connector display-only when transit planning is unavailable', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
@@ -2156,6 +2197,48 @@ describe('DayPlanSidebar', () => {
     })} />)
 
     expect(await screen.findByText('Sparse transit journey')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryAllByText('25 min')).toHaveLength(0))
+  })
+
+  it('ignores notes when suppressing the connector before a transit journey', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 1 })
+    const destination = buildPlace({ id: 102, name: 'Destination', lat: 2, lng: 2 })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+    mockDayNotesState.dayNotes = {
+      '10': [buildDayNote({ id: 55, day_id: 10, sort_order: 0.25, text: 'Keep this note' })],
+    }
+    const transit = buildReservation({
+      id: 301,
+      day_id: 10,
+      end_day_id: 10,
+      type: 'transit',
+      title: 'Origin → Destination',
+      reservation_time: '2026-07-16T09:30',
+      reservation_end_time: '2026-07-16T09:50',
+      day_positions: { '10': 0.5 },
+      metadata: {},
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      reservations: [transit],
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit: vi.fn(),
+    })} />)
+
+    expect(await screen.findByText('Keep this note')).toBeInTheDocument()
+    expect(screen.getByText('Origin → Destination')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryAllByText('25 min')).toHaveLength(0))
   })
 

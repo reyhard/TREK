@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MergedItem } from '../../utils/dayMerge'
 import {
   getConnectorTransitPrefill,
+  getNextConnectorTarget,
   isTransitMergedItem,
   normalizeTransitTime,
 } from './transitConnector'
@@ -83,6 +84,30 @@ describe('transitConnector', () => {
     }
 
     expect(getConnectorTransitPrefill(10, current, transit)).toBeNull()
+  })
+
+  it('ignores notes when resolving the next connector target', () => {
+    const current = placeItem(1, 'Origin', 0)
+    const note: MergedItem = {
+      type: 'note',
+      sortKey: 0.5,
+      data: { id: 40, text: 'Take a break' },
+    }
+    const destination = placeItem(2, 'Destination', 1)
+
+    expect(getNextConnectorTarget([current, note, destination], 0)).toBe(destination)
+  })
+
+  it('stops at a transport even when notes precede it', () => {
+    const current = placeItem(1, 'Origin', 0)
+    const note: MergedItem = { type: 'note', sortKey: 0.25, data: { id: 40 } }
+    const transit: MergedItem = {
+      type: 'transport',
+      sortKey: 0.5,
+      data: { id: 50, type: 'transit' },
+    }
+
+    expect(getNextConnectorTarget([current, note, transit], 0)).toBe(transit)
   })
 
   it('uses a safe half-step when sort keys are not increasing', () => {

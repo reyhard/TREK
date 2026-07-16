@@ -78,6 +78,24 @@ describe('TransitSearchPanel', () => {
     expect(transitApiMock.plan).not.toHaveBeenCalled()
   })
 
+  it('keeps prefilled POIs selected and searches with their coordinates', async () => {
+    const user = userEvent.setup()
+    transitApiMock.plan.mockResolvedValueOnce({ itineraries: [] })
+    render(<TransitSearchPanel {...makeProps({
+      initialFrom: { name: 'Origin', lat: 1, lng: 2 },
+      initialTo: { name: 'Destination', lat: 3, lng: 4 },
+      initialTime: '17:45',
+    })} />)
+
+    expect(screen.getByDisplayValue('Origin')).toHaveAttribute('data-location-selected', 'true')
+    expect(screen.getByDisplayValue('Destination')).toHaveAttribute('data-location-selected', 'true')
+    await user.click(screen.getByRole('button', { name: /^Search$/ }))
+
+    await waitFor(() => expect(transitApiMock.plan).toHaveBeenCalledWith(
+      expect.objectContaining({ from: '1,2', to: '3,4' }),
+    ))
+  })
+
   it('retains the existing 09:00 default when no initial time is supplied', () => {
     render(<TransitSearchPanel {...makeProps()} />)
 

@@ -39,7 +39,7 @@ import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal'
 import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transitDisplay'
 import type { TransitSearchPrefill } from './transitSearchTypes'
-import { getConnectorTransitPrefill, isTransitMergedItem } from './transitConnector'
+import { getConnectorTransitPrefill, getNextConnectorTarget, isTransitMergedItem } from './transitConnector'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
@@ -1621,9 +1621,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                         const isPlaceSelected = selectedAssignmentId ? assignment.id === selectedAssignmentId : place.id === selectedPlaceId
                         const isDraggingThis = draggingId === assignment.id
                         const placeIdx = placeItems.findIndex(i => i.data.id === assignment.id)
-                        const nextMergedItem = merged[idx + 1]
-                        const transitPrefill = getConnectorTransitPrefill(day.id, item, nextMergedItem)
-                        const followedByTransit = isTransitMergedItem(nextMergedItem)
+                        const nextConnectorTarget = getNextConnectorTarget(merged, idx)
+                        const transitPrefill = getConnectorTransitPrefill(day.id, item, nextConnectorTarget)
+                        const followedByTransit = isTransitMergedItem(nextConnectorTarget)
                         const connectorSeg = routeLegs[day.id]?.[assignment.id]
 
                         const arrowMove = (direction: 'up' | 'down') => {

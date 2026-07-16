@@ -44,6 +44,17 @@ export function getConnectorTransitPrefill(
   }
 }
 
+/** Notes annotate the timeline but do not interrupt the route between two stops. */
+export function getNextConnectorTarget(
+  items: MergedItem[],
+  currentIndex: number,
+): MergedItem | undefined {
+  for (let index = currentIndex + 1; index < items.length; index += 1) {
+    if (items[index].type !== 'note') return items[index]
+  }
+  return undefined
+}
+
 export function isTransitMergedItem(item: MergedItem | undefined): boolean {
   return item?.type === 'transport' && item.data?.type === 'transit'
 }
