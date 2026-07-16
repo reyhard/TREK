@@ -76,6 +76,11 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
+vi.mock('../../../src/utils/ssrfGuard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/utils/ssrfGuard')>()),
+  checkSsrf: async () => ({ allowed: true, isPrivate: false, resolvedIp: '203.0.113.1' }),
+}));
+
 // Spy on the photo-cache reclaim hook so delete tests assert the wiring without
 // touching disk. The removal logic itself is covered in placePhotoCache.test.ts.
 const { removeIfUnreferencedSpy } = vi.hoisted(() => ({ removeIfUnreferencedSpy: vi.fn() }));

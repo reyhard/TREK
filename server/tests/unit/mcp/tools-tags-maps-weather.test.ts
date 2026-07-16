@@ -48,6 +48,7 @@ vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
 vi.mock('../../../src/services/mapsService', () => ({
   searchPlaces: vi.fn(),
+  buildUserAgent: () => 'TREK/test',
   getPlaceDetails: vi.fn().mockResolvedValue({ name: 'Eiffel Tower', address: 'Paris' }),
   reverseGeocode: vi.fn().mockResolvedValue({ name: 'Paris', address: 'France' }),
   resolveGoogleMapsUrl: vi.fn().mockResolvedValue({ lat: 48.8566, lng: 2.3522, name: 'Paris' }),

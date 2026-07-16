@@ -67,7 +67,10 @@ const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
 const { searchPlacesMock } = vi.hoisted(() => ({ searchPlacesMock: vi.fn() }));
-vi.mock('../../../src/services/mapsService', () => ({ searchPlaces: searchPlacesMock }));
+vi.mock('../../../src/services/mapsService', () => ({
+  searchPlaces: searchPlacesMock,
+  buildUserAgent: () => 'TREK/test',
+}));
 
 /** Link a journey to a trip so journey-skeleton sync has a target. */
 function linkJourney(journeyId: number, tripId: number) {

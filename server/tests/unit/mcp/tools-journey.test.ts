@@ -56,6 +56,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetTestDb(testDb);
+  testDb.prepare('UPDATE addons SET enabled = 1 WHERE id = ?').run('journey');
   broadcastMock.mockClear();
   delete process.env.DEMO_MODE;
 });

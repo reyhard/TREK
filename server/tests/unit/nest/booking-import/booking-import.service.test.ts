@@ -11,7 +11,10 @@ vi.mock('../../../../src/services/permissions', () => ({ checkPermission: vi.fn(
 vi.mock('../../../../src/services/tripAccess', () => ({ verifyTripAccess: vi.fn() }));
 vi.mock('../../../../src/services/reservationService', () => ({ createReservation: vi.fn() }));
 vi.mock('../../../../src/services/placeService', () => ({ createPlace: vi.fn() }));
-vi.mock('../../../../src/services/mapsService', () => ({ searchNominatim: vi.fn() }));
+vi.mock('../../../../src/services/mapsService', () => ({
+  searchNominatim: vi.fn(),
+  buildUserAgent: () => 'TREK/test',
+}));
 
 const HOTEL_KI = {
   '@type': 'LodgingReservation',
