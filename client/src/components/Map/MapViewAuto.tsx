@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { useSettingsStore } from '../../store/settingsStore'
 import { MapView } from './MapView'
+import type { MapViewProps } from './MapView.types'
+import type { Place } from '../../types'
 
 // MapLibre/Mapbox pull in a ~230 KB (gzip) GL engine. Lazy-load the GL renderer so
 // Leaflet-only installs never download it — it ships only once a GL provider is picked.
@@ -14,8 +16,7 @@ const MapViewGL = lazy(() => import('./MapViewGL').then(m => ({ default: m.MapVi
 // tiles via sync/tilePrefetcher.ts). GL maps are best-effort offline — their
 // vector tiles are cached opportunistically by the Service Worker as you view
 // them online (see the GL tile rules in vite.config.js), not prefetched.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function MapViewAuto(props: any) {
+export function MapViewAuto(props: MapViewProps) {
   const provider = useSettingsStore(s => s.settings.map_provider)
   const token = useSettingsStore(s => s.settings.mapbox_access_token)
   // Fall back to Leaflet when Mapbox is selected but no token is set,
@@ -28,7 +29,7 @@ export function MapViewAuto(props: any) {
     // while the GL chunk loads on first use.
     return (
       <Suspense fallback={<MapView {...props} />}>
-        <MapViewGL {...props} glProvider={glProvider} />
+        <MapViewGL {...props} places={(props.places ?? []) as Place[]} glProvider={glProvider} />
       </Suspense>
     )
   }

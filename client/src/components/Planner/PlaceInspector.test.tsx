@@ -75,6 +75,11 @@ const defaultProps = {
   tripMembers: [] as any[],
   onSetParticipants: vi.fn(),
   onUpdatePlace: vi.fn(),
+  canReposition: false,
+  isRepositioning: false,
+  isRepositionSaving: false,
+  onStartReposition: vi.fn(),
+  onCancelReposition: vi.fn(),
 };
 
 // ── Setup / teardown ──────────────────────────────────────────────────────────
@@ -129,6 +134,41 @@ describe('PlaceInspector', () => {
     // The component renders Number(lat).toFixed(6), Number(lng).toFixed(6)
     expect(screen.getByText(/48\.858400/)).toBeTruthy();
     expect(screen.getByText(/2\.294500/)).toBeTruthy();
+  });
+
+  it('FE-PLANNER-INSPECTOR-044: shows reposition only for an editable place with valid coordinates', async () => {
+    const user = userEvent.setup();
+    const onStartReposition = vi.fn();
+    const { rerender } = render(
+      <PlaceInspector {...defaultProps} canReposition onStartReposition={onStartReposition} />,
+    );
+    const action = screen.getByRole('button', { name: 'Reposition on map' });
+    await user.click(action);
+    expect(onStartReposition).toHaveBeenCalledTimes(1);
+
+    rerender(<PlaceInspector {...defaultProps} canReposition={false} />);
+    expect(screen.queryByRole('button', { name: 'Reposition on map' })).toBeNull();
+
+    rerender(<PlaceInspector {...defaultProps} place={buildPlace({ id: 90, lat: null, lng: null })} canReposition />);
+    expect(screen.queryByRole('button', { name: 'Reposition on map' })).toBeNull();
+  });
+
+  it('FE-PLANNER-INSPECTOR-045: active reposition mode announces instructions and exposes Cancel', async () => {
+    const user = userEvent.setup();
+    const onCancelReposition = vi.fn();
+    render(
+      <PlaceInspector
+        {...defaultProps}
+        canReposition
+        isRepositioning
+        onCancelReposition={onCancelReposition}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Drag the marker to its new location.');
+    await user.click(screen.getByRole('button', { name: 'Cancel repositioning' }));
+    expect(onCancelReposition).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Reposition on map' })).toBeNull();
   });
 
   it('FE-PLANNER-INSPECTOR-007: shows time range when place_time and end_time are set', () => {

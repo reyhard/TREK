@@ -13,6 +13,7 @@ import { PluginMapMarkers } from './MapPluginMarkers'
 import { useTransportRoutes } from '../../hooks/useTransportRoutes'
 import type { Reservation } from '../../types'
 import { POI_CATEGORY_BY_KEY, type Poi } from './poiCategories'
+import type { MapViewProps } from './MapView.types'
 
 function categoryIconSvg(iconName: string | null | undefined, size: number): string {
   const IconComponent = (iconName && CATEGORY_ICON_MAP[iconName]) || CATEGORY_ICON_MAP['MapPin']
@@ -42,14 +43,16 @@ function escAttr(s) {
 
 const iconCache = new Map<string, L.DivIcon>()
 
-function createPlaceIcon(place, orderNumbers, isSelected) {
-  const cacheKey = `${place.id}:${isSelected}:${place.image_url || ''}:${place.category_color || ''}:${place.category_icon || ''}:${orderNumbers?.join(',') || ''}`
+function createPlaceIcon(place, orderNumbers, isSelected, isRepositioning = false) {
+  const cacheKey = `${place.id}:${isSelected}:${isRepositioning}:${place.image_url || ''}:${place.category_color || ''}:${place.category_icon || ''}:${orderNumbers?.join(',') || ''}`
   const cached = iconCache.get(cacheKey)
   if (cached) return cached
   const size = isSelected ? 44 : 36
   const borderColor = isSelected ? '#111827' : (place.category_color || 'white')
   const borderWidth = isSelected ? 3 : 2.5
-  const shadow = isSelected
+  const shadow = isRepositioning
+    ? '0 0 0 4px rgba(59,130,246,0.35), 0 6px 18px rgba(0,0,0,0.35)'
+    : isSelected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
     : '0 2px 8px rgba(0,0,0,0.22)'
   const bgColor = place.category_color || '#6b7280'
@@ -79,7 +82,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
       className: '',
       html: `<div style="
         width:${size}px;height:${size}px;
-        cursor:pointer;position:relative;
+        cursor:${isRepositioning ? 'grabbing' : 'pointer'};position:relative;
       ">
         <div style="
           width:${size}px;height:${size}px;border-radius:50%;
@@ -107,7 +110,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
       box-shadow:${shadow};
       background:${bgColor};
       display:flex;align-items:center;justify-content:center;
-      cursor:pointer;position:relative;
+      cursor:${isRepositioning ? 'grabbing' : 'pointer'};position:relative;
       will-change:transform;contain:layout style;
     ">
       ${categoryIconSvg(place.category_icon, isSelected ? 18 : 15)}
@@ -404,23 +407,43 @@ interface MemoMarkerProps {
   onClickPlace: (id: number) => void
   onHover: (place: any, x: number, y: number) => void
   onHoverOut: () => void
+  isRepositioning: boolean
+  onMoveStart?: (id: number) => void
+  onMoveEnd?: (id: number, coordinates: { lat: number; lng: number }) => void
 }
 
 const MemoMarker = memo(function MemoMarker({
   place, isSelected, orderNumbers, photoUrl, onClickPlace, onHover, onHoverOut,
+  isRepositioning, onMoveStart, onMoveEnd,
 }: MemoMarkerProps) {
-  const icon = createPlaceIcon({ ...place, image_url: photoUrl }, orderNumbers, isSelected)
+  const icon = createPlaceIcon({ ...place, image_url: photoUrl }, orderNumbers, isSelected, isRepositioning)
+  const suppressClickUntilRef = useRef(0)
+  const stablePositionRef = useRef<[number, number]>([place.lat, place.lng])
+  if (!isRepositioning) stablePositionRef.current = [place.lat, place.lng]
   return (
     <Marker
-      position={[place.lat, place.lng]}
+      position={isRepositioning ? stablePositionRef.current : [place.lat, place.lng]}
       icon={icon}
+      draggable={isRepositioning}
       eventHandlers={{
-        click: () => onClickPlace(place.id),
+        click: () => {
+          if (Date.now() < suppressClickUntilRef.current) return
+          onClickPlace(place.id)
+        },
         mouseover: (e: any) => onHover(place, e.originalEvent.clientX, e.originalEvent.clientY),
         mousemove: (e: any) => onHover(place, e.originalEvent.clientX, e.originalEvent.clientY),
         mouseout: onHoverOut,
+        dragstart: () => {
+          onHoverOut()
+          onMoveStart?.(place.id)
+        },
+        dragend: (event: any) => {
+          suppressClickUntilRef.current = Date.now() + 350
+          const { lat, lng } = event.target.getLatLng()
+          onMoveEnd?.(place.id, { lat, lng })
+        },
       }}
-      zIndexOffset={isSelected ? 1000 : 0}
+      zIndexOffset={isRepositioning ? 2000 : isSelected ? 1000 : 0}
     />
   )
 })
@@ -433,6 +456,10 @@ export const MapView = memo(function MapView({
   selectedPlaceId = null,
   hoverDisabled = false,
   onMarkerClick,
+  repositionPlaceId = null,
+  canRepositionPlaces = false,
+  onPlaceRepositionStart,
+  onPlaceRepositionEnd,
   onMapClick,
   onMapContextMenu = null,
   center = [48.8566, 2.3522],
@@ -453,7 +480,7 @@ export const MapView = memo(function MapView({
   onPoiClick,
   onViewportChange,
   tripId,
-}: any) {
+}: MapViewProps) {
   const poiMarkers = useMemo(() => (pois as Poi[]).map((poi: Poi) => (
     <Marker
       key={`poi-${poi.osm_id}`}
@@ -603,6 +630,7 @@ export const MapView = memo(function MapView({
 
   const markers = useMemo(() => places.map((place) => {
     const isSelected = place.id === selectedPlaceId
+    const isRepositioning = canRepositionPlaces && isSelected && place.id === repositionPlaceId
     const pck = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
     const photoUrl = (pck && photoUrls[pck]) || place.image_url || null
     const orderNumbers = dayOrderMap[place.id] ?? null
@@ -616,9 +644,25 @@ export const MapView = memo(function MapView({
         onClickPlace={handleMarkerClick}
         onHover={handleMarkerHover}
         onHoverOut={handleMarkerHoverOut}
+        isRepositioning={isRepositioning}
+        onMoveStart={onPlaceRepositionStart}
+        onMoveEnd={onPlaceRepositionEnd}
       />
     )
-  }), [places, selectedPlaceId, dayOrderMap, photoUrls, handleMarkerClick, handleMarkerHover, handleMarkerHoverOut])
+  }), [places, selectedPlaceId, repositionPlaceId, canRepositionPlaces, dayOrderMap, photoUrls, handleMarkerClick, handleMarkerHover, handleMarkerHoverOut, onPlaceRepositionStart, onPlaceRepositionEnd])
+
+  const activeRepositionPlaceId = canRepositionPlaces && selectedPlaceId === repositionPlaceId
+    ? repositionPlaceId
+    : null
+
+  const clusteredMarkers = useMemo(
+    () => markers.filter(marker => marker.props.place.id !== activeRepositionPlaceId),
+    [markers, activeRepositionPlaceId],
+  )
+  const repositionMarker = useMemo(
+    () => activeRepositionPlaceId != null ? markers.find(marker => marker.props.place.id === activeRepositionPlaceId) : null,
+    [markers, activeRepositionPlaceId],
+  )
 
   const gpxPolylines = useMemo(() => places.flatMap(place => {
     if (!place.route_geometry) return []
@@ -692,8 +736,9 @@ export const MapView = memo(function MapView({
         animate={false}
         iconCreateFunction={clusterIconCreateFunction}
       >
-        {markers}
+        {clusteredMarkers}
       </MarkerClusterGroup>
+      {repositionMarker}
 
       {/* Apple-Maps style: darker-blue casing under a bright-blue core, rounded. */}
       {route && route.length > 0 && route.flatMap((seg, i) => seg.length > 1 ? [

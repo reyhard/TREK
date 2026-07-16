@@ -151,6 +151,21 @@ describe('useRouteCalculation', () => {
     expect(result.current.route).toBeNull();
   });
 
+  it('FE-HOOK-ROUTE-007b: zero latitude and longitude remain valid route coordinates', async () => {
+    const p1 = buildPlace({ lat: 0, lng: 0 });
+    const p2 = buildPlace({ lat: 1, lng: 1 });
+    const a1 = buildAssignment({ day_id: 5, order_index: 0, place: p1 });
+    const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
+    const store = buildMockStore({ '5': [a1, a2] });
+
+    const { result } = renderHook(() =>
+      useRouteCalculation(store as TripStoreState, 5)
+    );
+
+    await act(async () => {});
+    expect(result.current.route).toEqual([[[0, 0], [1, 1]]]);
+  });
+
   it('FE-HOOK-ROUTE-008: AbortController.abort() is called when selectedDayId changes', async () => {
 
     // Make calculateRouteWithLegs resolve slowly

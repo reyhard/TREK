@@ -69,7 +69,7 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
       | { kind: 'place'; lat: number; lng: number; pos: number; time: string | null }
       | { kind: 'transport'; from: { lat: number; lng: number } | null; to: { lat: number; lng: number } | null; pos: number }
     const entries: Entry[] = [
-      ...da.filter(a => a.place?.lat && a.place?.lng).map(a => ({
+      ...da.filter(a => a.place?.lat != null && a.place?.lng != null && Number.isFinite(Number(a.place.lat)) && Number.isFinite(Number(a.place.lng))).map(a => ({
         kind: 'place' as const, lat: a.place.lat!, lng: a.place.lng!, pos: a.order_index, time: a.place?.place_time ?? null,
       })),
       ...dayTransports.map(r => {

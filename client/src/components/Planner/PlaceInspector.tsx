@@ -127,6 +127,11 @@ interface PlaceInspectorProps {
   tripMembers?: TripMember[]
   onSetParticipants?: (assignmentId: number, dayId: number, participantIds: number[]) => void
   onUpdatePlace?: (placeId: number, data: Partial<Place>) => void
+  canReposition?: boolean
+  isRepositioning?: boolean
+  isRepositionSaving?: boolean
+  onStartReposition?: () => void
+  onCancelReposition?: () => void
   leftWidth?: number
   rightWidth?: number
   // ── Collection-mode props ──
@@ -141,6 +146,8 @@ export default function PlaceInspector({
   assignments = {}, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
+  canReposition = false, isRepositioning = false, isRepositionSaving = false,
+  onStartReposition, onCancelReposition,
   leftWidth = 0, rightWidth = 0,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
 }: PlaceInspectorProps) {
@@ -313,6 +320,18 @@ export default function PlaceInspector({
         {/* Content — scrollable */}
         <div data-testid="inspector-scroll" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
+          {isRepositioning && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="bg-surface-hover text-content"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '9px 12px', fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}
+            >
+              <MapPin size={14} aria-hidden="true" />
+              <span>{isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}</span>
+            </div>
+          )}
+
           {/* Info-Chips — hidden on mobile, shown on desktop */}
           <div className="hidden sm:flex" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             {googleDetails?.rating && (() => {
@@ -441,6 +460,25 @@ export default function PlaceInspector({
               label={<span className="hidden sm:inline">{t('inspector.website')}</span>} />
           )}
           <div style={{ flex: 1 }} />
+          {mode === 'trip' && canReposition && !isRepositioning && place.lat != null && place.lng != null && Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng)) && onStartReposition && (
+            <ActionButton
+              onClick={onStartReposition}
+              variant="ghost"
+              icon={<MapPin size={13} />}
+              label={<span className="hidden sm:inline">{t('inspector.reposition')}</span>}
+              ariaLabel={t('inspector.reposition')}
+            />
+          )}
+          {mode === 'trip' && isRepositioning && onCancelReposition && (
+            <ActionButton
+              onClick={onCancelReposition}
+              variant="ghost"
+              icon={<X size={13} />}
+              label={<span className="hidden sm:inline">{t('inspector.cancelReposition')}</span>}
+              ariaLabel={t('inspector.cancelReposition')}
+              disabled={isRepositionSaving}
+            />
+          )}
           {mode === 'trip' && onEdit && (
             <ActionButton onClick={onEdit} variant="ghost" icon={<Edit2 size={13} />} label={<span className="hidden sm:inline">{t('common.edit')}</span>} />
           )}
@@ -493,9 +531,11 @@ interface ActionButtonProps {
   variant: 'primary' | 'ghost' | 'danger'
   icon: React.ReactNode
   label: React.ReactNode
+  ariaLabel?: string
+  disabled?: boolean
 }
 
-export function ActionButton({ onClick, variant, icon, label }: ActionButtonProps) {
+export function ActionButton({ onClick, variant, icon, label, ariaLabel, disabled = false }: ActionButtonProps) {
   const base = {
     primary: { background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', hoverBg: 'var(--text-secondary)' },
     ghost: { background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: 'none', hoverBg: 'var(--bg-tertiary)' },
@@ -505,14 +545,16 @@ export function ActionButton({ onClick, variant, icon, label }: ActionButtonProp
   return (
     <button
       onClick={onClick}
+      aria-label={ariaLabel}
+      disabled={disabled}
       style={{
         display: 'flex', alignItems: 'center', gap: 5,
         padding: '6px 12px', borderRadius: 10, minHeight: 30,
-        fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: 'pointer',
+        fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: 'inherit', transition: 'background 0.15s, opacity 0.15s',
-        background: s.background, color: s.color, border: s.border,
+        background: s.background, color: s.color, border: s.border, opacity: disabled ? 0.55 : 1,
       }}
-      onMouseEnter={e => e.currentTarget.style.background = s.hoverBg}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = s.hoverBg }}
       onMouseLeave={e => e.currentTarget.style.background = s.background}
     >
       {icon}{label}

@@ -187,6 +187,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
+    canEditPlaces, repositionMode, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,
@@ -317,6 +318,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
               showTransitRoutes={routeShown}
               routeSegments={routeSegments}
               selectedPlaceId={selectedPlaceId}
+              repositionPlaceId={repositionMode.status === 'repositioning' ? repositionMode.placeId : null}
+              canRepositionPlaces={canEditPlaces}
+              onPlaceRepositionEnd={handlePlaceRepositionEnd}
               onMarkerClick={handleMarkerClick}
               onMapClick={handleMapClick}
               onMapContextMenu={handleMapContextMenu}
@@ -556,7 +560,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 selectedAssignmentId={selectedAssignmentId}
                 assignments={assignments}
                 reservations={reservations}
-                onClose={() => setSelectedPlaceId(null)}
+                onClose={() => { cancelPlaceReposition(); setSelectedPlaceId(null) }}
                 onEdit={() => openPlaceEditor(selectedPlace, selectedAssignmentId)}
                 onDelete={() => handleDeletePlace(selectedPlace.id)}
                 onAssignToDay={handleAssignToDay}
@@ -578,14 +582,46 @@ export default function TripPlannerPage(): React.ReactElement | null {
                   } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) }
                 }}
                 onUpdatePlace={async (placeId, data) => { try { await tripActions.updatePlace(tripId, placeId, data) } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) } }}
+                canReposition={canEditPlaces}
+                isRepositioning={repositionMode.status !== 'idle' && repositionMode.placeId === selectedPlace.id}
+                isRepositionSaving={repositionMode.status === 'saving'}
+                onStartReposition={() => startPlaceReposition(selectedPlace)}
+                onCancelReposition={cancelPlaceReposition}
                 leftWidth={(isMobile || window.innerWidth < 900) ? 0 : (leftCollapsed ? 0 : leftWidth)}
                 rightWidth={(isMobile || window.innerWidth < 900) ? 0 : (rightCollapsed ? 0 : rightWidth)}
               />
             )}
 
-            {selectedPlace && isMobile && ReactDOM.createPortal(
-              <div className="bg-[rgba(0,0,0,0.3)]" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 'var(--bottom-nav-h)' }} onClick={() => setSelectedPlaceId(null)}>
-                <div style={{ width: '100%', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+            {selectedPlace && isMobile && repositionMode.status === 'repositioning' && ReactDOM.createPortal(
+              <div
+                className="bg-surface-card border border-edge-secondary shadow-lg"
+                role="status"
+                aria-live="polite"
+                style={{
+                  position: 'fixed',
+                  left: 16,
+                  right: 16,
+                  bottom: 'calc(var(--bottom-nav-h) + 16px)',
+                  zIndex: 9999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                }}
+              >
+                <span>{t('inspector.repositionInstructions')}</span>
+                <button type="button" className="btn btn-secondary" onClick={cancelPlaceReposition}>
+                  {t('inspector.cancelReposition')}
+                </button>
+              </div>,
+              document.body
+            )}
+
+            {selectedPlace && isMobile && repositionMode.status !== 'repositioning' && ReactDOM.createPortal(
+              <div className="bg-[rgba(0,0,0,0.3)]" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 'var(--bottom-nav-h)', pointerEvents: 'auto' }} onClick={() => { cancelPlaceReposition(); setSelectedPlaceId(null) }}>
+                <div style={{ width: '100%', maxHeight: '85vh', pointerEvents: 'auto' }} onClick={e => e.stopPropagation()}>
                   <PlaceInspector
                     place={selectedPlace}
                     categories={categories}
@@ -594,7 +630,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                     selectedAssignmentId={selectedAssignmentId}
                     assignments={assignments}
                     reservations={reservations}
-                    onClose={() => setSelectedPlaceId(null)}
+                    onClose={() => { cancelPlaceReposition(); setSelectedPlaceId(null) }}
                     onEdit={() => { openPlaceEditor(selectedPlace, selectedAssignmentId); setSelectedPlaceId(null) }}
                     onDelete={() => { handleDeletePlace(selectedPlace.id); setSelectedPlaceId(null) }}
                     onAssignToDay={handleAssignToDay}
@@ -616,6 +652,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
                       } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) }
                     }}
                     onUpdatePlace={async (placeId, data) => { try { await tripActions.updatePlace(tripId, placeId, data) } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) } }}
+                    canReposition={canEditPlaces}
+                    isRepositioning={repositionMode.status !== 'idle' && repositionMode.placeId === selectedPlace.id}
+                    isRepositionSaving={repositionMode.status === 'saving'}
+                    onStartReposition={() => startPlaceReposition(selectedPlace)}
+                    onCancelReposition={cancelPlaceReposition}
                     leftWidth={0}
                     rightWidth={0}
                   />

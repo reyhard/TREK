@@ -48,6 +48,9 @@ vi.mock('mapbox-gl', () => ({
         setLngLat: vi.fn().mockReturnThis(),
         addTo: vi.fn().mockReturnThis(),
         remove: vi.fn(),
+        on: vi.fn().mockReturnThis(),
+        off: vi.fn().mockReturnThis(),
+        getLngLat: vi.fn(() => ({ lat: 48.9, lng: 2.4 })),
         getElement: vi.fn(() => document.createElement('div')),
       }
     }),
@@ -77,6 +80,9 @@ vi.mock('maplibre-gl', () => ({
         setLngLat: vi.fn().mockReturnThis(),
         addTo: vi.fn().mockReturnThis(),
         remove: vi.fn(),
+        on: vi.fn().mockReturnThis(),
+        off: vi.fn().mockReturnThis(),
+        getLngLat: vi.fn(() => ({ lat: 48.9, lng: 2.4 })),
         getElement: vi.fn(() => document.createElement('div')),
       }
     }),
@@ -269,6 +275,79 @@ describe('MapViewGL', () => {
     }))
     expect(glMap.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'trip-place-clusters-circle' }))
     expect(glMap.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'trip-place-clusters-count' }))
+  })
+
+  it.each([
+    ['mapbox-gl', 'mapbox-gl'],
+    ['maplibre-gl', 'maplibre-gl'],
+  ] as const)('FE-COMP-MAPVIEWGL-014: %s makes only the active place draggable and emits drag coordinates', async (_label, provider) => {
+    glMap.on.mockImplementation((event: string, handlerOrLayer: unknown) => {
+      if (event === 'load' && typeof handlerOrLayer === 'function') (handlerOrLayer as () => void)()
+      return glMap
+    })
+    const engine = (await import(provider)).default
+    const onPlaceRepositionStart = vi.fn()
+    const onPlaceRepositionEnd = vi.fn()
+    const places = [
+      buildMapPlace({ id: 1, lat: 48.8584, lng: 2.2945 }),
+      buildMapPlace({ id: 2, lat: 48.86, lng: 2.337 }),
+    ]
+
+    const { rerender } = render(
+      <MapViewGL
+        places={places}
+        selectedPlaceId={2}
+        repositionPlaceId={2}
+        canRepositionPlaces
+        onPlaceRepositionStart={onPlaceRepositionStart}
+        onPlaceRepositionEnd={onPlaceRepositionEnd}
+        glProvider={provider}
+      />,
+    )
+    await act(async () => {})
+
+    const markerMock = engine.Marker as unknown as ReturnType<typeof vi.fn>
+    const draggableCall = markerMock.mock.calls.find(call => call[0]?.draggable === true)
+    expect(draggableCall).toBeTruthy()
+    expect(markerMock.mock.calls.some(call => call[0]?.draggable === false)).toBe(true)
+    const instance = markerMock.mock.results[markerMock.mock.calls.indexOf(draggableCall!)].value
+    const dragStart = instance.on.mock.calls.find((call: unknown[]) => call[0] === 'dragstart')?.[1]
+    const dragEnd = instance.on.mock.calls.find((call: unknown[]) => call[0] === 'dragend')?.[1]
+    act(() => { dragStart(); dragEnd() })
+    expect(onPlaceRepositionStart).toHaveBeenCalledWith(2)
+    expect(onPlaceRepositionEnd).toHaveBeenCalledWith(2, { lat: 48.9, lng: 2.4 })
+
+    rerender(<MapViewGL places={[]} glProvider={provider} />)
+    await act(async () => {})
+    expect(instance.off).toHaveBeenCalledWith('dragstart', dragStart)
+    expect(instance.off).toHaveBeenCalledWith('dragend', dragEnd)
+  })
+
+  it('FE-COMP-MAPVIEWGL-015: active reposition marker remains visible outside the cluster and is not recreated', async () => {
+    const source = { setData: vi.fn() }
+    glMap.getSource.mockImplementation((id: string) => id === 'trip-place-clusters' ? source : null)
+    glMap.querySourceFeatures.mockReturnValue([])
+    glMap.on.mockImplementation((event: string, handlerOrLayer: unknown) => {
+      if (event === 'load' && typeof handlerOrLayer === 'function') (handlerOrLayer as () => void)()
+      return glMap
+    })
+    const mapboxgl = (await import('mapbox-gl')).default
+    const place = buildMapPlace({ id: 9, lat: 48.8584, lng: 2.2945 })
+    const { rerender } = render(
+      <MapViewGL places={[place]} selectedPlaceId={9} repositionPlaceId={9} canRepositionPlaces />,
+    )
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())) })
+    const markerMock = mapboxgl.Marker as unknown as ReturnType<typeof vi.fn>
+    const created = markerMock.mock.calls.length
+    expect(created).toBeGreaterThan(0)
+    const clusterData = source.setData.mock.calls[source.setData.mock.calls.length - 1]?.[0]
+    expect(clusterData.features).toHaveLength(0)
+
+    rerender(
+      <MapViewGL places={[place]} selectedPlaceId={9} repositionPlaceId={9} canRepositionPlaces dayOrderMap={{ 9: [1] }} />,
+    )
+    await act(async () => {})
+    expect(markerMock).toHaveBeenCalledTimes(created)
   })
 
   function touchEvent(type: string, touches: Array<{ clientX: number; clientY: number }>) {

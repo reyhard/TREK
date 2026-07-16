@@ -18,6 +18,7 @@ import { useGeolocation } from '../../hooks/useGeolocation'
 import type { Place, Reservation } from '../../types'
 import { POI_CATEGORY_BY_KEY, type Poi } from './poiCategories'
 import { buildPoiPopupHtml } from './placePopup'
+import type { PlaceRepositionMapProps } from './MapView.types'
 
 function categoryIconSvg(iconName: string | null | undefined, size: number): string {
   const IconComponent = (iconName && CATEGORY_ICON_MAP[iconName]) || CATEGORY_ICON_MAP['MapPin']
@@ -43,10 +44,10 @@ function hasValidCoords(place: Place): place is PlaceWithCoords {
   return place.lat != null && place.lng != null && Number.isFinite(place.lat) && Number.isFinite(place.lng)
 }
 
-function buildPlaceClusterData(places: Place[]) {
+function buildPlaceClusterData(places: Place[], excludedPlaceId: number | null = null) {
   return {
     type: 'FeatureCollection' as const,
-    features: places.filter(hasValidCoords).map(place => ({
+    features: places.filter(place => place.id !== excludedPlaceId).filter(hasValidCoords).map(place => ({
       type: 'Feature' as const,
       properties: { placeId: place.id },
       geometry: { type: 'Point' as const, coordinates: [place.lng, place.lat] },
@@ -62,7 +63,7 @@ interface RouteSegment {
   drivingText?: string
 }
 
-interface Props {
+interface Props extends PlaceRepositionMapProps {
   places: Place[]
   dayPlaces?: Place[]
   route?: [number, number][][] | null
@@ -93,11 +94,13 @@ interface Props {
   onMapReady?: (map: any | null) => void
 }
 
-function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean): HTMLDivElement {
+function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean, repositioning = false): HTMLDivElement {
   const size = selected ? 44 : 36
   const borderColor = selected ? '#111827' : (place.category_color || 'white')
   const borderWidth = selected ? 3 : 2.5
-  const shadow = selected
+  const shadow = repositioning
+    ? '0 0 0 4px rgba(59,130,246,0.35), 0 6px 18px rgba(0,0,0,0.35)'
+    : selected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
     : '0 2px 8px rgba(0,0,0,0.22)'
   const bgColor = place.category_color || '#6b7280'
@@ -134,7 +137,8 @@ function createMarkerElement(place: Place & { category_color?: string; category_
   // canvas container. The result looks exactly like "markers drift as the
   // map zooms" because each marker's transform is then applied relative
   // to its stacked slot, not to the map viewport.
-  wrap.style.cssText = `width:${outer}px;height:${outer}px;cursor:pointer;`
+  wrap.style.cssText = `width:${outer}px;height:${outer}px;cursor:${repositioning ? 'grabbing' : 'pointer'};`
+  wrap.dataset.repositioning = String(repositioning)
 
   const hasPhoto = photoUrl && (photoUrl.startsWith('data:') || photoUrl.startsWith('/api/maps/place-photo/'))
   if (hasPhoto) {
@@ -187,6 +191,10 @@ export function MapViewGL({
   route = null,
   routeSegments = [],
   selectedPlaceId = null,
+  repositionPlaceId = null,
+  canRepositionPlaces = false,
+  onPlaceRepositionStart,
+  onPlaceRepositionEnd,
   hoverDisabled = false,
   onMarkerClick,
   onMapClick,
@@ -250,6 +258,8 @@ export function MapViewGL({
   const mapRef = useRef<any | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<Map<number, any>>(new Map())
+  const markerCleanupRef = useRef<Map<number, () => void>>(new Map())
+  const suppressMarkerClickUntilRef = useRef<Map<number, number>>(new Map())
   const locationMarkerRef = useRef<LocationMarkerHandle | null>(null)
   const reservationOverlayRef = useRef<ReservationMapboxOverlay | null>(null)
   // Refs so the reservation overlay always sees the latest callback /
@@ -273,6 +283,9 @@ export function MapViewGL({
   onClickRefs.current.marker = onMarkerClick
   onClickRefs.current.map = onMapClick
   onClickRefs.current.context = onMapContextMenu
+  const onRepositionRefs = useRef({ start: onPlaceRepositionStart, end: onPlaceRepositionEnd })
+  onRepositionRefs.current.start = onPlaceRepositionStart
+  onRepositionRefs.current.end = onPlaceRepositionEnd
   const hoverDisabledRef = useRef(hoverDisabled)
   hoverDisabledRef.current = hoverDisabled
 
@@ -280,6 +293,8 @@ export function MapViewGL({
   useEffect(() => {
     if (!containerRef.current || (!isMapLibre && !mapboxToken)) return
     if (!isMapLibre) mapboxgl.accessToken = mapboxToken
+    const managedMarkers = markersRef.current
+    const markerCleanups = markerCleanupRef.current
 
     const mapOptions: Record<string, unknown> = {
       container: containerRef.current,
@@ -629,8 +644,12 @@ export function MapViewGL({
       canvas.removeEventListener('touchend', cancelLongPress)
       canvas.removeEventListener('touchcancel', cancelLongPress)
       cancelLongPress()
-      markersRef.current.forEach(m => m.remove())
-      markersRef.current.clear()
+      managedMarkers.forEach((m, id) => {
+        markerCleanups.get(id)?.()
+        m.remove()
+      })
+      managedMarkers.clear()
+      markerCleanups.clear()
       if (popupRef.current) { popupRef.current.remove(); popupRef.current = null }
       onMapReadyRef.current?.(null)
       if (reservationOverlayRef.current) {
@@ -722,12 +741,15 @@ export function MapViewGL({
     // mouseleave, which would otherwise leave the popup orphaned on the map.
     popupRef.current?.remove()
     const validPlaces = places.filter(hasValidCoords)
+    const activeRepositionId = canRepositionPlaces && selectedPlaceId === repositionPlaceId ? repositionPlaceId : null
 
     const reconcileMarkers = (visiblePlaces: PlaceWithCoords[]) => {
       const ids = new Set(visiblePlaces.map(p => p.id))
 
       markersRef.current.forEach((marker, id) => {
         if (!ids.has(id)) {
+          markerCleanupRef.current.get(id)?.()
+          markerCleanupRef.current.delete(id)
           marker.remove()
           markersRef.current.delete(id)
           // Removing a marker under the cursor (e.g. it just got clustered) never
@@ -741,9 +763,13 @@ export function MapViewGL({
         const pck = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
         const photoUrl = (pck && photoUrls[pck]) || place.image_url || null
         const selected = place.id === selectedPlaceId
-        const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected)
+        const repositioning = place.id === activeRepositionId
+        const existing = markersRef.current.get(place.id)
+        if (existing && repositioning && existing.__trekRepositioning === true) return
+        const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected, repositioning)
         el.addEventListener('click', (ev) => {
           ev.stopPropagation()
+          if (Date.now() < (suppressMarkerClickUntilRef.current.get(place.id) ?? 0)) return
           // Clear the card right away — the flyTo that follows moves the marker
           // out from under the cursor and mouseleave never fires (#1404).
           hoverIdRef.current = null
@@ -769,16 +795,40 @@ export function MapViewGL({
         })
         // Recreate marker each time rather than patching internal state —
         // mapbox-gl's internal _element bookkeeping breaks under DOM swaps.
-        const existing = markersRef.current.get(place.id)
-        if (existing) existing.remove()
+        if (existing) {
+          markerCleanupRef.current.get(place.id)?.()
+          markerCleanupRef.current.delete(place.id)
+          existing.remove()
+        }
         // Default (viewport-aligned) anchors keep the marker parallel to the
         // screen so its pixel centre lines up with the route line at any
         // pitch. Tried `pitchAlignment: 'map'` to snap markers onto terrain,
         // but it rotates the element by the pitch angle and visually offsets
         // the anchor by ~100px at 45° tilt, which caused the observed drift.
-        const m = new gl.Marker({ element: el, anchor: 'center' })
+        const m = new gl.Marker({ element: el, anchor: 'center', draggable: repositioning })
           .setLngLat([place.lng, place.lat])
           .addTo(map)
+        m.__trekRepositioning = repositioning
+        if (repositioning) {
+          const handleDragStart = () => {
+            popupRef.current?.remove()
+            hoverIdRef.current = null
+            setHoverPlace(null)
+            setHoverPos(null)
+            onRepositionRefs.current.start?.(place.id)
+          }
+          const handleDragEnd = () => {
+            suppressMarkerClickUntilRef.current.set(place.id, Date.now() + 350)
+            const { lat, lng } = m.getLngLat()
+            onRepositionRefs.current.end?.(place.id, { lat, lng })
+          }
+          m.on('dragstart', handleDragStart)
+          m.on('dragend', handleDragEnd)
+          markerCleanupRef.current.set(place.id, () => {
+            m.off('dragstart', handleDragStart)
+            m.off('dragend', handleDragEnd)
+          })
+        }
         markersRef.current.set(place.id, m)
       })
     }
@@ -791,7 +841,7 @@ export function MapViewGL({
       return
     }
 
-    source.setData(buildPlaceClusterData(places) as any)
+    source.setData(buildPlaceClusterData(places, activeRepositionId) as any)
     const placesById = new Map<number, PlaceWithCoords>(validPlaces.map(place => [place.id, place]))
     let raf: number | null = null
     const runReconcile = () => {
@@ -807,6 +857,10 @@ export function MapViewGL({
         if (!place) continue
         seen.add(id)
         visiblePlaces.push(place)
+      }
+      if (activeRepositionId != null && !seen.has(activeRepositionId)) {
+        const active = placesById.get(activeRepositionId)
+        if (active) visiblePlaces.push(active)
       }
       reconcileMarkers(visiblePlaces)
     }
@@ -829,7 +883,7 @@ export function MapViewGL({
       map.off('zoomend', scheduleReconcile)
       map.off('idle', scheduleReconcile)
     }
-  }, [places, selectedPlaceId, dayOrderMap, photoUrls, mapReady, glProvider])
+  }, [places, selectedPlaceId, repositionPlaceId, canRepositionPlaces, dayOrderMap, photoUrls, mapReady, glProvider, gl])
 
   // Reconcile OSM "explore" POI markers (imperative, kept separate from the
   // planned-place markers so they don't cluster or get confused with them).

@@ -1,4 +1,4 @@
-import { placeCreateRequestSchema, placeBulkDeleteRequestSchema, placeImportListRequestSchema } from './place.schema';
+import { placeCreateRequestSchema, placeUpdateRequestSchema, placeBulkDeleteRequestSchema, placeImportListRequestSchema } from './place.schema';
 
 import { describe, it, expect } from 'vitest';
 
@@ -13,6 +13,15 @@ describe('placeCreateRequestSchema', () => {
       }).success,
     ).toBe(true);
     expect(placeCreateRequestSchema.safeParse({ lat: 1 }).success).toBe(false);
+  });
+});
+
+describe('placeUpdateRequestSchema', () => {
+  it('accepts a coordinate-only place update', () => {
+    expect(placeUpdateRequestSchema.parse({ lat: 48.123456, lng: 11.123456 })).toEqual({
+      lat: 48.123456,
+      lng: 11.123456,
+    });
   });
 });
 

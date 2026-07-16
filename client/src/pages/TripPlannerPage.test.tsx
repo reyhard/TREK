@@ -7,14 +7,20 @@ import { buildUser, buildTrip, buildDay, buildPlace, buildAssignment } from '../
 import { useAuthStore } from '../store/authStore';
 import { useTripStore } from '../store/tripStore';
 import { usePluginStore } from '../store/pluginStore';
+import { usePermissionsStore } from '../store/permissionsStore';
 import TripPlannerPage from './TripPlannerPage';
 import { server } from '../../tests/helpers/msw/server';
 import { http, HttpResponse } from 'msw';
 import { reservationsApi } from '../api/client';
+import { placeRepo } from '../repo/placeRepo';
 
 // Mock Leaflet-dependent components
+const capturedMapViewProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/Map/MapView', () => ({
-  MapView: () => React.createElement('div', { 'data-testid': 'map-view' }),
+  MapView: (props: Record<string, any>) => {
+    capturedMapViewProps.current = props;
+    return React.createElement('div', { 'data-testid': 'map-view' });
+  },
 }));
 
 vi.mock('react-leaflet', () => ({
@@ -250,6 +256,7 @@ beforeEach(() => {
   capturedTripMembersModalProps.current = {};
   capturedFileManagerProps.current = {};
   capturedPlaceInspectorProps.current = {};
+  capturedMapViewProps.current = {};
   seedStore(useAuthStore, { isAuthenticated: true, user: buildUser() });
 });
 
@@ -794,6 +801,149 @@ describe('TripPlannerPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('map-view')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('place repositioning', () => {
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    }
+
+    it('optimistically moves through placeRepo, refreshes assignment coordinates, and exits on success', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 71, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      const { day } = seedTripStore({ id: 42 });
+      const assignment = buildAssignment({ id: 72, day_id: day.id, place, order_index: 0 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      const pending = deferred<{ place: typeof place }>();
+      const updateSpy = vi.spyOn(placeRepo, 'update').mockReturnValue(pending.promise);
+      seedStore(useTripStore, {
+        selectedDayId: day.id,
+        places: [place],
+        assignments: { [String(day.id)]: [assignment] },
+      } as any);
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
+
+      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(71));
+      expect(capturedMapViewProps.current.canRepositionPlaces).toBe(true);
+
+      let savePromise!: Promise<void>;
+      act(() => {
+        savePromise = capturedMapViewProps.current.onPlaceRepositionEnd?.(71, { lat: 48.9, lng: 2.4 });
+      });
+      expect(updateSpy).toHaveBeenCalledWith(42, 71, { lat: 48.9, lng: 2.4 });
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBeNull());
+      expect(useTripStore.getState().places.find(p => p.id === 71)).toMatchObject({ lat: 48.9, lng: 2.4 });
+      expect(useTripStore.getState().assignments[String(day.id)][0].place).toMatchObject({ lat: 48.9, lng: 2.4 });
+
+      pending.resolve({ place: { ...place, lat: 48.9, lng: 2.4 } });
+      await act(async () => { await savePromise; });
+      expect(capturedMapViewProps.current.repositionPlaceId).toBeNull();
+      updateSpy.mockRestore();
+    });
+
+    it('rolls coordinates back and exits when placeRepo rejects', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 81, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      const { day } = seedTripStore({ id: 42 });
+      const assignment = buildAssignment({ id: 82, day_id: day.id, place, order_index: 0 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      const updateSpy = vi.spyOn(placeRepo, 'update').mockRejectedValue(new Error('save failed'));
+      seedStore(useTripStore, {
+        selectedDayId: day.id,
+        places: [place],
+        assignments: { [String(day.id)]: [assignment] },
+      } as any);
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
+      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(81));
+
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd?.(81, { lat: 49, lng: 3 });
+      });
+      expect(useTripStore.getState().places.find(p => p.id === 81)).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+      expect(useTripStore.getState().assignments[String(day.id)][0].place).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+      expect(capturedMapViewProps.current.repositionPlaceId).toBeNull();
+      updateSpy.mockRestore();
+    });
+
+    it('ignores invalid drag coordinates without calling the repository', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 91, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      const updateSpy = vi.spyOn(placeRepo, 'update');
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
+      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(91));
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd?.(91, { lat: 91, lng: 2.4 });
+      });
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(useTripStore.getState().places.find(p => p.id === 91)).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+      updateSpy.mockRestore();
+    });
+
+    it('cancels active repositioning with Escape', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 101, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
+      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(101));
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBeNull());
+    });
+
+    it('does not enable repositioning for a user without place_edit permission', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 111, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      usePermissionsStore.setState({ permissions: { place_edit: 'admin' } });
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
+      expect(capturedPlaceInspectorProps.current.canReposition).toBe(false);
+      expect(capturedMapViewProps.current.canRepositionPlaces).toBe(false);
+      usePermissionsStore.setState({ permissions: {} });
+    });
+
+    it('keeps saved places with valid zero coordinates on the map', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 121, trip_id: 42, lat: 0, lng: 0 });
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedMapViewProps.current.places).toContainEqual(place));
     });
   });
 

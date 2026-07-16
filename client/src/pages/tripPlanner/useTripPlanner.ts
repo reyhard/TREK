@@ -11,6 +11,7 @@ import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi, health
 import { parsedItemToDraft, isTransportItem, type BookingReviewDraft } from '../../components/Planner/parsedItemToDraft'
 import type { BookingImportPreviewItem } from '@trek/shared'
 import { accommodationRepo } from '../../repo/accommodationRepo'
+import { placeRepo } from '../../repo/placeRepo'
 import { offlineDb, getImportFiles, deleteImportFiles } from '../../db/offlineDb'
 import { isEffectivelyOffline } from '../../sync/networkMode'
 import { useBackgroundTasksStore } from '../../store/backgroundTasksStore'
@@ -25,6 +26,31 @@ import { usePluginStore } from '../../store/pluginStore'
 import type { Accommodation, TripMember, Day, Place, Reservation } from '../../types'
 import { resolvePoolAssignmentId } from './tripPlannerModel'
 import type { TransitPlacementHint, TransitSearchPrefill } from '../../components/Planner/transitSearchTypes'
+
+type PlaceCoordinates = { lat: number; lng: number }
+type RepositionMode =
+  | { status: 'idle' }
+  | { status: 'repositioning'; placeId: number; original: PlaceCoordinates }
+  | { status: 'saving'; placeId: number; original: PlaceCoordinates; next: PlaceCoordinates }
+
+function isValidCoordinates({ lat, lng }: PlaceCoordinates): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+}
+
+function patchPlaceCoordinates(placeId: number, coordinates: PlaceCoordinates): void {
+  useTripStore.setState(state => ({
+    places: state.places.map(place => place.id === placeId ? { ...place, ...coordinates } : place),
+    assignments: Object.fromEntries(Object.entries(state.assignments).map(([dayId, items]) => {
+      if (!items.some(assignment => assignment.place?.id === placeId)) return [dayId, items]
+      return [
+        dayId,
+        items.map(assignment => assignment.place?.id === placeId
+          ? { ...assignment, place: { ...assignment.place, ...coordinates } }
+          : assignment),
+      ]
+    })),
+  }))
+}
 
 /**
  * Trip planner page logic — the big one. Owns the trip store wiring, addon
@@ -63,8 +89,68 @@ export function useTripPlanner() {
   // Actions — stable references, don't cause re-renders
   const tripActions = useRef(useTripStore.getState()).current
   const can = useCanDo()
+  const canEditPlaces = can('place_edit', trip)
   const canUploadFiles = can('file_upload', trip)
   const { pushUndo, undo, canUndo, lastActionLabel } = usePlannerHistory()
+  const { selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment } = usePlaceSelection()
+  const [repositionMode, setRepositionMode] = useState<RepositionMode>({ status: 'idle' })
+
+  const startPlaceReposition = useCallback((place: Place) => {
+    if (place.lat == null || place.lng == null) return
+    const coordinates = { lat: Number(place.lat), lng: Number(place.lng) }
+    if (!canEditPlaces || !isValidCoordinates(coordinates)) {
+      if (!canEditPlaces) toast.error(t('inspector.movePermissionDenied'))
+      return
+    }
+    setSelectedPlaceId(place.id)
+    setRepositionMode({ status: 'repositioning', placeId: place.id, original: coordinates })
+  }, [canEditPlaces, setSelectedPlaceId, toast, t])
+
+  const cancelPlaceReposition = useCallback(() => {
+    setRepositionMode(current => current.status === 'saving' ? current : { status: 'idle' })
+  }, [])
+
+  const handlePlaceRepositionEnd = useCallback(async (placeId: number, coordinates: PlaceCoordinates) => {
+    if (repositionMode.status !== 'repositioning' || repositionMode.placeId !== placeId) return
+    if (!isValidCoordinates(coordinates)) {
+      console.warn('Ignored invalid place coordinates')
+      setRepositionMode({ status: 'idle' })
+      return
+    }
+    const original = repositionMode.original
+    if (Math.abs(original.lat - coordinates.lat) < 1e-7 && Math.abs(original.lng - coordinates.lng) < 1e-7) {
+      setRepositionMode({ status: 'idle' })
+      return
+    }
+
+    setRepositionMode({ status: 'saving', placeId, original, next: coordinates })
+    patchPlaceCoordinates(placeId, coordinates)
+    try {
+      await placeRepo.update(tripId, placeId, { lat: coordinates.lat, lng: coordinates.lng })
+      setRepositionMode({ status: 'idle' })
+      toast.success(t('inspector.placeMoved'))
+    } catch {
+      patchPlaceCoordinates(placeId, original)
+      setRepositionMode({ status: 'idle' })
+      toast.error(t('inspector.moveFailed'))
+    }
+  }, [repositionMode, tripId, toast, t])
+
+  useEffect(() => {
+    if (repositionMode.status === 'idle') return
+    const stillEligible = canEditPlaces && places.some(place => place.id === repositionMode.placeId)
+    const selectionStillActive = repositionMode.status === 'saving' || selectedPlaceId === repositionMode.placeId
+    if (!stillEligible || !selectionStillActive) setRepositionMode({ status: 'idle' })
+  }, [canEditPlaces, places, repositionMode, selectedPlaceId])
+
+  useEffect(() => {
+    if (repositionMode.status !== 'repositioning') return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') cancelPlaceReposition()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [repositionMode.status, cancelPlaceReposition])
 
   const handleUndo = useCallback(async () => {
     const label = lastActionLabel
@@ -156,7 +242,6 @@ export function useTripPlanner() {
     if (tabId === 'dateien' && (!files || files.length === 0)) tripActions.loadFiles?.(tripId)
   }
   const { leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight } = useResizablePanels()
-  const { selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment } = usePlaceSelection()
   const [showDayDetail, setShowDayDetail] = useState<Day | null>(null)
   const [dayDetailCollapsed, setDayDetailCollapsed] = useState(false)
   const [showPlaceForm, setShowPlaceForm] = useState<boolean>(false)
@@ -337,7 +422,7 @@ export function useTripPlanner() {
       : null
 
     return places.filter(p => {
-      if (!p.lat || !p.lng) return false
+      if (p.lat == null || p.lng == null || !isValidCoordinates({ lat: p.lat, lng: p.lng })) return false
       if (mapPlacesFilter === 'tracks' && !p.route_geometry) return false
       if (mapCategoryFilter.size > 0) {
         if (p.category_id == null) {
@@ -902,7 +987,9 @@ export function useTripPlanner() {
   const dayPlaces = useMemo(() => {
     if (!selectedDayId) return []
     const da = assignments[String(selectedDayId)] || []
-    return da.map(a => a.place).filter(p => p?.lat && p?.lng)
+    return da.map(a => a.place).filter(p =>
+      p?.lat != null && p?.lng != null && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)),
+    )
   }, [selectedDayId, assignments])
 
   const mapTileUrl = settings.map_tile_url || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
@@ -930,6 +1017,7 @@ export function useTripPlanner() {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
+    canEditPlaces, repositionMode, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,

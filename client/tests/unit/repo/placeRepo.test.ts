@@ -114,6 +114,27 @@ describe('placeRepo.update', () => {
     const cached = await offlineDb.places.get(original.id);
     expect(cached!.name).toBe('New Name');
   });
+
+  it('offline coordinate update is optimistic and queues the exact patch for a temporary place', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false });
+    const original = buildPlace({ id: -71, trip_id: 1, lat: 48.8566, lng: 2.3522 });
+    await offlineDb.places.put(original);
+
+    const result = await placeRepo.update(1, original.id, { lat: 48.9, lng: 2.4 });
+
+    expect(result.place).toMatchObject({ id: -71, lat: 48.9, lng: 2.4 });
+    expect(await offlineDb.places.get(-71)).toMatchObject({ lat: 48.9, lng: 2.4 });
+    const queued = await offlineDb.mutationQueue.toArray();
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      method: 'PUT',
+      url: '/trips/1/places/{id}',
+      body: { lat: 48.9, lng: 2.4 },
+      resource: 'places',
+      entityId: -71,
+      tempEntityId: -71,
+    });
+  });
 });
 
 describe('placeRepo.delete', () => {
