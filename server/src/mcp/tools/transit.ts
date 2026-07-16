@@ -2,17 +2,31 @@ import { canAccessTrip } from '../../db/database';
 import { getDay } from '../../services/dayService';
 import { checkTransitUsage } from '../../services/transitRateLimit';
 import {
+  createTransitReservation,
   mapTransitModeGroups,
   normalizeTransitItinerary,
   rankTransitItineraries,
   resolveTransitEndpoint,
   summarizeTransitItinerary,
+  transitItinerarySchema,
+  updateTransitReservation,
   type TransitModeGroup,
 } from '../../services/transitReservationService';
 import * as transit from '../../services/transitService';
 import { localDateTimeToUtc, resolveTransitTimezone } from '../../services/transitTime';
-import { canRead } from '../scopes';
-import { noAccess, ok, TOOL_ANNOTATIONS_READONLY } from './_shared';
+import { isDemoUser } from '../../services/authService';
+import { canRead, canWrite } from '../scopes';
+import {
+  demoDenied,
+  hasTripPermission,
+  noAccess,
+  ok,
+  permissionDenied,
+  safeBroadcast,
+  TOOL_ANNOTATIONS_NON_IDEMPOTENT,
+  TOOL_ANNOTATIONS_READONLY,
+  TOOL_ANNOTATIONS_WRITE,
+} from './_shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
 import { z } from 'zod';
@@ -49,6 +63,10 @@ const EXPECTED_TRANSIT_ERRORS = new Set([
   'date must use YYYY-MM-DD format',
   'time must use HH:mm format',
   'Transit timestamp must be an ISO date-time',
+  'Day does not belong to this trip',
+  'The selected day has no date',
+  'Automated transit route not found',
+  'Target reservation is not an automated transit route',
 ]);
 
 const EXPECTED_TRANSIT_ERROR_PREFIXES = [
@@ -66,6 +84,8 @@ const EXPECTED_TRANSIT_ERROR_PREFIXES = [
 
 function expectedTransitErrorMessage(error: unknown): string | null {
   if (!(error instanceof Error)) return null;
+  if (error.message === 'Day does not belong to this trip') return 'Day does not belong to this trip.';
+  if (error.message === 'The selected day has no date') return 'The selected day has no date.';
   if (EXPECTED_TRANSIT_ERRORS.has(error.message)) return error.message;
   return EXPECTED_TRANSIT_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix)) ? error.message : null;
 }
@@ -76,9 +96,10 @@ function providerErrorMessage(error: unknown): string | null {
 }
 
 export function registerTransitTools(server: McpServer, userId: number, scopes: string[] | null): void {
-  if (!canRead(scopes, 'places')) return;
+  const canPlaces = canRead(scopes, 'places');
+  const canReservations = canWrite(scopes, 'reservations');
 
-  server.registerTool(
+  if (canPlaces) server.registerTool(
     'search_transit_stops',
     {
       description: 'Search public-transit stops and stations by name. Optionally bias results near coordinates.',
@@ -116,7 +137,7 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
     },
   );
 
-  server.registerTool(
+  if (canPlaces) server.registerTool(
     'plan_transit_route',
     {
       description:
@@ -208,6 +229,86 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
         if (expected) return mcpError(expected);
         console.error('[MCP] transit route planning failed:', error);
         return mcpError('Failed to plan transit route.');
+      }
+    },
+  );
+
+  if (!canReservations) return;
+
+  server.registerTool(
+    'create_transit_route',
+    {
+      description:
+        'Save a complete public-transit itinerary previously selected from plan_transit_route. Do not fabricate itinerary data; use manual create_transport(type: "train") when provider planning is unavailable.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        dayId: z.number().int().positive(),
+        from: namedEndpointSchema,
+        to: namedEndpointSchema,
+        itinerary: transitItinerarySchema,
+        title: z.string().trim().min(1).max(200).optional(),
+        notes: z.string().max(1000).optional(),
+      },
+      annotations: TOOL_ANNOTATIONS_NON_IDEMPOTENT,
+    },
+    async ({ tripId, dayId, from, to, itinerary, title, notes }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      if (!hasTripPermission('reservation_edit', tripId, userId)) return permissionDenied();
+
+      try {
+        const result = createTransitReservation({ tripId, dayId, from, to, itinerary, title, notes });
+        safeBroadcast(tripId, 'reservation:created', { reservation: result.reservation });
+        return ok(result);
+      } catch (error) {
+        const expected = expectedTransitErrorMessage(error);
+        if (expected) return mcpError(expected);
+        console.error('[MCP] transit route creation failed:', error);
+        return mcpError('Failed to create automated transit route.');
+      }
+    },
+  );
+
+  server.registerTool(
+    'update_transit_route',
+    {
+      description:
+        'Replace route-derived data for an automated public-transit reservation using a complete itinerary from plan_transit_route. Omit title or notes to preserve them.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        reservationId: z.number().int().positive(),
+        dayId: z.number().int().positive(),
+        from: namedEndpointSchema,
+        to: namedEndpointSchema,
+        itinerary: transitItinerarySchema,
+        title: z.string().trim().min(1).max(200).optional(),
+        notes: z.string().max(1000).optional(),
+      },
+      annotations: TOOL_ANNOTATIONS_WRITE,
+    },
+    async ({ tripId, reservationId, dayId, from, to, itinerary, title, notes }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      if (!hasTripPermission('reservation_edit', tripId, userId)) return permissionDenied();
+
+      try {
+        const result = updateTransitReservation({
+          tripId,
+          reservationId,
+          dayId,
+          from,
+          to,
+          itinerary,
+          title,
+          notes,
+        });
+        safeBroadcast(tripId, 'reservation:updated', { reservation: result.reservation });
+        return ok(result);
+      } catch (error) {
+        const expected = expectedTransitErrorMessage(error);
+        if (expected) return mcpError(expected);
+        console.error('[MCP] transit route update failed:', error);
+        return mcpError('Failed to update automated transit route.');
       }
     },
   );

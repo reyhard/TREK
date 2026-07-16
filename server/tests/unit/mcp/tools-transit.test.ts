@@ -2,7 +2,8 @@ import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
 import { resetTransitUsageLimits } from '../../../src/services/transitRateLimit';
 import type { TransitItinerary } from '../../../src/services/transitService';
-import { createDay, createPlace, createTrip, createUser } from '../../helpers/factories';
+import { invalidatePermissionsCache } from '../../../src/services/permissions';
+import { addTripMember, createDay, createPlace, createReservation, createTrip, createUser } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
 
@@ -65,10 +66,14 @@ beforeEach(() => {
   broadcastMock.mockReset();
   dbMock.canAccessTrip.mockReset().mockImplementation(dbMock.canAccessTripImplementation);
   resetTransitUsageLimits();
+  invalidatePermissionsCache();
   delete process.env.DEMO_MODE;
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  testDb.exec('DROP TRIGGER IF EXISTS fail_transit_insert');
+  vi.restoreAllMocks();
+});
 
 afterAll(() => testDb.close());
 
@@ -537,5 +542,333 @@ describe('Tool: plan_transit_route', () => {
       expect((limited.content[0] as any).text).toBe('Transit provider rate limit exceeded. Try again later.');
       expect(transitMock.plan).toHaveBeenCalledTimes(60);
     });
+  });
+});
+
+function writeArguments(tripId: number, dayId: number, overrides: Record<string, unknown> = {}) {
+  return {
+    tripId,
+    dayId,
+    from: { name: 'Station A', lat: 52.52, lng: 13.405 },
+    to: { name: 'Station B', lat: 52.5, lng: 13.4 },
+    itinerary: route(),
+    ...overrides,
+  };
+}
+
+describe('MCP transit write-tool registration', () => {
+  it('registers write tools for reservations:write independently from read tools', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const tools = (await h.client.listTools()).tools;
+      const names = tools.map((tool) => tool.name);
+      expect(names).toContain('create_transit_route');
+      expect(names).toContain('update_transit_route');
+      expect(names).not.toContain('search_transit_stops');
+      expect(names).not.toContain('plan_transit_route');
+
+      for (const name of ['create_transit_route', 'update_transit_route']) {
+        const tool = tools.find((candidate) => candidate.name === name)!;
+        const schema = tool.inputSchema as any;
+        expect(schema.properties).not.toHaveProperty('status');
+        expect(schema.properties).not.toHaveProperty('booking');
+        expect(schema.properties).not.toHaveProperty('ticket');
+        expect(schema.properties).not.toHaveProperty('price');
+        expect(tool.annotations?.readOnlyHint).toBe(false);
+        expect(tool.annotations?.idempotentHint).toBe(name === 'update_transit_route');
+      }
+    });
+  });
+
+  it('registers write tools for static full access but not reservations:read', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, null, async (h) => {
+      const names = (await h.client.listTools()).tools.map((tool) => tool.name);
+      expect(names).toContain('create_transit_route');
+      expect(names).toContain('update_transit_route');
+    });
+    await withHarness(user.id, ['reservations:read'], async (h) => {
+      const names = (await h.client.listTools()).tools.map((tool) => tool.name);
+      expect(names).not.toContain('create_transit_route');
+      expect(names).not.toContain('update_transit_route');
+    });
+  });
+});
+
+describe('Tool: create_transit_route', () => {
+  it('creates a selected itinerary without contacting Transitous', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const data = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transit_route',
+          arguments: writeArguments(trip.id, day.id, {
+            from: { name: 'Hotel', lat: 35.689, lng: 139.692 },
+            to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
+            itinerary: route({
+              startTime: '2026-10-02T00:00:00.000Z',
+              endTime: '2026-10-02T00:30:00.000Z',
+            }),
+          }),
+        }),
+      ) as any;
+      expect(data.reservation.type).toBe('transit');
+      expect(data.reservation.status).toBe('confirmed');
+      expect(transitMock.plan).not.toHaveBeenCalled();
+      expect(transitMock.geocode).not.toHaveBeenCalled();
+      expect(broadcastMock).toHaveBeenCalledWith(
+        trip.id,
+        'reservation:created',
+        expect.objectContaining({ _source: 'mcp' }),
+      );
+    });
+  });
+
+  it('uses explicit title and notes overrides', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day } = datedTrip(user.id);
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const data = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transit_route',
+          arguments: writeArguments(trip.id, day.id, { title: '  Morning metro  ', notes: 'Window side' }),
+        }),
+      ) as any;
+      expect(data.reservation.title).toBe('Morning metro');
+      expect(data.reservation.notes).toBe('Window side');
+    });
+  });
+
+  it('rejects demo mode before mutation', async () => {
+    const { user } = createUser(testDb, { email: 'demo@trek.app' });
+    const { trip, day } = datedTrip(user.id);
+    process.env.DEMO_MODE = 'true';
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(trip.id, day.id),
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Write operations are disabled in demo mode.');
+    });
+    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
+  });
+
+  it('rejects an inaccessible trip before mutation', async () => {
+    const owner = createUser(testDb).user;
+    const outsider = createUser(testDb).user;
+    const { trip, day } = datedTrip(owner.id);
+    await withHarness(outsider.id, ['reservations:write'], async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(trip.id, day.id),
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Trip not found or access denied.');
+    });
+    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
+  });
+
+  it('rejects reservation_edit permission before mutation', async () => {
+    const owner = createUser(testDb).user;
+    const member = createUser(testDb).user;
+    const { trip, day } = datedTrip(owner.id);
+    addTripMember(testDb, trip.id, member.id);
+    testDb.prepare("INSERT INTO app_settings (key, value) VALUES ('perm_reservation_edit', 'trip_owner')").run();
+    invalidatePermissionsCache();
+    await withHarness(member.id, ['reservations:write'], async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(trip.id, day.id),
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe(
+        'You do not have permission to perform this action on this trip.',
+      );
+    });
+    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
+  });
+
+  it('rejects a foreign day and malformed itinerary without database mutation', async () => {
+    const { user } = createUser(testDb);
+    const first = datedTrip(user.id);
+    const second = datedTrip(user.id);
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const foreignDay = await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(first.trip.id, second.day.id),
+      });
+      expect(foreignDay.isError).toBe(true);
+      expect((foreignDay.content[0] as any).text).toBe('Day does not belong to this trip.');
+
+      const malformed = await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(first.trip.id, first.day.id, { itinerary: { ...route(), legs: [] } }),
+      });
+      expect(malformed.isError).toBe(true);
+    });
+    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
+    expect(broadcastMock).not.toHaveBeenCalled();
+  });
+
+  it('logs unexpected write failures and returns a generic MCP error', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day } = datedTrip(user.id);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    testDb.exec("CREATE TRIGGER fail_transit_insert BEFORE INSERT ON reservations BEGIN SELECT RAISE(ABORT, 'database password leaked'); END");
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(trip.id, day.id),
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Failed to create automated transit route.');
+      expect((result.content[0] as any).text).not.toContain('database password');
+      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit route creation failed:', expect.any(Error));
+      expect(broadcastMock).not.toHaveBeenCalled();
+    });
+    testDb.exec('DROP TRIGGER fail_transit_insert');
+    errorSpy.mockRestore();
+  });
+});
+
+describe('Tool: update_transit_route', () => {
+  it('updates route-derived data while preserving title and notes', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const created = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transit_route',
+          arguments: writeArguments(trip.id, day.id, { title: 'Custom title', notes: 'Custom note' }),
+        }),
+      ) as any;
+      broadcastMock.mockClear();
+      const updated = parseToolResult(
+        await h.client.callTool({
+          name: 'update_transit_route',
+          arguments: writeArguments(trip.id, day.id, {
+            reservationId: created.reservation.id,
+            from: { name: 'C', lat: 52.51, lng: 13.41 },
+            to: { name: 'D', lat: 52.49, lng: 13.39 },
+            itinerary: route({ endTime: '2026-10-02T08:45:00.000Z' }),
+          }),
+        }),
+      ) as any;
+      expect(updated.reservation.title).toBe('Custom title');
+      expect(updated.reservation.notes).toBe('Custom note');
+      expect(updated.reservation.endpoints[0].name).toBe('C');
+      expect(transitMock.plan).not.toHaveBeenCalled();
+      expect(transitMock.geocode).not.toHaveBeenCalled();
+      expect(broadcastMock).toHaveBeenCalledWith(
+        trip.id,
+        'reservation:updated',
+        expect.objectContaining({ _source: 'mcp' }),
+      );
+    });
+  });
+
+  it('applies explicit title and empty-notes overrides', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day } = datedTrip(user.id);
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const created = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transit_route',
+          arguments: writeArguments(trip.id, day.id, { title: 'Old', notes: 'Remove me' }),
+        }),
+      ) as any;
+      const updated = parseToolResult(
+        await h.client.callTool({
+          name: 'update_transit_route',
+          arguments: writeArguments(trip.id, day.id, {
+            reservationId: created.reservation.id,
+            title: '  New title  ',
+            notes: '',
+          }),
+        }),
+      ) as any;
+      expect(updated.reservation.title).toBe('New title');
+      expect(updated.reservation.notes).toBeNull();
+    });
+  });
+
+  it('rejects a non-transit target before mutation', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day } = datedTrip(user.id);
+    const manual = createReservation(testDb, trip.id, { title: 'Manual train', type: 'train', day_id: day.id });
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_transit_route',
+        arguments: writeArguments(trip.id, day.id, { reservationId: manual.id }),
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Target reservation is not an automated transit route');
+    });
+    expect(testDb.prepare('SELECT title, type FROM reservations WHERE id = ?').get(manual.id)).toEqual({
+      title: 'Manual train',
+      type: 'train',
+    });
+    expect(broadcastMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a foreign day before changing an automated route', async () => {
+    const { user } = createUser(testDb);
+    const first = datedTrip(user.id);
+    const second = datedTrip(user.id);
+    await withHarness(user.id, ['reservations:write'], async (h) => {
+      const created = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transit_route',
+          arguments: writeArguments(first.trip.id, first.day.id, { title: 'Unchanged' }),
+        }),
+      ) as any;
+      broadcastMock.mockClear();
+      const result = await h.client.callTool({
+        name: 'update_transit_route',
+        arguments: writeArguments(first.trip.id, second.day.id, { reservationId: created.reservation.id }),
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Day does not belong to this trip.');
+      expect(testDb.prepare('SELECT title FROM reservations WHERE id = ?').get(created.reservation.id)).toEqual({
+        title: 'Unchanged',
+      });
+      expect(broadcastMock).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('automated and manual transit coexistence', () => {
+  it('keeps manual train creation independent from automated transit creation', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    await withHarness(user.id, null, async (h) => {
+      await h.client.callTool({
+        name: 'create_transport',
+        arguments: {
+          tripId: trip.id,
+          type: 'train',
+          title: 'Manual night train',
+          start_day_id: day.id,
+          endpoints: [
+            { role: 'from', sequence: 0, name: 'Manual A', lat: 52.52, lng: 13.405 },
+            { role: 'to', sequence: 1, name: 'Manual B', lat: 50.06, lng: 19.94 },
+          ],
+        },
+      });
+      await h.client.callTool({
+        name: 'create_transit_route',
+        arguments: writeArguments(trip.id, day.id),
+      });
+    });
+    const rows = testDb.prepare('SELECT title, type FROM reservations WHERE trip_id = ? ORDER BY id').all(trip.id);
+    expect(rows).toEqual([
+      { title: 'Manual night train', type: 'train' },
+      { title: 'Station A → Station B', type: 'transit' },
+    ]);
   });
 });
