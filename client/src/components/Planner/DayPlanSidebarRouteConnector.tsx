@@ -1,22 +1,202 @@
-import { Car, Footprints, Hotel } from 'lucide-react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import ReactDOM from 'react-dom'
+import { Car, Footprints, Hotel, TramFront } from 'lucide-react'
 import type { RouteSegment } from '../../types'
 
+export interface RouteConnectorTransitAction {
+  label: string
+  ariaLabel: string
+  onSelect: () => void
+}
+
 /** Slim travel-time connector shown between two consecutive located stops in a day. */
-export function RouteConnector({ seg, profile }: { seg: RouteSegment; profile: 'driving' | 'walking' }) {
+export function RouteConnector({
+  seg,
+  profile,
+  transitAction,
+}: {
+  seg: RouteSegment
+  profile: 'driving' | 'walking'
+  transitAction?: RouteConnectorTransitAction
+}) {
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 210 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const actionRef = useRef<HTMLButtonElement>(null)
   const driving = profile === 'driving'
   const Icon = driving ? Car : Footprints
   const line = { flex: 1, height: 1, minHeight: 1, alignSelf: 'center', background: 'var(--border-primary)' }
+
+  const close = (restoreFocus = false) => {
+    setOpen(false)
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus())
+  }
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const viewportPadding = 8
+    const width = Math.min(210, Math.max(0, window.innerWidth - viewportPadding * 2))
+    const maximumLeft = Math.max(viewportPadding, window.innerWidth - width - viewportPadding)
+    setPosition({
+      top: Math.max(viewportPadding, Math.min(rect.bottom + 5, window.innerHeight - 52)),
+      left: Math.max(
+        viewportPadding,
+        Math.min(rect.left + rect.width / 2 - width / 2, maximumLeft),
+      ),
+      width,
+    })
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    actionRef.current?.focus()
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return
+      close()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      close(true)
+    }
+    const onViewportChange = () => close()
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', onViewportChange, true)
+    window.addEventListener('scroll', onViewportChange, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', onViewportChange, true)
+      window.removeEventListener('scroll', onViewportChange, true)
+    }
+  }, [open])
+
+  const label = (
+    <>
+      <Icon size={11} strokeWidth={2} />
+      <span>{seg.durationText ?? (driving ? seg.drivingText : seg.walkingText)}</span>
+      <span style={{ opacity: 0.4 }}>·</span>
+      <span>{seg.distanceText}</span>
+    </>
+  )
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 14px', fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))', color: 'var(--text-faint)', lineHeight: 1.2 }}>
-      <div style={line} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <Icon size={11} strokeWidth={2} />
-        <span>{seg.durationText ?? (driving ? seg.drivingText : seg.walkingText)}</span>
-        <span style={{ opacity: 0.4 }}>·</span>
-        <span>{seg.distanceText}</span>
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 14px', fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))', color: 'var(--text-faint)', lineHeight: 1.2 }}>
+        <div style={line} />
+        {transitAction ? (
+          <button
+            ref={triggerRef}
+            type="button"
+            aria-label={transitAction.ariaLabel}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => setOpen(value => !value)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              flexShrink: 0,
+              minHeight: 24,
+              padding: '3px 7px',
+              margin: '-3px -7px',
+              border: 0,
+              borderRadius: 7,
+              background: open ? 'var(--bg-hover)' : 'transparent',
+              color: open ? 'var(--text-primary)' : 'inherit',
+              cursor: 'pointer',
+              font: 'inherit',
+              lineHeight: 'inherit',
+              transition: 'background 120ms ease, color 120ms ease',
+            }}
+            onMouseEnter={event => {
+              event.currentTarget.style.background = 'var(--bg-hover)'
+              event.currentTarget.style.color = 'var(--text-primary)'
+            }}
+            onMouseLeave={event => {
+              if (open) return
+              event.currentTarget.style.background = 'transparent'
+              event.currentTarget.style.color = 'inherit'
+            }}
+          >
+            {label}
+          </button>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {label}
+          </div>
+        )}
+        <div style={line} />
       </div>
-      <div style={line} />
-    </div>
+
+      {open && transitAction && ReactDOM.createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={transitAction.label}
+          className="trek-popover-enter"
+          style={{
+            position: 'fixed',
+            top: position.top,
+            left: position.left,
+            zIndex: 999999,
+            width: position.width,
+            maxWidth: 'calc(100vw - 16px)',
+            padding: 4,
+            border: '1px solid var(--border-primary)',
+            borderRadius: 10,
+            background: 'var(--bg-card)',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            fontFamily: 'var(--font-system)',
+          }}
+        >
+          <button
+            ref={actionRef}
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              transitAction.onSelect()
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              width: '100%',
+              minHeight: 36,
+              padding: '8px 10px',
+              border: 0,
+              borderRadius: 7,
+              background: 'transparent',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+              fontWeight: 500,
+              textAlign: 'left',
+            }}
+            onMouseEnter={event => {
+              event.currentTarget.style.background = 'var(--bg-hover)'
+            }}
+            onMouseLeave={event => {
+              event.currentTarget.style.background = 'transparent'
+            }}
+          >
+            <TramFront size={13} className="text-content-faint" />
+            <span>{transitAction.label}</span>
+          </button>
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 
