@@ -1,9 +1,8 @@
-import { Module } from '@nestjs/common';
 import { TransitController } from './transit.controller';
-import { RateLimitService } from '../auth/rate-limit.service';
+import { Module } from '@nestjs/common';
 
 @Module({
   controllers: [TransitController],
-  providers: [RateLimitService],
+  providers: [],
 })
 export class TransitModule {}
