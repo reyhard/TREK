@@ -284,6 +284,13 @@ export function buildTransitRouteFields(input: {
   };
 }
 
+function normalizeTransitTitleOverride(title: string | undefined): string | undefined {
+  if (title === undefined) return undefined;
+  const normalized = title.trim();
+  if (!normalized) throw new Error('Title is required');
+  return normalized;
+}
+
 export function createTransitReservation(input: {
   tripId: number;
   dayId: number;
@@ -293,10 +300,11 @@ export function createTransitReservation(input: {
   title?: string;
   notes?: string;
 }): { reservation: unknown } {
+  const title = normalizeTransitTitleOverride(input.title);
   const fields = buildTransitRouteFields(input);
   const run = db.transaction(() =>
     createReservation(input.tripId, {
-      title: input.title?.trim() || `${input.from.name} → ${input.to.name}`,
+      title: title ?? `${fields.endpoints[0].name} → ${fields.endpoints.at(-1)!.name}`,
       notes: input.notes?.trim() || undefined,
       ...fields,
     }),
@@ -315,6 +323,7 @@ export function updateTransitReservation(input: {
   title?: string;
   notes?: string;
 }): { reservation: unknown } {
+  const title = normalizeTransitTitleOverride(input.title);
   const current = getReservation(input.reservationId, input.tripId);
   if (!current) throw new Error('Automated transit route not found');
   if (current.type !== 'transit') throw new Error('Target reservation is not an automated transit route');
@@ -322,7 +331,7 @@ export function updateTransitReservation(input: {
   const fields = buildTransitRouteFields(input);
   const patch = {
     ...fields,
-    ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+    ...(title !== undefined ? { title } : {}),
     ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
   };
   const run = db.transaction(() => updateReservation(input.reservationId, input.tripId, patch, current));

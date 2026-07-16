@@ -358,21 +358,41 @@ describe('transit reservation fields', () => {
 });
 
 describe('transit reservation persistence', () => {
-  it('creates an automated transit entry with the default title', () => {
+  it('creates the default title from normalized endpoint names', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
     const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
     const { reservation } = createTransitReservation({
       tripId: trip.id,
       dayId: day.id,
-      from: { name: 'Hotel', lat: 35.689, lng: 139.692 },
-      to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
+      from: { name: '  Hotel  ', lat: 35.689, lng: 139.692 },
+      to: { name: '\tTemple\n', lat: 35.7148, lng: 139.7967 },
       itinerary: route({ startTime: '2026-10-02T00:00:00.000Z', endTime: '2026-10-02T00:30:00.000Z' }),
     }) as any;
     expect(reservation.title).toBe('Hotel → Temple');
     expect(reservation.type).toBe('transit');
     expect(reservation.status).toBe('confirmed');
     expect(reservation.endpoints.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rejects an explicit whitespace create title without inserting a reservation', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+
+    expect(() =>
+      createTransitReservation({
+        tripId: trip.id,
+        dayId: day.id,
+        from: { name: 'A', lat: 52.52, lng: 13.405 },
+        to: { name: 'B', lat: 52.5, lng: 13.4 },
+        itinerary: route(),
+        title: '  \t ',
+      }),
+    ).toThrow('Title is required');
+    expect(testDb.prepare('SELECT COUNT(*) AS count FROM reservations WHERE trip_id = ?').get(trip.id)).toEqual({
+      count: 0,
+    });
   });
 
   it('preserves title and notes on update when overrides are absent', () => {
@@ -398,6 +418,49 @@ describe('transit reservation persistence', () => {
     }) as any;
     expect(updated.reservation.title).toBe('My route');
     expect(updated.reservation.notes).toBe('Keep this note');
+  });
+
+  it('rejects an explicit whitespace update title without mutating the reservation', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const created = createTransitReservation({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'A', lat: 52.52, lng: 13.405 },
+      to: { name: 'B', lat: 52.5, lng: 13.4 },
+      itinerary: route(),
+      title: 'Original route',
+      notes: 'Original note',
+    }) as any;
+    const original = testDb
+      .prepare('SELECT title, reservation_time, reservation_end_time, notes, metadata FROM reservations WHERE id = ?')
+      .get(created.reservation.id);
+    const originalEndpoints = testDb
+      .prepare('SELECT role, sequence, name FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
+      .all(created.reservation.id);
+
+    expect(() =>
+      updateTransitReservation({
+        tripId: trip.id,
+        reservationId: created.reservation.id,
+        dayId: day.id,
+        from: { name: 'C', lat: 52.51, lng: 13.41 },
+        to: { name: 'D', lat: 52.49, lng: 13.39 },
+        itinerary: route({ endTime: '2026-10-02T09:00:00.000Z' }),
+        title: '\n  ',
+      }),
+    ).toThrow('Title is required');
+    expect(
+      testDb
+        .prepare('SELECT title, reservation_time, reservation_end_time, notes, metadata FROM reservations WHERE id = ?')
+        .get(created.reservation.id),
+    ).toEqual(original);
+    expect(
+      testDb
+        .prepare('SELECT role, sequence, name FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
+        .all(created.reservation.id),
+    ).toEqual(originalEndpoints);
   });
 
   it('applies explicit title and notes overrides', () => {
