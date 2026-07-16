@@ -1,6 +1,6 @@
 import { db } from '../db/database';
 import { getDay } from './dayService';
-import type { EndpointInput } from './reservationService';
+import { createReservation, getReservation, updateReservation, type EndpointInput } from './reservationService';
 import type { TransitItinerary, TransitLeg } from './transitService';
 import { assertTransitCoordinate, formatTransitDate, formatTransitTime, resolveTransitTimezone } from './transitTime';
 
@@ -282,6 +282,52 @@ export function buildTransitRouteFields(input: {
     endpoints,
     needs_review: false,
   };
+}
+
+export function createTransitReservation(input: {
+  tripId: number;
+  dayId: number;
+  from: NamedTransitEndpoint;
+  to: NamedTransitEndpoint;
+  itinerary: unknown;
+  title?: string;
+  notes?: string;
+}): { reservation: unknown } {
+  const fields = buildTransitRouteFields(input);
+  const run = db.transaction(() =>
+    createReservation(input.tripId, {
+      title: input.title?.trim() || `${input.from.name} → ${input.to.name}`,
+      notes: input.notes?.trim() || undefined,
+      ...fields,
+    }),
+  );
+  const { reservation } = run();
+  return { reservation };
+}
+
+export function updateTransitReservation(input: {
+  tripId: number;
+  reservationId: number;
+  dayId: number;
+  from: NamedTransitEndpoint;
+  to: NamedTransitEndpoint;
+  itinerary: unknown;
+  title?: string;
+  notes?: string;
+}): { reservation: unknown } {
+  const current = getReservation(input.reservationId, input.tripId);
+  if (!current) throw new Error('Automated transit route not found');
+  if (current.type !== 'transit') throw new Error('Target reservation is not an automated transit route');
+
+  const fields = buildTransitRouteFields(input);
+  const patch = {
+    ...fields,
+    ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
+  };
+  const run = db.transaction(() => updateReservation(input.reservationId, input.tripId, patch, current));
+  const { reservation } = run();
+  return { reservation };
 }
 
 export function rankTransitItineraries(items: TransitItinerary[], preference: TransitPreference): TransitItinerary[] {

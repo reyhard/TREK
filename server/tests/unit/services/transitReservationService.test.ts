@@ -2,11 +2,13 @@ import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
 import {
   buildTransitRouteFields,
+  createTransitReservation,
   mapTransitModeGroups,
   normalizeTransitItinerary,
   rankTransitItineraries,
   resolveTransitEndpoint,
   summarizeTransitItinerary,
+  updateTransitReservation,
 } from '../../../src/services/transitReservationService';
 import type { TransitItinerary } from '../../../src/services/transitService';
 import { createPlace, createTrip, createUser } from '../../helpers/factories';
@@ -38,6 +40,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  testDb.exec('DROP TRIGGER IF EXISTS fail_transit_endpoint');
+  testDb.exec('DROP TRIGGER IF EXISTS fail_transit_endpoint_update');
   resetTestDb(testDb);
 });
 
@@ -350,5 +354,183 @@ describe('transit reservation fields', () => {
     });
 
     expect(fields.end_day_id).toBe(day.id);
+  });
+});
+
+describe('transit reservation persistence', () => {
+  it('creates an automated transit entry with the default title', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const { reservation } = createTransitReservation({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'Hotel', lat: 35.689, lng: 139.692 },
+      to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
+      itinerary: route({ startTime: '2026-10-02T00:00:00.000Z', endTime: '2026-10-02T00:30:00.000Z' }),
+    }) as any;
+    expect(reservation.title).toBe('Hotel → Temple');
+    expect(reservation.type).toBe('transit');
+    expect(reservation.status).toBe('confirmed');
+    expect(reservation.endpoints.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('preserves title and notes on update when overrides are absent', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const created = createTransitReservation({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'A', lat: 52.52, lng: 13.405 },
+      to: { name: 'B', lat: 52.5, lng: 13.4 },
+      itinerary: route(),
+      title: 'My route',
+      notes: 'Keep this note',
+    }) as any;
+    const updated = updateTransitReservation({
+      tripId: trip.id,
+      reservationId: created.reservation.id,
+      dayId: day.id,
+      from: { name: 'C', lat: 52.51, lng: 13.41 },
+      to: { name: 'D', lat: 52.49, lng: 13.39 },
+      itinerary: route({ endTime: '2026-10-02T08:45:00.000Z' }),
+    }) as any;
+    expect(updated.reservation.title).toBe('My route');
+    expect(updated.reservation.notes).toBe('Keep this note');
+  });
+
+  it('applies explicit title and notes overrides', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const created = createTransitReservation({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'A', lat: 52.52, lng: 13.405 },
+      to: { name: 'B', lat: 52.5, lng: 13.4 },
+      itinerary: route(),
+      notes: 'Original note',
+    }) as any;
+    const updated = updateTransitReservation({
+      tripId: trip.id,
+      reservationId: created.reservation.id,
+      dayId: day.id,
+      from: { name: 'C', lat: 52.51, lng: 13.41 },
+      to: { name: 'D', lat: 52.49, lng: 13.39 },
+      itinerary: route(),
+      title: 'Replacement route',
+      notes: 'Replacement note',
+    }) as any;
+    expect(updated.reservation.title).toBe('Replacement route');
+    expect(updated.reservation.notes).toBe('Replacement note');
+  });
+
+  it('allows explicit empty notes to clear existing notes', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const created = createTransitReservation({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'A', lat: 52.52, lng: 13.405 },
+      to: { name: 'B', lat: 52.5, lng: 13.4 },
+      itinerary: route(),
+      notes: 'Clear me',
+    }) as any;
+    const updated = updateTransitReservation({
+      tripId: trip.id,
+      reservationId: created.reservation.id,
+      dayId: day.id,
+      from: { name: 'A', lat: 52.52, lng: 13.405 },
+      to: { name: 'B', lat: 52.5, lng: 13.4 },
+      itinerary: route(),
+      notes: '',
+    }) as any;
+    expect(updated.reservation.notes).toBeNull();
+  });
+
+  it('rejects updates to non-transit reservations', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const manual = testDb
+      .prepare(
+        "INSERT INTO reservations (trip_id, day_id, title, type, status) VALUES (?, ?, 'Train', 'train', 'confirmed')",
+      )
+      .run(trip.id, day.id);
+    expect(() =>
+      updateTransitReservation({
+        tripId: trip.id,
+        reservationId: Number(manual.lastInsertRowid),
+        dayId: day.id,
+        from: { name: 'A', lat: 52.52, lng: 13.405 },
+        to: { name: 'B', lat: 52.5, lng: 13.4 },
+        itinerary: route(),
+      }),
+    ).toThrow('Target reservation is not an automated transit route');
+  });
+
+  it('rolls back the reservation insert when endpoint persistence fails', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    testDb.exec(
+      "CREATE TRIGGER fail_transit_endpoint BEFORE INSERT ON reservation_endpoints BEGIN SELECT RAISE(FAIL, 'forced endpoint failure'); END",
+    );
+    expect(() =>
+      createTransitReservation({
+        tripId: trip.id,
+        dayId: day.id,
+        from: { name: 'A', lat: 52.52, lng: 13.405 },
+        to: { name: 'B', lat: 52.5, lng: 13.4 },
+        itinerary: route(),
+      }),
+    ).toThrow('forced endpoint failure');
+    expect(
+      testDb.prepare("SELECT COUNT(*) AS count FROM reservations WHERE trip_id = ? AND type = 'transit'").get(trip.id),
+    ).toEqual({ count: 0 });
+  });
+
+  it('rolls back route fields and endpoints when an update endpoint insert fails', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
+    const created = createTransitReservation({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'A', lat: 52.52, lng: 13.405 },
+      to: { name: 'B', lat: 52.5, lng: 13.4 },
+      itinerary: route(),
+      title: 'Original',
+    }) as any;
+    const original = testDb
+      .prepare('SELECT title, reservation_end_time FROM reservations WHERE id = ?')
+      .get(created.reservation.id);
+    const originalEndpoints = testDb
+      .prepare('SELECT role, sequence, name FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
+      .all(created.reservation.id);
+    testDb.exec(
+      "CREATE TRIGGER fail_transit_endpoint_update BEFORE INSERT ON reservation_endpoints BEGIN SELECT RAISE(FAIL, 'forced endpoint update failure'); END",
+    );
+    expect(() =>
+      updateTransitReservation({
+        tripId: trip.id,
+        reservationId: created.reservation.id,
+        dayId: day.id,
+        from: { name: 'C', lat: 52.51, lng: 13.41 },
+        to: { name: 'D', lat: 52.49, lng: 13.39 },
+        itinerary: route({ endTime: '2026-10-02T09:00:00.000Z' }),
+        title: 'Changed',
+      }),
+    ).toThrow('forced endpoint update failure');
+    expect(
+      testDb.prepare('SELECT title, reservation_end_time FROM reservations WHERE id = ?').get(created.reservation.id),
+    ).toEqual(original);
+    expect(
+      testDb
+        .prepare('SELECT role, sequence, name FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
+        .all(created.reservation.id),
+    ).toEqual(originalEndpoints);
   });
 });
