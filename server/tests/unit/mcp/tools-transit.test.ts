@@ -6,7 +6,7 @@ import { createDay, createPlace, createTrip, createUser } from '../../helpers/fa
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -14,6 +14,12 @@ const { testDb, dbMock } = vi.hoisted(() => {
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 5000');
+  const canAccessTrip = (tripId: number, userId: number) =>
+    db
+      .prepare(
+        `SELECT t.id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+      )
+      .get(userId, tripId, userId);
   return {
     testDb: db,
     dbMock: {
@@ -21,12 +27,8 @@ const { testDb, dbMock } = vi.hoisted(() => {
       closeDb: () => {},
       reinitialize: () => {},
       getPlaceWithTags: () => null,
-      canAccessTrip: (tripId: number, userId: number) =>
-        db
-          .prepare(
-            `SELECT t.id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
-          )
-          .get(userId, tripId, userId),
+      canAccessTrip: vi.fn(canAccessTrip),
+      canAccessTripImplementation: canAccessTrip,
       isOwner: (tripId: number, userId: number) =>
         !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
     },
@@ -61,9 +63,12 @@ beforeEach(() => {
   transitMock.geocode.mockReset();
   transitMock.plan.mockReset();
   broadcastMock.mockReset();
+  dbMock.canAccessTrip.mockReset().mockImplementation(dbMock.canAccessTripImplementation);
   resetTransitUsageLimits();
   delete process.env.DEMO_MODE;
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 afterAll(() => testDb.close());
 
@@ -395,6 +400,24 @@ describe('Tool: plan_transit_route', () => {
       const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
       expect(result.isError).toBe(true);
       expect((result.content[0] as any).text).toBe('Trip not found or access denied.');
+      expect(transitMock.plan).not.toHaveBeenCalled();
+    });
+  });
+
+  it('logs access-check failures without exposing internal details', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day } = datedTrip(user.id);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    dbMock.canAccessTrip.mockImplementationOnce(() => {
+      throw providerError('database password appeared in an access-check stack', 500);
+    });
+
+    await withHarness(user.id, ['places:read'], async (h) => {
+      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Failed to plan transit route.');
+      expect((result.content[0] as any).text).not.toContain('database password');
+      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit route planning failed:', expect.any(Error));
       expect(transitMock.plan).not.toHaveBeenCalled();
     });
   });

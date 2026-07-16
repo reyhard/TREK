@@ -66,9 +66,13 @@ const EXPECTED_TRANSIT_ERROR_PREFIXES = [
 
 function expectedTransitErrorMessage(error: unknown): string | null {
   if (!(error instanceof Error)) return null;
-  if (typeof (error as Error & { status?: unknown }).status === 'number') return error.message;
   if (EXPECTED_TRANSIT_ERRORS.has(error.message)) return error.message;
   return EXPECTED_TRANSIT_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix)) ? error.message : null;
+}
+
+function providerErrorMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  return typeof (error as Error & { status?: unknown }).status === 'number' ? error.message : null;
 }
 
 export function registerTransitTools(server: McpServer, userId: number, scopes: string[] | null): void {
@@ -96,7 +100,13 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
         if (!checkTransitUsage('geocode', `mcp:user:${userId}`)) {
           return mcpError('Transit provider rate limit exceeded. Try again later.');
         }
-        return ok(await transit.geocode(query, language, near ? `${near.lat},${near.lng}` : undefined));
+        try {
+          return ok(await transit.geocode(query, language, near ? `${near.lat},${near.lng}` : undefined));
+        } catch (error) {
+          const provider = providerErrorMessage(error);
+          if (provider) return mcpError(provider);
+          throw error;
+        }
       } catch (error) {
         const expected = expectedTransitErrorMessage(error);
         if (expected) return mcpError(expected);
@@ -125,9 +135,9 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
       annotations: TOOL_ANNOTATIONS_READONLY,
     },
     async ({ tripId, dayId, from, to, time, timeMode, modes, preference, maxTransfers }) => {
-      if (!canAccessTrip(tripId, userId)) return noAccess();
-
       try {
+        if (!canAccessTrip(tripId, userId)) return noAccess();
+
         const day = getDay(dayId, tripId);
         if (!day) return mcpError('Day does not belong to this trip.');
         if (!day.date) return mcpError('The selected day has no date.');
@@ -145,14 +155,21 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
           return mcpError('Transit provider rate limit exceeded. Try again later.');
         }
 
-        const result = await transit.plan({
-          from: `${resolvedFrom.lat},${resolvedFrom.lng}`,
-          to: `${resolvedTo.lat},${resolvedTo.lng}`,
-          time: timeIso,
-          arriveBy: timeMode === 'arrive_by',
-          modes: transitModes,
-          maxTransfers,
-        });
+        let result;
+        try {
+          result = await transit.plan({
+            from: `${resolvedFrom.lat},${resolvedFrom.lng}`,
+            to: `${resolvedTo.lat},${resolvedTo.lng}`,
+            time: timeIso,
+            arriveBy: timeMode === 'arrive_by',
+            modes: transitModes,
+            maxTransfers,
+          });
+        } catch (error) {
+          const provider = providerErrorMessage(error);
+          if (provider) return mcpError(provider);
+          throw error;
+        }
         const cleaned = result.itineraries.map((item) => {
           const normalized = normalizeTransitItinerary(item);
           return {
