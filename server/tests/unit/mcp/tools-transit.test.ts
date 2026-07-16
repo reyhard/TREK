@@ -1,5 +1,6 @@
 import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
+import { ALL_SCOPES, SCOPE_INFO } from '../../../src/mcp/scopes';
 import { resetTransitUsageLimits } from '../../../src/services/transitRateLimit';
 import type { TransitItinerary } from '../../../src/services/transitService';
 import { invalidatePermissionsCache } from '../../../src/services/permissions';
@@ -53,6 +54,12 @@ const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
 const ALL_MODE_GROUPS = ['rail', 'subway', 'tram', 'bus', 'ferry', 'cable_car'];
+
+it('describes transit-stop discovery through places:read without adding transit scopes', () => {
+  expect(SCOPE_INFO['places:read'].description).toContain('transit stops');
+  expect(ALL_SCOPES).not.toContain('transit:read' as any);
+  expect(ALL_SCOPES).not.toContain('transit:write' as any);
+});
 
 beforeAll(() => {
   createTables(testDb);
