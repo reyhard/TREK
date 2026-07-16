@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Liên kết mời này không hợp lệ hoặc đã hết hạn.',
   'trip.invite.backToDashboard': 'Quay lại bảng điều khiển',
   'transit.title': 'Giao thông công cộng',
+  'transit.planConnector': 'Lập kế hoạch đi phương tiện công cộng',
   'transit.from': 'Điểm đi',
   'transit.to': 'Điểm đến',
   'transit.searchStop': 'Tìm điểm dừng hoặc ga…',

@@ -38,6 +38,8 @@ import { DayPlanSidebarNoteModal } from './DayPlanSidebarNoteModal'
 import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal'
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal'
 import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transitDisplay'
+import type { TransitSearchPrefill } from './transitSearchTypes'
+import { getConnectorTransitPrefill, isTransitMergedItem } from './transitConnector'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
@@ -85,8 +87,8 @@ interface DayPlanSidebarProps {
   onUndo?: () => void
   onRouteRefresh?: () => void
   onAddTransport?: (dayId: number) => void
-  /** Opens the public-transit route search for a day (#1065). */
-  onPlanTransit?: (dayId: number) => void
+  /** Opens public-transit search, optionally seeded from an adjacent POI connector. */
+  onPlanTransit?: (dayId: number, prefill?: TransitSearchPrefill) => void
   /** Opens the journey view for a saved transit entry (#1065). */
   onOpenTransit?: (reservation: Reservation) => void
   onEditTransport?: (reservation: Reservation) => void
@@ -1619,6 +1621,10 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                         const isPlaceSelected = selectedAssignmentId ? assignment.id === selectedAssignmentId : place.id === selectedPlaceId
                         const isDraggingThis = draggingId === assignment.id
                         const placeIdx = placeItems.findIndex(i => i.data.id === assignment.id)
+                        const nextMergedItem = merged[idx + 1]
+                        const transitPrefill = getConnectorTransitPrefill(day.id, item, nextMergedItem)
+                        const followedByTransit = isTransitMergedItem(nextMergedItem)
+                        const connectorSeg = routeLegs[day.id]?.[assignment.id]
 
                         const arrowMove = (direction: 'up' | 'down') => {
                           const m = getMergedItems(day.id)
@@ -1942,7 +1948,17 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                               </button>
                             )}
                           </div>
-                          {routeLegs[day.id]?.[assignment.id] && <RouteConnector seg={routeLegs[day.id]![assignment.id]} profile={routeProfile} />}
+                          {connectorSeg && !followedByTransit && (
+                            <RouteConnector
+                              seg={connectorSeg}
+                              profile={routeProfile}
+                              transitAction={transitPrefill && onPlanTransit ? {
+                                label: t('transit.planConnector'),
+                                ariaLabel: `${t('transit.planConnector')}: ${transitPrefill.from!.name} → ${transitPrefill.to!.name}`,
+                                onSelect: () => onPlanTransit(day.id, transitPrefill),
+                              } : undefined}
+                            />
+                          )}
                           </React.Fragment>
                         )
                       }
@@ -2170,7 +2186,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                               <TransitItineraryInline legs={transitMeta.legs} t={t} />
                             </div>
                           )}
-                          {routeLegs[day.id]?.[res.id] && <RouteConnector seg={routeLegs[day.id]![res.id]} profile={routeProfile} />}
+                          {!isTransitMergedItem(item) && routeLegs[day.id]?.[res.id] && (
+                            <RouteConnector seg={routeLegs[day.id]![res.id]} profile={routeProfile} />
+                          )}
                           </React.Fragment>
                         )
                       }

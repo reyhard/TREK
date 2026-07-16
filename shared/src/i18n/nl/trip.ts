@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Deze uitnodigingslink is ongeldig of verlopen.',
   'trip.invite.backToDashboard': 'Terug naar dashboard',
   'transit.title': 'Openbaar vervoer',
+  'transit.planConnector': 'Openbaar vervoer plannen',
   'transit.from': 'Van',
   'transit.to': 'Naar',
   'transit.searchStop': 'Zoek halte of station…',

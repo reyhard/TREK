@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Tento odkaz pro pozvání je neplatný nebo jeho platnost vypršela.',
   'trip.invite.backToDashboard': 'Zpět na přehled',
   'transit.title': 'Veřejná doprava',
+  'transit.planConnector': 'Naplánovat veřejnou dopravu',
   'transit.from': 'Odkud',
   'transit.to': 'Kam',
   'transit.searchStop': 'Hledat zastávku nebo stanici…',

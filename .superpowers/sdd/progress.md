@@ -34,3 +34,15 @@
 - Preservation check: `HotelRouteConnector` tail matched the base exactly (`sha256 458fa4eb388e7d3d7748624740cebfe0f083f55770505b218b98db791d7c01cd`).
 - Commit: `fix(transit): clamp connector action menu`
 - Status: complete
+- Task 2 reviewer: APPROVED; remaining Minor: popover getBoundingClientRect includes the entrance scale transform, which can slightly under-measure final dimensions and consume viewport padding; prefer offsetWidth/offsetHeight in a future cleanup.
+
+## Task 3: Wire eligible POI connectors and suppress redundant transit connectors
+
+- Base commit: `9f5f50c47bb2805fb61d460312d82b39cb6983d9`
+- Red: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebar.test.tsx` — failed as expected, 3 failures because connector actions were not wired and transit-adjacent connectors were not suppressed.
+- Green: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebar.test.tsx` — passed, 1 file and 109 tests.
+- Locale parity test: `npm run test --workspace=client -- tests/unit/i18n/parity.test.ts` — passed, 1 file and 20 tests.
+- Locale parity script: `node shared/scripts/i18n-parity.mjs` — passed (`File parity: OK`, `Key parity: OK`).
+- Typecheck: `npm run typecheck --workspace=client` — passed.
+- Regression: a first-class `transit` row without rich `metadata.transit` suppresses both adjacent route connectors.
+- Status: implementation complete; task review pending.

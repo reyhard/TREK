@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Tautan undangan ini tidak valid atau sudah kedaluwarsa.',
   'trip.invite.backToDashboard': 'Kembali ke dasbor',
   'transit.title': 'Transportasi umum',
+  'transit.planConnector': 'Rencanakan transportasi umum',
   'transit.from': 'Dari',
   'transit.to': 'Ke',
   'transit.searchStop': 'Cari halte atau stasiun…',

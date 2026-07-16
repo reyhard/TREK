@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'رابط الدعوة هذا غير صالح أو انتهت صلاحيته.',
   'trip.invite.backToDashboard': 'العودة إلى لوحة التحكم',
   'transit.title': 'النقل العام',
+  'transit.planConnector': 'التخطيط للنقل العام',
   'transit.from': 'من',
   'transit.to': 'إلى',
   'transit.searchStop': 'ابحث عن موقف أو محطة…',

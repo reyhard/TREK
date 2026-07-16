@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Bu davet bağlantısı geçersiz veya süresi dolmuş.',
   'trip.invite.backToDashboard': 'Panoya dön',
   'transit.title': 'Toplu taşıma',
+  'transit.planConnector': 'Toplu taşımayı planla',
   'transit.from': 'Nereden',
   'transit.to': 'Nereye',
   'transit.searchStop': 'Durak veya istasyon ara…',

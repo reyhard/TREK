@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': '이 초대 링크는 유효하지 않거나 만료되었습니다.',
   'trip.invite.backToDashboard': '대시보드로 돌아가기',
   'transit.title': '대중교통',
+  'transit.planConnector': '대중교통 경로 계획',
   'transit.from': '출발',
   'transit.to': '도착',
   'transit.searchStop': '정류장 또는 역 검색…',

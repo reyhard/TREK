@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Ez a meghívó link érvénytelen vagy lejárt.',
   'trip.invite.backToDashboard': 'Vissza az irányítópultra',
   'transit.title': 'Tömegközlekedés',
+  'transit.planConnector': 'Tömegközlekedés tervezése',
   'transit.from': 'Innen',
   'transit.to': 'Ide',
   'transit.searchStop': 'Megálló vagy állomás keresése…',

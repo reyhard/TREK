@@ -1961,4 +1961,201 @@ describe('DayPlanSidebar', () => {
     await user.click(screen.getByRole('button', { name: 'Route' }))
     expect(await screen.findByText('2 km')).toBeInTheDocument()
   })
+
+  it('opens connector transit planning with adjacent POI prefill', async () => {
+    const user = userEvent.setup()
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16', title: 'Kamakura' })
+    const origin = buildPlace({
+      id: 101,
+      name: 'Enoshima Sea Candle',
+      lat: 35.2997,
+      lng: 139.4803,
+      place_time: '17:20',
+      end_time: '17:45',
+    })
+    const destination = buildPlace({
+      id: 102,
+      name: 'Kamakura Station',
+      lat: 35.3192,
+      lng: 139.5505,
+      place_time: '18:30',
+    })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+    const onPlanTransit = vi.fn()
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit,
+    })} />)
+
+    const trigger = await screen.findByRole('button', {
+      name: 'Plan public transit: Enoshima Sea Candle → Kamakura Station',
+    })
+    await user.click(trigger)
+    await user.click(screen.getByRole('menuitem', { name: 'Plan public transit' }))
+
+    expect(onPlanTransit).toHaveBeenCalledWith(10, {
+      from: { name: 'Enoshima Sea Candle', lat: 35.2997, lng: 139.4803 },
+      to: { name: 'Kamakura Station', lat: 35.3192, lng: 139.5505 },
+      time: '17:45',
+      placement: { dayId: 10, position: 0.5 },
+    })
+  })
+
+  it('keeps the connector display-only when transit planning is unavailable', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 1 })
+    const destination = buildPlace({ id: 102, name: 'Destination', lat: 2, lng: 2 })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+    })} />)
+
+    expect(await screen.findByText('25 min')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Plan public transit:/ })).not.toBeInTheDocument()
+  })
+
+  it('suppresses route connectors immediately around a transit journey', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const origin = buildPlace({
+      id: 101,
+      name: 'Origin',
+      lat: 1,
+      lng: 1,
+      place_time: '09:00',
+      end_time: '09:30',
+    })
+    const destination = buildPlace({
+      id: 102,
+      name: 'Destination',
+      lat: 2,
+      lng: 2,
+      place_time: '10:00',
+    })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+    const transit = buildReservation({
+      id: 301,
+      day_id: 10,
+      end_day_id: 10,
+      type: 'transit',
+      title: 'Origin → Destination',
+      status: 'confirmed',
+      reservation_time: '2026-07-16T09:30',
+      reservation_end_time: '2026-07-16T09:50',
+      day_positions: { '10': 0.5 },
+      endpoints: [
+        {
+          role: 'from', sequence: 0, name: 'Origin', code: null,
+          lat: 1, lng: 1, timezone: 'UTC',
+          local_date: '2026-07-16', local_time: '09:30',
+        },
+        {
+          role: 'to', sequence: 1, name: 'Destination', code: null,
+          lat: 2, lng: 2, timezone: 'UTC',
+          local_date: '2026-07-16', local_time: '09:50',
+        },
+      ],
+      metadata: {
+        transit: {
+          duration: 1200,
+          transfers: 0,
+          walk_seconds: 120,
+          legs: [],
+        },
+      },
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      reservations: [transit],
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit: vi.fn(),
+    })} />)
+
+    expect(await screen.findAllByText('Origin')).toHaveLength(2)
+    await waitFor(() => expect(screen.queryByText('25 min')).not.toBeInTheDocument())
+  })
+
+  it('suppresses both adjacent connectors for a transit row without rich metadata', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 1 })
+    const destination = buildPlace({ id: 102, name: 'Destination', lat: 2, lng: 2 })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+    const transit = buildReservation({
+      id: 301,
+      day_id: 10,
+      end_day_id: 10,
+      type: 'transit',
+      title: 'Sparse transit journey',
+      reservation_time: '2026-07-16T09:30',
+      reservation_end_time: '2026-07-16T09:50',
+      day_positions: { '10': 0.5 },
+      endpoints: [
+        {
+          role: 'from', sequence: 0, name: 'Origin', code: null,
+          lat: 1, lng: 1, timezone: 'UTC',
+          local_date: '2026-07-16', local_time: '09:30',
+        },
+        {
+          role: 'to', sequence: 1, name: 'Destination', code: null,
+          lat: 2, lng: 2, timezone: 'UTC',
+          local_date: '2026-07-16', local_time: '09:50',
+        },
+      ],
+      metadata: {},
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      reservations: [transit],
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit: vi.fn(),
+    })} />)
+
+    expect(await screen.findByText('Sparse transit journey')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryAllByText('25 min')).toHaveLength(0))
+  })
 })

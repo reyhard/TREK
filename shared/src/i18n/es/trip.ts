@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Este enlace de invitación no es válido o ha caducado.',
   'trip.invite.backToDashboard': 'Volver al panel',
   'transit.title': 'Transporte público',
+  'transit.planConnector': 'Planificar transporte público',
   'transit.from': 'Origen',
   'transit.to': 'Destino',
   'transit.searchStop': 'Buscar parada o estación…',

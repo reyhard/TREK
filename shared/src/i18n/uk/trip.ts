@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Це посилання-запрошення недійсне або термін його дії минув.',
   'trip.invite.backToDashboard': 'Назад до панелі',
   'transit.title': 'Громадський транспорт',
+  'transit.planConnector': 'Спланувати поїздку громадським транспортом',
   'transit.from': 'Звідки',
   'transit.to': 'Куди',
   'transit.searchStop': 'Пошук зупинки або станції…',

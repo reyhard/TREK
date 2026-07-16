@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Эта ссылка-приглашение недействительна или срок её действия истёк.',
   'trip.invite.backToDashboard': 'Вернуться на панель управления',
   'transit.title': 'Общественный транспорт',
+  'transit.planConnector': 'Спланировать поездку на общественном транспорте',
   'transit.from': 'Откуда',
   'transit.to': 'Куда',
   'transit.searchStop': 'Поиск остановки или станции…',

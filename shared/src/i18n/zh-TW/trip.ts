@@ -40,6 +40,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': '此邀請連結無效或已過期。',
   'trip.invite.backToDashboard': '返回儀表板',
   'transit.title': '大眾運輸',
+  'transit.planConnector': '規劃大眾運輸',
   'transit.from': '起點',
   'transit.to': '終點',
   'transit.searchStop': '搜尋站點或車站…',

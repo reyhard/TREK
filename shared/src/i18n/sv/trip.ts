@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Den här inbjudningslänken är ogiltig eller har gått ut.',
   'trip.invite.backToDashboard': 'Tillbaka till översikten',
   'transit.title': 'Kollektivtrafik',
+  'transit.planConnector': 'Planera kollektivtrafik',
   'transit.from': 'Från',
   'transit.to': 'Till',
   'transit.searchStop': 'Sök hållplats eller station…',

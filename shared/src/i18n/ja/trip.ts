@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'この招待リンクは無効か、有効期限が切れています。',
   'trip.invite.backToDashboard': 'ダッシュボードに戻る',
   'transit.title': '公共交通機関',
+  'transit.planConnector': '公共交通機関を計画',
   'transit.from': '出発地',
   'transit.to': '目的地',
   'transit.searchStop': '停留所・駅を検索…',

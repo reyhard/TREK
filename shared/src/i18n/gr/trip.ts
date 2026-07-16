@@ -41,6 +41,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalid': 'Αυτός ο σύνδεσμος πρόσκλησης δεν είναι έγκυρος ή έχει λήξει.',
   'trip.invite.backToDashboard': 'Επιστροφή στα ταξίδια μου',
   'transit.title': 'Μέσα μαζικής μεταφοράς',
+  'transit.planConnector': 'Σχεδιασμός δημόσιας συγκοινωνίας',
   'transit.from': 'Από',
   'transit.to': 'Προς',
   'transit.searchStop': 'Αναζήτηση στάσης ή σταθμού…',
