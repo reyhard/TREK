@@ -2,48 +2,8 @@
  * Unit tests for dayService — DAY-SVC-001 through DAY-SVC-030.
  * Uses a real in-memory SQLite DB so SQL logic is exercised faithfully.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
-
-// ── DB setup ──────────────────────────────────────────────────────────────────
-
-const { testDb, dbMock } = vi.hoisted(() => {
-  const Database = require('better-sqlite3');
-  const db = new Database(':memory:');
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec('PRAGMA busy_timeout = 5000');
-  const mock = {
-    db,
-    closeDb: () => {},
-    reinitialize: () => {},
-    getPlaceWithTags: (placeId: any) => {
-      const place: any = db.prepare(`
-        SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon
-        FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?
-      `).get(placeId);
-      if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
-    },
-    canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
-    isOwner: (tripId: any, userId: number) =>
-      !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
-  };
-  return { testDb: db, dbMock: mock };
-});
-
-vi.mock('../../../src/db/database', () => dbMock);
-vi.mock('../../../src/config', () => ({
-  JWT_SECRET: 'test-secret',
-  ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
-  updateJwtSecret: () => {},
-}));
-
-import { createTables } from '../../../src/db/schema';
 import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createDay, createPlace, createDayAssignment, createDayAccommodation } from '../../helpers/factories';
+import { createTables } from '../../../src/db/schema';
 import {
   verifyTripAccess,
   getAssignmentsForDay,
@@ -59,6 +19,69 @@ import {
   updateAccommodation,
   deleteAccommodation,
 } from '../../../src/services/dayService';
+import {
+  createUser,
+  createTrip,
+  createDay,
+  createPlace,
+  createDayAssignment,
+  createDayAccommodation,
+} from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+
+// ── DB setup ──────────────────────────────────────────────────────────────────
+
+const { testDb, dbMock } = vi.hoisted(() => {
+  const Database = require('better-sqlite3');
+  const db = new Database(':memory:');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('PRAGMA busy_timeout = 5000');
+  const mock = {
+    db,
+    closeDb: () => {},
+    reinitialize: () => {},
+    getPlaceWithTags: (placeId: any) => {
+      const place: any = db
+        .prepare(
+          `
+        SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon
+        FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?
+      `,
+        )
+        .get(placeId);
+      if (!place) return null;
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
+    },
+    canAccessTrip: (tripId: any, userId: number) =>
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
+    isOwner: (tripId: any, userId: number) =>
+      !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
+  };
+  return { testDb: db, dbMock: mock };
+});
+
+vi.mock('../../../src/db/database', () => dbMock);
+vi.mock('../../../src/config', () => ({
+  JWT_SECRET: 'test-secret',
+  ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
+  updateJwtSecret: () => {},
+}));
 
 beforeAll(() => {
   createTables(testDb);
@@ -289,7 +312,9 @@ describe('createAccommodation', () => {
     const place = createPlace(testDb, trip.id, { name: 'City Hotel' }) as any;
 
     const accom = createAccommodation(trip.id, {
-      place_id: place.id, start_day_id: day.id, end_day_id: day.id,
+      place_id: place.id,
+      start_day_id: day.id,
+      end_day_id: day.id,
     }) as any;
 
     const reservation = testDb.prepare('SELECT * FROM reservations WHERE accommodation_id = ?').get(accom.id) as any;
@@ -329,7 +354,9 @@ describe('updateAccommodation', () => {
     const day = createDay(testDb, trip.id) as any;
     const place = createPlace(testDb, trip.id, { name: 'Hotel' }) as any;
     const accom = createAccommodation(trip.id, {
-      place_id: place.id, start_day_id: day.id, end_day_id: day.id,
+      place_id: place.id,
+      start_day_id: day.id,
+      end_day_id: day.id,
     }) as any;
 
     const existing = getAccommodation(accom.id, trip.id)!;
@@ -350,7 +377,9 @@ describe('updateAccommodation', () => {
     const day = createDay(testDb, trip.id) as any;
     const place = createPlace(testDb, trip.id, { name: 'Hotel' }) as any;
     const accom = createAccommodation(trip.id, {
-      place_id: place.id, start_day_id: day.id, end_day_id: day.id,
+      place_id: place.id,
+      start_day_id: day.id,
+      end_day_id: day.id,
       confirmation: 'ABC123',
     }) as any;
 
@@ -371,7 +400,9 @@ describe('deleteAccommodation', () => {
     const day = createDay(testDb, trip.id) as any;
     const place = createPlace(testDb, trip.id, { name: 'Hotel' }) as any;
     const accom = createAccommodation(trip.id, {
-      place_id: place.id, start_day_id: day.id, end_day_id: day.id,
+      place_id: place.id,
+      start_day_id: day.id,
+      end_day_id: day.id,
     }) as any;
 
     const reservation = testDb.prepare('SELECT id FROM reservations WHERE accommodation_id = ?').get(accom.id) as any;

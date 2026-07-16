@@ -1,7 +1,8 @@
+import { DatabaseService } from '../database/database.service';
 import { CallHandler, ExecutionContext, HttpException, Injectable, NestInterceptor } from '@nestjs/common';
+
 import type { Request, Response } from 'express';
 import { Observable, of } from 'rxjs';
-import { DatabaseService } from '../database/database.service';
 
 /**
  * Nest counterpart of the legacy `applyIdempotency` middleware
@@ -58,7 +59,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // against a different endpoint can't return an unrelated cached body.
     const existing = this.database.get<IdempotencyRow>(
       'SELECT status_code, response_body FROM idempotency_keys WHERE key = ? AND user_id = ? AND method = ? AND path = ?',
-      key, userId, req.method, req.path,
+      key,
+      userId,
+      req.method,
+      req.path,
     );
     if (existing) {
       res.status(existing.status_code);
@@ -75,7 +79,13 @@ export class IdempotencyInterceptor implements NestInterceptor {
             database.run(
               `INSERT OR IGNORE INTO idempotency_keys (key, user_id, method, path, status_code, response_body, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              key, userId, req.method, req.path, res.statusCode, serialized, Math.floor(Date.now() / 1000),
+              key,
+              userId,
+              req.method,
+              req.path,
+              res.statusCode,
+              serialized,
+              Math.floor(Date.now() / 1000),
             );
           }
         } catch {

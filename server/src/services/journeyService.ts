@@ -1,7 +1,7 @@
 import { db, canAccessTrip } from '../db/database';
-import { avatarUrl } from './avatarUrl';
 import type { Journey, JourneyEntry, JourneyPhoto, JourneyContributor } from '../types';
 import { broadcastToUser } from '../websocket';
+import { avatarUrl } from './avatarUrl';
 import {
   getOrCreateTrekPhoto,
   getOrCreateLocalTrekPhoto,
@@ -714,8 +714,7 @@ export function reconcileTripSkeletons(tripId: number, sid?: string | number) {
         }
       } else {
         // Filled entries keep the user's date/story; only location follows the place.
-        const stale =
-          found.location_name !== locationName || found.location_lat !== lat || found.location_lng !== lng;
+        const stale = found.location_name !== locationName || found.location_lat !== lat || found.location_lng !== lng;
         if (stale) {
           db.prepare(
             `UPDATE journey_entries SET location_name = ?, location_lat = ?, location_lng = ?, updated_at = ? WHERE id = ?`,
@@ -1109,7 +1108,14 @@ export function uploadGalleryPhotos(
   let nextOrder = (maxOrderRow?.m ?? -1) + 1;
 
   for (const f of filePaths) {
-    const trekPhotoId = getOrCreateLocalTrekPhoto(f.path, f.thumbnail, null, null, f.mediaType || 'image', f.durationMs ?? null);
+    const trekPhotoId = getOrCreateLocalTrekPhoto(
+      f.path,
+      f.thumbnail,
+      null,
+      null,
+      f.mediaType || 'image',
+      f.durationMs ?? null,
+    );
     db.prepare(
       `
       INSERT OR IGNORE INTO journey_photos (journey_id, photo_id, shared, sort_order, created_at)

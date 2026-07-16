@@ -1,13 +1,20 @@
-import { Injectable } from '@nestjs/common';
 import { db } from '../../db/database';
-import { pluginsEnabled } from './kill-switch';
-import { devLinkEnabled } from './dev-link';
-import { maybe_encrypt_api_key, decrypt_api_key } from '../../services/apiKeyCrypto';
-import { readAudit } from './host/plugin-audit';
-import { pluginBudgetUsage } from './host/create-rpc-host';
 import { isAddonEnabled } from '../../services/adminService';
-import { parseDependencies, disabledRequiredAddons, resolveDependencyState, type PluginDepRow, type PluginDependencies, type VersionMismatch } from './dependencies';
+import { maybe_encrypt_api_key, decrypt_api_key } from '../../services/apiKeyCrypto';
+import {
+  parseDependencies,
+  disabledRequiredAddons,
+  resolveDependencyState,
+  type PluginDepRow,
+  type PluginDependencies,
+  type VersionMismatch,
+} from './dependencies';
+import { devLinkEnabled } from './dev-link';
+import { pluginBudgetUsage } from './host/create-rpc-host';
+import { readAudit } from './host/plugin-audit';
 import type { PluginDependency } from './install/manifest';
+import { pluginsEnabled } from './kill-switch';
+import { Injectable } from '@nestjs/common';
 
 const SECRET_MASK = '••••••••';
 
@@ -122,7 +129,9 @@ export class PluginsService {
     const secretKeys = new Set(
       (
         db
-          .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1")
+          .prepare(
+            "SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1",
+          )
           .all(id) as Array<{ field_key: string }>
       ).map((r) => r.field_key),
     );
@@ -136,7 +145,10 @@ export class PluginsService {
         config[k] = v;
       }
     }
-    db.prepare('UPDATE plugins SET config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(config), id);
+    db.prepare('UPDATE plugins SET config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      JSON.stringify(config),
+      id,
+    );
     return maskSecrets(config, secretKeys);
   }
 
@@ -175,9 +187,9 @@ export class PluginsService {
 
   /** A user's own config for a plugin, secrets masked (safe to send to the client). */
   getUserConfig(id: string, userId: number): Record<string, unknown> {
-    const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(id, userId) as
-      | { config: string }
-      | undefined;
+    const row = db
+      .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
+      .get(id, userId) as { config: string } | undefined;
     return maskSecrets(safeParse(row?.config ?? '{}'), this.userSecretKeys(id));
   }
 
@@ -185,14 +197,16 @@ export class PluginsService {
    * ciphertext). Only keys declared as `scope:'user'` fields are accepted. Returns masked. */
   updateUserConfig(id: string, userId: number, patch: Record<string, unknown>): Record<string, unknown> {
     const allowed = new Set(
-      (db.prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user'").all(id) as Array<{ field_key: string }>).map(
-        (r) => r.field_key,
-      ),
+      (
+        db
+          .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user'")
+          .all(id) as Array<{ field_key: string }>
+      ).map((r) => r.field_key),
     );
     const secretKeys = this.userSecretKeys(id);
-    const existing = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(id, userId) as
-      | { config: string }
-      | undefined;
+    const existing = db
+      .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
+      .get(id, userId) as { config: string } | undefined;
     const config = safeParse(existing?.config ?? '{}');
     for (const [k, v] of Object.entries(patch)) {
       if (!allowed.has(k)) continue; // never store an undeclared key
@@ -213,9 +227,9 @@ export class PluginsService {
   /** A user's own config with secrets DECRYPTED — host-only, for runtime `ctx.settings`.
    * Never sent to a client; the acting user is resolved host-side. */
   getUserConfigDecrypted(id: string, userId: number): Record<string, unknown> {
-    const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(id, userId) as
-      | { config: string }
-      | undefined;
+    const row = db
+      .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
+      .get(id, userId) as { config: string } | undefined;
     const config = safeParse(row?.config ?? '{}');
     const secretKeys = this.userSecretKeys(id);
     const out: Record<string, unknown> = {};
@@ -226,7 +240,9 @@ export class PluginsService {
   /** A plugin's error log, newest first. */
   errors(id: string): Array<{ ts: string; level: string; message: string }> {
     return db
-      .prepare('SELECT ts, level, message FROM plugin_error_log WHERE plugin_id = ? ORDER BY ts DESC, id DESC LIMIT 200')
+      .prepare(
+        'SELECT ts, level, message FROM plugin_error_log WHERE plugin_id = ? ORDER BY ts DESC, id DESC LIMIT 200',
+      )
       .all(id) as Array<{ ts: string; level: string; message: string }>;
   }
 
@@ -251,7 +267,9 @@ export class PluginsService {
     const secretKeys = new Set(
       (
         db
-          .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1")
+          .prepare(
+            "SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1",
+          )
           .all(id) as Array<{ field_key: string }>
       ).map((r) => r.field_key),
     );
@@ -296,12 +314,14 @@ function safeArray(json: string): unknown[] | undefined {
  * Standalone (no Nest DI) so the RPC host wiring can call it directly. */
 export function readUserSettingDecrypted(pluginId: string, userId: number, key: string): unknown {
   const isSecret =
-    (db.prepare("SELECT secret FROM plugin_settings_fields WHERE plugin_id = ? AND field_key = ? AND scope = 'user'").get(pluginId, key) as
-      | { secret: number }
-      | undefined)?.secret === 1;
-  const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
-    | { config: string }
-    | undefined;
+    (
+      db
+        .prepare("SELECT secret FROM plugin_settings_fields WHERE plugin_id = ? AND field_key = ? AND scope = 'user'")
+        .get(pluginId, key) as { secret: number } | undefined
+    )?.secret === 1;
+  const row = db
+    .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
+    .get(pluginId, userId) as { config: string } | undefined;
   const v = safeParse(row?.config ?? '{}')[key];
   if (v == null) return undefined;
   return isSecret ? decrypt_api_key(v) : v;
@@ -315,9 +335,9 @@ export function readUserSettingsDecrypted(pluginId: string, userId: number): Rec
   const fields = db
     .prepare("SELECT field_key, secret FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user'")
     .all(pluginId) as Array<{ field_key: string; secret: number }>;
-  const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
-    | { config: string }
-    | undefined;
+  const row = db
+    .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
+    .get(pluginId, userId) as { config: string } | undefined;
   const stored = safeParse(row?.config ?? '{}');
   // Null-prototype for the same reason as safeParse: never let a field key write through
   // to Object.prototype on the way out to the plugin.
@@ -338,11 +358,11 @@ export function hasRequiredUserSettings(pluginId: string, userId: number): boole
     .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user' AND required = 1")
     .all(pluginId) as Array<{ field_key: string }>;
   if (required.length === 0) return true;
-  const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
-    | { config: string }
-    | undefined;
+  const row = db
+    .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
+    .get(pluginId, userId) as { config: string } | undefined;
   const stored = safeParse(row?.config ?? '{}');
-  return required.every(f => {
+  return required.every((f) => {
     const v = stored[f.field_key];
     return v != null && String(v) !== '';
   });

@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
 import { canAccessTrip } from '../../db/database';
 import { checkPermission } from '../../services/permissions';
+import * as svc from '../../services/tripInviteService';
 import { joinTripAsMember } from '../../services/tripMembership';
 import type { User } from '../../types';
-import * as svc from '../../services/tripInviteService';
+import { Injectable } from '@nestjs/common';
 
 type Trip = NonNullable<ReturnType<typeof canAccessTrip>>;
 
@@ -22,14 +22,22 @@ export class TripInviteService {
     return checkPermission('share_manage', user.role, trip.user_id, user.id, trip.user_id !== user.id);
   }
 
-  get(tripId: string) { return svc.getTripInviteLink(tripId); }
+  get(tripId: string) {
+    return svc.getTripInviteLink(tripId);
+  }
   createOrRotate(tripId: string, userId: number, expiresInDays?: number | null) {
     return svc.createOrRotateTripInviteLink(tripId, userId, expiresInDays ?? null);
   }
-  remove(tripId: string) { return svc.deleteTripInviteLink(tripId); }
+  remove(tripId: string) {
+    return svc.deleteTripInviteLink(tripId);
+  }
 
-  resolve(token: string) { return svc.resolveTripInvite(token); }
+  resolve(token: string) {
+    return svc.resolveTripInvite(token);
+  }
   /** Join the resolved trip as the current (authenticated, non-guest) user.
    *  invited_by is null — they joined via a link, not a personal invite. */
-  join(tripId: number, userId: number) { return joinTripAsMember(tripId, userId, null); }
+  join(tripId: number, userId: number) {
+    return joinTripAsMember(tripId, userId, null);
+  }
 }

@@ -1,3 +1,6 @@
+import { getClientIp } from '../../../src/services/auditLog';
+
+import type { Request } from 'express';
 import { describe, it, expect, vi } from 'vitest';
 
 // Prevent file I/O side effects at module load time
@@ -20,13 +23,12 @@ vi.mock('../../../src/db/database', () => ({
   db: { prepare: () => ({ get: vi.fn(), run: vi.fn() }) },
 }));
 
-import { getClientIp } from '../../../src/services/auditLog';
-import type { Request } from 'express';
-
-function makeReq(options: {
-  xff?: string | string[];
-  remoteAddress?: string;
-} = {}): Request {
+function makeReq(
+  options: {
+    xff?: string | string[];
+    remoteAddress?: string;
+  } = {},
+): Request {
   return {
     headers: {
       ...(options.xff !== undefined ? { 'x-forwarded-for': options.xff } : {}),

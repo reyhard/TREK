@@ -1,3 +1,7 @@
+import { resolveWebauthnConfig, isPasskeyConfigured } from '../../../src/services/webauthnConfig';
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
 /**
  * webauthnConfig.test.ts
  *
@@ -27,9 +31,6 @@ vi.mock('../../../src/db/database', () => ({
 vi.mock('../../../src/services/notifications', () => ({
   getAppUrl: () => appUrlRef.value,
 }));
-
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { resolveWebauthnConfig, isPasskeyConfigured } from '../../../src/services/webauthnConfig';
 
 beforeEach(() => {
   settingsStore.clear();

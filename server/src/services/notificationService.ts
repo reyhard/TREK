@@ -1,5 +1,6 @@
 import { db } from '../db/database';
 import { logDebug, logError } from './auditLog';
+import { resolveRecipients, createNotificationForRecipient, type NotificationInput } from './inAppNotifications';
 import {
   getActiveChannels,
   isEnabledForEvent,
@@ -10,11 +11,6 @@ import {
 } from './notificationPreferencesService';
 import { getEventText, getUserLanguage, getAppUrl } from './notifications';
 import { listChannels, type ChannelMessage, type ExternalChannel } from './notifications/channelRegistry';
-import {
-  resolveRecipients,
-  createNotificationForRecipient,
-  type NotificationInput,
-} from './inAppNotifications';
 
 // ── Event config map ───────────────────────────────────────────────────────
 
@@ -55,7 +51,7 @@ const EVENT_NOTIFICATION_CONFIG: Record<string, EventNotifConfig> = {
     titleKey: 'notif.plugin.title',
     textKey: 'notif.plugin.text',
     navigateTextKey: 'notif.action.view',
-    navigateTarget: p => p.link || null,
+    navigateTarget: (p) => p.link || null,
   },
   // ── Production events ─────────────────────────────────────────────────────
   trip_invite: {
@@ -63,63 +59,63 @@ const EVENT_NOTIFICATION_CONFIG: Record<string, EventNotifConfig> = {
     titleKey: 'notif.trip_invite.title',
     textKey: 'notif.trip_invite.text',
     navigateTextKey: 'notif.action.view_trip',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   booking_change: {
     inAppType: 'navigate',
     titleKey: 'notif.booking_change.title',
     textKey: 'notif.booking_change.text',
     navigateTextKey: 'notif.action.view_trip',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   trip_reminder: {
     inAppType: 'navigate',
     titleKey: 'notif.trip_reminder.title',
     textKey: 'notif.trip_reminder.text',
     navigateTextKey: 'notif.action.view_trip',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   todo_due: {
     inAppType: 'navigate',
     titleKey: 'notif.todo_due.title',
     textKey: 'notif.todo_due.text',
     navigateTextKey: 'notif.action.view_trip',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   vacay_invite: {
     inAppType: 'navigate',
     titleKey: 'notif.vacay_invite.title',
     textKey: 'notif.vacay_invite.text',
     navigateTextKey: 'notif.action.view_vacay',
-    navigateTarget: p => (p.planId ? `/vacay/${p.planId}` : null),
+    navigateTarget: (p) => (p.planId ? `/vacay/${p.planId}` : null),
   },
   collection_invite: {
     inAppType: 'navigate',
     titleKey: 'notif.collection_invite.title',
     textKey: 'notif.collection_invite.text',
     navigateTextKey: 'notif.action.view_collection',
-    navigateTarget: p => (p.collectionId ? `/collections/${p.collectionId}` : '/collections'),
+    navigateTarget: (p) => (p.collectionId ? `/collections/${p.collectionId}` : '/collections'),
   },
   photos_shared: {
     inAppType: 'navigate',
     titleKey: 'notif.photos_shared.title',
     textKey: 'notif.photos_shared.text',
     navigateTextKey: 'notif.action.view_trip',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   collab_message: {
     inAppType: 'navigate',
     titleKey: 'notif.collab_message.title',
     textKey: 'notif.collab_message.text',
     navigateTextKey: 'notif.action.view_collab',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   packing_tagged: {
     inAppType: 'navigate',
     titleKey: 'notif.packing_tagged.title',
     textKey: 'notif.packing_tagged.text',
     navigateTextKey: 'notif.action.view_packing',
-    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+    navigateTarget: (p) => (p.tripId ? `/trips/${p.tripId}` : null),
   },
   version_available: {
     inAppType: 'navigate',
@@ -209,16 +205,23 @@ export async function send(payload: NotificationPayload): Promise<void> {
   if (!configEntry) {
     logDebug(`notificationService.send: unknown event type "${event}", using fallback`);
     if (process.env.NODE_ENV?.toLowerCase() === 'development' && actorId != null) {
-      const devSender = (db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(actorId) as { username: string; avatar: string | null } | undefined) ?? null;
-      createNotificationForRecipient({
-        type: 'simple',
-        scope: 'user',
-        target: actorId,
-        sender_id: null,
-        title_key: 'notif.dev.unknown_event.title',
-        text_key: 'notif.dev.unknown_event.text',
-        text_params: { event },
-      }, actorId, devSender);
+      const devSender =
+        (db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(actorId) as
+          | { username: string; avatar: string | null }
+          | undefined) ?? null;
+      createNotificationForRecipient(
+        {
+          type: 'simple',
+          scope: 'user',
+          target: actorId,
+          sender_id: null,
+          title_key: 'notif.dev.unknown_event.title',
+          text_key: 'notif.dev.unknown_event.text',
+          text_params: { event },
+        },
+        actorId,
+        devSender,
+      );
     }
   }
   const config = configEntry ?? FALLBACK_EVENT_CONFIG;
@@ -232,110 +235,121 @@ export async function send(payload: NotificationPayload): Promise<void> {
 
   // Fetch sender info once for in-app WS payloads
   const sender = actorId
-    ? (db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(actorId) as { username: string; avatar: string | null } | undefined) ?? null
+    ? ((db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(actorId) as
+        | { username: string; avatar: string | null }
+        | undefined) ?? null)
     : null;
 
-  logDebug(`notificationService.send event=${event} scope=${scope} targetId=${targetId} recipients=${recipients.length} channels=inapp,${activeChannels.join(',')}`);
+  logDebug(
+    `notificationService.send event=${event} scope=${scope} targetId=${targetId} recipients=${recipients.length} channels=inapp,${activeChannels.join(',')}`,
+  );
 
   // Dispatch to each recipient in parallel
-  await Promise.all(recipients.map(async (recipientId) => {
-    const promises: Promise<unknown>[] = [];
+  await Promise.all(
+    recipients.map(async (recipientId) => {
+      const promises: Promise<unknown>[] = [];
 
-    // ── In-app ──────────────────────────────────────────────────────────
-    if (isEnabledForEvent(recipientId, event, 'inapp')) {
-      const inAppType = inApp?.type ?? config.inAppType;
-      let notifInput: NotificationInput;
+      // ── In-app ──────────────────────────────────────────────────────────
+      if (isEnabledForEvent(recipientId, event, 'inapp')) {
+        const inAppType = inApp?.type ?? config.inAppType;
+        let notifInput: NotificationInput;
 
-      if (inAppType === 'boolean' && inApp?.positiveCallback && inApp?.negativeCallback) {
-        notifInput = {
-          type: 'boolean',
-          scope,
-          target: targetId,
-          sender_id: actorId,
-          event_type: event,
-          title_key: config.titleKey,
-          title_params: params,
-          text_key: config.textKey,
-          text_params: params,
-          positive_text_key: inApp.positiveTextKey ?? 'notif.action.accept',
-          negative_text_key: inApp.negativeTextKey ?? 'notif.action.decline',
-          positive_callback: inApp.positiveCallback,
-          negative_callback: inApp.negativeCallback,
-        };
-      } else if (inAppType === 'navigate' && navigateTarget) {
-        notifInput = {
-          type: 'navigate',
-          scope,
-          target: targetId,
-          sender_id: actorId,
-          event_type: event,
-          title_key: config.titleKey,
-          title_params: params,
-          text_key: config.textKey,
-          text_params: params,
-          navigate_text_key: config.navigateTextKey ?? 'notif.action.view',
-          navigate_target: navigateTarget,
-        };
-      } else {
-        notifInput = {
-          type: 'simple',
-          scope,
-          target: targetId,
-          sender_id: actorId,
-          event_type: event,
-          title_key: config.titleKey,
-          title_params: params,
-          text_key: config.textKey,
-          text_params: params,
-        };
+        if (inAppType === 'boolean' && inApp?.positiveCallback && inApp?.negativeCallback) {
+          notifInput = {
+            type: 'boolean',
+            scope,
+            target: targetId,
+            sender_id: actorId,
+            event_type: event,
+            title_key: config.titleKey,
+            title_params: params,
+            text_key: config.textKey,
+            text_params: params,
+            positive_text_key: inApp.positiveTextKey ?? 'notif.action.accept',
+            negative_text_key: inApp.negativeTextKey ?? 'notif.action.decline',
+            positive_callback: inApp.positiveCallback,
+            negative_callback: inApp.negativeCallback,
+          };
+        } else if (inAppType === 'navigate' && navigateTarget) {
+          notifInput = {
+            type: 'navigate',
+            scope,
+            target: targetId,
+            sender_id: actorId,
+            event_type: event,
+            title_key: config.titleKey,
+            title_params: params,
+            text_key: config.textKey,
+            text_params: params,
+            navigate_text_key: config.navigateTextKey ?? 'notif.action.view',
+            navigate_target: navigateTarget,
+          };
+        } else {
+          notifInput = {
+            type: 'simple',
+            scope,
+            target: targetId,
+            sender_id: actorId,
+            event_type: event,
+            title_key: config.titleKey,
+            title_params: params,
+            text_key: config.textKey,
+            text_params: params,
+          };
+        }
+
+        promises.push(
+          Promise.resolve().then(() => createNotificationForRecipient(notifInput, recipientId, sender ?? null)),
+        );
       }
 
-      promises.push(
-        Promise.resolve().then(() => createNotificationForRecipient(notifInput, recipientId, sender ?? null))
-      );
-    }
-
-    // ── External channels (email, webhook, ntfy, plugin:*) ───────────────
-    // One loop over the registry. The message is rendered once per recipient, in
-    // their language, and handed to every channel that wants it — so a plugin
-    // channel never touches i18n.
-    const deliverable = channels.filter(ch => shouldSendToUser(ch, event, recipientId, activeChannels));
-    if (deliverable.length > 0) {
-      const lang = getUserLanguage(recipientId);
-      const { title, body } = getEventText(lang, event, params);
-      const msg: ChannelMessage = {
-        event,
-        title,
-        body,
-        navigateTarget: navigateTarget ?? undefined,
-        url: fullLink,
-        tripName: params.trip,
-      };
-      for (const ch of deliverable) promises.push(ch.sendToUser(recipientId, msg));
-    }
-
-    const results = await Promise.allSettled(promises);
-    for (const result of results) {
-      if (result.status === 'rejected') {
-        logError(`notificationService.send channel dispatch failed event=${event} recipient=${recipientId}: ${result.reason}`);
+      // ── External channels (email, webhook, ntfy, plugin:*) ───────────────
+      // One loop over the registry. The message is rendered once per recipient, in
+      // their language, and handed to every channel that wants it — so a plugin
+      // channel never touches i18n.
+      const deliverable = channels.filter((ch) => shouldSendToUser(ch, event, recipientId, activeChannels));
+      if (deliverable.length > 0) {
+        const lang = getUserLanguage(recipientId);
+        const { title, body } = getEventText(lang, event, params);
+        const msg: ChannelMessage = {
+          event,
+          title,
+          body,
+          navigateTarget: navigateTarget ?? undefined,
+          url: fullLink,
+          tripName: params.trip,
+        };
+        for (const ch of deliverable) promises.push(ch.sendToUser(recipientId, msg));
       }
-    }
-  }));
+
+      const results = await Promise.allSettled(promises);
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          logError(
+            `notificationService.send channel dispatch failed event=${event} recipient=${recipientId}: ${result.reason}`,
+          );
+        }
+      }
+    }),
+  );
 
   // ── Admin-global copies (scope: admin) ───────────────────────────────
   // One send per channel, over the admin's own credentials, not per-recipient.
   // Always rendered in English — there is no single recipient to take a language from.
   if (scope === 'admin') {
     const globalChannels = channels.filter(
-      ch => ch.sendGlobal && ch.supportsEvent(event) && isAdminGlobalChannel(ch.id) && getAdminGlobalPref(event, ch.id),
+      (ch) =>
+        ch.sendGlobal && ch.supportsEvent(event) && isAdminGlobalChannel(ch.id) && getAdminGlobalPref(event, ch.id),
     );
     if (globalChannels.length > 0) {
       const { title, body } = getEventText('en', event, params);
       const msg: ChannelMessage = { event, title, body, navigateTarget: navigateTarget ?? undefined, url: fullLink };
       await Promise.all(
-        globalChannels.map(ch =>
+        globalChannels.map((ch) =>
           ch.sendGlobal!(msg).catch((err: unknown) => {
-            logError(`notificationService.send admin ${ch.id} failed event=${event}: ${err instanceof Error ? err.message : err}`);
+            logError(
+              `notificationService.send admin ${ch.id} failed event=${event}: ${err instanceof Error ? err.message : err}`,
+            );
           }),
         ),
       );

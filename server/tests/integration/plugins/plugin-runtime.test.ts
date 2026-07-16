@@ -3,10 +3,13 @@
  * HTTP route works through the host→child invoke path, using its own isolated
  * db. Proves the full activate → route → deactivate loop.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { DependencyCycleError } from '../../../src/nest/plugins/dependencies';
+import { PluginRuntimeService, PluginDependencyError } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { testDb } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -30,9 +33,6 @@ const { testDb } = vi.hoisted(() => {
 });
 vi.mock('../../../src/db/database', () => ({ db: testDb, canAccessTrip: () => undefined }));
 vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
-
-import { PluginRuntimeService, PluginDependencyError } from '../../../src/nest/plugins/plugin-runtime.service';
-import { DependencyCycleError } from '../../../src/nest/plugins/dependencies';
 
 let codeRoot: string;
 let dataRoot: string;
@@ -62,7 +62,9 @@ beforeAll(() => {
     };`,
   );
 
-  testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('counter','active','[\"db:own\"]','{}')").run();
+  testDb
+    .prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('counter','active','[\"db:own\"]','{}')")
+    .run();
   runtime = new PluginRuntimeService();
 });
 
@@ -106,12 +108,17 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
   });
 
   it('invoke on a plugin that is not running rejects', async () => {
-    await expect(runtime.invoke('never-activated', 'invoke.route', { routeId: 0, req: {} })).rejects.toThrow(/not active/);
+    await expect(runtime.invoke('never-activated', 'invoke.route', { routeId: 0, req: {} })).rejects.toThrow(
+      /not active/,
+    );
   });
 
   it('a route that throws surfaces as a rejected invoke', async () => {
     await expect(
-      runtime.invoke('counter', 'invoke.route', { routeId: 1, req: { method: 'GET', path: '/boom', query: {}, body: null, user: null } }),
+      runtime.invoke('counter', 'invoke.route', {
+        routeId: 1,
+        req: { method: 'GET', path: '/boom', query: {}, body: null, user: null },
+      }),
     ).rejects.toThrow(/route fail/);
   });
 
@@ -121,11 +128,19 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
 
   it('re-consent gate: activating a consented plugin with WIDER permissions is refused without consent', async () => {
     // consented to db:own; a version now declaring db:read:users too must not auto-grant
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, granted_permissions, config) VALUES ('widener','inactive','[\"db:own\",\"db:read:users\"]','[\"db:own\"]','{}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, permissions, granted_permissions, config) VALUES ('widener','inactive','[\"db:own\",\"db:read:users\"]','[\"db:own\"]','{}')",
+      )
+      .run();
     await expect(runtime.activate('widener')).rejects.toThrow(/re-consent|new permissions/);
     // the key case: a plugin consented to ZERO perms ('[]') is still "consented" —
     // a later widening to db:own is blocked, not silently granted.
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, granted_permissions, config) VALUES ('zeroperm','inactive','[\"db:own\"]','[]','{}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, permissions, granted_permissions, config) VALUES ('zeroperm','inactive','[\"db:own\"]','[]','{}')",
+      )
+      .run();
     await expect(runtime.activate('zeroperm')).rejects.toThrow(/re-consent|new permissions/);
     // (a NEVER-consented plugin — granted '' — consenting to its declared set on
     // first activate is covered by the 'counter' happy-path test above.)
@@ -140,7 +155,10 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
   it('deactivate stops the plugin and clears the enabled intent', async () => {
     await runtime.deactivate('counter');
     expect(runtime.isActive('counter')).toBe(false);
-    const row = testDb.prepare("SELECT status, enabled FROM plugins WHERE id = 'counter'").get() as { status: string; enabled: number };
+    const row = testDb.prepare("SELECT status, enabled FROM plugins WHERE id = 'counter'").get() as {
+      status: string;
+      enabled: number;
+    };
     expect(row.status).toBe('inactive');
     expect(row.enabled).toBe(0);
   });
@@ -155,17 +173,23 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
   it('tolerates malformed granted_permissions / config JSON on activate', async () => {
     fs.mkdirSync(path.join(codeRoot, 'messy', 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, 'messy', 'server', 'index.js'), 'module.exports = { async onLoad() {} };');
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('messy','inactive','not-json','not-json')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, permissions, config) VALUES ('messy','inactive','not-json','not-json')",
+      )
+      .run();
     const rt = new PluginRuntimeService();
     await rt.activate('messy'); // must not throw despite the garbage JSON
     expect(rt.isActive('messy')).toBe(true);
     await rt.deactivate('messy');
   });
 
-  it('erases and exports a user\'s own-db data through the GDPR hooks', async () => {
+  it("erases and exports a user's own-db data through the GDPR hooks", async () => {
     const gdir = path.join(codeRoot, 'gdpr', 'server');
     fs.mkdirSync(gdir, { recursive: true });
-    fs.writeFileSync(path.join(gdir, 'index.js'), `module.exports = {
+    fs.writeFileSync(
+      path.join(gdir, 'index.js'),
+      `module.exports = {
       async onLoad(ctx) { await ctx.db.migrate('001', 'CREATE TABLE prefs (user_id INTEGER, v TEXT)'); },
       routes: [{ method: 'POST', path: '/seed', auth: true, async handler(req, ctx) {
         await ctx.db.exec('INSERT INTO prefs (user_id, v) VALUES (?, ?)', req.user.id, 'x');
@@ -173,11 +197,19 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
       }}],
       async exportUserData({ userId }, ctx) { return await ctx.db.query('SELECT v FROM prefs WHERE user_id = ?', userId); },
       async deleteUserData({ userId }, ctx) { await ctx.db.exec('DELETE FROM prefs WHERE user_id = ?', userId); },
-    };`);
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('gdpr','active','[\"db:own\",\"hook:user-data\"]','{}')").run();
+    };`,
+    );
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, permissions, config) VALUES ('gdpr','active','[\"db:own\",\"hook:user-data\"]','{}')",
+      )
+      .run();
     await runtime.activate('gdpr');
     // seed a row for user 5
-    await runtime.invoke('gdpr', 'invoke.route', { routeId: 0, req: { method: 'POST', path: '/seed', query: {}, body: null, user: { id: 5, username: 'a', isAdmin: false } } });
+    await runtime.invoke('gdpr', 'invoke.route', {
+      routeId: 0,
+      req: { method: 'POST', path: '/seed', query: {}, body: null, user: { id: 5, username: 'a', isAdmin: false } },
+    });
 
     // export sees the user's data, aggregated under the plugin id
     expect(await runtime.exportUserData(5)).toEqual([{ pluginId: 'gdpr', data: [{ v: 'x' }] }]);
@@ -187,7 +219,9 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
     (runtime as any).enqueueUserErasure(5);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (runtime as any).drainUserErasures();
-    expect(testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='gdpr'").get()).toMatchObject({ c: 0 });
+    expect(
+      testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='gdpr'").get(),
+    ).toMatchObject({ c: 0 });
     // the export is now empty (rows gone), proving the handler ran end-to-end
     expect(await runtime.exportUserData(5)).toEqual([{ pluginId: 'gdpr', data: [] }]);
 
@@ -208,32 +242,56 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (runtime as any).drainUserErasures();
-    expect((testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='reaptest'").get() as { c: number }).c).toBe(1);
+    expect(
+      (
+        testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='reaptest'").get() as {
+          c: number;
+        }
+      ).c,
+    ).toBe(1);
 
     // now the data is truly gone (deleteData=true / manual removal) → the row is reaped
     fs.rmSync(dir, { recursive: true, force: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (runtime as any).drainUserErasures();
-    expect((testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='reaptest'").get() as { c: number }).c).toBe(0);
+    expect(
+      (
+        testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='reaptest'").get() as {
+          c: number;
+        }
+      ).c,
+    ).toBe(0);
   });
 
   it('leaves an erasure queued for a plugin that is offline, to run when it is back', async () => {
     // granted the hook but NOT active → enqueue keeps the row, drain leaves it
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('offliner','inactive','[\"db:own\",\"hook:user-data\"]','{}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, permissions, config) VALUES ('offliner','inactive','[\"db:own\",\"hook:user-data\"]','{}')",
+      )
+      .run();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (runtime as any).enqueueUserErasure(9);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (runtime as any).drainUserErasures();
-    expect(testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='offliner' AND user_id=9").get()).toMatchObject({ c: 1 });
+    expect(
+      testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='offliner' AND user_id=9").get(),
+    ).toMatchObject({ c: 1 });
     // a plugin WITHOUT the grant is never enqueued in the first place
-    expect(testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='counter' AND user_id=9").get()).toMatchObject({ c: 0 });
+    expect(
+      testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='counter' AND user_id=9").get(),
+    ).toMatchObject({ c: 0 });
   });
 
   it('onModuleInit boots every ENABLED plugin — even one left in error state', async () => {
     fs.mkdirSync(path.join(codeRoot, 'booter', 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, 'booter', 'server', 'index.js'), 'module.exports = { async onLoad() {} };');
     // status='error' from a previous crash, but enabled=1 → must still boot
-    testDb.prepare("INSERT INTO plugins (id, status, enabled, granted_permissions, config) VALUES ('booter','error',1,'[]','{}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, enabled, granted_permissions, config) VALUES ('booter','error',1,'[]','{}')",
+      )
+      .run();
 
     const rt = new PluginRuntimeService();
     rt.onModuleInit(); // fire-and-forget spawn
@@ -245,7 +303,11 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
   it('onModuleInit does NOT boot a disabled plugin', async () => {
     fs.mkdirSync(path.join(codeRoot, 'sleeper', 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, 'sleeper', 'server', 'index.js'), 'module.exports = { async onLoad() {} };');
-    testDb.prepare("INSERT INTO plugins (id, status, enabled, granted_permissions, config) VALUES ('sleeper','inactive',0,'[]','{}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, enabled, granted_permissions, config) VALUES ('sleeper','inactive',0,'[]','{}')",
+      )
+      .run();
 
     const rt = new PluginRuntimeService();
     rt.onModuleInit();
@@ -254,7 +316,11 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
   });
 
   it('outboundHostsOf extracts declared http:outbound hosts', () => {
-    testDb.prepare("INSERT INTO plugins (id, status, granted_permissions, config) VALUES ('net','inactive','[\"db:own\",\"http:outbound:api.x.com\",\"http:outbound:*.y.com\"]','{}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, granted_permissions, config) VALUES ('net','inactive','[\"db:own\",\"http:outbound:api.x.com\",\"http:outbound:*.y.com\"]','{}')",
+      )
+      .run();
     const rt = new PluginRuntimeService();
     expect(rt.outboundHostsOf('net')).toEqual(['api.x.com', '*.y.com']);
     expect(rt.outboundHostsOf('missing')).toEqual([]);
@@ -264,16 +330,34 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
     fs.mkdirSync(path.join(codeRoot, 'gone', 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, 'gone', 'server', 'index.js'), 'module.exports={}');
     testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('gone','inactive','[]','{}')").run();
-    testDb.prepare("INSERT INTO plugin_settings_fields (plugin_id, field_key, scope, secret) VALUES ('gone','k','instance',0)").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugin_settings_fields (plugin_id, field_key, scope, secret) VALUES ('gone','k','instance',0)",
+      )
+      .run();
     testDb.prepare("INSERT INTO settings (user_id, key, value) VALUES (1, 'plugin:gone:units', 'metric')").run();
     // Per-user secrets + OAuth tokens live in their OWN tables, not under settings —
     // a "delete all data" that leaves these behind leaks encrypted keys/tokens that a
     // same-id reinstall silently re-adopts (audit finding).
-    testDb.prepare("INSERT INTO plugin_user_config (plugin_id, user_id, field_key, value) VALUES ('gone', 1, 'apiKey', 'enc:secret')").run();
-    testDb.prepare("INSERT INTO plugin_oauth_tokens (plugin_id, user_id, access_token, refresh_token) VALUES ('gone', 1, 'at', 'rt')").run();
-    testDb.prepare("INSERT INTO plugin_oauth_state (state, plugin_id, user_id, verifier) VALUES ('s1', 'gone', 1, 'v')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugin_user_config (plugin_id, user_id, field_key, value) VALUES ('gone', 1, 'apiKey', 'enc:secret')",
+      )
+      .run();
+    testDb
+      .prepare(
+        "INSERT INTO plugin_oauth_tokens (plugin_id, user_id, access_token, refresh_token) VALUES ('gone', 1, 'at', 'rt')",
+      )
+      .run();
+    testDb
+      .prepare("INSERT INTO plugin_oauth_state (state, plugin_id, user_id, verifier) VALUES ('s1', 'gone', 1, 'v')")
+      .run();
     testDb.prepare("INSERT INTO plugin_meta_migrations (plugin_id, migration_id) VALUES ('gone', '001')").run();
-    testDb.prepare("INSERT INTO plugin_capability_audit (plugin_id, method, code, ts, hash) VALUES ('gone', 'trips.getById', 'OK', 't', 'h')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugin_capability_audit (plugin_id, method, code, ts, hash) VALUES ('gone', 'trips.getById', 'OK', 't', 'h')",
+      )
+      .run();
     testDb.prepare("INSERT INTO plugin_scheduled_tasks (plugin_id, name, due_at) VALUES ('gone', 'poll', 0)").run();
     testDb.prepare("INSERT INTO plugin_user_erasure_queue (plugin_id, user_id) VALUES ('gone', 7)").run();
 
@@ -281,10 +365,22 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
 
     expect(fs.existsSync(path.join(codeRoot, 'gone'))).toBe(false);
     expect(testDb.prepare("SELECT COUNT(*) c FROM plugins WHERE id='gone'").get()).toMatchObject({ c: 0 });
-    expect(testDb.prepare("SELECT COUNT(*) c FROM plugin_settings_fields WHERE plugin_id='gone'").get()).toMatchObject({ c: 0 });
-    expect(testDb.prepare("SELECT COUNT(*) c FROM settings WHERE key LIKE 'plugin:gone:%'").get()).toMatchObject({ c: 0 });
+    expect(testDb.prepare("SELECT COUNT(*) c FROM plugin_settings_fields WHERE plugin_id='gone'").get()).toMatchObject({
+      c: 0,
+    });
+    expect(testDb.prepare("SELECT COUNT(*) c FROM settings WHERE key LIKE 'plugin:gone:%'").get()).toMatchObject({
+      c: 0,
+    });
     // the secret-bearing tables + the erasure queue must be purged too (data is gone)
-    for (const t of ['plugin_user_config', 'plugin_oauth_tokens', 'plugin_oauth_state', 'plugin_meta_migrations', 'plugin_capability_audit', 'plugin_scheduled_tasks', 'plugin_user_erasure_queue']) {
+    for (const t of [
+      'plugin_user_config',
+      'plugin_oauth_tokens',
+      'plugin_oauth_state',
+      'plugin_meta_migrations',
+      'plugin_capability_audit',
+      'plugin_scheduled_tasks',
+      'plugin_user_erasure_queue',
+    ]) {
       expect(testDb.prepare(`SELECT COUNT(*) c FROM ${t} WHERE plugin_id='gone'`).get()).toMatchObject({ c: 0 });
     }
   });
@@ -292,7 +388,9 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
   it('uninstall WITHOUT deleteData keeps pending GDPR erasures (the data survives, so must the obligation)', async () => {
     fs.mkdirSync(path.join(codeRoot, 'keepdata', 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, 'keepdata', 'server', 'index.js'), 'module.exports={}');
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('keepdata','inactive','[]','{}')").run();
+    testDb
+      .prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('keepdata','inactive','[]','{}')")
+      .run();
     // a deleted user's erasure is still pending for this plugin
     testDb.prepare("INSERT INTO plugin_user_erasure_queue (plugin_id, user_id) VALUES ('keepdata', 42)").run();
 
@@ -302,14 +400,22 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
     // same id will drain it and finally honour the deletion, instead of silently keeping
     // the user's data forever.
     expect(testDb.prepare("SELECT COUNT(*) c FROM plugins WHERE id='keepdata'").get()).toMatchObject({ c: 0 });
-    expect(testDb.prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='keepdata' AND user_id=42").get()).toMatchObject({ c: 1 });
+    expect(
+      testDb
+        .prepare("SELECT COUNT(*) c FROM plugin_user_erasure_queue WHERE plugin_id='keepdata' AND user_id=42")
+        .get(),
+    ).toMatchObject({ c: 1 });
   });
 
   it('the egress guard blocks a fetch to an undeclared host', async () => {
     fs.mkdirSync(path.join(codeRoot, 'nettry', 'server'), { recursive: true });
-    fs.writeFileSync(path.join(codeRoot, 'nettry', 'server', 'index.js'),
-      "module.exports = { async onLoad() { await fetch('https://blocked.example/x'); } };");
-    testDb.prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('nettry','inactive','[]','{}')").run();
+    fs.writeFileSync(
+      path.join(codeRoot, 'nettry', 'server', 'index.js'),
+      "module.exports = { async onLoad() { await fetch('https://blocked.example/x'); } };",
+    );
+    testDb
+      .prepare("INSERT INTO plugins (id, status, permissions, config) VALUES ('nettry','inactive','[]','{}')")
+      .run();
     // no http:outbound granted -> egress guard blocks all outbound -> onLoad throws
     await expect(new PluginRuntimeService().activate('nettry')).rejects.toThrow(/egress/);
     await new PluginRuntimeService().deactivate('nettry').catch(() => {});
@@ -322,12 +428,20 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
 
 describe('PluginRuntimeService.update (re-consent gate)', () => {
   const fakeRegistry = (impl: () => void) =>
-    ({ install: vi.fn(async () => { impl(); return { id: 'x', version: '2.0.0' }; }) }) as unknown as import('../../../src/nest/plugins/registry/registry.service').PluginRegistryService;
+    ({
+      install: vi.fn(async () => {
+        impl();
+        return { id: 'x', version: '2.0.0' };
+      }),
+    }) as unknown as import('../../../src/nest/plugins/registry/registry.service').PluginRegistryService;
 
   const seed = (id: string, enabled: number, permissions: string[], granted: string[]) => {
     fs.mkdirSync(path.join(codeRoot, id, 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, id, 'server', 'index.js'), 'module.exports = { async onLoad() {} };');
-    testDb.prepare('INSERT INTO plugins (id, status, enabled, permissions, granted_permissions, config) VALUES (?,?,?,?,?,?)')
+    testDb
+      .prepare(
+        'INSERT INTO plugins (id, status, enabled, permissions, granted_permissions, config) VALUES (?,?,?,?,?,?)',
+      )
       .run(id, enabled ? 'active' : 'inactive', enabled, JSON.stringify(permissions), JSON.stringify(granted), '{}');
   };
 
@@ -345,7 +459,8 @@ describe('PluginRuntimeService.update (re-consent gate)', () => {
     seed('upd-wider', 1, ['db:own'], ['db:own']);
     const rt = new PluginRuntimeService(
       fakeRegistry(() => {
-        testDb.prepare("UPDATE plugins SET permissions = ? WHERE id = 'upd-wider'")
+        testDb
+          .prepare("UPDATE plugins SET permissions = ? WHERE id = 'upd-wider'")
           .run(JSON.stringify(['db:own', 'db:read:trips', 'http:outbound:api.new.com']));
       }),
     );
@@ -378,15 +493,22 @@ describe('PluginRuntimeService dependency gating', () => {
   const deps = (d: { requiredAddons?: string[]; pluginDependencies?: { id: string; version: string }[] }) =>
     JSON.stringify({ requiredAddons: d.requiredAddons ?? [], pluginDependencies: d.pluginDependencies ?? [] });
   const insertPlugin = (id: string, dependencies: string, enabled = 0, version = '1.0.0') =>
-    testDb.prepare("INSERT INTO plugins (id, status, enabled, version, permissions, granted_permissions, config, dependencies) VALUES (?, 'inactive', ?, ?, '[]', '[]', '{}', ?)")
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, enabled, version, permissions, granted_permissions, config, dependencies) VALUES (?, 'inactive', ?, ?, '[]', '[]', '{}', ?)",
+      )
       .run(id, enabled, version, dependencies);
-  const cleanup = (...ids: string[]) => { for (const id of ids) testDb.prepare('DELETE FROM plugins WHERE id = ?').run(id); };
+  const cleanup = (...ids: string[]) => {
+    for (const id of ids) testDb.prepare('DELETE FROM plugins WHERE id = ?').run(id);
+  };
 
   it('blocks activation when a required addon is disabled', async () => {
     testDb.prepare("INSERT OR REPLACE INTO addons (id, enabled) VALUES ('budget', 0)").run();
     insertPlugin('needs-budget', deps({ requiredAddons: ['budget'] }));
     await expect(runtime.activate('needs-budget')).rejects.toMatchObject({ code: 'ADDON_DISABLED' });
-    expect((testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('needs-budget') as { enabled: number }).enabled).toBe(0);
+    expect(
+      (testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('needs-budget') as { enabled: number }).enabled,
+    ).toBe(0);
     cleanup('needs-budget');
   });
 
@@ -427,8 +549,12 @@ describe('PluginRuntimeService dependency gating', () => {
     insertPlugin('unrelated-b', deps({}), 1);
     const disabled = await runtime.deactivateForDisabledAddon('budget');
     expect(disabled.sort()).toEqual(['base-b', 'dependent-b']);
-    expect((testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('base-b') as { enabled: number }).enabled).toBe(0);
-    expect((testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('unrelated-b') as { enabled: number }).enabled).toBe(1);
+    expect(
+      (testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('base-b') as { enabled: number }).enabled,
+    ).toBe(0);
+    expect(
+      (testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('unrelated-b') as { enabled: number }).enabled,
+    ).toBe(1);
     cleanup('base-b', 'dependent-b', 'unrelated-b');
   });
 
@@ -440,9 +566,13 @@ describe('PluginRuntimeService dependency gating', () => {
     const disabled = await runtime.deactivateWithDependents('lib-x');
     expect(disabled).toEqual(['top-x', 'mid-x', 'lib-x']); // deepest dependent first, root last
     for (const id of ['lib-x', 'mid-x', 'top-x']) {
-      expect((testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get(id) as { enabled: number }).enabled).toBe(0);
+      expect((testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get(id) as { enabled: number }).enabled).toBe(
+        0,
+      );
     }
-    expect((testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('other-x') as { enabled: number }).enabled).toBe(1);
+    expect(
+      (testDb.prepare('SELECT enabled FROM plugins WHERE id = ?').get('other-x') as { enabled: number }).enabled,
+    ).toBe(1);
     cleanup('lib-x', 'mid-x', 'top-x', 'other-x');
   });
 });
@@ -469,9 +599,15 @@ describe('PluginRuntimeService inter-plugin (exports + events)', () => {
         } }],
       };`,
     );
-    testDb.prepare("INSERT INTO plugins (id, status, version, permissions, config, capabilities, dependencies) VALUES ('lib','inactive','1.5.0','[]','{}',?,'{}')")
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, version, permissions, config, capabilities, dependencies) VALUES ('lib','inactive','1.5.0','[]','{}',?,'{}')",
+      )
       .run(JSON.stringify({ provides: ['greet'], emits: ['ping'] }));
-    testDb.prepare("INSERT INTO plugins (id, status, version, permissions, config, capabilities, dependencies) VALUES ('consumer','inactive','1.0.0','[]','{}','{}',?)")
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, status, version, permissions, config, capabilities, dependencies) VALUES ('consumer','inactive','1.0.0','[]','{}','{}',?)",
+      )
       .run(JSON.stringify({ requiredAddons: [], pluginDependencies: [{ id: 'lib', version: '>=1.0.0 <2.0.0' }] }));
     await runtime.activate('lib');
     await runtime.activate('consumer');
@@ -491,7 +627,9 @@ describe('PluginRuntimeService inter-plugin (exports + events)', () => {
   });
 
   it('refuses a call from a non-dependent and to an undeclared export', async () => {
-    await expect(runtime.callPlugin('lib', 'consumer', 'anything', {}, 7)).rejects.toThrow(/does not declare|not active|does not export/);
+    await expect(runtime.callPlugin('lib', 'consumer', 'anything', {}, 7)).rejects.toThrow(
+      /does not declare|not active|does not export/,
+    );
     await expect(runtime.callPlugin('consumer', 'lib', 'nope', {}, 7)).rejects.toThrow(/does not export/);
   });
 

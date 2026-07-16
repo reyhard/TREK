@@ -1,9 +1,9 @@
+import { ImportJobsService } from '../../../../src/nest/booking-import/import-jobs.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { broadcastToUser } = vi.hoisted(() => ({ broadcastToUser: vi.fn() }));
 vi.mock('../../../../src/websocket', () => ({ broadcastToUser }));
-
-import { ImportJobsService } from '../../../../src/nest/booking-import/import-jobs.service';
 
 type Preview = ReturnType<typeof vi.fn>;
 function makeService(preview: Preview) {
@@ -38,7 +38,9 @@ describe('ImportJobsService', () => {
   });
 
   it('records an error and pushes import:error when the parse throws', async () => {
-    const preview = vi.fn(async () => { throw new Error('parse boom'); });
+    const preview = vi.fn(async () => {
+      throw new Error('parse boom');
+    });
     const svc = makeService(preview);
 
     const id = svc.start('1', files(1), 'no-ai', 9);
@@ -55,7 +57,7 @@ describe('ImportJobsService', () => {
     expect(svc.get('does-not-exist', 9)).toBeUndefined();
   });
 
-  it('chains a user\'s parses so they run one at a time', async () => {
+  it("chains a user's parses so they run one at a time", async () => {
     const order: string[] = [];
     const preview = vi.fn(async (f: { originalname: string }[]) => {
       order.push(`start:${f[0].originalname}`);

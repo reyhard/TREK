@@ -1,6 +1,19 @@
 /**
  * Unit tests for MCP place tools: create_place, update_place, delete_place, list_categories, search_place.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  createUser,
+  createTrip,
+  createPlace,
+  createDay,
+  createDayAssignment,
+  createJourney,
+} from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -14,13 +27,29 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: number) => {
-      const place: any = db.prepare(`SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`).get(placeId);
+      const place: any = db
+        .prepare(
+          `SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`,
+        )
+        .get(placeId);
       if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -38,20 +67,21 @@ const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
 const { searchPlacesMock } = vi.hoisted(() => ({ searchPlacesMock: vi.fn() }));
-vi.mock('../../../src/services/mapsService', () => ({ searchPlaces: searchPlacesMock }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createPlace, createDay, createDayAssignment, createJourney } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
+vi.mock('../../../src/services/mapsService', () => ({
+  searchPlaces: searchPlacesMock,
+  buildUserAgent: () => 'TREK/test',
+}));
 
 /** Link a journey to a trip so journey-skeleton sync has a target. */
 function linkJourney(journeyId: number, tripId: number) {
-  testDb.prepare('INSERT INTO journey_trips (journey_id, trip_id, added_at) VALUES (?, ?, ?)').run(journeyId, tripId, Date.now());
+  testDb
+    .prepare('INSERT INTO journey_trips (journey_id, trip_id, added_at) VALUES (?, ?, ?)')
+    .run(journeyId, tripId, Date.now());
 }
 function skeletonFor(journeyId: number, placeId: number) {
-  return testDb.prepare('SELECT * FROM journey_entries WHERE journey_id = ? AND source_place_id = ?').get(journeyId, placeId) as any;
+  return testDb
+    .prepare('SELECT * FROM journey_entries WHERE journey_id = ? AND source_place_id = ?')
+    .get(journeyId, placeId) as any;
 }
 
 beforeAll(() => {
@@ -72,7 +102,11 @@ afterAll(() => {
 
 async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: false });
-  try { await fn(h); } finally { await h.cleanup(); }
+  try {
+    await fn(h);
+  } finally {
+    await h.cleanup();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +213,10 @@ describe('Tool: update_place', () => {
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      await h.client.callTool({ name: 'update_place', arguments: { tripId: trip.id, placeId: place.id, name: 'Updated' } });
+      await h.client.callTool({
+        name: 'update_place',
+        arguments: { tripId: trip.id, placeId: place.id, name: 'Updated' },
+      });
       expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'place:updated', expect.any(Object));
     });
   });
@@ -199,7 +236,10 @@ describe('Tool: update_place', () => {
     const trip = createTrip(testDb, other.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'update_place', arguments: { tripId: trip.id, placeId: place.id, name: 'X' } });
+      const result = await h.client.callTool({
+        name: 'update_place',
+        arguments: { tripId: trip.id, placeId: place.id, name: 'X' },
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -235,7 +275,10 @@ describe('Tool: bulk_update_places', () => {
     const b = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
       broadcastMock.mockClear();
-      await h.client.callTool({ name: 'bulk_update_places', arguments: { tripId: trip.id, placeIds: [a.id, b.id], notes: 'seen' } });
+      await h.client.callTool({
+        name: 'bulk_update_places',
+        arguments: { tripId: trip.id, placeIds: [a.id, b.id], notes: 'seen' },
+      });
       const updates = broadcastMock.mock.calls.filter((c) => c[1] === 'place:updated');
       expect(updates).toHaveLength(2);
     });
@@ -246,7 +289,10 @@ describe('Tool: bulk_update_places', () => {
     const trip = createTrip(testDb, user.id);
     const a = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'bulk_update_places', arguments: { tripId: trip.id, placeIds: [a.id] } });
+      const result = await h.client.callTool({
+        name: 'bulk_update_places',
+        arguments: { tripId: trip.id, placeIds: [a.id] },
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -257,7 +303,10 @@ describe('Tool: bulk_update_places', () => {
     const trip = createTrip(testDb, other.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'bulk_update_places', arguments: { tripId: trip.id, placeIds: [place.id], notes: 'x' } });
+      const result = await h.client.callTool({
+        name: 'bulk_update_places',
+        arguments: { tripId: trip.id, placeIds: [place.id], notes: 'x' },
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -273,7 +322,10 @@ describe('Tool: delete_place', () => {
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'delete_place', arguments: { tripId: trip.id, placeId: place.id } });
+      const result = await h.client.callTool({
+        name: 'delete_place',
+        arguments: { tripId: trip.id, placeId: place.id },
+      });
       const data = parseToolResult(result) as any;
       expect(data.success).toBe(true);
       expect(testDb.prepare('SELECT id FROM places WHERE id = ?').get(place.id)).toBeUndefined();
@@ -305,7 +357,10 @@ describe('Tool: delete_place', () => {
     const trip = createTrip(testDb, other.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'delete_place', arguments: { tripId: trip.id, placeId: place.id } });
+      const result = await h.client.callTool({
+        name: 'delete_place',
+        arguments: { tripId: trip.id, placeId: place.id },
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -319,10 +374,12 @@ describe('Tool: delete_place', () => {
     const journey = createJourney(testDb, user.id);
     linkJourney(journey.id, trip.id);
     // Materialise the skeleton for the assigned place.
-    testDb.prepare(
-      `INSERT INTO journey_entries (journey_id, source_trip_id, source_place_id, author_id, type, title, entry_date, sort_order, created_at, updated_at)
+    testDb
+      .prepare(
+        `INSERT INTO journey_entries (journey_id, source_trip_id, source_place_id, author_id, type, title, entry_date, sort_order, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'skeleton', ?, ?, 0, ?, ?)`,
-    ).run(journey.id, trip.id, place.id, user.id, place.name, '2026-05-01', Date.now(), Date.now());
+      )
+      .run(journey.id, trip.id, place.id, user.id, place.name, '2026-05-01', Date.now(), Date.now());
     expect(skeletonFor(journey.id, place.id)).toBeDefined();
 
     await withHarness(user.id, async (h) => {
@@ -346,7 +403,10 @@ describe('Tool: create_and_assign_place', () => {
 
     await withHarness(user.id, async (h) => {
       const result = parseToolResult(
-        await h.client.callTool({ name: 'create_and_assign_place', arguments: { tripId: trip.id, dayId: day.id, name: 'Fresh POI' } }),
+        await h.client.callTool({
+          name: 'create_and_assign_place',
+          arguments: { tripId: trip.id, dayId: day.id, name: 'Fresh POI' },
+        }),
       ) as any;
       const skeleton = skeletonFor(journey.id, result.place.id);
       expect(skeleton).toBeDefined();
@@ -387,7 +447,13 @@ describe('Tool: search_place', () => {
     searchPlacesMock.mockResolvedValue({
       source: 'openstreetmap',
       places: [
-        { osm_id: 'node:12345', name: 'Eiffel Tower', address: 'Eiffel Tower, Paris, France', lat: 48.8584, lng: 2.2945 },
+        {
+          osm_id: 'node:12345',
+          name: 'Eiffel Tower',
+          address: 'Eiffel Tower, Paris, France',
+          lat: 48.8584,
+          lng: 2.2945,
+        },
       ],
     });
 
@@ -407,7 +473,16 @@ describe('Tool: search_place', () => {
     searchPlacesMock.mockResolvedValue({
       source: 'google',
       places: [
-        { google_place_id: 'ChIJD3uTd9hx5kcR1IQvGfr8dbk', name: 'Eiffel Tower', address: 'Champ de Mars, Paris', lat: 48.8584, lng: 2.2945, rating: 4.7, website: 'https://toureiffel.paris', phone: null },
+        {
+          google_place_id: 'ChIJD3uTd9hx5kcR1IQvGfr8dbk',
+          name: 'Eiffel Tower',
+          address: 'Champ de Mars, Paris',
+          lat: 48.8584,
+          lng: 2.2945,
+          rating: 4.7,
+          website: 'https://toureiffel.paris',
+          phone: null,
+        },
       ],
     });
 
@@ -462,7 +537,10 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, assigned.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'unassigned' } });
+      const result = await h.client.callTool({
+        name: 'list_places',
+        arguments: { tripId: trip.id, assignment: 'unassigned' },
+      });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(1);
       expect(data.places[0].name).toBe('Orphan Place');
@@ -478,7 +556,10 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, assigned.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'assigned' } });
+      const result = await h.client.callTool({
+        name: 'list_places',
+        arguments: { tripId: trip.id, assignment: 'assigned' },
+      });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(1);
       expect(data.places[0].name).toBe('Assigned Place');
@@ -493,7 +574,10 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, place.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'unassigned' } });
+      const result = await h.client.callTool({
+        name: 'list_places',
+        arguments: { tripId: trip.id, assignment: 'unassigned' },
+      });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(0);
     });
@@ -508,7 +592,10 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, assigned.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'unassigned', search: 'Louvre' } });
+      const result = await h.client.callTool({
+        name: 'list_places',
+        arguments: { tripId: trip.id, assignment: 'unassigned', search: 'Louvre' },
+      });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(1);
       expect(data.places[0].name).toBe('Louvre Museum');

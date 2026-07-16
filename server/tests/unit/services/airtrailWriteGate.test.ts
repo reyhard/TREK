@@ -1,3 +1,9 @@
+import { db } from '../../../src/db/database';
+import { getFlight, saveFlight } from '../../../src/services/airtrail/airtrailClient';
+import { isAirtrailWriteEnabled, getAirtrailCredentials } from '../../../src/services/airtrail/airtrailService';
+import { pushReservationToAirtrail } from '../../../src/services/airtrail/airtrailSync';
+import { getReservationWithJoins } from '../../../src/services/reservationService';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -31,12 +37,6 @@ vi.mock('../../../src/services/airtrail/airtrailService', () => ({
   getAirtrailCredentials: vi.fn(),
 }));
 
-import { pushReservationToAirtrail } from '../../../src/services/airtrail/airtrailSync';
-import { db } from '../../../src/db/database';
-import { getReservationWithJoins } from '../../../src/services/reservationService';
-import { getFlight, saveFlight } from '../../../src/services/airtrail/airtrailClient';
-import { isAirtrailWriteEnabled, getAirtrailCredentials } from '../../../src/services/airtrail/airtrailService';
-
 const linkedRow = { id: 5, trip_id: 9, external_id: '42', external_owner_user_id: 7, sync_enabled: 1 };
 const runSpy = vi.fn();
 
@@ -55,9 +55,19 @@ beforeEach(() => {
     },
     all: () => [],
   }));
-  (getAirtrailCredentials as any).mockReturnValue({ baseUrl: 'https://at.example', apiKey: 'k', allowInsecureTls: false });
+  (getAirtrailCredentials as any).mockReturnValue({
+    baseUrl: 'https://at.example',
+    apiKey: 'k',
+    allowInsecureTls: false,
+  });
   // GET returns AirTrail-owned detail TREK doesn't model — must survive the writeback.
-  (getFlight as any).mockResolvedValue({ id: 42, from: { iata: 'JFK' }, to: { iata: 'LHR' }, seats: [], departureTerminal: '7' });
+  (getFlight as any).mockResolvedValue({
+    id: 42,
+    from: { iata: 'JFK' },
+    to: { iata: 'LHR' },
+    seats: [],
+    departureTerminal: '7',
+  });
   (saveFlight as any).mockResolvedValue({ id: 42 });
   (getReservationWithJoins as any).mockReturnValue({
     external_id: '42',

@@ -2,8 +2,9 @@
  * DatabaseService — the shared better-sqlite3 provider (F3). Exercises every
  * helper against the real connection so the typed query surface is covered.
  */
-import { describe, it, expect } from 'vitest';
 import { DatabaseService } from '../../../src/nest/database/database.service';
+
+import { describe, it, expect } from 'vitest';
 
 describe('DatabaseService (typed query helpers)', () => {
   const svc = new DatabaseService();

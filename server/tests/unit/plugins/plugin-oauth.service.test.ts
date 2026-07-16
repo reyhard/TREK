@@ -4,6 +4,9 @@
  * https/SSRF guard on the endpoints, the code + refresh token exchanges (mocked fetch),
  * tokens encrypted at rest, and a stored refresh token that the plugin never sees.
  */
+import { PluginOAuthService } from '../../../src/nest/plugins/plugin-oauth.service';
+
+import Database from 'better-sqlite3';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../../src/services/apiKeyCrypto', () => ({
@@ -13,7 +16,11 @@ vi.mock('../../../src/services/apiKeyCrypto', () => ({
 vi.mock('../../../src/services/notifications', () => ({ getAppUrl: () => 'https://trek.example' }));
 
 const { getDb } = vi.hoisted(() => ({ getDb: { current: null as unknown } }));
-vi.mock('../../../src/db/database', () => ({ get db() { return getDb.current; } }));
+vi.mock('../../../src/db/database', () => ({
+  get db() {
+    return getDb.current;
+  },
+}));
 
 // The token POST now runs through the SSRF guard (ssrfGuard.safeFetchLlm), which
 // resolves the host before fetching. Stub DNS so the fake provider.example host
@@ -24,14 +31,11 @@ vi.mock('node:dns/promises', () => {
   return { default: { lookup }, lookup };
 });
 
-import Database from 'better-sqlite3';
-import { PluginOAuthService } from '../../../src/nest/plugins/plugin-oauth.service';
-
 const CFG = {
   oauth_authorize_url: 'https://provider.example/authorize',
   oauth_token_url: 'https://provider.example/token',
   oauth_scopes: 'read write',
-  oauth_client_id: 'enc:client-123',       // stored encrypted
+  oauth_client_id: 'enc:client-123', // stored encrypted
   oauth_client_secret: 'enc:secret-abc',
 };
 
@@ -50,10 +54,20 @@ const NOW = 1_700_000_000_000;
 
 describe('PluginOAuthService', () => {
   let svc: PluginOAuthService;
-  beforeEach(() => { getDb.current = freshDb(); svc = new PluginOAuthService(); vi.restoreAllMocks(); dnsState.address = '93.184.216.34'; dnsState.family = 4; });
+  beforeEach(() => {
+    getDb.current = freshDb();
+    svc = new PluginOAuthService();
+    vi.restoreAllMocks();
+    dnsState.address = '93.184.216.34';
+    dnsState.family = 4;
+  });
 
   it('providerConfig returns null unless every piece is present, decrypting the secrets', () => {
-    expect(svc.providerConfig('p')).toMatchObject({ clientId: 'client-123', clientSecret: 'secret-abc', scopes: 'read write' });
+    expect(svc.providerConfig('p')).toMatchObject({
+      clientId: 'client-123',
+      clientSecret: 'secret-abc',
+      scopes: 'read write',
+    });
     getDb.current = freshDb({ ...CFG, oauth_client_secret: '' });
     expect(new PluginOAuthService().providerConfig('p')).toBeNull();
   });
@@ -67,11 +81,16 @@ describe('PluginOAuthService', () => {
     expect(url.searchParams.get('code_challenge')).toBeTruthy();
     const state = url.searchParams.get('state')!;
     const rows = getDb.current as unknown as InstanceType<typeof Database>;
-    const stored = rows.prepare('SELECT verifier, user_id FROM plugin_oauth_state WHERE state = ?').get(state) as { verifier: string; user_id: number };
+    const stored = rows.prepare('SELECT verifier, user_id FROM plugin_oauth_state WHERE state = ?').get(state) as {
+      verifier: string;
+      user_id: number;
+    };
     expect(stored.user_id).toBe(42);
     // a second connect replaces the first (one live state per user)
     svc.startConnect('p', 42, NOW);
-    expect((rows.prepare('SELECT COUNT(*) c FROM plugin_oauth_state WHERE user_id = 42').get() as { c: number }).c).toBe(1);
+    expect(
+      (rows.prepare('SELECT COUNT(*) c FROM plugin_oauth_state WHERE user_id = 42').get() as { c: number }).c,
+    ).toBe(1);
   });
 
   it('rejects a non-https / loopback / metadata / internal authorize endpoint', () => {
@@ -94,7 +113,8 @@ describe('PluginOAuthService', () => {
     const url = new URL(svc.startConnect('p', 42, NOW));
     const state = url.searchParams.get('state')!;
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true, json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, scope: 'read' }),
+      ok: true,
+      json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, scope: 'read' }),
     } as Response);
 
     await svc.completeCallback('p', 42, 'the-code', state, NOW + 1000);
@@ -105,8 +125,10 @@ describe('PluginOAuthService', () => {
     expect(body).toContain('client_secret=secret-abc');
 
     const rows = getDb.current as unknown as InstanceType<typeof Database>;
-    const tok = rows.prepare('SELECT access_token, refresh_token FROM plugin_oauth_tokens WHERE plugin_id = ? AND user_id = 42').get('p') as { access_token: string; refresh_token: string };
-    expect(tok.access_token).toBe('enc:AT');   // encrypted at rest
+    const tok = rows
+      .prepare('SELECT access_token, refresh_token FROM plugin_oauth_tokens WHERE plugin_id = ? AND user_id = 42')
+      .get('p') as { access_token: string; refresh_token: string };
+    expect(tok.access_token).toBe('enc:AT'); // encrypted at rest
     expect(tok.refresh_token).toBe('enc:RT');
     expect(svc.status('p', 42)).toMatchObject({ configured: true, connected: true });
     // state is single-use — replaying it fails
@@ -123,16 +145,26 @@ describe('PluginOAuthService', () => {
   it('getAccessToken returns the token, refreshes an expiring one, and hands the plugin only the access token', async () => {
     const rows = getDb.current as unknown as InstanceType<typeof Database>;
     // a live token → returned decrypted, no network
-    rows.prepare('INSERT INTO plugin_oauth_tokens (plugin_id, user_id, access_token, refresh_token, expires_at) VALUES (?,?,?,?,?)').run('p', 42, 'enc:LIVE', 'enc:RT', NOW + 3600_000);
+    rows
+      .prepare(
+        'INSERT INTO plugin_oauth_tokens (plugin_id, user_id, access_token, refresh_token, expires_at) VALUES (?,?,?,?,?)',
+      )
+      .run('p', 42, 'enc:LIVE', 'enc:RT', NOW + 3600_000);
     expect(await svc.getAccessToken('p', 42, NOW)).toBe('LIVE');
 
     // an expired token → refreshed via the refresh_token grant
-    rows.prepare('UPDATE plugin_oauth_tokens SET access_token = ?, expires_at = ? WHERE user_id = 42').run('enc:OLD', NOW - 1000);
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ access_token: 'NEW', expires_in: 3600 }) } as Response);
+    rows
+      .prepare('UPDATE plugin_oauth_tokens SET access_token = ?, expires_at = ? WHERE user_id = 42')
+      .run('enc:OLD', NOW - 1000);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true, json: async () => ({ access_token: 'NEW', expires_in: 3600 }) } as Response);
     expect(await svc.getAccessToken('p', 42, NOW)).toBe('NEW');
     expect((fetchMock.mock.calls[0][1] as { body: string }).body).toContain('grant_type=refresh_token');
     // the provider omitted a new refresh_token → the old one is kept
-    const tok = rows.prepare('SELECT refresh_token FROM plugin_oauth_tokens WHERE user_id = 42').get() as { refresh_token: string };
+    const tok = rows.prepare('SELECT refresh_token FROM plugin_oauth_tokens WHERE user_id = 42').get() as {
+      refresh_token: string;
+    };
     expect(tok.refresh_token).toBe('enc:RT');
 
     // a user who never connected → null
@@ -141,16 +173,20 @@ describe('PluginOAuthService', () => {
 
   it('routes the token exchange through the SSRF guard — a token_url resolving to cloud metadata is refused', async () => {
     const state = new URL(svc.startConnect('p', 42, NOW)).searchParams.get('state')!;
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ access_token: 'AT' }) } as Response);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true, json: async () => ({ access_token: 'AT' }) } as Response);
     // The provider's token_url now resolves to the cloud-metadata address.
     dnsState.address = '169.254.169.254';
     await expect(svc.completeCallback('p', 42, 'the-code', state, NOW + 1000)).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled(); // blocked before any request left the host
   });
 
-  it('disconnect drops the user\'s tokens', async () => {
+  it("disconnect drops the user's tokens", async () => {
     const rows = getDb.current as unknown as InstanceType<typeof Database>;
-    rows.prepare('INSERT INTO plugin_oauth_tokens (plugin_id, user_id, access_token) VALUES (?,?,?)').run('p', 42, 'enc:X');
+    rows
+      .prepare('INSERT INTO plugin_oauth_tokens (plugin_id, user_id, access_token) VALUES (?,?,?)')
+      .run('p', 42, 'enc:X');
     svc.disconnect('p', 42);
     expect(svc.status('p', 42).connected).toBe(false);
   });

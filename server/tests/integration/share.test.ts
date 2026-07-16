@@ -2,10 +2,27 @@
  * Share link integration tests.
  * Covers SHARE-001 to SHARE-009.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
-import request from 'supertest';
-import type { Application } from 'express';
+import { buildApp } from '../../src/bootstrap';
+import { runMigrations } from '../../src/db/migrations';
+import { createTables } from '../../src/db/schema';
+import * as placePhotoCache from '../../src/services/placePhotoCache';
+import { authCookie } from '../helpers/auth';
+import {
+  createUser,
+  createTrip,
+  addTripMember,
+  createDay,
+  createPlace,
+  createDayAssignment,
+  createDayNote,
+} from '../helpers/factories';
+import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
+
+import type { Application } from 'express';
+import fs from 'node:fs';
+import request from 'supertest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -18,13 +35,29 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: number) => {
-      const place: any = db.prepare(`SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`).get(placeId);
+      const place: any = db
+        .prepare(
+          `SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`,
+        )
+        .get(placeId);
       if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -42,15 +75,6 @@ vi.mock('../../src/config', () => ({
   DEFAULT_LANGUAGE: 'en',
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
-
-import { buildApp } from '../../src/bootstrap';
-import { createTables } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrations';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import { createUser, createTrip, addTripMember, createDay, createPlace, createDayAssignment, createDayNote } from '../helpers/factories';
-import { authCookie } from '../helpers/auth';
-import * as placePhotoCache from '../../src/services/placePhotoCache';
-import fs from 'node:fs';
 
 let nestApp: INestApplication;
 let app: Application;
@@ -77,10 +101,7 @@ describe('Share link CRUD', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    const res = await request(app)
-      .post(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const res = await request(app).post(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id)).send({});
     expect(res.status).toBe(201);
     expect(res.body.token).toBeDefined();
     expect(typeof res.body.token).toBe('string');
@@ -119,14 +140,9 @@ describe('Share link CRUD', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    await request(app)
-      .post(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    await request(app).post(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id)).send({});
 
-    const res = await request(app)
-      .get(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
   });
@@ -135,9 +151,7 @@ describe('Share link CRUD', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    const res = await request(app)
-      .get(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(res.status).toBe(200);
     expect(res.body.token).toBeNull();
   });
@@ -146,20 +160,13 @@ describe('Share link CRUD', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    await request(app)
-      .post(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    await request(app).post(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id)).send({});
 
-    const del = await request(app)
-      .delete(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const del = await request(app).delete(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(del.status).toBe(200);
     expect(del.body.success).toBe(true);
 
-    const status = await request(app)
-      .get(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const status = await request(app).get(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(status.body.token).toBeNull();
   });
 });
@@ -202,8 +209,16 @@ describe('Shared trip access', () => {
   it('SHARE-026 — hides private packing items from the public payload', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    testDb.prepare("INSERT INTO packing_items (trip_id, name, category, checked, is_private, owner_id) VALUES (?, 'Private thing', 'Misc', 0, 1, ?)").run(trip.id, user.id);
-    testDb.prepare("INSERT INTO packing_items (trip_id, name, category, checked, is_private, owner_id) VALUES (?, 'Common thing', 'Misc', 0, 0, ?)").run(trip.id, user.id);
+    testDb
+      .prepare(
+        "INSERT INTO packing_items (trip_id, name, category, checked, is_private, owner_id) VALUES (?, 'Private thing', 'Misc', 0, 1, ?)",
+      )
+      .run(trip.id, user.id);
+    testDb
+      .prepare(
+        "INSERT INTO packing_items (trip_id, name, category, checked, is_private, owner_id) VALUES (?, 'Common thing', 'Misc', 0, 0, ?)",
+      )
+      .run(trip.id, user.id);
     const create = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
       .set('Cookie', authCookie(user.id))
@@ -310,7 +325,9 @@ describe('Shared trip — day assignments and notes', () => {
   it('SHARE-012 — share_collab=true includes collab messages in response', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    testDb.prepare('INSERT INTO collab_messages (trip_id, user_id, text, deleted) VALUES (?, ?, ?, 0)').run(trip.id, user.id, 'Hello team!');
+    testDb
+      .prepare('INSERT INTO collab_messages (trip_id, user_id, text, deleted) VALUES (?, ?, ?, 0)')
+      .run(trip.id, user.id, 'Hello team!');
 
     const create = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
@@ -352,17 +369,20 @@ describe('Shared trip — ordering parity (issue #981)', () => {
     const place2 = createPlace(testDb, trip.id, { name: 'Second Created' });
 
     // Both with order_index = 0 (schema default) but different created_at
-    testDb.prepare(
-      "INSERT INTO day_assignments (day_id, place_id, order_index, created_at) VALUES (?, ?, 0, '2025-01-01T10:00:00')"
-    ).run(day.id, place1.id);
-    testDb.prepare(
-      "INSERT INTO day_assignments (day_id, place_id, order_index, created_at) VALUES (?, ?, 0, '2025-01-01T11:00:00')"
-    ).run(day.id, place2.id);
+    testDb
+      .prepare(
+        "INSERT INTO day_assignments (day_id, place_id, order_index, created_at) VALUES (?, ?, 0, '2025-01-01T10:00:00')",
+      )
+      .run(day.id, place1.id);
+    testDb
+      .prepare(
+        "INSERT INTO day_assignments (day_id, place_id, order_index, created_at) VALUES (?, ?, 0, '2025-01-01T11:00:00')",
+      )
+      .run(day.id, place2.id);
 
-    const { body: { token } } = await request(app)
-      .post(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const {
+      body: { token },
+    } = await request(app).post(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id)).send({});
 
     const res = await request(app).get(`/api/shared/${token}`);
     expect(res.status).toBe(200);
@@ -377,17 +397,19 @@ describe('Shared trip — ordering parity (issue #981)', () => {
     const trip = createTrip(testDb, user.id);
     const day = createDay(testDb, trip.id, { date: '2025-09-01' });
 
-    const res1 = testDb.prepare(
-      "INSERT INTO reservations (trip_id, title, type, day_id, reservation_time) VALUES (?, ?, ?, ?, ?)"
-    ).run(trip.id, 'Test Flight', 'flight', day.id, '2025-09-01T09:00:00');
+    const res1 = testDb
+      .prepare('INSERT INTO reservations (trip_id, title, type, day_id, reservation_time) VALUES (?, ?, ?, ?, ?)')
+      .run(trip.id, 'Test Flight', 'flight', day.id, '2025-09-01T09:00:00');
     const reservationId = Number(res1.lastInsertRowid);
 
     // Insert a per-day position
-    testDb.prepare(
-      'INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)'
-    ).run(reservationId, day.id, 1.5);
+    testDb
+      .prepare('INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)')
+      .run(reservationId, day.id, 1.5);
 
-    const { body: { token } } = await request(app)
+    const {
+      body: { token },
+    } = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
       .set('Cookie', authCookie(user.id))
       .send({ share_bookings: true });
@@ -402,14 +424,17 @@ describe('Shared trip — ordering parity (issue #981)', () => {
 });
 
 describe('Shared trip — display currency (issue #1361)', () => {
-  it('SHARE-021 — baseCurrency resolves from the share owner\'s default_currency setting', async () => {
+  it("SHARE-021 — baseCurrency resolves from the share owner's default_currency setting", async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     // Trip keeps the EUR default; the owner's Costs display currency is CAD.
-    testDb.prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'default_currency', ?)")
+    testDb
+      .prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'default_currency', ?)")
       .run(user.id, JSON.stringify('CAD'));
 
-    const { body: { token } } = await request(app)
+    const {
+      body: { token },
+    } = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
       .set('Cookie', authCookie(user.id))
       .send({ share_budget: true });
@@ -424,7 +449,9 @@ describe('Shared trip — display currency (issue #1361)', () => {
     const trip = createTrip(testDb, user.id);
     testDb.prepare('UPDATE trips SET currency = ? WHERE id = ?').run('GBP', trip.id);
 
-    const { body: { token } } = await request(app)
+    const {
+      body: { token },
+    } = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
       .set('Cookie', authCookie(user.id))
       .send({ share_budget: true });
@@ -437,10 +464,13 @@ describe('Shared trip — display currency (issue #1361)', () => {
   it('SHARE-023 — baseCurrency uses the admin instance default when the owner has no per-user setting', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id); // EUR trip default, no user setting
-    testDb.prepare("INSERT INTO app_settings (key, value) VALUES ('default_user_setting_default_currency', ?)")
+    testDb
+      .prepare("INSERT INTO app_settings (key, value) VALUES ('default_user_setting_default_currency', ?)")
       .run(JSON.stringify('USD'));
 
-    const { body: { token } } = await request(app)
+    const {
+      body: { token },
+    } = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
       .set('Cookie', authCookie(user.id))
       .send({ share_budget: true });
@@ -457,18 +487,25 @@ describe('Shared trip — place photos in shared links (issue #1100)', () => {
   const photoBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
   let cachedFilePath: string;
 
-  afterAll(() => { try { if (cachedFilePath) fs.unlinkSync(cachedFilePath); } catch { /* ignore */ } });
+  afterAll(() => {
+    try {
+      if (cachedFilePath) fs.unlinkSync(cachedFilePath);
+    } catch {
+      /* ignore */
+    }
+  });
 
   async function setupSharedPlaceWithPhoto() {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id, { name: 'Photo Place' });
-    testDb.prepare('UPDATE places SET image_url = ?, google_place_id = ? WHERE id = ?').run(PROXY_URL, PLACE_ID, place.id);
+    testDb
+      .prepare('UPDATE places SET image_url = ?, google_place_id = ? WHERE id = ?')
+      .run(PROXY_URL, PLACE_ID, place.id);
 
-    const { body: { token } } = await request(app)
-      .post(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const {
+      body: { token },
+    } = await request(app).post(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id)).send({});
     return { token, place };
   }
 
@@ -489,15 +526,15 @@ describe('Shared trip — place photos in shared links (issue #1100)', () => {
     testDb.prepare('UPDATE places SET image_url = ? WHERE id = ?').run(PROXY_URL, place.id);
     createDayAssignment(testDb, day.id, place.id, {});
 
-    const { body: { token } } = await request(app)
-      .post(`/api/trips/${trip.id}/share-link`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const {
+      body: { token },
+    } = await request(app).post(`/api/trips/${trip.id}/share-link`).set('Cookie', authCookie(user.id)).send({});
 
     const res = await request(app).get(`/api/shared/${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.assignments[day.id][0].place.image_url)
-      .toBe(`/api/shared/${token}/place-photo/${encodeURIComponent(PLACE_ID)}/bytes`);
+    expect(res.body.assignments[day.id][0].place.image_url).toBe(
+      `/api/shared/${token}/place-photo/${encodeURIComponent(PLACE_ID)}/bytes`,
+    );
   });
 
   it('SHARE-018 — public proxy streams cached bytes for a valid token + place (no cookie)', async () => {
@@ -532,8 +569,12 @@ describe('Shared trip — place photos in shared links (issue #1100)', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id, { name: 'Hidden Photo Place' });
-    testDb.prepare('UPDATE places SET image_url = ?, google_place_id = ? WHERE id = ?').run(PROXY_URL, PLACE_ID, place.id);
-    const { body: { token } } = await request(app)
+    testDb
+      .prepare('UPDATE places SET image_url = ?, google_place_id = ? WHERE id = ?')
+      .run(PROXY_URL, PLACE_ID, place.id);
+    const {
+      body: { token },
+    } = await request(app)
       .post(`/api/trips/${trip.id}/share-link`)
       .set('Cookie', authCookie(user.id))
       .send({ share_map: false });

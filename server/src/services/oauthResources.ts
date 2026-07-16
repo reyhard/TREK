@@ -38,8 +38,10 @@ export function parsePluginResource(resource: string): { pluginId: string } | nu
 }
 
 export function isPluginScopeAllowed(scopes: string[], pluginId: string, access: PluginOAuthAccess): boolean {
-  return scopes.includes(pluginScope(pluginId, access))
-    || (access === 'read' && scopes.includes(pluginScope(pluginId, 'write')));
+  return (
+    scopes.includes(pluginScope(pluginId, access)) ||
+    (access === 'read' && scopes.includes(pluginScope(pluginId, 'write')))
+  );
 }
 
 export function isPluginScope(scope: string): boolean {

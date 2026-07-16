@@ -1,5 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { FilesService } from '../../../src/nest/files/files.service';
+import type { User } from '../../../src/types';
+
 import type { Request } from 'express';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the side-effect dependencies the wrapper reaches into directly.
 const { broadcast } = vi.hoisted(() => ({ broadcast: vi.fn() }));
@@ -29,9 +32,6 @@ const { svc } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../../src/services/fileService', () => svc);
-
-import { FilesService } from '../../../src/nest/files/files.service';
-import type { User } from '../../../src/types';
 
 function service() {
   return new FilesService();

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { canonicalHash, mapFlightToReservation, normalizeFlight } from '../../../src/services/airtrail/airtrailMapper';
 import type { AirtrailFlightRaw } from '../../../src/services/airtrail/airtrailClient';
+import { canonicalHash, mapFlightToReservation, normalizeFlight } from '../../../src/services/airtrail/airtrailMapper';
+
+import { describe, it, expect } from 'vitest';
 
 function airport(over: Partial<AirtrailFlightRaw['from']> = {}): NonNullable<AirtrailFlightRaw['from']> {
   return {
@@ -20,7 +21,15 @@ function flight(over: Partial<AirtrailFlightRaw> = {}): AirtrailFlightRaw {
   return {
     id: 42,
     from: airport(),
-    to: airport({ id: 2, icao: 'EGLL', iata: 'LHR', name: 'London Heathrow', lat: 51.4706, lon: -0.4619, tz: 'Europe/London' }),
+    to: airport({
+      id: 2,
+      icao: 'EGLL',
+      iata: 'LHR',
+      name: 'London Heathrow',
+      lat: 51.4706,
+      lon: -0.4619,
+      tz: 'Europe/London',
+    }),
     date: '2021-09-01',
     datePrecision: 'day',
     // Actual times (delayed) — TREK must IGNORE these and read the scheduled times.
@@ -81,12 +90,14 @@ describe('airtrailMapper.mapFlightToReservation', () => {
   });
 
   it('leaves the clock blank (date only) when the flight has no time at all', () => {
-    const m = mapFlightToReservation(flight({ departure: null, arrival: null, departureScheduled: null, arrivalScheduled: null }));
+    const m = mapFlightToReservation(
+      flight({ departure: null, arrival: null, departureScheduled: null, arrivalScheduled: null }),
+    );
     // Date is preserved from the AirTrail canonical date; no fabricated 00:00.
     expect(m.reservation_time).toBe('2021-09-01');
     expect(m.reservation_end_time).toBeNull();
-    expect(m.endpoints.find(e => e.role === 'from')?.local_time).toBeNull();
-    expect(m.endpoints.find(e => e.role === 'to')?.local_time).toBeNull();
+    expect(m.endpoints.find((e) => e.role === 'from')?.local_time).toBeNull();
+    expect(m.endpoints.find((e) => e.role === 'to')?.local_time).toBeNull();
   });
 
   it('#1336 falls back to the primary departure/arrival when AirTrail has no scheduled times', () => {
@@ -95,15 +106,22 @@ describe('airtrailMapper.mapFlightToReservation', () => {
     // departure 23:42 UTC at JFK (EDT) = 19:42 local; arrival 07:42 UTC at LHR (BST) = 08:42.
     expect(m.reservation_time).toBe('2021-09-01T19:42');
     expect(m.reservation_end_time).toBe('2021-09-02T08:42');
-    expect(m.endpoints.find(e => e.role === 'from')?.local_time).toBe('19:42');
-    expect(m.endpoints.find(e => e.role === 'to')?.local_time).toBe('08:42');
-    expect(m.endpoints.find(e => e.role === 'to')?.local_date).toBe('2021-09-02');
+    expect(m.endpoints.find((e) => e.role === 'from')?.local_time).toBe('19:42');
+    expect(m.endpoints.find((e) => e.role === 'to')?.local_time).toBe('08:42');
+    expect(m.endpoints.find((e) => e.role === 'to')?.local_date).toBe('2021-09-02');
   });
 
   it('builds two endpoints with codes, coords and timezones', () => {
     const m = mapFlightToReservation(flight());
     expect(m.endpoints).toHaveLength(2);
-    expect(m.endpoints[0]).toMatchObject({ role: 'from', code: 'JFK', lat: 40.6413, timezone: 'America/New_York', local_date: '2021-09-01', local_time: '19:00' });
+    expect(m.endpoints[0]).toMatchObject({
+      role: 'from',
+      code: 'JFK',
+      lat: 40.6413,
+      timezone: 'America/New_York',
+      local_date: '2021-09-01',
+      local_time: '19:00',
+    });
     expect(m.endpoints[1]).toMatchObject({ role: 'to', code: 'LHR', timezone: 'Europe/London', local_time: '08:00' });
     expect(m.needs_review).toBe(0);
   });
@@ -116,7 +134,15 @@ describe('airtrailMapper.mapFlightToReservation', () => {
   it('carries flight metadata', () => {
     const m = mapFlightToReservation(flight());
     // #1334: display the airline name, keep the code in airline_code for the writeback.
-    expect(m.metadata).toMatchObject({ airline: 'British Airways', airline_code: 'BAW', flight_number: 'BA178', aircraft: 'B772', aircraft_reg: 'G-VIIL', flight_reason: 'leisure', seat: '12A' });
+    expect(m.metadata).toMatchObject({
+      airline: 'British Airways',
+      airline_code: 'BAW',
+      flight_number: 'BA178',
+      aircraft: 'B772',
+      aircraft_reg: 'G-VIIL',
+      flight_reason: 'leisure',
+      seat: '12A',
+    });
     expect(m.type).toBe('flight');
     expect(m.status).toBe('confirmed');
     expect(m.notes).toBe('window seat');
@@ -125,7 +151,10 @@ describe('airtrailMapper.mapFlightToReservation', () => {
   it('#1334 falls back to the airline code when AirTrail provides no name', () => {
     const a = { id: 9, icao: 'EWG', iata: 'EW' };
     expect(normalizeFlight(flight({ airline: a })).airline).toBe('EWG');
-    expect(mapFlightToReservation(flight({ airline: a })).metadata).toMatchObject({ airline: 'EWG', airline_code: 'EWG' });
+    expect(mapFlightToReservation(flight({ airline: a })).metadata).toMatchObject({
+      airline: 'EWG',
+      airline_code: 'EWG',
+    });
   });
 
   it('uses only the seat number for the seat, not the cabin class (#1246)', () => {
@@ -155,8 +184,8 @@ describe('airtrailMapper.mapFlightToReservation', () => {
   it('flags needs_review and drops the endpoint when an airport has no coordinates', () => {
     const m = mapFlightToReservation(flight({ from: airport({ lat: null, lon: null }) }));
     expect(m.needs_review).toBe(1);
-    expect(m.endpoints.find(e => e.role === 'from')).toBeUndefined();
-    expect(m.endpoints.find(e => e.role === 'to')).toBeDefined();
+    expect(m.endpoints.find((e) => e.role === 'from')).toBeUndefined();
+    expect(m.endpoints.find((e) => e.role === 'to')).toBeDefined();
   });
 
   it('leaves the end time null for a partial flight with no arrival time at all', () => {
@@ -191,7 +220,9 @@ describe('airtrailMapper.canonicalHash', () => {
     // With no scheduled time, departure IS what TREK imports, so a change must re-sync.
     const manual = flight({ departureScheduled: null, arrivalScheduled: null });
     expect(canonicalHash(manual)).not.toBe(
-      canonicalHash(flight({ departureScheduled: null, arrivalScheduled: null, departure: '2021-09-01T20:00:00.000+00:00' })),
+      canonicalHash(
+        flight({ departureScheduled: null, arrivalScheduled: null, departure: '2021-09-01T20:00:00.000+00:00' }),
+      ),
     );
   });
 

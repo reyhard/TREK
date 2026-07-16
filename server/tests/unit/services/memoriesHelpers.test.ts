@@ -2,6 +2,13 @@
  * Unit tests for memories/helpersService — MEM-HELPERS-001 to MEM-HELPERS-020.
  * Covers mapDbError, getAlbumIdFromLink, pipeAsset error paths.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { mapDbError, getAlbumIdFromLink, pipeAsset } from '../../../src/services/memories/helpersService';
+import { SsrfBlockedError } from '../../../src/utils/ssrfGuard';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup ─────────────────────────────────────────────────────────────────
@@ -18,11 +25,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`
+      db
+        .prepare(
+          `
         SELECT t.id FROM trips t
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?
         WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)
-      `).get(userId, tripId, userId),
+      `,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -42,7 +53,10 @@ const { mockSafeFetch } = vi.hoisted(() => ({
 
 vi.mock('../../../src/utils/ssrfGuard', () => {
   class SsrfBlockedError extends Error {
-    constructor(msg: string) { super(msg); this.name = 'SsrfBlockedError'; }
+    constructor(msg: string) {
+      super(msg);
+      this.name = 'SsrfBlockedError';
+    }
   }
   return {
     safeFetch: mockSafeFetch,
@@ -50,13 +64,6 @@ vi.mock('../../../src/utils/ssrfGuard', () => {
     checkSsrf: vi.fn(async () => ({ allowed: true, resolvedIp: '1.2.3.4' })),
   };
 });
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { mapDbError, getAlbumIdFromLink, pipeAsset } from '../../../src/services/memories/helpersService';
-import { SsrfBlockedError } from '../../../src/utils/ssrfGuard';
 
 beforeAll(() => {
   createTables(testDb);
@@ -129,9 +136,9 @@ describe('getAlbumIdFromLink', () => {
     const trip = createTrip(testDb, user.id);
 
     // Insert with auto-increment id (INTEGER PRIMARY KEY)
-    const ins = testDb.prepare(
-      'INSERT INTO trip_album_links (trip_id, user_id, provider, album_id, album_name) VALUES (?, ?, ?, ?, ?)'
-    ).run(trip.id, user.id, 'immich', 'album-123', 'My Album');
+    const ins = testDb
+      .prepare('INSERT INTO trip_album_links (trip_id, user_id, provider, album_id, album_name) VALUES (?, ?, ?, ?, ?)')
+      .run(trip.id, user.id, 'immich', 'album-123', 'My Album');
     const linkId = ins.lastInsertRowid;
 
     const result = getAlbumIdFromLink(String(trip.id), String(linkId), user.id);

@@ -1,3 +1,6 @@
+import { applyIdempotency } from '../../../src/middleware/idempotency';
+
+import type { Request, Response, NextFunction } from 'express';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── In-memory store + DB mock using vi.hoisted ────────────────────────────────
@@ -12,7 +15,14 @@ const { rows, dbMock } = vi.hoisted(() => {
           return rows[`${key}:${userId}:${method}:${path}`] ?? undefined;
         }),
         run: vi.fn((...args: unknown[]) => {
-          const [key, userId, method, path, status_code, response_body] = args as [string, number, string, string, number, string];
+          const [key, userId, method, path, status_code, response_body] = args as [
+            string,
+            number,
+            string,
+            string,
+            number,
+            string,
+          ];
           const k = `${key}:${userId}:${method}:${path}`;
           if (!rows[k]) rows[k] = { status_code, response_body };
         }),
@@ -25,9 +35,6 @@ const { rows, dbMock } = vi.hoisted(() => {
 
 vi.mock('../../../src/db/database', () => dbMock);
 
-import { applyIdempotency } from '../../../src/middleware/idempotency';
-import type { Request, Response, NextFunction } from 'express';
-
 function makeReq(method = 'POST', headers: Record<string, string> = {}, path = '/api/test'): Request {
   return { method, path, headers } as unknown as Request;
 }
@@ -35,15 +42,20 @@ function makeReq(method = 'POST', headers: Record<string, string> = {}, path = '
 function makeRes(statusCode = 200): Response {
   const ctx = { status: statusCode };
   const res = {
-    get statusCode() { return ctx.status; },
-    status(code: number) { ctx.status = code; return res; },
+    get statusCode() {
+      return ctx.status;
+    },
+    status(code: number) {
+      ctx.status = code;
+      return res;
+    },
     json: vi.fn((_body: unknown) => res),
   } as unknown as Response;
   return res;
 }
 
 beforeEach(() => {
-  Object.keys(rows).forEach(k => delete rows[k]);
+  Object.keys(rows).forEach((k) => delete rows[k]);
   vi.clearAllMocks();
 });
 

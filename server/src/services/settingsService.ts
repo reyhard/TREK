@@ -34,7 +34,7 @@ export const DEFAULTABLE_USER_SETTING_KEYS = [
   'llm_api_key',
 ] as const;
 
-type DefaultableKey = typeof DEFAULTABLE_USER_SETTING_KEYS[number];
+type DefaultableKey = (typeof DEFAULTABLE_USER_SETTING_KEYS)[number];
 
 const VALID_VALUES: Partial<Record<DefaultableKey, unknown[]>> = {
   temperature_unit: ['fahrenheit', 'celsius'],
@@ -45,16 +45,26 @@ const VALID_VALUES: Partial<Record<DefaultableKey, unknown[]>> = {
   llm_provider: ['local', 'openai', 'anthropic'],
 };
 
-const BOOLEAN_KEYS = new Set<DefaultableKey>(['blur_booking_codes', 'mapbox_3d_enabled', 'mapbox_quality_mode', 'llm_multimodal']);
+const BOOLEAN_KEYS = new Set<DefaultableKey>([
+  'blur_booking_codes',
+  'mapbox_3d_enabled',
+  'mapbox_quality_mode',
+  'llm_multimodal',
+]);
 
 function parseValue(raw: string): unknown {
-  try { return JSON.parse(raw); } catch { return raw; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
 }
 
 export function getAdminUserDefaults(): Record<string, unknown> {
-  const rows = db.prepare(
-    "SELECT key, value FROM app_settings WHERE key LIKE 'default_user_setting_%'"
-  ).all() as { key: string; value: string }[];
+  const rows = db.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'default_user_setting_%'").all() as {
+    key: string;
+    value: string;
+  }[];
   const defaults: Record<string, unknown> = {};
   for (const row of rows) {
     const settingKey = row.key.slice('default_user_setting_'.length);
@@ -70,9 +80,9 @@ export function getAdminUserDefaults(): Record<string, unknown> {
 export function setAdminUserDefaults(partial: Record<string, unknown>): void {
   const upsert = db.prepare(
     `INSERT INTO app_settings (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   );
-  const del = db.prepare("DELETE FROM app_settings WHERE key = ?");
+  const del = db.prepare('DELETE FROM app_settings WHERE key = ?');
 
   db.exec('BEGIN');
   try {
@@ -114,7 +124,10 @@ export function setAdminUserDefaults(partial: Record<string, unknown>): void {
 export function getUserSettings(userId: number): Record<string, unknown> {
   const adminDefaults = getAdminUserDefaults();
 
-  const rows = db.prepare('SELECT key, value FROM settings WHERE user_id = ?').all(userId) as { key: string; value: string }[];
+  const rows = db.prepare('SELECT key, value FROM settings WHERE user_id = ?').all(userId) as {
+    key: string;
+    value: string;
+  }[];
   const userSettings: Record<string, unknown> = {};
   for (const row of rows) {
     if (MASKED_SETTING_KEYS.has(row.key)) {
@@ -147,10 +160,12 @@ function serializeValue(key: string, value: unknown): string {
 }
 
 export function upsertSetting(userId: number, key: string, value: unknown) {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO settings (user_id, key, value) VALUES (?, ?, ?)
     ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
-  `).run(userId, key, serializeValue(key, value));
+  `,
+  ).run(userId, key, serializeValue(key, value));
 }
 
 export function bulkUpsertSettings(userId: number, settings: Record<string, unknown>) {
@@ -178,7 +193,9 @@ export function bulkUpsertSettings(userId: number, settings: Record<string, unkn
  * resolver needs the real API key). Returns null when unset.
  */
 export function getDecryptedUserSetting(userId: number, key: string): string | null {
-  const row = db.prepare('SELECT value FROM settings WHERE user_id = ? AND key = ?').get(userId, key) as { value: string } | undefined;
+  const row = db.prepare('SELECT value FROM settings WHERE user_id = ? AND key = ?').get(userId, key) as
+    | { value: string }
+    | undefined;
   if (!row || row.value === '' || row.value == null) return null;
   if (ENCRYPTED_SETTING_KEYS.has(key)) return decrypt_api_key(row.value);
   try {

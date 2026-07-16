@@ -1,13 +1,14 @@
-import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
-import type { INestApplication } from '@nestjs/common';
-import express from 'express';
-import type { Request } from 'express';
-import { AppModule } from './nest/app.module';
 import { applyGlobalMiddleware } from './middleware/globalMiddleware';
-import { applyPlatformUploads, applyPlatformTransport, applyPlatformStatic } from './nest/platform/platform.routes';
+import { AppModule } from './nest/app.module';
 import { apiDocsEnabled } from './nest/common/api-docs.kill-switch';
 import { setupApiDocs } from './nest/platform/api-docs';
+import { applyPlatformUploads, applyPlatformTransport, applyPlatformStatic } from './nest/platform/platform.routes';
+import type { INestApplication } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { ExpressAdapter } from '@nestjs/platform-express';
+
+import express from 'express';
+import type { Request } from 'express';
 
 /**
  * Builds the unified TREK NestJS application that serves the ENTIRE surface — the

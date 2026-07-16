@@ -5,12 +5,15 @@
  * ordering (404 wins over 401), auth, the service-owned 403/404 mapping, status
  * codes and the unguarded public route.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { JourneyModule } from '../../src/nest/journey/journey.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -29,7 +32,8 @@ vi.mock('../../src/services/adminService', () => ({ isAddonEnabled }));
 vi.mock('../../src/services/fileService', () => ({
   getAllowedExtensions: () => '*',
   MAX_VIDEO_SIZE: 500 * 1024 * 1024,
-  isVideoExtension: (ext: string) => ['mp4', 'm4v', 'webm', 'mov'].includes(String(ext).toLowerCase().replace(/^\./, '')),
+  isVideoExtension: (ext: string) =>
+    ['mp4', 'm4v', 'webm', 'mov'].includes(String(ext).toLowerCase().replace(/^\./, '')),
   isVideoMime: (m?: string) => !!m && m.startsWith('video/'),
 }));
 vi.mock('../../src/services/memories/immichService', () => ({ uploadToImmich: vi.fn(), streamImmichAsset: vi.fn() }));
@@ -42,9 +46,6 @@ vi.mock('../../src/services/journeyService', () => jsvc);
 
 const { sharesvc } = vi.hoisted(() => ({ sharesvc: { getPublicJourney: vi.fn() } }));
 vi.mock('../../src/services/journeyShareService', () => sharesvc);
-
-import { JourneyModule } from '../../src/nest/journey/journey.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Journey e2e (real auth guard + temp SQLite)', () => {
   let server: Server;

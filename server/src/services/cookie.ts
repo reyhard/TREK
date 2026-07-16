@@ -1,5 +1,6 @@
-import { Request, Response } from 'express';
 import { SESSION_DURATION_MS, SESSION_DURATION_REMEMBER_MS } from '../config';
+
+import { Request, Response } from 'express';
 
 const COOKIE_NAME = 'trek_session';
 
@@ -31,7 +32,8 @@ export function cookieOptions(clear = false, req?: Request, remember?: RememberO
   if (process.env.COOKIE_SECURE?.toLowerCase() === 'false') {
     return buildOptions(clear, false, remember);
   }
-  const envSecure = process.env.NODE_ENV?.toLowerCase() === 'production' || process.env.FORCE_HTTPS?.toLowerCase() === 'true';
+  const envSecure =
+    process.env.NODE_ENV?.toLowerCase() === 'production' || process.env.FORCE_HTTPS?.toLowerCase() === 'true';
   const requestSecure = req?.secure === true;
   return buildOptions(clear, envSecure || requestSecure, remember);
 }
@@ -64,10 +66,7 @@ function buildOptions(clear: boolean, secure: boolean, remember?: RememberOption
 export function willDropSecureCookie(req?: Request): boolean {
   if (process.env.COOKIE_SECURE?.toLowerCase() === 'false') return false;
   if (req?.secure === true) return false;
-  return (
-    process.env.NODE_ENV?.toLowerCase() === 'production' ||
-    process.env.FORCE_HTTPS?.toLowerCase() === 'true'
-  );
+  return process.env.NODE_ENV?.toLowerCase() === 'production' || process.env.FORCE_HTTPS?.toLowerCase() === 'true';
 }
 
 export function setAuthCookie(res: Response, token: string, req?: Request, remember?: RememberOption): void {

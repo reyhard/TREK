@@ -3,6 +3,12 @@
  * The shared add-by-id helper behind trip invite links (#1143) and trip-bound
  * admin invites (#1402): idempotent, owner-safe, missing-trip-safe.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { joinTripAsMember } from '../../../src/services/tripMembership';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -13,13 +19,10 @@ const { testDb, dbMock } = vi.hoisted(() => {
 });
 vi.mock('../../../src/db/database', () => dbMock);
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { joinTripAsMember } from '../../../src/services/tripMembership';
-
-beforeAll(() => { createTables(testDb); runMigrations(testDb); });
+beforeAll(() => {
+  createTables(testDb);
+  runMigrations(testDb);
+});
 beforeEach(() => resetTestDb(testDb));
 afterAll(() => testDb.close());
 
@@ -54,7 +57,9 @@ describe('joinTripAsMember', () => {
 
     expect(joinTripAsMember(trip.id, joiner.id, owner.id).joined).toBe(true);
     expect(joinTripAsMember(trip.id, joiner.id, owner.id).joined).toBe(false);
-    const count = testDb.prepare('SELECT COUNT(*) as n FROM trip_members WHERE trip_id = ? AND user_id = ?').get(trip.id, joiner.id) as { n: number };
+    const count = testDb
+      .prepare('SELECT COUNT(*) as n FROM trip_members WHERE trip_id = ? AND user_id = ?')
+      .get(trip.id, joiner.id) as { n: number };
     expect(count.n).toBe(1);
   });
 

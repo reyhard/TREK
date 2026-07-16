@@ -1,3 +1,5 @@
+import { MemoriesService } from '../../../src/nest/memories/memories.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // The MemoriesService is a thin pass-through over the legacy services/memories/*
@@ -51,8 +53,6 @@ vi.mock('../../../src/services/memories/helpersService', () => helpers);
 
 const ws = vi.hoisted(() => ({ broadcast: vi.fn() }));
 vi.mock('../../../src/websocket', () => ws);
-
-import { MemoriesService } from '../../../src/nest/memories/memories.service';
 
 const res = {} as import('express').Response;
 

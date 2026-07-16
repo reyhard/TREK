@@ -3,12 +3,15 @@
  * JwtAuthGuard against a temp SQLite db. tagService is mocked; tags are
  * user-scoped (no admin gate), so a normal authenticated user can do everything.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { TagsModule } from '../../src/nest/tags/tags.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -32,9 +35,6 @@ const { mocks } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../src/services/tagService', () => mocks);
-
-import { TagsModule } from '../../src/nest/tags/tags.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 const tag = { id: 1, user_id: 1, name: 'Beach', color: '#10b981' };
 
@@ -78,7 +78,10 @@ describe('Tags e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 on create', async () => {
-    const res = await request(server).post('/api/tags').set('Cookie', sessionCookie(1)).send({ name: 'Beach', color: '#10b981' });
+    const res = await request(server)
+      .post('/api/tags')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Beach', color: '#10b981' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ tag });
     expect(mocks.createTag).toHaveBeenCalledWith(1, 'Beach', '#10b981');

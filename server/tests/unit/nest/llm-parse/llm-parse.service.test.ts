@@ -1,3 +1,5 @@
+import { LlmParseService } from '../../../../src/nest/llm-parse/llm-parse.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { resolveLlmConfig } = vi.hoisted(() => ({ resolveLlmConfig: vi.fn() }));
@@ -11,7 +13,7 @@ vi.mock('../../../../src/nest/llm-parse/llm-client.factory', () => ({ createLlmC
 
 const { extractText } = vi.hoisted(() => ({ extractText: vi.fn(async () => 'Flight AB123') }));
 vi.mock('../../../../src/nest/llm-parse/text-extract', async (orig) => {
-  const actual = await orig() as Record<string, unknown>;
+  const actual = (await orig()) as Record<string, unknown>;
   return { ...actual, extractText };
 });
 
@@ -20,8 +22,6 @@ const { routeExtraction, detectFlightNumbers } = vi.hoisted(() => ({
   detectFlightNumbers: vi.fn(() => [] as string[]),
 }));
 vi.mock('../../../../src/nest/llm-parse/router/extraction-router', () => ({ routeExtraction, detectFlightNumbers }));
-
-import { LlmParseService } from '../../../../src/nest/llm-parse/llm-parse.service';
 
 const cfg = (over: Record<string, unknown> = {}) => ({ provider: 'openai', model: 'm', multimodal: false, ...over });
 const svc = () => new LlmParseService();
@@ -85,15 +85,17 @@ describe('LlmParseService', () => {
   });
 
   it('folds flattened type fields into reservationFor (small-model output)', async () => {
-    extract.mockResolvedValue([{
-      '@type': 'FlightReservation',
-      reservationNumber: 'ABC',
-      flightNumber: 'EZY1357',
-      airline: { iataCode: 'EG' },
-      departureAirport: { iataCode: 'GEG' },
-      arrivalAirport: { iataCode: 'AMS' },
-      departureTime: '2026-06-11T10:00:00',
-    }]);
+    extract.mockResolvedValue([
+      {
+        '@type': 'FlightReservation',
+        reservationNumber: 'ABC',
+        flightNumber: 'EZY1357',
+        airline: { iataCode: 'EG' },
+        departureAirport: { iataCode: 'GEG' },
+        arrivalAirport: { iataCode: 'AMS' },
+        departureTime: '2026-06-11T10:00:00',
+      },
+    ]);
     const res = await svc().parse(file('a.txt'), 1);
     const item = res.kiItems[0] as any;
     expect(item.reservationNumber).toBe('ABC');
@@ -112,7 +114,7 @@ describe('LlmParseService', () => {
     extract.mockResolvedValue([{ '@type': 'FlightReservation' }, { foo: 'bar' }]);
     const res = await svc().parse(file('a.txt'), 1);
     expect(res.kiItems).toEqual([{ '@type': 'FlightReservation' }]);
-    expect(res.warnings.some(w => /unrecognized/i.test(w))).toBe(true);
+    expect(res.warnings.some((w) => /unrecognized/i.test(w))).toBe(true);
   });
 
   it('degrades to a warning when the client throws', async () => {
@@ -130,7 +132,11 @@ describe('LlmParseService', () => {
     expect(res.kiItems).toEqual([{ '@type': 'LodgingReservation' }]);
     expect(res.warnings).toEqual(['note']);
     expect(extract).not.toHaveBeenCalled();
-    expect(routeExtraction).toHaveBeenCalledWith('Hotel booking', { baseUrl: 'http://ollama:11434/v1', model: 'm', apiKey: 'k' });
+    expect(routeExtraction).toHaveBeenCalledWith('Hotel booking', {
+      baseUrl: 'http://ollama:11434/v1',
+      model: 'm',
+      apiKey: 'k',
+    });
   });
 
   it('keeps the wide text cap (16k) for a local flight itinerary but tightens it (6k) otherwise', async () => {

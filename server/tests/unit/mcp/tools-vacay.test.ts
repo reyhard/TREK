@@ -8,6 +8,12 @@
  * list_holiday_countries, list_holidays.
  * Resources: trek://vacay/plan, trek://vacay/entries/{year}.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { createUser } from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -22,7 +28,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -46,22 +56,23 @@ vi.mock('../../../src/services/adminService', () => ({
 
 // Mock async service functions that make external calls
 vi.mock('../../../src/services/vacayService', async (importOriginal) => {
-  const original = await importOriginal() as Record<string, unknown>;
+  const original = (await importOriginal()) as Record<string, unknown>;
   return {
     ...original,
     updatePlan: vi.fn().mockResolvedValue({
-      plan: { id: 1, block_weekends: true, holidays_enabled: false, company_holidays_enabled: false, carry_over_enabled: false, holiday_calendars: [] },
+      plan: {
+        id: 1,
+        block_weekends: true,
+        holidays_enabled: false,
+        company_holidays_enabled: false,
+        carry_over_enabled: false,
+        holiday_calendars: [],
+      },
     }),
     getCountries: vi.fn().mockResolvedValue({ data: [{ code: 'US', name: 'United States' }] }),
     getHolidays: vi.fn().mockResolvedValue({ data: [{ date: '2025-01-01', name: 'New Year' }] }),
   };
 });
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
 
 beforeAll(() => {
   createTables(testDb);
@@ -80,12 +91,20 @@ afterAll(() => {
 
 async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: false });
-  try { await fn(h); } finally { await h.cleanup(); }
+  try {
+    await fn(h);
+  } finally {
+    await h.cleanup();
+  }
 }
 
 async function withResourceHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: true });
-  try { await fn(h); } finally { await h.cleanup(); }
+  try {
+    await fn(h);
+  } finally {
+    await h.cleanup();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +335,10 @@ describe('Tool: update_vacay_stats', () => {
   it('updates vacation days allowance and returns success', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'update_vacay_stats', arguments: { year: 2025, vacationDays: 25 } });
+      const result = await h.client.callTool({
+        name: 'update_vacay_stats',
+        arguments: { year: 2025, vacationDays: 25 },
+      });
       const data = parseToolResult(result) as any;
       expect(data.success).toBe(true);
     });
@@ -326,7 +348,10 @@ describe('Tool: update_vacay_stats', () => {
     process.env.DEMO_MODE = 'true';
     const { user } = createUser(testDb, { email: 'demo@nomad.app' });
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'update_vacay_stats', arguments: { year: 2025, vacationDays: 20 } });
+      const result = await h.client.callTool({
+        name: 'update_vacay_stats',
+        arguments: { year: 2025, vacationDays: 20 },
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -390,7 +415,10 @@ describe('Tool: update_holiday_calendar', () => {
     process.env.DEMO_MODE = 'true';
     const { user } = createUser(testDb, { email: 'demo@nomad.app' });
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'update_holiday_calendar', arguments: { calendarId: 1, label: 'X' } });
+      const result = await h.client.callTool({
+        name: 'update_holiday_calendar',
+        arguments: { calendarId: 1, label: 'X' },
+      });
       expect(result.isError).toBe(true);
     });
   });

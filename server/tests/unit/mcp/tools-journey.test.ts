@@ -3,6 +3,12 @@
  * create_journey returns the full journey (entries/contributors/trips/stats/my_role),
  * and create_journey_entry returns the enriched entry (parsed tags, photos array).
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { createUser } from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -17,7 +23,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -35,15 +45,9 @@ const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock, broadcastToUser: broadcastMock }));
 
 vi.mock('../../../src/services/adminService', async (importOriginal) => {
-  const original = await importOriginal() as Record<string, unknown>;
+  const original = (await importOriginal()) as Record<string, unknown>;
   return { ...original, isAddonEnabled: vi.fn().mockReturnValue(true) };
 });
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 
 beforeAll(() => {
   createTables(testDb);
@@ -52,6 +56,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetTestDb(testDb);
+  testDb.prepare('UPDATE addons SET enabled = 1 WHERE id = ?').run('journey');
   broadcastMock.mockClear();
   delete process.env.DEMO_MODE;
 });
@@ -62,7 +67,11 @@ afterAll(() => {
 
 async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: false });
-  try { await fn(h); } finally { await h.cleanup(); }
+  try {
+    await fn(h);
+  } finally {
+    await h.cleanup();
+  }
 }
 
 describe('Tool: create_journey', () => {
@@ -89,9 +98,14 @@ describe('Tool: create_journey_entry', () => {
   it('returns the enriched entry with parsed tags and a photos array', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, async (h) => {
-      const journey = (parseToolResult(await h.client.callTool({
-        name: 'create_journey', arguments: { title: 'J' },
-      })) as any).journey;
+      const journey = (
+        parseToolResult(
+          await h.client.callTool({
+            name: 'create_journey',
+            arguments: { title: 'J' },
+          }),
+        ) as any
+      ).journey;
       const result = await h.client.callTool({
         name: 'create_journey_entry',
         arguments: { journeyId: journey.id, entry_date: '2026-07-01', title: 'Day 1', story: 'Arrived' },
@@ -110,12 +124,22 @@ describe('Tool: update_journey_entry', () => {
   it('returns the enriched entry (parsed tags, photos array)', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, async (h) => {
-      const journey = (parseToolResult(await h.client.callTool({
-        name: 'create_journey', arguments: { title: 'J' },
-      })) as any).journey;
-      const entry = (parseToolResult(await h.client.callTool({
-        name: 'create_journey_entry', arguments: { journeyId: journey.id, entry_date: '2026-07-01', title: 'Day 1' },
-      })) as any).entry;
+      const journey = (
+        parseToolResult(
+          await h.client.callTool({
+            name: 'create_journey',
+            arguments: { title: 'J' },
+          }),
+        ) as any
+      ).journey;
+      const entry = (
+        parseToolResult(
+          await h.client.callTool({
+            name: 'create_journey_entry',
+            arguments: { journeyId: journey.id, entry_date: '2026-07-01', title: 'Day 1' },
+          }),
+        ) as any
+      ).entry;
       const result = await h.client.callTool({
         name: 'update_journey_entry',
         arguments: { entryId: entry.id, title: 'Day 1 (edited)' },
@@ -132,9 +156,14 @@ describe('Tool: update_journey_preferences', () => {
   it('returns the updated preference, not { success }', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, async (h) => {
-      const journey = (parseToolResult(await h.client.callTool({
-        name: 'create_journey', arguments: { title: 'J' },
-      })) as any).journey;
+      const journey = (
+        parseToolResult(
+          await h.client.callTool({
+            name: 'create_journey',
+            arguments: { title: 'J' },
+          }),
+        ) as any
+      ).journey;
       const result = await h.client.callTool({
         name: 'update_journey_preferences',
         arguments: { journeyId: journey.id, hide_skeletons: true },

@@ -1,3 +1,22 @@
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  getStats,
+  getCached,
+  setCache,
+  getCountryFromCoords,
+  getCountryFromAddress,
+  reverseGeocodeCountry,
+  getRegionGeo,
+  getCountryGeo,
+  getCountryPlaces,
+  getVisitedRegions,
+  markCountryVisited,
+  unmarkCountryVisited,
+} from '../../../src/services/atlasService';
+import { createUser, createTrip, createReservation } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup (real in-memory SQLite — same pattern as mcp unit tests) ────────
@@ -14,11 +33,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`
+      db
+        .prepare(
+          `
         SELECT t.id, t.user_id FROM trips t
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?
         WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)
-      `).get(userId, tripId, userId),
+      `,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -27,30 +50,24 @@ const { testDb, dbMock } = vi.hoisted(() => {
 
 vi.mock('../../../src/db/database', () => dbMock);
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createReservation } from '../../helpers/factories';
-import { getStats, getCached, setCache, getCountryFromCoords, getCountryFromAddress, reverseGeocodeCountry, getRegionGeo, getCountryGeo, getCountryPlaces, getVisitedRegions, markCountryVisited, unmarkCountryVisited } from '../../../src/services/atlasService';
-
 function insertReservationEndpoint(
   db: any,
   reservationId: number,
   role: 'from' | 'to' | 'stop',
   sequence: number,
   lat: number,
-  lng: number
+  lng: number,
 ) {
   db.prepare(
-    'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng) VALUES (?, ?, ?, ?, ?, ?)',
   ).run(reservationId, role, sequence, `Endpoint ${sequence}`, lat, lng);
 }
 
 function insertPlace(db: any, tripId: number, name: string, address: string | null = null) {
   const cat = db.prepare('SELECT id FROM categories LIMIT 1').get() as { id: number } | undefined;
-  const result = db.prepare(
-    'INSERT INTO places (trip_id, name, address, category_id) VALUES (?, ?, ?, ?)'
-  ).run(tripId, name, address, cat?.id ?? null);
+  const result = db
+    .prepare('INSERT INTO places (trip_id, name, address, category_id) VALUES (?, ?, ?, ?)')
+    .run(tripId, name, address, cat?.id ?? null);
   return db.prepare('SELECT * FROM places WHERE id = ?').get(result.lastInsertRowid);
 }
 
@@ -62,10 +79,13 @@ beforeAll(() => {
 beforeEach(() => {
   resetTestDb(testDb);
   // Stub fetch so reverseGeocodeCountry never makes real HTTP calls
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    ok: false,
-    json: async () => ({}),
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({}),
+    }),
+  );
 });
 
 afterAll(() => {
@@ -140,7 +160,7 @@ describe('getStats', () => {
     const reservation = createReservation(testDb, trip.id, { type: 'flight' });
     // Tokyo: 35.6762°N, 139.6503°E — inside the JP bounding box, no place row.
     insertReservationEndpoint(testDb, reservation.id, 'from', 0, 35.6762, 139.6503);
-    insertReservationEndpoint(testDb, reservation.id, 'to', 1, 51.4700, -0.4543);
+    insertReservationEndpoint(testDb, reservation.id, 'to', 1, 51.47, -0.4543);
 
     const stats = await getStats(user.id);
 
@@ -242,13 +262,13 @@ describe('getCountryFromCoords', () => {
 
   it('ATLAS-SVC-005c: #1331 a point inside Germany near the French border resolves to DE', () => {
     // Kehl (48.575, 7.815) — the German side of the same border.
-    expect(getCountryFromCoords(48.5750, 7.8150)).toBe('DE');
+    expect(getCountryFromCoords(48.575, 7.815)).toBe('DE');
   });
 
   it('ATLAS-SVC-005d: #1331 a micro-territory without an admin0 polygon keeps the smallest-box win (Hong Kong)', () => {
     // HK is not a separate admin0 polygon (it falls inside CN there), so the smallest
     // bounding box still wins for it.
-    expect(getCountryFromCoords(22.30, 114.17)).toBe('HK');
+    expect(getCountryFromCoords(22.3, 114.17)).toBe('HK');
   });
 
   it('ATLAS-SVC-005e: #1490 a point in southern Spain resolves to ES, not the overlapping Algeria box', () => {
@@ -268,24 +288,24 @@ describe('getCountryFromCoords', () => {
   it('ATLAS-SVC-005g: #1490 a country the hand-written box table omitted resolves correctly (Nigeria)', () => {
     // NG had no bounding box at all, so Lagos fell into Benin's box as the only
     // candidate and phantom-marked BJ as visited. Same class for Kano -> CM.
-    expect(getCountryFromCoords(6.5244, 3.3792)).toBe('NG');   // Lagos
-    expect(getCountryFromCoords(12.0022, 8.5920)).toBe('NG');  // Kano
-    expect(getCountryFromCoords(9.0765, 7.3986)).toBe('NG');   // Abuja
+    expect(getCountryFromCoords(6.5244, 3.3792)).toBe('NG'); // Lagos
+    expect(getCountryFromCoords(12.0022, 8.592)).toBe('NG'); // Kano
+    expect(getCountryFromCoords(9.0765, 7.3986)).toBe('NG'); // Abuja
   });
 
   it('ATLAS-SVC-005h: #1490 other previously box-less countries resolve (BY, GL, KP, TD, SS)', () => {
-    expect(getCountryFromCoords(53.9006, 27.5590)).toBe('BY');   // Minsk (was RU)
-    expect(getCountryFromCoords(64.1836, -51.7214)).toBe('GL');  // Nuuk
-    expect(getCountryFromCoords(39.0392, 125.7625)).toBe('KP');  // Pyongyang
-    expect(getCountryFromCoords(12.1348, 15.0557)).toBe('TD');   // N'Djamena
-    expect(getCountryFromCoords(4.8594, 31.5713)).toBe('SS');    // Juba
+    expect(getCountryFromCoords(53.9006, 27.559)).toBe('BY'); // Minsk (was RU)
+    expect(getCountryFromCoords(64.1836, -51.7214)).toBe('GL'); // Nuuk
+    expect(getCountryFromCoords(39.0392, 125.7625)).toBe('KP'); // Pyongyang
+    expect(getCountryFromCoords(12.1348, 15.0557)).toBe('TD'); // N'Djamena
+    expect(getCountryFromCoords(4.8594, 31.5713)).toBe('SS'); // Juba
   });
 
   it('ATLAS-SVC-005i: #1490 countries straddling the antimeridian resolve per-part, not to a globe-spanning box', () => {
     // Boxes are derived one-per-geometry-part. A single box around RU/US/FJ would span
     // nearly the whole globe and swallow unrelated points.
     expect(getCountryFromCoords(61.2181, -149.9003)).toBe('US'); // Anchorage
-    expect(getCountryFromCoords(64.4230, -173.2260)).toBe('RU'); // Provideniya, east of 180
+    expect(getCountryFromCoords(64.423, -173.226)).toBe('RU'); // Provideniya, east of 180
     expect(getCountryFromCoords(-18.1416, 178.4419)).toBe('FJ'); // Suva
   });
 
@@ -311,7 +331,7 @@ describe('getCountryFromCoords', () => {
     // Same mechanism as PS: XK is polygon-less and its box overlaps North Macedonia.
     // Skopje and Tetovo lie in the MK polygon and must resolve to MK, not XK — while
     // Pristina (in no neighbouring polygon) still resolves to XK.
-    expect(getCountryFromCoords(41.9973, 21.4280)).toBe('MK'); // Skopje
+    expect(getCountryFromCoords(41.9973, 21.428)).toBe('MK'); // Skopje
     expect(getCountryFromCoords(42.0106, 20.9714)).toBe('MK'); // Tetovo
     expect(getCountryFromCoords(42.6629, 21.1655)).toBe('XK'); // Pristina
   });
@@ -411,12 +431,15 @@ describe('reverseGeocodeCountry', () => {
   });
 
   it('ATLAS-SVC-014: returns country code when Nominatim returns valid response', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ address: { country_code: 'fr' } }),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ address: { country_code: 'fr' } }),
+      }),
+    );
     // Berlin-ish coords not used elsewhere — unique to avoid cache collision
-    const code = await reverseGeocodeCountry(52.52, 13.40);
+    const code = await reverseGeocodeCountry(52.52, 13.4);
     expect(code).toBe('FR');
   });
 
@@ -502,11 +525,18 @@ describe('getCountryGeo', () => {
 
 // ── Helpers for new tests ────────────────────────────────────────────────────
 
-function insertPlaceWithCoords(db: any, tripId: number, name: string, lat: number, lng: number, address: string | null = null) {
+function insertPlaceWithCoords(
+  db: any,
+  tripId: number,
+  name: string,
+  lat: number,
+  lng: number,
+  address: string | null = null,
+) {
   const cat = db.prepare('SELECT id FROM categories LIMIT 1').get() as { id: number } | undefined;
-  const result = db.prepare(
-    'INSERT INTO places (trip_id, name, address, lat, lng, category_id) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(tripId, name, address, lat, lng, cat?.id ?? null);
+  const result = db
+    .prepare('INSERT INTO places (trip_id, name, address, lat, lng, category_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(tripId, name, address, lat, lng, cat?.id ?? null);
   return db.prepare('SELECT * FROM places WHERE id = ?').get(result.lastInsertRowid);
 }
 
@@ -547,7 +577,11 @@ describe('getStats — extended', () => {
 
   it('ATLAS-UNIT-008: lastTrip is resolved with a country code when its places have an address', async () => {
     const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id, { title: 'Past France Trip', start_date: '2023-05-01', end_date: '2023-05-10' });
+    const trip = createTrip(testDb, user.id, {
+      title: 'Past France Trip',
+      start_date: '2023-05-01',
+      end_date: '2023-05-10',
+    });
     insertPlace(testDb, trip.id, 'Eiffel Tower', 'Champ de Mars, Paris, France');
 
     const stats = await getStats(user.id);
@@ -572,8 +606,16 @@ describe('getStats — extended', () => {
   it('ATLAS-UNIT-010: streak counts consecutive years with trips and firstYear is the earliest', async () => {
     const { user } = createUser(testDb);
     const currentYear = new Date().getFullYear();
-    createTrip(testDb, user.id, { title: 'This Year', start_date: `${currentYear}-06-01`, end_date: `${currentYear}-06-10` });
-    createTrip(testDb, user.id, { title: 'Last Year', start_date: `${currentYear - 1}-07-01`, end_date: `${currentYear - 1}-07-10` });
+    createTrip(testDb, user.id, {
+      title: 'This Year',
+      start_date: `${currentYear}-06-01`,
+      end_date: `${currentYear}-06-10`,
+    });
+    createTrip(testDb, user.id, {
+      title: 'Last Year',
+      start_date: `${currentYear - 1}-07-01`,
+      end_date: `${currentYear - 1}-07-10`,
+    });
 
     const stats = await getStats(user.id);
 
@@ -667,7 +709,9 @@ describe('getVisitedRegions', () => {
   it('ATLAS-UNIT-018: returns manually marked regions even when user has no places with coordinates', async () => {
     const { user } = createUser(testDb);
     testDb.prepare('INSERT INTO visited_countries (user_id, country_code) VALUES (?, ?)').run(user.id, 'DE');
-    testDb.prepare('INSERT INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)').run(user.id, 'DE-BY', 'Bayern', 'DE');
+    testDb
+      .prepare('INSERT INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)')
+      .run(user.id, 'DE-BY', 'Bayern', 'DE');
 
     const result = await getVisitedRegions(user.id);
 
@@ -680,16 +724,19 @@ describe('getVisitedRegions', () => {
 
   it('ATLAS-UNIT-019: geocodes places with lat/lng using reverseGeocodeRegion via fetch', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        address: {
-          country_code: 'fr',
-          'ISO3166-2-lvl4': 'FR-75',
-          state: 'Île-de-France',
-        },
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          address: {
+            country_code: 'fr',
+            'ISO3166-2-lvl4': 'FR-75',
+            state: 'Île-de-France',
+          },
+        }),
       }),
-    }));
+    );
 
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Paris Trip' });
@@ -713,9 +760,11 @@ describe('getVisitedRegions', () => {
     const place = insertPlaceWithCoords(testDb, trip.id, 'Cached Place', 48.85, 2.35);
 
     // Pre-populate the place_regions cache so the fetch path is never reached
-    testDb.prepare(
-      'INSERT OR REPLACE INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)'
-    ).run(place.id, 'FR', 'FR-75', 'Île-de-France');
+    testDb
+      .prepare(
+        'INSERT OR REPLACE INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)',
+      )
+      .run(place.id, 'FR', 'FR-75', 'Île-de-France');
 
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal('fetch', mockFetch);
@@ -732,14 +781,25 @@ describe('getVisitedRegions', () => {
     vi.useFakeTimers();
     // A zoom-8 lookup only yields the constituent country (GB-ENG); the zoom-10 lookup
     // exposes the borough code (GB-MAN) that Natural Earth's polygons actually carry.
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve({
-      ok: true,
-      json: async () => ({
-        address: url.includes('zoom=10')
-          ? { country_code: 'gb', 'ISO3166-2-lvl8': 'GB-MAN', city: 'Manchester', state: 'England', 'ISO3166-2-lvl4': 'GB-ENG' }
-          : { country_code: 'gb', 'ISO3166-2-lvl4': 'GB-ENG', state: 'England' },
-      }),
-    })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve({
+          ok: true,
+          json: async () => ({
+            address: url.includes('zoom=10')
+              ? {
+                  country_code: 'gb',
+                  'ISO3166-2-lvl8': 'GB-MAN',
+                  city: 'Manchester',
+                  state: 'England',
+                  'ISO3166-2-lvl4': 'GB-ENG',
+                }
+              : { country_code: 'gb', 'ISO3166-2-lvl4': 'GB-ENG', state: 'England' },
+          }),
+        }),
+      ),
+    );
 
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Manchester Trip' });

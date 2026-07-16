@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { BookingImportService } from '../../../../src/nest/booking-import/booking-import.service';
 import { HttpException } from '@nestjs/common';
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the heavy side-effect imports so the service module loads cleanly; the
 // preview() path under test only touches the extractor + llmParse deps.
@@ -9,16 +11,26 @@ vi.mock('../../../../src/services/permissions', () => ({ checkPermission: vi.fn(
 vi.mock('../../../../src/services/tripAccess', () => ({ verifyTripAccess: vi.fn() }));
 vi.mock('../../../../src/services/reservationService', () => ({ createReservation: vi.fn() }));
 vi.mock('../../../../src/services/placeService', () => ({ createPlace: vi.fn() }));
-vi.mock('../../../../src/services/mapsService', () => ({ searchNominatim: vi.fn() }));
+vi.mock('../../../../src/services/mapsService', () => ({
+  searchNominatim: vi.fn(),
+  buildUserAgent: () => 'TREK/test',
+}));
 
-import { BookingImportService } from '../../../../src/nest/booking-import/booking-import.service';
-
-const HOTEL_KI = { '@type': 'LodgingReservation', reservationNumber: 'ABC', reservationFor: { name: 'Hotel X' }, checkinTime: '2026-06-11T15:00', checkoutTime: '2026-06-12T11:00' };
-const file = (name = 'a.pdf') => ({ buffer: Buffer.from('x'), originalname: name } as any);
+const HOTEL_KI = {
+  '@type': 'LodgingReservation',
+  reservationNumber: 'ABC',
+  reservationFor: { name: 'Hotel X' },
+  checkinTime: '2026-06-11T15:00',
+  checkoutTime: '2026-06-12T11:00',
+};
+const file = (name = 'a.pdf') => ({ buffer: Buffer.from('x'), originalname: name }) as any;
 
 function make(opts: { kit?: boolean; ai?: boolean; extract?: any; parse?: any }) {
   const extractor = { isAvailable: () => opts.kit ?? false, extract: vi.fn(opts.extract ?? (async () => [])) };
-  const llmParse = { isAvailable: () => opts.ai ?? false, parse: vi.fn(opts.parse ?? (async () => ({ kiItems: [], warnings: [] }))) };
+  const llmParse = {
+    isAvailable: () => opts.ai ?? false,
+    parse: vi.fn(opts.parse ?? (async () => ({ kiItems: [], warnings: [] }))),
+  };
   return { svc: new BookingImportService(extractor as any, llmParse as any), extractor, llmParse };
 }
 
@@ -47,7 +59,8 @@ describe('BookingImportService.preview', () => {
 
   it('fallback-on-empty: runs the LLM when kitinerary finds nothing and flags needs_review', async () => {
     const { svc, extractor, llmParse } = make({
-      kit: true, ai: true,
+      kit: true,
+      ai: true,
       extract: async () => [],
       parse: async () => ({ kiItems: [HOTEL_KI], warnings: [] }),
     });
@@ -68,7 +81,8 @@ describe('BookingImportService.preview', () => {
 
   it('force-ai: skips kitinerary entirely and uses the LLM', async () => {
     const { svc, extractor, llmParse } = make({
-      kit: true, ai: true,
+      kit: true,
+      ai: true,
       parse: async () => ({ kiItems: [HOTEL_KI], warnings: [] }),
     });
     const res = await svc.preview([file()], 'force-ai', 1);

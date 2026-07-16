@@ -1,5 +1,3 @@
-import { Controller, Get, Param, Req, Res } from '@nestjs/common';
-import type { Request, Response } from 'express';
 import {
   getWikiIndex,
   getWikiPage,
@@ -8,6 +6,9 @@ import {
   type WikiPage,
   type WikiNavSection,
 } from '../../services/wikiService';
+import { Controller, Get, Param, Req, Res } from '@nestjs/common';
+
+import type { Request, Response } from 'express';
 
 /**
  * /api/help — embedded TREK wiki. Content is public docs (the wiki is public on

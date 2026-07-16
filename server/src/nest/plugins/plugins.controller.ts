@@ -1,13 +1,27 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpException, Param, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { PluginsService } from './plugins.service';
-import { PluginRuntimeService, PluginConsentRequired, PluginDependencyError } from './plugin-runtime.service';
-import { DependencyCycleError } from './dependencies';
-import { PluginRegistryService } from './registry/registry.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
-import { pluginsEnabled } from './kill-switch';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { DependencyCycleError } from './dependencies';
 import { devLinkEnabled } from './dev-link';
+import { pluginsEnabled } from './kill-switch';
+import { PluginRuntimeService, PluginConsentRequired, PluginDependencyError } from './plugin-runtime.service';
+import { PluginsService } from './plugins.service';
+import { PluginRegistryService } from './registry/registry.service';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpException,
+  Param,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 /**
  * /api/admin/plugins — admin-only plugin control surface (#plugins).
@@ -83,7 +97,8 @@ export class PluginsController {
   @HttpCode(200)
   async link(@Body() body: { path?: string }) {
     if (!pluginsEnabled()) throw new HttpException({ error: 'Plugins are disabled by server configuration' }, 503);
-    if (!devLinkEnabled()) throw new HttpException({ error: 'Dev-link is disabled (set TREK_PLUGINS_DEV_LINK=1)' }, 403);
+    if (!devLinkEnabled())
+      throw new HttpException({ error: 'Dev-link is disabled (set TREK_PLUGINS_DEV_LINK=1)' }, 403);
     const dir = body?.path?.trim();
     if (!dir) throw new HttpException({ error: 'path is required' }, 400);
     try {
@@ -135,7 +150,10 @@ export class PluginsController {
       // Re-enabling a plugin whose update widened its permissions must NOT grant
       // them silently — surface a distinct code so the UI opens the consent dialog.
       if (e instanceof PluginConsentRequired) {
-        throw new HttpException({ error: e.message, code: 'CONSENT_REQUIRED', newPermissions: e.newPermissions, newEgress: e.newEgress }, 409);
+        throw new HttpException(
+          { error: e.message, code: 'CONSENT_REQUIRED', newPermissions: e.newPermissions, newEgress: e.newEgress },
+          409,
+        );
       }
       // Unmet dependency (disabled addon / missing / version-mismatched plugin) —
       // the UI offers the right fix (enable addon, or download the dependency).
@@ -164,14 +182,18 @@ export class PluginsController {
   @HttpCode(200)
   async reload(@Param('id') id: string) {
     if (!pluginsEnabled()) throw new HttpException({ error: 'Plugins are disabled by server configuration' }, 503);
-    if (!devLinkEnabled()) throw new HttpException({ error: 'Dev-link is disabled (set TREK_PLUGINS_DEV_LINK=1)' }, 403);
+    if (!devLinkEnabled())
+      throw new HttpException({ error: 'Dev-link is disabled (set TREK_PLUGINS_DEV_LINK=1)' }, 403);
     try {
       await this.runtime.reload(id);
     } catch (e) {
       // A rebuilt manifest that widened permissions must still re-consent, exactly
       // like activate — surface the same codes so the admin UI reacts identically.
       if (e instanceof PluginConsentRequired) {
-        throw new HttpException({ error: e.message, code: 'CONSENT_REQUIRED', newPermissions: e.newPermissions, newEgress: e.newEgress }, 409);
+        throw new HttpException(
+          { error: e.message, code: 'CONSENT_REQUIRED', newPermissions: e.newPermissions, newEgress: e.newEgress },
+          409,
+        );
       }
       if (e instanceof PluginDependencyError) {
         throw new HttpException({ error: e.message, code: e.code, ...e.detail }, 409);

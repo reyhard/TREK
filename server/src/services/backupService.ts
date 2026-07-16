@@ -1,14 +1,15 @@
-import archiver from 'archiver';
-import unzipper from 'unzipper';
-import path from 'path';
-import fs from 'fs';
-import Database from 'better-sqlite3';
 import { db, closeDb, reinitialize } from '../db/database';
-import * as scheduler from '../scheduler';
-import { invalidatePermissionsCache } from './permissions';
+import { snapshotAllPluginDataDbs } from '../nest/plugins/host/plugin-data.service';
 import { pluginsCodeRoot, pluginsDataRoot } from '../nest/plugins/paths';
 import { stageExtractedPluginTrees, applyStagedRestoreNow } from '../nest/plugins/plugin-backup';
-import { snapshotAllPluginDataDbs } from '../nest/plugins/host/plugin-data.service';
+import * as scheduler from '../scheduler';
+import { invalidatePermissionsCache } from './permissions';
+
+import archiver from 'archiver';
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
+import unzipper from 'unzipper';
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -29,7 +30,9 @@ if (rawBackupUploadLimit) {
   if (Number.isFinite(parsed) && parsed > 0) {
     backupUploadLimitMb = parsed;
   } else {
-    console.warn(`BACKUP_UPLOAD_LIMIT_MB="${rawBackupUploadLimit}" is not a positive number. Falling back to ${DEFAULT_BACKUP_UPLOAD_LIMIT_MB} MB.`);
+    console.warn(
+      `BACKUP_UPLOAD_LIMIT_MB="${rawBackupUploadLimit}" is not a positive number. Falling back to ${DEFAULT_BACKUP_UPLOAD_LIMIT_MB} MB.`,
+    );
   }
 }
 export const MAX_BACKUP_UPLOAD_SIZE = backupUploadLimitMb * 1024 * 1024; // compressed
@@ -46,7 +49,9 @@ if (rawDecompressedLimit) {
   if (Number.isFinite(parsed) && parsed > 0) {
     backupDecompressedMb = parsed;
   } else {
-    console.warn(`BACKUP_MAX_DECOMPRESSED_MB="${rawDecompressedLimit}" is not a positive number. Falling back to ${DEFAULT_BACKUP_DECOMPRESSED_MB} MB.`);
+    console.warn(
+      `BACKUP_MAX_DECOMPRESSED_MB="${rawDecompressedLimit}" is not a positive number. Falling back to ${DEFAULT_BACKUP_DECOMPRESSED_MB} MB.`,
+    );
   }
 }
 export const MAX_BACKUP_DECOMPRESSED_SIZE = backupDecompressedMb * 1024 * 1024;
@@ -85,9 +90,7 @@ export function parseAutoBackupBody(body: Record<string, unknown>): {
   const enabled = body.enabled === true || body.enabled === 'true' || body.enabled === 1;
   const rawInterval = body.interval;
   const interval =
-    typeof rawInterval === 'string' && scheduler.VALID_INTERVALS.includes(rawInterval)
-      ? rawInterval
-      : 'daily';
+    typeof rawInterval === 'string' && scheduler.VALID_INTERVALS.includes(rawInterval) ? rawInterval : 'daily';
   const keep_days = Math.max(0, parseIntField(body.keep_days, 7));
   const hour = Math.min(23, Math.max(0, parseIntField(body.hour, 2)));
   const day_of_week = Math.min(6, Math.max(0, parseIntField(body.day_of_week, 0)));
@@ -143,9 +146,10 @@ export interface BackupInfo {
 
 export function listBackups(): BackupInfo[] {
   ensureBackupsDir();
-  return fs.readdirSync(backupsDir)
-    .filter(f => f.endsWith('.zip'))
-    .map(filename => {
+  return fs
+    .readdirSync(backupsDir)
+    .filter((f) => f.endsWith('.zip'))
+    .map((filename) => {
       const filePath = path.join(backupsDir, filename);
       const stat = fs.statSync(filePath);
       return {
@@ -172,7 +176,9 @@ export async function createBackup(): Promise<BackupInfo> {
   const dbSnap = path.join(backupsDir, `.travel-snap-${timestamp}.db`);
 
   try {
-    try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
+    try {
+      db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (e) {}
 
     await new Promise<void>((resolve, reject) => {
       const output = fs.createWriteStream(outputPath);
@@ -260,9 +266,17 @@ export async function createBackup(): Promise<BackupInfo> {
         for (const entry of fs.readdirSync(pcode)) {
           const dir = path.join(pcode, entry);
           let real: string;
-          try { real = fs.realpathSync(dir); } catch { continue; }
+          try {
+            real = fs.realpathSync(dir);
+          } catch {
+            continue;
+          }
           if (!real.startsWith(realRoot + path.sep)) continue; // dev-link points outside → skip
-          try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
+          try {
+            if (!fs.statSync(dir).isDirectory()) continue;
+          } catch {
+            continue;
+          }
           archive.directory(dir, `plugins-code/${entry}`);
         }
       }
@@ -366,18 +380,26 @@ export async function restoreFromZip(zipPath: string): Promise<RestoreResult> {
       const integrityResult = uploadedDb.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
       if (integrityResult.integrity_check !== 'ok') {
         fs.rmSync(extractDir, { recursive: true, force: true });
-        return { success: false, error: `Uploaded database failed integrity check: ${integrityResult.integrity_check}`, status: 400 };
+        return {
+          success: false,
+          error: `Uploaded database failed integrity check: ${integrityResult.integrity_check}`,
+          status: 400,
+        };
       }
 
       const requiredTables = ['users', 'trips', 'trip_members', 'places', 'days'];
-      const existingTables = uploadedDb
-        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
-        .all() as { name: string }[];
-      const tableNames = new Set(existingTables.map(t => t.name));
+      const existingTables = uploadedDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {
+        name: string;
+      }[];
+      const tableNames = new Set(existingTables.map((t) => t.name));
       for (const table of requiredTables) {
         if (!tableNames.has(table)) {
           fs.rmSync(extractDir, { recursive: true, force: true });
-          return { success: false, error: `Uploaded database is missing required table: ${table}. This does not appear to be a TREK backup.`, status: 400 };
+          return {
+            success: false,
+            error: `Uploaded database is missing required table: ${table}. This does not appear to be a TREK backup.`,
+            status: 400,
+          };
         }
       }
     } catch (err) {
@@ -399,7 +421,9 @@ export async function restoreFromZip(zipPath: string): Promise<RestoreResult> {
       const dbTmp = dbDest + '.restore-tmp';
       fs.copyFileSync(extractedDb, dbTmp);
       for (const ext of ['-wal', '-shm']) {
-        try { fs.unlinkSync(dbDest + ext); } catch (e) {}
+        try {
+          fs.unlinkSync(dbDest + ext);
+        } catch (e) {}
       }
       fs.renameSync(dbTmp, dbDest);
 
@@ -419,7 +443,9 @@ export async function restoreFromZip(zipPath: string): Promise<RestoreResult> {
           const subPath = path.join(uploadsDir, sub);
           if (fs.statSync(subPath).isDirectory()) {
             for (const file of fs.readdirSync(subPath)) {
-              try { fs.unlinkSync(path.join(subPath, file)); } catch (e) {}
+              try {
+                fs.unlinkSync(path.join(subPath, file));
+              } catch (e) {}
             }
           }
         }
@@ -469,7 +495,12 @@ export async function restoreFromZip(zipPath: string): Promise<RestoreResult> {
     fs.rmSync(extractDir, { recursive: true, force: true });
     if (reinitFailed) {
       console.error('Restore: database reopen failed after file swap:', reinitFailed);
-      return { success: false, error: 'Backup files were restored but the database connection could not be reopened. Restart the server to finish the restore.', status: 500 };
+      return {
+        success: false,
+        error:
+          'Backup files were restored but the database connection could not be reopened. Restart the server to finish the restore.',
+        status: 500,
+      };
     }
     return { success: true };
   } catch (err: unknown) {
@@ -481,7 +512,11 @@ export async function restoreFromZip(zipPath: string): Promise<RestoreResult> {
     // stale anyway. Invalidating here too costs nothing and guarantees
     // we never serve cached permissions that don't match the DB state
     // we leave the process in after a failed restore.
-    try { invalidatePermissionsCache(); } catch { /* best-effort */ }
+    try {
+      invalidatePermissionsCache();
+    } catch {
+      /* best-effort */
+    }
     throw err;
   }
 }

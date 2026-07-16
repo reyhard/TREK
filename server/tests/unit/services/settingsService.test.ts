@@ -3,6 +3,12 @@
  * Uses a real in-memory SQLite DB; apiKeyCrypto is mocked to a passthrough
  * so we don't need real encryption for most tests.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { getUserSettings, upsertSetting, bulkUpsertSettings } from '../../../src/services/settingsService';
+import { createUser } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB + apiKeyCrypto mock ────────────────────────────────────────────────────
@@ -35,12 +41,6 @@ vi.mock('../../../src/config', () => ({
 vi.mock('../../../src/services/apiKeyCrypto', () => ({
   maybe_encrypt_api_key: (v: string) => v,
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-import { getUserSettings, upsertSetting, bulkUpsertSettings } from '../../../src/services/settingsService';
 
 beforeAll(() => {
   createTables(testDb);
@@ -90,7 +90,9 @@ describe('getUserSettings', () => {
 
   it('SET-SVC-005 — webhook_url with a value is masked as ••••••••', () => {
     const { user } = createUser(testDb);
-    testDb.prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'webhook_url', 'https://secret.example.com')").run(user.id);
+    testDb
+      .prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'webhook_url', 'https://secret.example.com')")
+      .run(user.id);
     const s = getUserSettings(user.id);
     expect(s.webhook_url).toBe('••••••••');
   });
@@ -141,7 +143,9 @@ describe('upsertSetting', () => {
   it('SET-SVC-011 — serializes boolean values as strings', () => {
     const { user } = createUser(testDb);
     upsertSetting(user.id, 'notifications', true);
-    const raw = testDb.prepare("SELECT value FROM settings WHERE user_id = ? AND key = 'notifications'").get(user.id) as any;
+    const raw = testDb
+      .prepare("SELECT value FROM settings WHERE user_id = ? AND key = 'notifications'")
+      .get(user.id) as any;
     expect(raw.value).toBe('true');
   });
 
@@ -149,7 +153,9 @@ describe('upsertSetting', () => {
     const { user } = createUser(testDb);
     upsertSetting(user.id, 'webhook_url', 'https://hook.example.com');
     // With passthrough mock, value is stored as-is
-    const raw = testDb.prepare("SELECT value FROM settings WHERE user_id = ? AND key = 'webhook_url'").get(user.id) as any;
+    const raw = testDb
+      .prepare("SELECT value FROM settings WHERE user_id = ? AND key = 'webhook_url'")
+      .get(user.id) as any;
     expect(raw.value).toBe('https://hook.example.com');
     // But getUserSettings masks it
     const s = getUserSettings(user.id);
@@ -215,7 +221,11 @@ describe('bulkUpsertSettings', () => {
     vi.spyOn(testDb, 'prepare').mockImplementationOnce((sql: string) => {
       const stmt = origPrepare(sql);
       intercepted = true;
-      return { run: () => { throw new Error('forced DB error'); } } as any;
+      return {
+        run: () => {
+          throw new Error('forced DB error');
+        },
+      } as any;
     });
     expect(() => bulkUpsertSettings(user.id, { k: 'v' })).toThrow('forced DB error');
     expect(intercepted).toBe(true);

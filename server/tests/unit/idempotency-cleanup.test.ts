@@ -6,9 +6,10 @@
  * offline window — otherwise a key GC'd before the device returns lets the
  * replay create a duplicate. The TTL was raised from 24h to 30d (overridable).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { db } from '../../src/db/database';
 import { purgeExpiredIdempotencyKeys } from '../../src/scheduler';
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 const DAY = 24 * 60 * 60;
 const NOW = 2_000_000_000_000; // fixed ms so the test is deterministic
@@ -40,7 +41,10 @@ describe('purgeExpiredIdempotencyKeys', () => {
     const removed = purgeExpiredIdempotencyKeys(NOW, undefined, db);
 
     expect(removed).toBe(1);
-    const keys = db.prepare('SELECT key FROM idempotency_keys').all().map((r: { key: string }) => r.key);
+    const keys = db
+      .prepare('SELECT key FROM idempotency_keys')
+      .all()
+      .map((r: { key: string }) => r.key);
     expect(keys).toEqual(['fresh']);
   });
 

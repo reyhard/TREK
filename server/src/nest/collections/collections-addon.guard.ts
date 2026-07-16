@@ -1,6 +1,6 @@
-import { CanActivate, HttpException, Injectable } from '@nestjs/common';
-import { isAddonEnabled } from '../../services/adminService';
 import { ADDON_IDS } from '../../addons';
+import { isAddonEnabled } from '../../services/adminService';
+import { CanActivate, HttpException, Injectable } from '@nestjs/common';
 
 /**
  * Mirrors the addon mount gate: when the Collections addon is disabled the whole

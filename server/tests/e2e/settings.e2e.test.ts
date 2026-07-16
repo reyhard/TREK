@@ -3,12 +3,15 @@
  * JwtAuthGuard against a temp SQLite db. The settings service is mocked; this
  * focuses on auth, the 400 guards, the masked-sentinel no-op and status codes.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { SettingsModule } from '../../src/nest/settings/settings.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -26,9 +29,6 @@ const { settingsSvc } = vi.hoisted(() => ({
   settingsSvc: { getUserSettings: vi.fn(), upsertSetting: vi.fn(), bulkUpsertSettings: vi.fn() },
 }));
 vi.mock('../../src/services/settingsService', () => settingsSvc);
-
-import { SettingsModule } from '../../src/nest/settings/settings.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Settings e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -75,7 +75,10 @@ describe('Settings e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('PUT no-ops on the masked sentinel', async () => {
-    const res = await request(server).put('/api/settings').set('Cookie', sessionCookie(1)).send({ key: 'secret', value: '••••••••' });
+    const res = await request(server)
+      .put('/api/settings')
+      .set('Cookie', sessionCookie(1))
+      .send({ key: 'secret', value: '••••••••' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, key: 'secret', unchanged: true });
     expect(settingsSvc.upsertSetting).not.toHaveBeenCalled();
@@ -83,7 +86,10 @@ describe('Settings e2e (real auth guard + temp SQLite)', () => {
 
   it('POST /bulk 200', async () => {
     settingsSvc.bulkUpsertSettings.mockReturnValue(2);
-    const res = await request(server).post('/api/settings/bulk').set('Cookie', sessionCookie(1)).send({ settings: { a: 1, b: 2 } });
+    const res = await request(server)
+      .post('/api/settings/bulk')
+      .set('Cookie', sessionCookie(1))
+      .send({ settings: { a: 1, b: 2 } });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, updated: 2 });
   });

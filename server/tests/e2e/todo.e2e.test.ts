@@ -3,12 +3,15 @@
  * through the real JwtAuthGuard against a temp SQLite db. todoService, the
  * permission check and the WebSocket broadcast are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { TodoModule } from '../../src/nest/todo/todo.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -28,14 +31,17 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { svc } = vi.hoisted(() => ({
   svc: {
-    verifyTripAccess: vi.fn(), listItems: vi.fn(), createItem: vi.fn(), updateItem: vi.fn(),
-    deleteItem: vi.fn(), reorderItems: vi.fn(), getCategoryAssignees: vi.fn(), updateCategoryAssignees: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    listItems: vi.fn(),
+    createItem: vi.fn(),
+    updateItem: vi.fn(),
+    deleteItem: vi.fn(),
+    reorderItems: vi.fn(),
+    getCategoryAssignees: vi.fn(),
+    updateCategoryAssignees: vi.fn(),
   },
 }));
 vi.mock('../../src/services/todoService', () => svc);
-
-import { TodoModule } from '../../src/nest/todo/todo.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('To-do e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -86,14 +92,20 @@ describe('To-do e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 on create with permission', async () => {
-    const res = await request(server).post('/api/trips/5/todo').set('Cookie', sessionCookie(1)).send({ name: 'Book hotel' });
+    const res = await request(server)
+      .post('/api/trips/5/todo')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Book hotel' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ item: { id: 9, name: 'Book hotel' } });
   });
 
   it('403 on create without permission', async () => {
     checkPermission.mockReturnValue(false);
-    const res = await request(server).post('/api/trips/5/todo').set('Cookie', sessionCookie(1)).send({ name: 'Book hotel' });
+    const res = await request(server)
+      .post('/api/trips/5/todo')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Book hotel' });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'No permission' });
   });

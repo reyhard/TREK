@@ -6,8 +6,14 @@
  * with the MCP client's type-safe getPrompt. We therefore test prompt callbacks
  * directly via the registered prompt handlers on the server instance.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { registerMcpPrompts } from '../../../src/mcp/tools/prompts';
+import { createUser, createTrip, addTripMember, createPackingItem, createBudgetItem } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -21,7 +27,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -54,12 +64,6 @@ vi.mock('../../../src/services/tripService', () => ({
   getTripSummary: mockGetTripSummary,
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, addTripMember, createPackingItem, createBudgetItem } from '../../helpers/factories';
-import { registerMcpPrompts } from '../../../src/mcp/tools/prompts';
-
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -78,11 +82,15 @@ beforeEach(() => {
   mockGetTripSummary.mockImplementation((tripId: any) => {
     const trip = testDb.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as any;
     if (!trip) return null;
-    const members = testDb.prepare(`
+    const members = testDb
+      .prepare(
+        `
       SELECT u.id, u.username as name, u.email
       FROM trip_members m JOIN users u ON u.id = m.user_id
       WHERE m.trip_id = ?
-    `).all(tripId) as any[];
+    `,
+      )
+      .all(tripId) as any[];
     const budgetRows = testDb.prepare('SELECT * FROM budget_items WHERE trip_id = ?').all(tripId) as any[];
     const packingRows = testDb.prepare('SELECT * FROM packing_items WHERE trip_id = ?').all(tripId) as any[];
     return {
@@ -221,7 +229,15 @@ describe('Prompt: trip-summary', () => {
 
     // Return summary with minimal trip fields (no title, no dates, no description)
     mockGetTripSummary.mockReturnValueOnce({
-      trip: { id: trip.id, title: null, description: null, start_date: null, end_date: null, currency: null, user_id: user.id },
+      trip: {
+        id: trip.id,
+        title: null,
+        description: null,
+        start_date: null,
+        end_date: null,
+        currency: null,
+        user_id: user.id,
+      },
       days: [],
       members: [],
       budget: [],
@@ -233,7 +249,7 @@ describe('Prompt: trip-summary', () => {
     const server = buildServer(user.id);
     const text = await invokePromptText(server, 'trip-summary', { tripId: trip.id });
     expect(text).toContain('Untitled');
-    expect(text).toContain('?');   // start/end date fallback
+    expect(text).toContain('?'); // start/end date fallback
     expect(text).toContain('EUR'); // currency fallback
   });
 });

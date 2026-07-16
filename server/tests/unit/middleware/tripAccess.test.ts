@@ -3,8 +3,10 @@
  * TRIP-ACCESS-001 through TRIP-ACCESS-010.
  * canAccessTrip and isOwner are mocked; no DB required.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { requireTripAccess, requireTripOwner } from '../../../src/middleware/tripAccess';
+
 import type { Request, Response, NextFunction } from 'express';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockCanAccessTrip = vi.fn();
 const mockIsOwner = vi.fn();
@@ -14,8 +16,6 @@ vi.mock('../../../src/db/database', () => ({
   isOwner: (...args: any[]) => mockIsOwner(...args),
 }));
 vi.mock('../../../src/config', () => ({ JWT_SECRET: 'test-secret' }));
-
-import { requireTripAccess, requireTripOwner } from '../../../src/middleware/tripAccess';
 
 function makeRes(): { res: Response; status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> } {
   const json = vi.fn();

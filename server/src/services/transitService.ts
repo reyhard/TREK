@@ -1,5 +1,5 @@
-import { getAppUrl } from './notifications';
 import { buildUserAgent } from './mapsService';
+import { getAppUrl } from './notifications';
 
 /**
  * Public transit routing (#1065) backed by Transitous (api.transitous.org), the
@@ -20,10 +20,22 @@ const UA = buildUserAgent(getAppUrl());
 // to smuggle arbitrary query values upstream. TRANSIT covers everything; the
 // others let the user filter (RAIL already includes subway/suburban etc.).
 const ALLOWED_MODES = new Set([
-  'TRANSIT', 'BUS', 'COACH', 'TRAM', 'SUBWAY', 'RAIL', 'FERRY', 'FUNICULAR', 'AERIAL_LIFT',
+  'TRANSIT',
+  'BUS',
+  'COACH',
+  'TRAM',
+  'SUBWAY',
+  'RAIL',
+  'FERRY',
+  'FUNICULAR',
+  'AERIAL_LIFT',
   // Fine-grained rail modes so "train without subway" is expressible (RAIL
   // itself includes SUBWAY per the MOTIS mode taxonomy).
-  'HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_RAIL', 'SUBURBAN',
+  'HIGHSPEED_RAIL',
+  'LONG_DISTANCE',
+  'NIGHT_RAIL',
+  'REGIONAL_RAIL',
+  'SUBURBAN',
 ]);
 
 // Short-lived response cache: planning is the expensive call per the Transitous
@@ -35,7 +47,10 @@ const cache = new Map<string, { at: number; data: unknown }>();
 function cacheGet(key: string): unknown | null {
   const hit = cache.get(key);
   if (!hit) return null;
-  if (Date.now() - hit.at > CACHE_TTL) { cache.delete(key); return null; }
+  if (Date.now() - hit.at > CACHE_TTL) {
+    cache.delete(key);
+    return null;
+  }
   return hit.data;
 }
 
@@ -80,7 +95,11 @@ export interface TransitPlace {
 export async function geocode(query: string, language?: string, near?: string): Promise<{ results: TransitPlace[] }> {
   const text = (query || '').trim();
   if (text.length < 2) return { results: [] };
-  if (text.length > 200) { const e = new Error('Query too long') as Error & { status: number }; e.status = 400; throw e; }
+  if (text.length > 200) {
+    const e = new Error('Query too long') as Error & { status: number };
+    e.status = 400;
+    throw e;
+  }
 
   const params = new URLSearchParams({ text });
   if (language) params.set('language', language.slice(0, 5));
@@ -91,7 +110,10 @@ export async function geocode(query: string, language?: string, near?: string): 
   if (cached) return cached as { results: TransitPlace[] };
 
   const raw = (await upstream('/api/v1/geocode', params)) as Array<{
-    name?: string; lat?: number; lon?: number; type?: string;
+    name?: string;
+    lat?: number;
+    lon?: number;
+    type?: string;
     areas?: Array<{ name?: string; matched?: boolean; default?: boolean }>;
   }>;
 
@@ -161,10 +183,15 @@ function safeColor(v: unknown): string | null {
 }
 
 interface MotisPlaceRaw {
-  name?: string; lat?: number; lon?: number;
-  departure?: string; arrival?: string;
-  scheduledDeparture?: string; scheduledArrival?: string;
-  track?: string; scheduledTrack?: string;
+  name?: string;
+  lat?: number;
+  lon?: number;
+  departure?: string;
+  arrival?: string;
+  scheduledDeparture?: string;
+  scheduledArrival?: string;
+  track?: string;
+  scheduledTrack?: string;
 }
 
 function mapStop(p: MotisPlaceRaw | undefined, kind: 'departure' | 'arrival'): TransitLegStop {
@@ -180,7 +207,11 @@ function mapStop(p: MotisPlaceRaw | undefined, kind: 'departure' | 'arrival'): T
 
 /** Route search between two coordinates. Returns compact itineraries for the picker. */
 export async function plan(q: PlanQuery): Promise<{ itineraries: TransitItinerary[] }> {
-  const bad = (msg: string) => { const e = new Error(msg) as Error & { status: number }; e.status = 400; throw e; };
+  const bad = (msg: string) => {
+    const e = new Error(msg) as Error & { status: number };
+    e.status = 400;
+    throw e;
+  };
   if (!q.from || !isCoord(q.from)) bad('from must be "lat,lng"');
   if (!q.to || !isCoord(q.to)) bad('to must be "lat,lng"');
 
@@ -194,7 +225,10 @@ export async function plan(q: PlanQuery): Promise<{ itineraries: TransitItinerar
   if (q.arriveBy) params.set('arriveBy', 'true');
 
   if (q.modes) {
-    const modes = q.modes.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean);
+    const modes = q.modes
+      .split(',')
+      .map((m) => m.trim().toUpperCase())
+      .filter(Boolean);
     if (modes.some((m) => !ALLOWED_MODES.has(m))) bad('unsupported transit mode');
     if (modes.length > 0) params.set('transitModes', modes.join(','));
   }
@@ -213,11 +247,22 @@ export async function plan(q: PlanQuery): Promise<{ itineraries: TransitItinerar
 
   const raw = (await upstream('/api/v6/plan', params)) as {
     itineraries?: Array<{
-      duration?: number; startTime?: string; endTime?: string; transfers?: number;
+      duration?: number;
+      startTime?: string;
+      endTime?: string;
+      transfers?: number;
       legs?: Array<{
-        mode?: string; duration?: number; distance?: number; headsign?: string;
-        routeShortName?: string; displayName?: string; routeColor?: string; routeTextColor?: string;
-        agencyName?: string; from?: MotisPlaceRaw; to?: MotisPlaceRaw;
+        mode?: string;
+        duration?: number;
+        distance?: number;
+        headsign?: string;
+        routeShortName?: string;
+        displayName?: string;
+        routeColor?: string;
+        routeTextColor?: string;
+        agencyName?: string;
+        from?: MotisPlaceRaw;
+        to?: MotisPlaceRaw;
         intermediateStops?: unknown[];
         legGeometry?: { points?: string; precision?: number };
       }>;
@@ -242,16 +287,21 @@ export async function plan(q: PlanQuery): Promise<{ itineraries: TransitItinerar
       geometryPrecision: leg.legGeometry?.precision ?? 6,
     }));
     const walkSeconds = legs.filter((l) => l.mode === 'WALK').reduce((a, l) => a + l.duration, 0);
-    return [{
-      startTime: it.startTime,
-      endTime: it.endTime,
-      // Wall-clock duration (start→end) so waits/transfers count — summing leg
-      // run-times would understate the journey and mis-slot it in the timeline.
-      duration: Math.max(0, Math.round((new Date(it.endTime).getTime() - new Date(it.startTime).getTime()) / 1000)),
-      transfers: typeof it.transfers === 'number' ? it.transfers : Math.max(0, legs.filter((l) => l.mode !== 'WALK').length - 1),
-      walkSeconds,
-      legs,
-    }];
+    return [
+      {
+        startTime: it.startTime,
+        endTime: it.endTime,
+        // Wall-clock duration (start→end) so waits/transfers count — summing leg
+        // run-times would understate the journey and mis-slot it in the timeline.
+        duration: Math.max(0, Math.round((new Date(it.endTime).getTime() - new Date(it.startTime).getTime()) / 1000)),
+        transfers:
+          typeof it.transfers === 'number'
+            ? it.transfers
+            : Math.max(0, legs.filter((l) => l.mode !== 'WALK').length - 1),
+        walkSeconds,
+        legs,
+      },
+    ];
   });
 
   const data = { itineraries };

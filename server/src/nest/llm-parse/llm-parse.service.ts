@@ -3,8 +3,8 @@ import { createLlmClient } from './llm-client.factory';
 import { resolveLlmConfig } from './llm-config.resolver';
 import { buildSystemPrompt, KI_RESERVATION_JSON_SCHEMA } from './llm-prompt';
 import type { LlmExtractionInput } from './llm-provider.interface';
-import { isPdf, extractText } from './text-extract';
 import { routeExtraction, detectFlightNumbers } from './router/extraction-router';
+import { isPdf, extractText } from './text-extract';
 import { Injectable } from '@nestjs/common';
 import { kiReservationSchema } from '@trek/shared';
 

@@ -1,10 +1,9 @@
-import { Controller, Get, HttpException, Query, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RateLimitService } from '../auth/rate-limit.service';
+import { checkTransitUsage, type TransitUsageKind } from '../../services/transitRateLimit';
 import * as transit from '../../services/transitService';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Controller, Get, HttpException, Query, Req, UseGuards } from '@nestjs/common';
 
-const RL_WINDOW = 15 * 60 * 1000;
+import type { Request } from 'express';
 
 /**
  * /api/transit — public transit routing (#1065) proxied through Transitous
@@ -15,10 +14,9 @@ const RL_WINDOW = 15 * 60 * 1000;
 @Controller('api/transit')
 @UseGuards(JwtAuthGuard)
 export class TransitController {
-  constructor(private readonly rl: RateLimitService) {}
-
-  private limit(bucket: string, req: Request, max: number): void {
-    if (!this.rl.check(bucket, req.ip || 'unknown', max, RL_WINDOW, Date.now())) {
+  private limit(kind: TransitUsageKind, req: Request): void {
+    const callerKey = `http:${req.ip || 'unknown'}`;
+    if (!checkTransitUsage(kind, callerKey)) {
       throw new HttpException({ error: 'Too many requests. Please try again later.' }, 429);
     }
   }
@@ -36,10 +34,12 @@ export class TransitController {
     @Query('near') near: string | undefined,
     @Req() req: Request,
   ) {
-    this.limit('transit_geocode', req, 300);
+    this.limit('geocode', req);
     try {
       return await transit.geocode(q || '', lang, near);
-    } catch (err) { this.rethrow(err); }
+    } catch (err) {
+      this.rethrow(err);
+    }
   }
 
   @Get('plan')
@@ -52,7 +52,7 @@ export class TransitController {
     @Query('maxTransfers') maxTransfers: string | undefined,
     @Req() req: Request,
   ) {
-    this.limit('transit_plan', req, 60);
+    this.limit('plan', req);
     try {
       return await transit.plan({
         from: from || '',
@@ -62,6 +62,8 @@ export class TransitController {
         modes,
         maxTransfers: maxTransfers !== undefined && maxTransfers !== '' ? Number(maxTransfers) : undefined,
       });
-    } catch (err) { this.rethrow(err); }
+    } catch (err) {
+      this.rethrow(err);
+    }
   }
 }

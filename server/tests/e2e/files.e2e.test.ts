@@ -5,12 +5,16 @@
  * focuses on auth (incl. the unguarded download's own token auth), trip-access
  * 404, permission 403, the photo id/access guards and status codes.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { FilesModule } from '../../src/nest/files/files.module';
+import { PhotosModule } from '../../src/nest/photos/photos.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -31,12 +35,31 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { fileSvc } = vi.hoisted(() => ({
   fileSvc: {
-    MAX_FILE_SIZE: 50 * 1024 * 1024, MAX_VIDEO_SIZE: 500 * 1024 * 1024, BLOCKED_EXTENSIONS: ['.exe', '.svg'], filesDir: '/tmp/files', getAllowedExtensions: () => '*',
-    isVideoExtension: (ext: string) => ['mp4', 'm4v', 'webm', 'mov'].includes(String(ext).toLowerCase().replace(/^\./, '')), isVideoMime: (m?: string) => !!m && m.startsWith('video/'),
-    verifyTripAccess: vi.fn(), resolveFilePath: vi.fn(), authenticateDownload: vi.fn(),
-    listFiles: vi.fn(), getFileById: vi.fn(), getDeletedFile: vi.fn(), createFile: vi.fn(), updateFile: vi.fn(),
-    toggleStarred: vi.fn(), softDeleteFile: vi.fn(), restoreFile: vi.fn(), permanentDeleteFile: vi.fn(),
-    emptyTrash: vi.fn(), createFileLink: vi.fn(), deleteFileLink: vi.fn(), getFileLinks: vi.fn(), formatFile: vi.fn(),
+    MAX_FILE_SIZE: 50 * 1024 * 1024,
+    MAX_VIDEO_SIZE: 500 * 1024 * 1024,
+    BLOCKED_EXTENSIONS: ['.exe', '.svg'],
+    filesDir: '/tmp/files',
+    getAllowedExtensions: () => '*',
+    isVideoExtension: (ext: string) =>
+      ['mp4', 'm4v', 'webm', 'mov'].includes(String(ext).toLowerCase().replace(/^\./, '')),
+    isVideoMime: (m?: string) => !!m && m.startsWith('video/'),
+    verifyTripAccess: vi.fn(),
+    resolveFilePath: vi.fn(),
+    authenticateDownload: vi.fn(),
+    listFiles: vi.fn(),
+    getFileById: vi.fn(),
+    getDeletedFile: vi.fn(),
+    createFile: vi.fn(),
+    updateFile: vi.fn(),
+    toggleStarred: vi.fn(),
+    softDeleteFile: vi.fn(),
+    restoreFile: vi.fn(),
+    permanentDeleteFile: vi.fn(),
+    emptyTrash: vi.fn(),
+    createFileLink: vi.fn(),
+    deleteFileLink: vi.fn(),
+    getFileLinks: vi.fn(),
+    formatFile: vi.fn(),
   },
 }));
 vi.mock('../../src/services/fileService', () => fileSvc);
@@ -47,10 +70,6 @@ const { photoSvc, helperSvc } = vi.hoisted(() => ({
 }));
 vi.mock('../../src/services/memories/photoResolverService', () => photoSvc);
 vi.mock('../../src/services/memories/helpersService', () => helperSvc);
-
-import { FilesModule } from '../../src/nest/files/files.module';
-import { PhotosModule } from '../../src/nest/photos/photos.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Files + photos e2e (real auth guard + temp SQLite)', () => {
   let server: Server;

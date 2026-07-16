@@ -120,7 +120,10 @@ export interface AirtrailSavePayload {
 
 function apiBase(baseUrl: string): string {
   // Tolerate a pasted trailing slash or '/api' suffix so we never build '/api/api'.
-  const origin = baseUrl.trim().replace(/\/+$/, '').replace(/\/api$/i, '');
+  const origin = baseUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
   return origin + '/api';
 }
 

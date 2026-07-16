@@ -1,4 +1,5 @@
 import { db } from '../db/database';
+
 import crypto from 'crypto';
 
 /**
@@ -36,9 +37,7 @@ export function createOrRotateTripInviteLink(
 ): TripInviteInfo {
   const token = crypto.randomBytes(24).toString('base64url');
   const expiresAt =
-    expiresInDays && expiresInDays > 0
-      ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
-      : null;
+    expiresInDays && expiresInDays > 0 ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null;
 
   const existing = db.prepare('SELECT id FROM trip_invite_tokens WHERE trip_id = ?').get(tripId);
   if (existing) {
@@ -46,9 +45,12 @@ export function createOrRotateTripInviteLink(
       'UPDATE trip_invite_tokens SET token = ?, expires_at = ?, created_by = ?, created_at = CURRENT_TIMESTAMP WHERE trip_id = ?',
     ).run(token, expiresAt, createdBy, tripId);
   } else {
-    db.prepare(
-      'INSERT INTO trip_invite_tokens (trip_id, token, created_by, expires_at) VALUES (?, ?, ?, ?)',
-    ).run(tripId, token, createdBy, expiresAt);
+    db.prepare('INSERT INTO trip_invite_tokens (trip_id, token, created_by, expires_at) VALUES (?, ?, ?, ?)').run(
+      tripId,
+      token,
+      createdBy,
+      expiresAt,
+    );
   }
   return getTripInviteLink(tripId)!;
 }

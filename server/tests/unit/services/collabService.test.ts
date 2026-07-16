@@ -3,6 +3,23 @@
  * Covers votePoll edge cases, listMessages pagination, deleteMessage ownership,
  * updateNote partial fields, fetchLinkPreview, avatarUrl, createMessage reply validation.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  avatarUrl,
+  votePoll,
+  listMessages,
+  createMessage,
+  deleteMessage,
+  updateNote,
+  createNote,
+  createPoll,
+  closePoll,
+  fetchLinkPreview,
+} from '../../../src/services/collabService';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 
 // ── DB setup ─────────────────────────────────────────────────────────────────
@@ -19,11 +36,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`
+      db
+        .prepare(
+          `
         SELECT t.id FROM trips t
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?
         WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)
-      `).get(userId, tripId, userId),
+      `,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -46,23 +67,6 @@ vi.mock('../../../src/utils/ssrfGuard', () => ({
   checkSsrf: mockCheckSsrf,
   createPinnedDispatcher: mockCreatePinnedDispatcher,
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import {
-  avatarUrl,
-  votePoll,
-  listMessages,
-  createMessage,
-  deleteMessage,
-  updateNote,
-  createNote,
-  createPoll,
-  closePoll,
-  fetchLinkPreview,
-} from '../../../src/services/collabService';
 
 beforeAll(() => {
   createTables(testDb);
@@ -184,7 +188,7 @@ describe('listMessages', () => {
     const id3 = r3.message!.id;
     const msgs = listMessages(trip.id, id3);
     expect(msgs.length).toBe(2);
-    const texts = msgs.map(m => m.text);
+    const texts = msgs.map((m) => m.text);
     expect(texts).toContain('First');
     expect(texts).toContain('Second');
     expect(texts).not.toContain('Third');
@@ -205,7 +209,9 @@ describe('listMessages', () => {
     const { user1, trip } = setup();
     const r = createMessage(trip.id, user1.id, 'React me');
     const msgId = r.message!.id;
-    testDb.prepare('INSERT INTO collab_message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)').run(msgId, user1.id, '👍');
+    testDb
+      .prepare('INSERT INTO collab_message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)')
+      .run(msgId, user1.id, '👍');
 
     const msgs = listMessages(trip.id);
     expect(msgs[0].reactions).toBeDefined();
@@ -266,7 +272,11 @@ describe('deleteMessage', () => {
 describe('updateNote', () => {
   it('COLLAB-SVC-019: updates only title when other fields are undefined', () => {
     const { user1, trip } = setup();
-    const note = createNote(trip.id, user1.id, { title: 'Original', content: 'Some content', website: 'https://example.com' });
+    const note = createNote(trip.id, user1.id, {
+      title: 'Original',
+      content: 'Some content',
+      website: 'https://example.com',
+    });
 
     updateNote(trip.id, note.id, { title: 'Updated' });
 
@@ -331,9 +341,11 @@ describe('fetchLinkPreview', () => {
   });
 
   it('COLLAB-SVC-025: returns OG title and description from HTML', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => `
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => `
         <html>
           <head>
             <meta property="og:title" content="Test Title" />
@@ -343,7 +355,8 @@ describe('fetchLinkPreview', () => {
           </head>
         </html>
       `,
-    }));
+      }),
+    );
 
     const result = await fetchLinkPreview('https://example.com/page');
     expect(result.title).toBe('Test Title');
@@ -353,20 +366,26 @@ describe('fetchLinkPreview', () => {
   });
 
   it('COLLAB-SVC-026: falls back to <title> tag when no og:title', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => `<html><head><title>Page Title</title></head></html>`,
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => `<html><head><title>Page Title</title></head></html>`,
+      }),
+    );
 
     const result = await fetchLinkPreview('https://example.com/');
     expect(result.title).toBe('Page Title');
   });
 
   it('COLLAB-SVC-027: returns fallback when fetch response is not ok', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      text: async () => '',
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        text: async () => '',
+      }),
+    );
 
     const result = await fetchLinkPreview('https://example.com/bad');
     expect(result.title).toBeNull();
@@ -390,14 +409,17 @@ describe('fetchLinkPreview', () => {
   });
 
   it('COLLAB-SVC-030: falls back to meta description tag when no og:description', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => `
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => `
         <html><head>
           <meta name="description" content="Meta description here" />
         </head></html>
       `,
-    }));
+      }),
+    );
 
     const result = await fetchLinkPreview('https://example.com/meta');
     expect(result.description).toBe('Meta description here');

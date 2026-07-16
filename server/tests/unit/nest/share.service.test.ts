@@ -1,3 +1,6 @@
+import { ShareService } from '../../../src/nest/share/share.service';
+import type { User } from '../../../src/types';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // The wrapper delegates to legacy helpers; mock them so no real DB is loaded.
@@ -17,9 +20,6 @@ const { share } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../../src/services/shareService', () => share);
-
-import { ShareService } from '../../../src/nest/share/share.service';
-import type { User } from '../../../src/types';
 
 function svc() {
   return new ShareService();

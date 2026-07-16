@@ -9,12 +9,11 @@
  *   const result = await harness.client.callTool({ name: 'create_trip', arguments: { title: 'Test' } });
  *   await harness.cleanup();
  */
-
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { Client } from '@modelcontextprotocol/sdk/client/index';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory';
 import { registerResources } from '../../src/mcp/resources';
 import { registerTools } from '../../src/mcp/tools';
+import { Client } from '@modelcontextprotocol/sdk/client/index';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
 export interface McpHarness {
   client: Client;
@@ -50,8 +49,16 @@ export async function createMcpHarness(options: McpHarnessOptions): Promise<McpH
   await client.connect(clientTransport);
 
   const cleanup = async () => {
-    try { await client.close(); } catch { /* ignore */ }
-    try { await server.close(); } catch { /* ignore */ }
+    try {
+      await client.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      await server.close();
+    } catch {
+      /* ignore */
+    }
   };
 
   return { client, server, cleanup };
@@ -59,7 +66,9 @@ export async function createMcpHarness(options: McpHarnessOptions): Promise<McpH
 
 /** Parse JSON from a callTool result (first text content item). */
 export function parseToolResult(result: Awaited<ReturnType<Client['callTool']>>): unknown {
-  const text = result.content.find((c: { type: string }) => c.type === 'text') as { type: 'text'; text: string } | undefined;
+  const text = result.content.find((c: { type: string }) => c.type === 'text') as
+    | { type: 'text'; text: string }
+    | undefined;
   if (!text) throw new Error('No text content in tool result');
   return JSON.parse(text.text);
 }

@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
 import { db } from '../../db/database';
-import { broadcast } from '../../websocket';
-import { checkPermission } from '../../services/permissions';
-import type { User } from '../../types';
 import * as svc from '../../services/budgetService';
 import { getRates } from '../../services/exchangeRateService';
+import { checkPermission } from '../../services/permissions';
+import type { User } from '../../types';
+import { broadcast } from '../../websocket';
+import { Injectable } from '@nestjs/common';
 
 type Trip = NonNullable<ReturnType<typeof svc.verifyTripAccess>>;
 
@@ -71,14 +71,22 @@ export class BudgetService {
     return svc.listSettlements(tripId);
   }
 
-  async createSettlement(tripId: string, data: { from_user_id: number; to_user_id: number; amount: number; currency?: string | null }, userId: number) {
+  async createSettlement(
+    tripId: string,
+    data: { from_user_id: number; to_user_id: number; amount: number; currency?: string | null },
+    userId: number,
+  ) {
     // Freeze the FX rate for the display currency the amount was entered in so the
     // transfer keeps cancelling its expense when live rates drift (#1445).
     await svc.freezeForeignRate(tripId, data);
     return svc.createSettlement(tripId, data, userId);
   }
 
-  async updateSettlement(id: string, tripId: string, data: { from_user_id: number; to_user_id: number; amount: number; currency?: string | null }) {
+  async updateSettlement(
+    id: string,
+    tripId: string,
+    data: { from_user_id: number; to_user_id: number; amount: number; currency?: string | null },
+  ) {
     // Pass the settlement's stored currency so an edit that doesn't change it keeps
     // the already-frozen rate (#1445) — otherwise a live-rate drift would re-open a
     // settled position on an unrelated edit.
@@ -106,9 +114,9 @@ export class BudgetService {
    */
   syncReservationPrice(tripId: string, reservationId: number, totalPrice: number, socketId: string | undefined): void {
     try {
-      const reservation = db.prepare(
-        'SELECT id, metadata FROM reservations WHERE id = ? AND trip_id = ?',
-      ).get(reservationId, tripId) as { id: number; metadata: string | null } | undefined;
+      const reservation = db
+        .prepare('SELECT id, metadata FROM reservations WHERE id = ? AND trip_id = ?')
+        .get(reservationId, tripId) as { id: number; metadata: string | null } | undefined;
       if (!reservation) return;
       const meta = reservation.metadata ? JSON.parse(reservation.metadata) : {};
       meta.price = String(totalPrice);

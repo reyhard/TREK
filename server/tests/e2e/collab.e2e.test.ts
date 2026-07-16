@@ -5,12 +5,15 @@
  * mocked; this focuses on auth, trip-access 404, permission 403, the create-201
  * status codes and the vote/react 200 overrides.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { CollabModule } from '../../src/nest/collab/collab.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -35,16 +38,27 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { svc } = vi.hoisted(() => ({
   svc: {
-    verifyTripAccess: vi.fn(), listNotes: vi.fn(), createNote: vi.fn(), updateNote: vi.fn(), deleteNote: vi.fn(),
-    addNoteFile: vi.fn(), getFormattedNoteById: vi.fn(), deleteNoteFile: vi.fn(),
-    listPolls: vi.fn(), createPoll: vi.fn(), votePoll: vi.fn(), closePoll: vi.fn(), deletePoll: vi.fn(),
-    listMessages: vi.fn(), createMessage: vi.fn(), deleteMessage: vi.fn(), addOrRemoveReaction: vi.fn(), fetchLinkPreview: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    listNotes: vi.fn(),
+    createNote: vi.fn(),
+    updateNote: vi.fn(),
+    deleteNote: vi.fn(),
+    addNoteFile: vi.fn(),
+    getFormattedNoteById: vi.fn(),
+    deleteNoteFile: vi.fn(),
+    listPolls: vi.fn(),
+    createPoll: vi.fn(),
+    votePoll: vi.fn(),
+    closePoll: vi.fn(),
+    deletePoll: vi.fn(),
+    listMessages: vi.fn(),
+    createMessage: vi.fn(),
+    deleteMessage: vi.fn(),
+    addOrRemoveReaction: vi.fn(),
+    fetchLinkPreview: vi.fn(),
   },
 }));
 vi.mock('../../src/services/collabService', () => svc);
-
-import { CollabModule } from '../../src/nest/collab/collab.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Collab e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -99,32 +113,47 @@ describe('Collab e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 on note create with permission', async () => {
-    const res = await request(server).post('/api/trips/5/collab/notes').set('Cookie', sessionCookie(1)).send({ title: 'N' });
+    const res = await request(server)
+      .post('/api/trips/5/collab/notes')
+      .set('Cookie', sessionCookie(1))
+      .send({ title: 'N' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ note: { id: 9, title: 'N' } });
   });
 
   it('403 on note create without permission', async () => {
     checkPermission.mockReturnValue(false);
-    const res = await request(server).post('/api/trips/5/collab/notes').set('Cookie', sessionCookie(1)).send({ title: 'N' });
+    const res = await request(server)
+      .post('/api/trips/5/collab/notes')
+      .set('Cookie', sessionCookie(1))
+      .send({ title: 'N' });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'No permission' });
   });
 
   it('200 on poll vote (not 201)', async () => {
-    const res = await request(server).post('/api/trips/5/collab/polls/7/vote').set('Cookie', sessionCookie(1)).send({ option_index: 0 });
+    const res = await request(server)
+      .post('/api/trips/5/collab/polls/7/vote')
+      .set('Cookie', sessionCookie(1))
+      .send({ option_index: 0 });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ poll: { id: 7 } });
   });
 
   it('201 on message create', async () => {
-    const res = await request(server).post('/api/trips/5/collab/messages').set('Cookie', sessionCookie(1)).send({ text: 'hi' });
+    const res = await request(server)
+      .post('/api/trips/5/collab/messages')
+      .set('Cookie', sessionCookie(1))
+      .send({ text: 'hi' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ message: { id: 3, text: 'hi' } });
   });
 
   it('200 on react (not 201)', async () => {
-    const res = await request(server).post('/api/trips/5/collab/messages/3/react').set('Cookie', sessionCookie(1)).send({ emoji: '👍' });
+    const res = await request(server)
+      .post('/api/trips/5/collab/messages/3/react')
+      .set('Cookie', sessionCookie(1))
+      .send({ emoji: '👍' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ reactions: [{ emoji: '👍', count: 1 }] });
   });

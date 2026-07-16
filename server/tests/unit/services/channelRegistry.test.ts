@@ -2,7 +2,7 @@
  * Unit tests for the external notification channel registry.
  * Covers CHREG-001 to CHREG-008.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { registerBuiltinChannels } from '../../../src/services/notifications/builtins';
 import {
   listChannels,
   getChannel,
@@ -14,7 +14,8 @@ import {
   type ChannelMessage,
   type ExternalChannel,
 } from '../../../src/services/notifications/channelRegistry';
-import { registerBuiltinChannels } from '../../../src/services/notifications/builtins';
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 function fakeChannel(id: string, over: Partial<ExternalChannel> = {}): ExternalChannel {
   return {
@@ -41,13 +42,13 @@ afterEach(() => {
 
 describe('channelRegistry', () => {
   it('CHREG-001 — the three built-in external channels are registered; in-app is not', () => {
-    expect(listChannels().map(c => c.id)).toEqual(['email', 'webhook', 'ntfy']);
+    expect(listChannels().map((c) => c.id)).toEqual(['email', 'webhook', 'ntfy']);
     expect(getChannel('inapp')).toBeUndefined();
   });
 
   it('CHREG-002 — plugin channels come from the injected source and are namespaced', () => {
     setPluginChannelSource(() => [fakeChannel(pluginChannelId('gotify'))]);
-    expect(listChannels().map(c => c.id)).toContain('plugin:gotify');
+    expect(listChannels().map((c) => c.id)).toContain('plugin:gotify');
     expect(getChannel('plugin:gotify')?.source).toBe('plugin');
     expect(isPluginChannelId('plugin:gotify')).toBe(true);
     expect(isPluginChannelId('email')).toBe(false);
@@ -59,14 +60,14 @@ describe('channelRegistry', () => {
     expect(getChannel('plugin:gotify')).toBeDefined();
     live = false;
     expect(getChannel('plugin:gotify')).toBeUndefined();
-    expect(listChannels().map(c => c.id)).toEqual(['email', 'webhook', 'ntfy']);
+    expect(listChannels().map((c) => c.id)).toEqual(['email', 'webhook', 'ntfy']);
   });
 
   it('CHREG-004 — a throwing plugin source cannot take notifications down', () => {
     setPluginChannelSource(() => {
       throw new Error('runtime exploded');
     });
-    expect(listChannels().map(c => c.id)).toEqual(['email', 'webhook', 'ntfy']);
+    expect(listChannels().map((c) => c.id)).toEqual(['email', 'webhook', 'ntfy']);
   });
 
   it('CHREG-005 — a plugin can never claim a built-in id', () => {
@@ -98,7 +99,7 @@ describe('channelRegistry', () => {
 
   it('CHREG-009 — registerChannel replaces an existing id rather than duplicating it', () => {
     registerChannel(fakeChannel('email', { source: 'builtin' }));
-    expect(listChannels().filter(c => c.id === 'email')).toHaveLength(1);
+    expect(listChannels().filter((c) => c.id === 'email')).toHaveLength(1);
   });
 
   it('CHREG-010 — a channel that rejects is the caller’s problem, not the registry’s', async () => {

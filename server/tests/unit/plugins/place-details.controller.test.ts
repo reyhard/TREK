@@ -1,3 +1,6 @@
+import { PlaceDetailsController } from '../../../src/nest/plugins/place-details.controller';
+import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { canAccessTrip, placeTrip, pluginsEnabled } = vi.hoisted(() => ({
@@ -11,22 +14,24 @@ vi.mock('../../../src/db/database', () => ({
 }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled }));
 
-import { PlaceDetailsController } from '../../../src/nest/plugins/place-details.controller';
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const req = (id?: number) => ({ user: id === undefined ? undefined : { id } }) as any;
 function controller(over: Partial<PluginRuntimeService> = {}) {
   const runtime = {
     providersOf: vi.fn(() => ['p1', 'p2']),
-    invokeHook: vi.fn(async (id: string) => (id === 'p2' ? [{ label: 'Rating', value: '4.5' }] : [{ label: 'Reviews', value: '12', url: 'https://x' }])),
+    invokeHook: vi.fn(async (id: string) =>
+      id === 'p2' ? [{ label: 'Rating', value: '4.5' }] : [{ label: 'Reviews', value: '12', url: 'https://x' }],
+    ),
     ...over,
   } as unknown as PluginRuntimeService;
   return { c: new PlaceDetailsController(runtime), runtime };
 }
 
 describe('PlaceDetailsController', () => {
-  beforeEach(() => { pluginsEnabled.mockReturnValue(true); canAccessTrip.mockReturnValue({ id: 1 } as never); });
+  beforeEach(() => {
+    pluginsEnabled.mockReturnValue(true);
+    canAccessTrip.mockReturnValue({ id: 1 } as never);
+  });
 
   it('returns [] when the runtime is disabled (no plugin calls)', async () => {
     pluginsEnabled.mockReturnValue(false);
@@ -65,8 +70,8 @@ describe('PlaceDetailsController', () => {
       invokeHook: vi.fn(async () => [
         { label: 'x'.repeat(200), value: 'y'.repeat(500), url: 'javascript:alert(1)' },
         { label: 'Site', url: 'https://ok.example' },
-        { value: 'no label' },   // dropped
-        'not an object',         // dropped
+        { value: 'no label' }, // dropped
+        'not an object', // dropped
         { label: 'Mail', url: 'mailto:a@b.c' },
       ]) as unknown as PluginRuntimeService['invokeHook'],
     });
@@ -82,9 +87,7 @@ describe('PlaceDetailsController', () => {
     const { c } = controller({
       providersOf: vi.fn(() => ['flood', 'empty']),
       invokeHook: vi.fn(async (id: string) =>
-        id === 'flood'
-          ? Array.from({ length: 50 }, (_v, i) => ({ label: `r${i}` }))
-          : [{ value: 'no label' }, 'junk'],
+        id === 'flood' ? Array.from({ length: 50 }, (_v, i) => ({ label: `r${i}` })) : [{ value: 'no label' }, 'junk'],
       ) as unknown as PluginRuntimeService['invokeHook'],
     });
     const res = await c.get('7', req(5));

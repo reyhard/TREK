@@ -2,6 +2,17 @@
  * Unit tests for tripInviteService — TRIP-INVITE-001..006.
  * Per-trip invite links (#1143): one rotating token, optional expiry, resolve.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  getTripInviteLink,
+  createOrRotateTripInviteLink,
+  deleteTripInviteLink,
+  resolveTripInvite,
+} from '../../../src/services/tripInviteService';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -12,18 +23,10 @@ const { testDb, dbMock } = vi.hoisted(() => {
 });
 vi.mock('../../../src/db/database', () => dbMock);
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import {
-  getTripInviteLink,
-  createOrRotateTripInviteLink,
-  deleteTripInviteLink,
-  resolveTripInvite,
-} from '../../../src/services/tripInviteService';
-
-beforeAll(() => { createTables(testDb); runMigrations(testDb); });
+beforeAll(() => {
+  createTables(testDb);
+  runMigrations(testDb);
+});
 beforeEach(() => resetTestDb(testDb));
 afterAll(() => testDb.close());
 
@@ -51,7 +54,9 @@ describe('tripInviteService', () => {
     const first = createOrRotateTripInviteLink(trip.id, owner.id);
     const second = createOrRotateTripInviteLink(trip.id, owner.id);
     expect(second.token).not.toBe(first.token);
-    const count = testDb.prepare('SELECT COUNT(*) as n FROM trip_invite_tokens WHERE trip_id = ?').get(trip.id) as { n: number };
+    const count = testDb.prepare('SELECT COUNT(*) as n FROM trip_invite_tokens WHERE trip_id = ?').get(trip.id) as {
+      n: number;
+    };
     expect(count.n).toBe(1);
     // The old token no longer resolves.
     expect(resolveTripInvite(first.token)).toBeNull();
@@ -69,7 +74,8 @@ describe('tripInviteService', () => {
     // Use the exact ISO-8601 format the service writes, one hour in the past —
     // this catches the lexicographic-SQL-comparison bug where a same-UTC-day
     // expiry would otherwise still resolve.
-    testDb.prepare('UPDATE trip_invite_tokens SET expires_at = ? WHERE trip_id = ?')
+    testDb
+      .prepare('UPDATE trip_invite_tokens SET expires_at = ? WHERE trip_id = ?')
       .run(new Date(Date.now() - 3600_000).toISOString(), trip.id);
     expect(resolveTripInvite(info.token)).toBeNull();
   });
@@ -77,7 +83,8 @@ describe('tripInviteService', () => {
   it('TRIP-INVITE-005b: a not-yet-expired token still resolves', () => {
     const { owner, trip } = setup();
     const info = createOrRotateTripInviteLink(trip.id, owner.id);
-    testDb.prepare('UPDATE trip_invite_tokens SET expires_at = ? WHERE trip_id = ?')
+    testDb
+      .prepare('UPDATE trip_invite_tokens SET expires_at = ? WHERE trip_id = ?')
       .run(new Date(Date.now() + 3600_000).toISOString(), trip.id);
     expect(resolveTripInvite(info.token)).toEqual({ trip_id: trip.id, title: trip.title });
   });

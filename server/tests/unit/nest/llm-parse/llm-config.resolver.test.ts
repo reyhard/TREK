@@ -1,3 +1,5 @@
+import { resolveLlmConfig } from '../../../../src/nest/llm-parse/llm-config.resolver';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { dbMock } = vi.hoisted(() => {
@@ -14,8 +16,6 @@ const { getUserSettings, getDecryptedUserSetting } = vi.hoisted(() => ({
   getDecryptedUserSetting: vi.fn(() => null as string | null),
 }));
 vi.mock('../../../../src/services/settingsService', () => ({ getUserSettings, getDecryptedUserSetting }));
-
-import { resolveLlmConfig } from '../../../../src/nest/llm-parse/llm-config.resolver';
 
 function setInstanceConfig(config: unknown) {
   dbMock._stmt.get.mockReturnValue(config === undefined ? undefined : { config: JSON.stringify(config) });
@@ -48,7 +48,12 @@ describe('resolveLlmConfig', () => {
 
   it('falls back to per-user config when instance config is incomplete', () => {
     setInstanceConfig({ provider: 'anthropic' }); // no model → not usable
-    getUserSettings.mockReturnValue({ llm_provider: 'local', llm_model: 'nuextract', llm_base_url: 'http://x/v1', llm_multimodal: true });
+    getUserSettings.mockReturnValue({
+      llm_provider: 'local',
+      llm_model: 'nuextract',
+      llm_base_url: 'http://x/v1',
+      llm_multimodal: true,
+    });
     getDecryptedUserSetting.mockReturnValue('user-key');
     expect(resolveLlmConfig(7)).toEqual({
       provider: 'local',

@@ -1,15 +1,17 @@
-import { db } from '../../db/database';
 import { ADDON_IDS } from '../../addons';
+import { db } from '../../db/database';
 import { isAddonEnabled } from '../../services/adminService';
-import { getUserSettings, getDecryptedUserSetting } from '../../services/settingsService';
 import { decryptLlmApiKey, LLM_PROVIDERS, type LlmProvider, type ResolvedLlmConfig } from '../../services/llmConfig';
+import { getUserSettings, getDecryptedUserSetting } from '../../services/settingsService';
 
 function asProvider(v: unknown): LlmProvider | null {
   return typeof v === 'string' && (LLM_PROVIDERS as string[]).includes(v) ? (v as LlmProvider) : null;
 }
 
 function readInstanceConfig(): ResolvedLlmConfig | null {
-  const row = db.prepare('SELECT config FROM addons WHERE id = ?').get(ADDON_IDS.LLM_PARSING) as { config?: string } | undefined;
+  const row = db.prepare('SELECT config FROM addons WHERE id = ?').get(ADDON_IDS.LLM_PARSING) as
+    | { config?: string }
+    | undefined;
   if (!row?.config) return null;
   let cfg: Record<string, unknown>;
   try {
@@ -38,7 +40,10 @@ function readUserConfig(userId: number): ResolvedLlmConfig | null {
   return {
     provider,
     model,
-    baseUrl: typeof settings.llm_base_url === 'string' && settings.llm_base_url.trim() ? settings.llm_base_url.trim() : undefined,
+    baseUrl:
+      typeof settings.llm_base_url === 'string' && settings.llm_base_url.trim()
+        ? settings.llm_base_url.trim()
+        : undefined,
     apiKey,
     multimodal: settings.llm_multimodal === true,
   };

@@ -2,6 +2,27 @@
  * Unit tests for MCP resources (resources.ts).
  * Tests all 14 resources via InMemoryTransport + Client.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  createUser,
+  createTrip,
+  createDay,
+  createPlace,
+  addTripMember,
+  createBudgetItem,
+  createPackingItem,
+  createReservation,
+  createDayNote,
+  createCollabNote,
+  createBucketListItem,
+  createVisitedCountry,
+  createDayAssignment,
+  createDayAccommodation,
+} from '../../helpers/factories';
+import { createMcpHarness, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -15,13 +36,29 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: number) => {
-      const place: any = db.prepare(`SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`).get(placeId);
+      const place: any = db
+        .prepare(
+          `SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`,
+        )
+        .get(placeId);
       if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -35,12 +72,6 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn() }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createDay, createPlace, addTripMember, createBudgetItem, createPackingItem, createReservation, createDayNote, createCollabNote, createBucketListItem, createVisitedCountry, createDayAssignment, createDayAccommodation } from '../../helpers/factories';
-import { createMcpHarness, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
 
 beforeAll(() => {
   createTables(testDb);
@@ -433,7 +464,7 @@ describe('Resource: trek://categories', () => {
 });
 
 describe('Resource: trek://bucket-list', () => {
-  it('returns only the current user\'s bucket list items', async () => {
+  it("returns only the current user's bucket list items", async () => {
     const { user } = createUser(testDb);
     const { user: other } = createUser(testDb);
     createBucketListItem(testDb, user.id, { name: 'Tokyo' });
@@ -459,7 +490,7 @@ describe('Resource: trek://bucket-list', () => {
 });
 
 describe('Resource: trek://visited-countries', () => {
-  it('returns only the current user\'s visited countries', async () => {
+  it("returns only the current user's visited countries", async () => {
     const { user } = createUser(testDb);
     const { user: other } = createUser(testDb);
     createVisitedCountry(testDb, user.id, 'FR');

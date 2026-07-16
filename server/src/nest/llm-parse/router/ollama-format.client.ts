@@ -10,7 +10,6 @@
  * so the router talks to `/api/chat` directly. (Cloud providers enforce via their own strict
  * tool/response_format and keep using the existing clients.)
  */
-
 import { safeFetchLlm } from '../../../utils/ssrfGuard';
 
 const TIMEOUT_MS = 300_000;
@@ -37,7 +36,11 @@ export function toNativeBase(baseUrl: string): string {
 /** Strip code fences and JSON.parse; returns null on failure. */
 function parseJson(content: string | undefined | null): unknown {
   if (!content) return null;
-  const stripped = content.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const stripped = content
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim();
   try {
     return JSON.parse(stripped);
   } catch {

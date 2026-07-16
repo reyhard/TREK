@@ -2,6 +2,21 @@
  * Unit tests for todoService — TODO-SVC-001 through TODO-SVC-020.
  * Uses a real in-memory SQLite DB so SQL logic is exercised faithfully.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  verifyTripAccess,
+  listItems,
+  createItem,
+  updateItem,
+  deleteItem,
+  getCategoryAssignees,
+  updateCategoryAssignees,
+  reorderItems,
+} from '../../../src/services/todoService';
+import { createUser, createTrip, addTripMember } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
@@ -18,11 +33,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`
+      db
+        .prepare(
+          `
         SELECT t.id, t.user_id FROM trips t
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?
         WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)
-      `).get(userId, tripId, userId),
+      `,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -35,21 +54,6 @@ vi.mock('../../../src/config', () => ({
   ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
   updateJwtSecret: () => {},
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, addTripMember } from '../../helpers/factories';
-import {
-  verifyTripAccess,
-  listItems,
-  createItem,
-  updateItem,
-  deleteItem,
-  getCategoryAssignees,
-  updateCategoryAssignees,
-  reorderItems,
-} from '../../../src/services/todoService';
 
 beforeAll(() => {
   createTables(testDb);
@@ -214,7 +218,9 @@ describe('reorderItems', () => {
 
     reorderItems(trip.id, [c.id, a.id, b.id]);
 
-    const rows = testDb.prepare('SELECT id, sort_order FROM todo_items WHERE trip_id = ? ORDER BY sort_order').all(trip.id) as any[];
+    const rows = testDb
+      .prepare('SELECT id, sort_order FROM todo_items WHERE trip_id = ? ORDER BY sort_order')
+      .all(trip.id) as any[];
     expect(rows[0].id).toBe(c.id);
     expect(rows[1].id).toBe(a.id);
     expect(rows[2].id).toBe(b.id);

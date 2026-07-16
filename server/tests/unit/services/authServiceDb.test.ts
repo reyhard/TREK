@@ -1,3 +1,38 @@
+// ---------------------------------------------------------------------------
+// Imports (after mocks)
+// ---------------------------------------------------------------------------
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { verifyJwtAndLoadUser } from '../../../src/middleware/auth';
+import { unmarkCountryVisited } from '../../../src/services/atlasService';
+import {
+  updateSettings,
+  updateApiKeys,
+  getSettings,
+  listUsers,
+  getAppSettings,
+  validateKeys,
+  isOidcOnlyMode,
+  resolveAuthToggles,
+  setupMfa,
+  enableMfa,
+  disableMfa,
+  validateInviteToken,
+  registerUser,
+  loginUser,
+  requestPasswordReset,
+  changePassword,
+  verifyMfaLogin,
+  createMcpToken,
+  deleteMcpToken,
+  generateToken,
+  getTravelStats,
+} from '../../../src/services/authService';
+import { createUser, createAdmin, createInviteToken, createTrip, createReservation } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+
 /**
  * authServiceDb.test.ts
  *
@@ -23,7 +58,7 @@ const { testDb, dbMock } = vi.hoisted(() => {
     canAccessTrip: (tripId: any, userId: number) =>
       db
         .prepare(
-          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
         )
         .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
@@ -63,41 +98,6 @@ vi.mock('../../../src/scheduler', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Imports (after mocks)
-// ---------------------------------------------------------------------------
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createAdmin, createInviteToken, createTrip, createReservation } from '../../helpers/factories';
-import {
-  updateSettings,
-  updateApiKeys,
-  getSettings,
-  listUsers,
-  getAppSettings,
-  validateKeys,
-  isOidcOnlyMode,
-  resolveAuthToggles,
-  setupMfa,
-  enableMfa,
-  disableMfa,
-  validateInviteToken,
-  registerUser,
-  loginUser,
-  requestPasswordReset,
-  changePassword,
-  verifyMfaLogin,
-  createMcpToken,
-  deleteMcpToken,
-  generateToken,
-  getTravelStats,
-} from '../../../src/services/authService';
-import { unmarkCountryVisited } from '../../../src/services/atlasService';
-import { verifyJwtAndLoadUser } from '../../../src/middleware/auth';
-
-// ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
@@ -119,15 +119,17 @@ describe('requestPasswordReset — OIDC/SSO accounts', () => {
     const { user } = createUser(testDb);
     // OIDC users are created with a random bcrypt hash, so password_hash is set —
     // the old guard keyed off a missing hash and therefore let the reset through.
-    testDb.prepare('UPDATE users SET oidc_sub = ?, oidc_issuer = ? WHERE id = ?')
+    testDb
+      .prepare('UPDATE users SET oidc_sub = ?, oidc_issuer = ? WHERE id = ?')
       .run('sub-1129', 'https://idp.example', user.id);
 
     const result = requestPasswordReset(user.email, null);
 
     expect(result.reason).toBe('oidc_only');
     expect(result.tokenForDelivery).toBeNull();
-    const { n } = testDb.prepare('SELECT COUNT(*) AS n FROM password_reset_tokens WHERE user_id = ?')
-      .get(user.id) as { n: number };
+    const { n } = testDb.prepare('SELECT COUNT(*) AS n FROM password_reset_tokens WHERE user_id = ?').get(user.id) as {
+      n: number;
+    };
     expect(n).toBe(0);
   });
 
@@ -274,9 +276,7 @@ describe('getAppSettings', () => {
 
   it('AUTH-DB-014: returns settings object for admin with known key allow_registration', () => {
     const { user } = createAdmin(testDb);
-    testDb
-      .prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allow_registration', 'true')")
-      .run();
+    testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allow_registration', 'true')").run();
     const result = getAppSettings(user.id);
     expect(result.status).toBeUndefined();
     expect(result.data).toBeDefined();
@@ -327,9 +327,7 @@ describe('validateKeys', () => {
     const { user } = createAdmin(testDb);
     testDb.prepare('UPDATE users SET maps_api_key = ? WHERE id = ?').run('test-key', user.id);
 
-    const fetchSpy = vi
-      .spyOn(global, 'fetch')
-      .mockRejectedValueOnce(new Error('Network failure'));
+    const fetchSpy = vi.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('Network failure'));
 
     const result = await validateKeys(user.id);
     expect(result.maps).toBe(false);
@@ -375,7 +373,11 @@ describe('isOidcOnlyMode', () => {
 describe('resolveAuthToggles', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    testDb.prepare("DELETE FROM app_settings WHERE key IN ('password_login','password_registration','oidc_login','oidc_registration','oidc_only','allow_registration')").run();
+    testDb
+      .prepare(
+        "DELETE FROM app_settings WHERE key IN ('password_login','password_registration','oidc_login','oidc_registration','oidc_only','allow_registration')",
+      )
+      .run();
   });
 
   it('AUTH-DB-022a: returns all true by default (no DB keys, no env override)', () => {
@@ -620,7 +622,8 @@ describe('changePassword — OIDC-only mode', () => {
 
 describe('changePassword — session invalidation', () => {
   const pvOf = (id: number) =>
-    (testDb.prepare('SELECT password_version FROM users WHERE id = ?').get(id) as { password_version: number }).password_version;
+    (testDb.prepare('SELECT password_version FROM users WHERE id = ?').get(id) as { password_version: number })
+      .password_version;
   const mcpCount = (id: number) =>
     (testDb.prepare('SELECT COUNT(*) c FROM mcp_tokens WHERE user_id = ?').get(id) as { c: number }).c;
 
@@ -721,9 +724,9 @@ describe('MCP token service', () => {
   it('AUTH-DB-044: createMcpToken returns 400 when user has 10 tokens already', () => {
     const { user } = createUser(testDb);
     for (let i = 0; i < 10; i++) {
-      testDb.prepare(
-        'INSERT INTO mcp_tokens (user_id, name, token_hash, token_prefix) VALUES (?, ?, ?, ?)'
-      ).run(user.id, `Token ${i}`, `hash${i}`, `trek_prefix${i}`);
+      testDb
+        .prepare('INSERT INTO mcp_tokens (user_id, name, token_hash, token_prefix) VALUES (?, ?, ?, ?)')
+        .run(user.id, `Token ${i}`, `hash${i}`, `trek_prefix${i}`);
     }
     const result = createMcpToken(user.id, 'One More');
     expect(result.status).toBe(400);
@@ -752,17 +755,19 @@ describe('MCP token service', () => {
 
 describe('getTravelStats', () => {
   function endpoint(reservationId: number, role: 'from' | 'to' | 'stop', sequence: number, lat: number, lng: number) {
-    testDb.prepare(
-      'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(reservationId, role, sequence, `Endpoint ${sequence}`, lat, lng);
+    testDb
+      .prepare(
+        'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(reservationId, role, sequence, `Endpoint ${sequence}`, lat, lng);
   }
 
   it('AUTH-DB-047: #1486 counts the from/to countries of a flight', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Tokyo Trip' });
     const res = createReservation(testDb, trip.id, { type: 'flight' });
-    endpoint(res.id, 'from', 0, 50.9014, 4.4844);   // Brussels
-    endpoint(res.id, 'to', 1, 35.6762, 139.6503);   // Tokyo
+    endpoint(res.id, 'from', 0, 50.9014, 4.4844); // Brussels
+    endpoint(res.id, 'to', 1, 35.6762, 139.6503); // Tokyo
 
     const stats = getTravelStats(user.id);
     expect(stats.countries).toContain('BE');
@@ -775,9 +780,9 @@ describe('getTravelStats', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Connection Trip' });
     const res = createReservation(testDb, trip.id, { type: 'flight' });
-    endpoint(res.id, 'from', 0, 50.9014, 4.4844);     // Brussels
-    endpoint(res.id, 'stop', 1, 35.6762, 139.6503);   // Tokyo — never leaves the airport
-    endpoint(res.id, 'to', 2, -33.8688, 151.2093);    // Sydney
+    endpoint(res.id, 'from', 0, 50.9014, 4.4844); // Brussels
+    endpoint(res.id, 'stop', 1, 35.6762, 139.6503); // Tokyo — never leaves the airport
+    endpoint(res.id, 'to', 2, -33.8688, 151.2093); // Sydney
 
     const stats = getTravelStats(user.id);
     expect(stats.countries).toContain('BE');

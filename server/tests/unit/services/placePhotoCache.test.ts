@@ -4,13 +4,13 @@
  * Uses a real in-memory SQLite DB and a throwaway temp upload dir
  * (TREK_PLACE_PHOTO_DIR) so the real uploads tree is never touched.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import path from 'node:path';
+import Database from 'better-sqlite3';
+import { Jimp, JimpMime } from 'jimp';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
-import crypto from 'node:crypto';
-import { Jimp, JimpMime } from 'jimp';
-import Database from 'better-sqlite3';
+import path from 'node:path';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 
 // Throwaway upload dir — set before importing the module under test (it reads the
 // env at load time and mkdirs the dir).

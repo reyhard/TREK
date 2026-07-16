@@ -3,6 +3,25 @@
  * Uses a real in-memory SQLite DB so SQL logic is exercised faithfully.
  * External fetches are mocked where needed.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  listPlaces,
+  createPlace as svcCreatePlace,
+  getPlace,
+  updatePlace,
+  updatePlacesMany,
+  deletePlace,
+  importGpx,
+  importKmlPlaces,
+  importGoogleList,
+  searchPlaceImage,
+} from '../../../src/services/placeService';
+import { createUser, createTrip, createPlace, createCategory, createTag } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
+import fs from 'fs';
+import path from 'path';
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
@@ -18,16 +37,32 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: any) => {
-      const place: any = db.prepare(`
+      const place: any = db
+        .prepare(
+          `
         SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon
         FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?
-      `).get(placeId);
+      `,
+        )
+        .get(placeId);
       if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -41,6 +76,11 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
+vi.mock('../../../src/utils/ssrfGuard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/utils/ssrfGuard')>()),
+  checkSsrf: async () => ({ allowed: true, isPrivate: false, resolvedIp: '203.0.113.1' }),
+}));
+
 // Spy on the photo-cache reclaim hook so delete tests assert the wiring without
 // touching disk. The removal logic itself is covered in placePhotoCache.test.ts.
 const { removeIfUnreferencedSpy } = vi.hoisted(() => ({ removeIfUnreferencedSpy: vi.fn() }));
@@ -48,14 +88,6 @@ vi.mock('../../../src/services/placePhotoCache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../src/services/placePhotoCache')>()),
   removeIfUnreferenced: removeIfUnreferencedSpy,
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createPlace, createCategory, createTag } from '../../helpers/factories';
-import path from 'path';
-import fs from 'fs';
-import { listPlaces, createPlace as svcCreatePlace, getPlace, updatePlace, updatePlacesMany, deletePlace, importGpx, importKmlPlaces, importGoogleList, searchPlaceImage } from '../../../src/services/placeService';
 
 const GPX_FIXTURE = path.join(__dirname, '../../fixtures/test.gpx');
 const KML_FIXTURE = path.join(__dirname, '../../fixtures/test.kml');
@@ -243,7 +275,10 @@ describe('updatePlacesMany', () => {
     const b = createPlace(testDb, trip.id, { name: 'B' }) as any;
     const c = createPlace(testDb, trip.id, { name: 'C' }) as any;
 
-    const updated = updatePlacesMany(String(trip.id), [a.id, b.id, c.id], { notes: 'visited', transport_mode: 'walking' });
+    const updated = updatePlacesMany(String(trip.id), [a.id, b.id, c.id], {
+      notes: 'visited',
+      transport_mode: 'walking',
+    });
 
     expect(updated).toHaveLength(3);
     for (const p of updated) {
@@ -251,7 +286,7 @@ describe('updatePlacesMany', () => {
       expect((p as any).transport_mode).toBe('walking');
     }
     // Only the provided fields change — names are untouched.
-    expect(updated.map(p => (p as any).name).sort()).toEqual(['A', 'B', 'C']);
+    expect(updated.map((p) => (p as any).name).sort()).toEqual(['A', 'B', 'C']);
   });
 
   it('PLACE-SVC-040 — skips ids that are not in the trip and reports the rest', () => {
@@ -454,7 +489,7 @@ describe('importGoogleList', () => {
   it('PLACE-SVC-026 — returns error when list ID cannot be extracted from URL', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const result = await importGoogleList(String(trip.id), 'https://example.com/no-id-here') as any;
+    const result = (await importGoogleList(String(trip.id), 'https://example.com/no-id-here')) as any;
     expect(result.error).toMatch(/Could not extract list ID/);
     expect(result.status).toBe(400);
   });
@@ -463,7 +498,7 @@ describe('importGoogleList', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const url = 'https://www.google.com/maps/place/Eiffel+Tower/@48.8584,2.2945,17z/data=!3m1';
-    const result = await importGoogleList(String(trip.id), url) as any;
+    const result = (await importGoogleList(String(trip.id), url)) as any;
     expect(result.status).toBe(400);
     expect(result.error).toMatch(/single place/i);
   });
@@ -473,7 +508,7 @@ describe('importGoogleList', () => {
     const trip = createTrip(testDb, user.id);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, text: async () => '', status: 502 }));
     const url = 'https://www.google.com/maps/placelists/list/ABC123DEF456';
-    const result = await importGoogleList(String(trip.id), url) as any;
+    const result = (await importGoogleList(String(trip.id), url)) as any;
     expect(result.error).toMatch(/Failed to fetch list/);
     expect(result.status).toBe(502);
   });
@@ -483,18 +518,31 @@ describe('importGoogleList', () => {
     const trip = createTrip(testDb, user.id);
 
     const listPayload = [
-      [null, null, null, null, 'My Test List', null, null, null, [
-        [null, [null, null, null, null, null, [null, null, 48.8566, 2.3522]], 'Paris', null],
-        [null, [null, null, null, null, null, [null, null, 51.5074, -0.1278]], 'London', 'Great city'],
-      ]],
+      [
+        null,
+        null,
+        null,
+        null,
+        'My Test List',
+        null,
+        null,
+        null,
+        [
+          [null, [null, null, null, null, null, [null, null, 48.8566, 2.3522]], 'Paris', null],
+          [null, [null, null, null, null, null, [null, null, 51.5074, -0.1278]], 'London', 'Great city'],
+        ],
+      ],
     ];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'prefix\n' + JSON.stringify(listPayload),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => 'prefix\n' + JSON.stringify(listPayload),
+      }),
+    );
 
     const url = 'https://www.google.com/maps/placelists/list/ABC123DEF456';
-    const result = await importGoogleList(String(trip.id), url) as any;
+    const result = (await importGoogleList(String(trip.id), url)) as any;
     expect(result.listName).toBe('My Test List');
     expect(result.places).toHaveLength(2);
     expect(result.places[0].name).toBe('Paris');
@@ -506,17 +554,42 @@ describe('importGoogleList', () => {
     const trip = createTrip(testDb, user.id);
 
     const listPayload = [
-      [null, null, null, null, 'My Test List', null, null, null, [
-        [null, [null, null, null, null, '878 Weber St N', [null, null, 43.5118527, -80.5542617], ['-8634542354666695567', '-8822026229683971437']], "St. Jacobs Farmers' Market"],
-      ]],
+      [
+        null,
+        null,
+        null,
+        null,
+        'My Test List',
+        null,
+        null,
+        null,
+        [
+          [
+            null,
+            [
+              null,
+              null,
+              null,
+              null,
+              '878 Weber St N',
+              [null, null, 43.5118527, -80.5542617],
+              ['-8634542354666695567', '-8822026229683971437'],
+            ],
+            "St. Jacobs Farmers' Market",
+          ],
+        ],
+      ],
     ];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'prefix\n' + JSON.stringify(listPayload),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => 'prefix\n' + JSON.stringify(listPayload),
+      }),
+    );
 
     const url = 'https://www.google.com/maps/placelists/list/ABC123DEF456';
-    const result = await importGoogleList(String(trip.id), url) as any;
+    const result = (await importGoogleList(String(trip.id), url)) as any;
 
     expect(result.places).toHaveLength(1);
     expect(result.places[0].google_place_id).toBeNull();
@@ -533,17 +606,42 @@ describe('importGoogleList', () => {
     }) as any;
 
     const listPayload = [
-      [null, null, null, null, 'My Test List', null, null, null, [
-        [null, [null, null, null, null, '878 Weber St N', [null, null, 43.5118527, -80.5542617], ['-8634542354666695567', '-8822026229683971437']], "St. Jacobs Farmers' Market"],
-      ]],
+      [
+        null,
+        null,
+        null,
+        null,
+        'My Test List',
+        null,
+        null,
+        null,
+        [
+          [
+            null,
+            [
+              null,
+              null,
+              null,
+              null,
+              '878 Weber St N',
+              [null, null, 43.5118527, -80.5542617],
+              ['-8634542354666695567', '-8822026229683971437'],
+            ],
+            "St. Jacobs Farmers' Market",
+          ],
+        ],
+      ],
     ];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'prefix\n' + JSON.stringify(listPayload),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => 'prefix\n' + JSON.stringify(listPayload),
+      }),
+    );
 
     const url = 'https://www.google.com/maps/placelists/list/ABC123DEF456';
-    const result = await importGoogleList(String(trip.id), url) as any;
+    const result = (await importGoogleList(String(trip.id), url)) as any;
     const row = testDb.prepare('SELECT google_place_id, google_ftid FROM places WHERE id = ?').get(existing.id) as any;
 
     expect(result.places).toHaveLength(0);
@@ -557,13 +655,16 @@ describe('importGoogleList', () => {
     const trip = createTrip(testDb, user.id);
 
     const listPayload = [[null, null, null, null, 'Empty List', null, null, null, []]];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'prefix\n' + JSON.stringify(listPayload),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => 'prefix\n' + JSON.stringify(listPayload),
+      }),
+    );
 
     const url = 'https://www.google.com/maps/placelists/list/ABC123DEF456';
-    const result = await importGoogleList(String(trip.id), url) as any;
+    const result = (await importGoogleList(String(trip.id), url)) as any;
     expect(result.error).toBeDefined();
     expect(result.status).toBe(400);
   });
@@ -579,7 +680,7 @@ describe('searchPlaceImage', () => {
   it('PLACE-SVC-030 — returns 404 when place does not exist', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const result = await searchPlaceImage(String(trip.id), '99999', user.id) as any;
+    const result = (await searchPlaceImage(String(trip.id), '99999', user.id)) as any;
     expect(result.error).toBeDefined();
     expect(result.status).toBe(404);
   });
@@ -588,17 +689,26 @@ describe('searchPlaceImage', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id, { name: 'Eiffel Tower' }) as any;
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        results: [
-          { id: 'photo1', urls: { regular: 'https://img.example.com/1', thumb: 'https://img.example.com/t1' }, description: 'Tower', user: { name: 'Photographer' }, links: { html: 'https://unsplash.com/1' } },
-        ],
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              id: 'photo1',
+              urls: { regular: 'https://img.example.com/1', thumb: 'https://img.example.com/t1' },
+              description: 'Tower',
+              user: { name: 'Photographer' },
+              links: { html: 'https://unsplash.com/1' },
+            },
+          ],
+        }),
+        status: 200,
       }),
-      status: 200,
-    }));
+    );
 
-    const result = await searchPlaceImage(String(trip.id), String(place.id), user.id) as any;
+    const result = (await searchPlaceImage(String(trip.id), String(place.id), user.id)) as any;
     expect(result.photos).toHaveLength(1);
     const [url] = (fetch as any).mock.calls[0];
     expect(url).toContain('https://unsplash.com/napi/search/photos?');
@@ -611,15 +721,24 @@ describe('searchPlaceImage', () => {
     const place = createPlace(testDb, trip.id, { name: 'Eiffel Tower' }) as any;
 
     const mockPhotos = [
-      { id: 'photo1', urls: { regular: 'https://img.example.com/1', thumb: 'https://img.example.com/t1' }, description: 'Tower', user: { name: 'Photographer' }, links: { html: 'https://unsplash.com/1' } },
+      {
+        id: 'photo1',
+        urls: { regular: 'https://img.example.com/1', thumb: 'https://img.example.com/t1' },
+        description: 'Tower',
+        user: { name: 'Photographer' },
+        links: { html: 'https://unsplash.com/1' },
+      },
     ];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ results: mockPhotos }),
-      status: 200,
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ results: mockPhotos }),
+        status: 200,
+      }),
+    );
 
-    const result = await searchPlaceImage(String(trip.id), String(place.id), user.id) as any;
+    const result = (await searchPlaceImage(String(trip.id), String(place.id), user.id)) as any;
     expect(result.photos).toHaveLength(1);
     expect(result.photos[0].id).toBe('photo1');
     expect(result.photos[0].url).toBe('https://img.example.com/1');

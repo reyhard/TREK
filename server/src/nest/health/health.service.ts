@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { Injectable } from '@nestjs/common';
 
 /**
  * Smoke service proving NestJS DI works under the chosen runtime AND that the

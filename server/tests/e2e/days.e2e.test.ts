@@ -3,12 +3,15 @@
  * JwtAuthGuard against a temp SQLite db. The day/day-note services, the
  * permission check, canAccessTrip and the WebSocket broadcast are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { DaysModule } from '../../src/nest/days/days.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -22,7 +25,12 @@ const { db } = vi.hoisted(() => {
 
 const { canAccessTrip } = vi.hoisted(() => ({ canAccessTrip: vi.fn() }));
 vi.mock('../../src/db/database', () => ({
-  db, canAccessTrip, isOwner: vi.fn(() => true), getPlaceWithTags: vi.fn(), closeDb: () => {}, reinitialize: () => {},
+  db,
+  canAccessTrip,
+  isOwner: vi.fn(() => true),
+  getPlaceWithTags: vi.fn(),
+  closeDb: () => {},
+  reinitialize: () => {},
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn() }));
 
@@ -32,15 +40,17 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 const { day, note } = vi.hoisted(() => ({
   day: { listDays: vi.fn(), createDay: vi.fn(), getDay: vi.fn(), updateDay: vi.fn(), deleteDay: vi.fn() },
   note: {
-    verifyTripAccess: vi.fn(), listNotes: vi.fn(), dayExists: vi.fn(), createNote: vi.fn(),
-    getNote: vi.fn(), updateNote: vi.fn(), deleteNote: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    listNotes: vi.fn(),
+    dayExists: vi.fn(),
+    createNote: vi.fn(),
+    getNote: vi.fn(),
+    updateNote: vi.fn(),
+    deleteNote: vi.fn(),
   },
 }));
 vi.mock('../../src/services/dayService', () => day);
 vi.mock('../../src/services/dayNoteService', () => note);
-
-import { DaysModule } from '../../src/nest/days/days.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Days + day-notes e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -87,7 +97,10 @@ describe('Days + day-notes e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 create day, 404 trip when not accessible', async () => {
-    const ok = await request(server).post('/api/trips/5/days').set('Cookie', sessionCookie(1)).send({ date: '2026-07-01' });
+    const ok = await request(server)
+      .post('/api/trips/5/days')
+      .set('Cookie', sessionCookie(1))
+      .send({ date: '2026-07-01' });
     expect(ok.status).toBe(201);
     expect(ok.body).toEqual({ day: { id: 9 } });
     canAccessTrip.mockReturnValue(undefined);
@@ -97,16 +110,25 @@ describe('Days + day-notes e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 create note, 400 on over-long text (before access)', async () => {
-    const ok = await request(server).post('/api/trips/5/days/3/notes').set('Cookie', sessionCookie(1)).send({ text: 'Lunch' });
+    const ok = await request(server)
+      .post('/api/trips/5/days/3/notes')
+      .set('Cookie', sessionCookie(1))
+      .send({ text: 'Lunch' });
     expect(ok.status).toBe(201);
     expect(ok.body).toEqual({ note: { id: 7 } });
-    const long = await request(server).post('/api/trips/5/days/3/notes').set('Cookie', sessionCookie(1)).send({ text: 'x'.repeat(501) });
+    const long = await request(server)
+      .post('/api/trips/5/days/3/notes')
+      .set('Cookie', sessionCookie(1))
+      .send({ text: 'x'.repeat(501) });
     expect(long.status).toBe(400);
     expect(long.body).toEqual({ error: 'text must be 500 characters or less' });
   });
 
   it('400 note without text', async () => {
-    const res = await request(server).post('/api/trips/5/days/3/notes').set('Cookie', sessionCookie(1)).send({ text: '  ' });
+    const res = await request(server)
+      .post('/api/trips/5/days/3/notes')
+      .set('Cookie', sessionCookie(1))
+      .send({ text: '  ' });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'Text required' });
   });

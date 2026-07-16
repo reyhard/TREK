@@ -1,3 +1,6 @@
+import { ADDON_IDS } from '../../../src/addons';
+import { OauthService } from '../../../src/nest/oauth/oauth.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // The Nest service is a thin wrapper that forwards to the legacy oauthService
@@ -28,13 +31,19 @@ vi.mock('../../../src/services/oauthService', () => oauth);
 const { isAddonEnabled } = vi.hoisted(() => ({ isAddonEnabled: vi.fn() }));
 vi.mock('../../../src/services/adminService', () => ({ isAddonEnabled }));
 
-const { getMcpSafeUrl } = vi.hoisted(() => ({ getMcpSafeUrl: vi.fn() }));
-vi.mock('../../../src/services/notifications', () => ({ getMcpSafeUrl }));
+const { getAppUrl, getMcpSafeUrl } = vi.hoisted(() => ({
+  getAppUrl: vi.fn(() => 'https://trek.example.com'),
+  getMcpSafeUrl: vi.fn(),
+}));
+vi.mock('../../../src/services/notifications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/notifications')>()),
+  getAppUrl,
+  getMcpSafeUrl,
+}));
 
-import { OauthService } from '../../../src/nest/oauth/oauth.service';
-import { ADDON_IDS } from '../../../src/addons';
-
-function svc() { return new OauthService(); }
+function svc() {
+  return new OauthService();
+}
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -114,7 +123,15 @@ describe('OauthService', () => {
 
   it('createAuthCode forwards the params object', () => {
     oauth.createAuthCode.mockReturnValue('the_code');
-    const p = { clientId: 'c', userId: 1, redirectUri: 'u', scopes: ['s'], resource: null, codeChallenge: 'cc', codeChallengeMethod: 'S256' } as const;
+    const p = {
+      clientId: 'c',
+      userId: 1,
+      redirectUri: 'u',
+      scopes: ['s'],
+      resource: null,
+      codeChallenge: 'cc',
+      codeChallengeMethod: 'S256',
+    } as const;
     expect(svc().createAuthCode(p)).toBe('the_code');
     expect(oauth.createAuthCode).toHaveBeenCalledWith(p);
   });
@@ -127,8 +144,12 @@ describe('OauthService', () => {
 
   it('createOAuthClient forwards the full argument list', () => {
     oauth.createOAuthClient.mockReturnValue({ client_id: 'c1' });
-    expect(svc().createOAuthClient(1, 'CLI', ['https://cb'], ['a'], '1.2.3.4', { allowsClientCredentials: true })).toEqual({ client_id: 'c1' });
-    expect(oauth.createOAuthClient).toHaveBeenCalledWith(1, 'CLI', ['https://cb'], ['a'], '1.2.3.4', { allowsClientCredentials: true });
+    expect(
+      svc().createOAuthClient(1, 'CLI', ['https://cb'], ['a'], '1.2.3.4', { allowsClientCredentials: true }),
+    ).toEqual({ client_id: 'c1' });
+    expect(oauth.createOAuthClient).toHaveBeenCalledWith(1, 'CLI', ['https://cb'], ['a'], '1.2.3.4', {
+      allowsClientCredentials: true,
+    });
   });
 
   it('rotateOAuthClientSecret delegates', () => {

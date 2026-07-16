@@ -4,12 +4,15 @@
  * service, permission check and WebSocket broadcast are mocked; this focuses on
  * auth, trip-access 404, permission 403, status codes and bodies.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { PackingModule } from '../../src/nest/packing/packing.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -31,17 +34,25 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { svc } = vi.hoisted(() => ({
   svc: {
-    verifyTripAccess: vi.fn(), listItems: vi.fn(), createItem: vi.fn(), updateItem: vi.fn(),
-    deleteItem: vi.fn(), bulkImport: vi.fn(), reorderItems: vi.fn(), listBags: vi.fn(),
-    createBag: vi.fn(), updateBag: vi.fn(), deleteBag: vi.fn(), applyTemplate: vi.fn(),
-    saveAsTemplate: vi.fn(), setBagMembers: vi.fn(), getCategoryAssignees: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    listItems: vi.fn(),
+    createItem: vi.fn(),
+    updateItem: vi.fn(),
+    deleteItem: vi.fn(),
+    bulkImport: vi.fn(),
+    reorderItems: vi.fn(),
+    listBags: vi.fn(),
+    createBag: vi.fn(),
+    updateBag: vi.fn(),
+    deleteBag: vi.fn(),
+    applyTemplate: vi.fn(),
+    saveAsTemplate: vi.fn(),
+    setBagMembers: vi.fn(),
+    getCategoryAssignees: vi.fn(),
     updateCategoryAssignees: vi.fn(),
   },
 }));
 vi.mock('../../src/services/packingService', () => svc);
-
-import { PackingModule } from '../../src/nest/packing/packing.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Packing e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -92,14 +103,20 @@ describe('Packing e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 on create with permission', async () => {
-    const res = await request(server).post('/api/trips/5/packing').set('Cookie', sessionCookie(1)).send({ name: 'Socks' });
+    const res = await request(server)
+      .post('/api/trips/5/packing')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Socks' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ item: { id: 9, name: 'Socks' } });
   });
 
   it('403 on create without permission', async () => {
     checkPermission.mockReturnValue(false);
-    const res = await request(server).post('/api/trips/5/packing').set('Cookie', sessionCookie(1)).send({ name: 'Socks' });
+    const res = await request(server)
+      .post('/api/trips/5/packing')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Socks' });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'No permission' });
   });

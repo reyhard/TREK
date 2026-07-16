@@ -1,50 +1,50 @@
-import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { DatabaseModule } from './database/database.module';
-import { HealthController } from './health/health.controller';
-import { HealthService } from './health/health.service';
-import { WeatherModule } from './weather/weather.module';
-import { HelpModule } from './help/help.module';
+import { AddonsModule } from './addons/addons.module';
+import { AdminModule } from './admin/admin.module';
 import { AirportsModule } from './airports/airports.module';
-import { ConfigModule } from './config/config.module';
-import { SystemNoticesModule } from './system-notices/system-notices.module';
-import { MapsModule } from './maps/maps.module';
-import { CategoriesModule } from './categories/categories.module';
-import { TagsModule } from './tags/tags.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { AtlasModule } from './atlas/atlas.module';
-import { VacayModule } from './vacay/vacay.module';
-import { PackingModule } from './packing/packing.module';
-import { BudgetModule } from './budget/budget.module';
-import { ReservationsModule } from './reservations/reservations.module';
-import { DaysModule } from './days/days.module';
 import { AssignmentsModule } from './assignments/assignments.module';
-import { PlacesModule } from './places/places.module';
-import { TripsModule } from './trips/trips.module';
-import { TodoModule } from './todo/todo.module';
-import { CollabModule } from './collab/collab.module';
-import { FilesModule } from './files/files.module';
-import { PhotosModule } from './photos/photos.module';
-import { MemoriesModule } from './memories/memories.module';
-import { AirtrailModule } from './integrations/airtrail.module';
-import { JourneyModule } from './journey/journey.module';
-import { CollectionsModule } from './collections/collections.module';
-import { ShareModule } from './share/share.module';
-import { TripInviteModule } from './trip-invite/trip-invite.module';
-import { TransitModule } from './transit/transit.module';
-import { FeedsModule } from './feeds/feeds.module';
-import { SettingsModule } from './settings/settings.module';
+import { AtlasModule } from './atlas/atlas.module';
+import { AuthModule } from './auth/auth.module';
 import { BackupModule } from './backup/backup.module';
 import { BookingImportModule } from './booking-import/booking-import.module';
-import { AuthModule } from './auth/auth.module';
-import { OidcModule } from './oidc/oidc.module';
-import { OauthModule } from './oauth/oauth.module';
-import { AdminModule } from './admin/admin.module';
-import { AddonsModule } from './addons/addons.module';
-import { PluginsModule } from './plugins/plugins.module';
-import { TrekExceptionFilter } from './common/trek-exception.filter';
-import { SpaFallbackFilter } from './platform/spa-fallback.filter';
+import { BudgetModule } from './budget/budget.module';
+import { CategoriesModule } from './categories/categories.module';
+import { CollabModule } from './collab/collab.module';
+import { CollectionsModule } from './collections/collections.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
+import { TrekExceptionFilter } from './common/trek-exception.filter';
+import { ConfigModule } from './config/config.module';
+import { DatabaseModule } from './database/database.module';
+import { DaysModule } from './days/days.module';
+import { FeedsModule } from './feeds/feeds.module';
+import { FilesModule } from './files/files.module';
+import { HealthController } from './health/health.controller';
+import { HealthService } from './health/health.service';
+import { HelpModule } from './help/help.module';
+import { AirtrailModule } from './integrations/airtrail.module';
+import { JourneyModule } from './journey/journey.module';
+import { MapsModule } from './maps/maps.module';
+import { MemoriesModule } from './memories/memories.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { OauthModule } from './oauth/oauth.module';
+import { OidcModule } from './oidc/oidc.module';
+import { PackingModule } from './packing/packing.module';
+import { PhotosModule } from './photos/photos.module';
+import { PlacesModule } from './places/places.module';
+import { SpaFallbackFilter } from './platform/spa-fallback.filter';
+import { PluginsModule } from './plugins/plugins.module';
+import { ReservationsModule } from './reservations/reservations.module';
+import { SettingsModule } from './settings/settings.module';
+import { ShareModule } from './share/share.module';
+import { SystemNoticesModule } from './system-notices/system-notices.module';
+import { TagsModule } from './tags/tags.module';
+import { TodoModule } from './todo/todo.module';
+import { TransitModule } from './transit/transit.module';
+import { TripInviteModule } from './trip-invite/trip-invite.module';
+import { TripsModule } from './trips/trips.module';
+import { VacayModule } from './vacay/vacay.module';
+import { WeatherModule } from './weather/weather.module';
+import { Module } from '@nestjs/common';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 
 /**
  * Root NestJS module for the incremental migration. Domain modules
@@ -52,7 +52,48 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
  * migrated.
  */
 @Module({
-  imports: [DatabaseModule, WeatherModule, HelpModule, AirportsModule, ConfigModule, SystemNoticesModule, MapsModule, CategoriesModule, TagsModule, NotificationsModule, AtlasModule, VacayModule, PackingModule, TodoModule, BudgetModule, ReservationsModule, DaysModule, AssignmentsModule, PlacesModule, TripsModule, CollabModule, FilesModule, PhotosModule, MemoriesModule, AirtrailModule, JourneyModule, CollectionsModule, ShareModule, TripInviteModule, TransitModule, FeedsModule, SettingsModule, BackupModule, AuthModule, OidcModule, OauthModule, AdminModule, AddonsModule, PluginsModule, BookingImportModule],
+  imports: [
+    DatabaseModule,
+    WeatherModule,
+    HelpModule,
+    AirportsModule,
+    ConfigModule,
+    SystemNoticesModule,
+    MapsModule,
+    CategoriesModule,
+    TagsModule,
+    NotificationsModule,
+    AtlasModule,
+    VacayModule,
+    PackingModule,
+    TodoModule,
+    BudgetModule,
+    ReservationsModule,
+    DaysModule,
+    AssignmentsModule,
+    PlacesModule,
+    TripsModule,
+    CollabModule,
+    FilesModule,
+    PhotosModule,
+    MemoriesModule,
+    AirtrailModule,
+    JourneyModule,
+    CollectionsModule,
+    ShareModule,
+    TripInviteModule,
+    TransitModule,
+    FeedsModule,
+    SettingsModule,
+    BackupModule,
+    AuthModule,
+    OidcModule,
+    OauthModule,
+    AdminModule,
+    AddonsModule,
+    PluginsModule,
+    BookingImportModule,
+  ],
   controllers: [HealthController],
   providers: [
     HealthService,

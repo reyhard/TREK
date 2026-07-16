@@ -1,3 +1,5 @@
+import { BudgetService } from '../../../src/nest/budget/budget.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the data + side-effect dependencies the wrapper reaches into directly.
@@ -38,8 +40,6 @@ const { budget } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../../src/services/budgetService', () => budget);
-
-import { BudgetService } from '../../../src/nest/budget/budget.service';
 
 function svc() {
   return new BudgetService();
@@ -87,7 +87,11 @@ describe('BudgetService', () => {
       budget.calculateSettlement.mockReturnValue({ transfers: [] });
       await svc().settlement('5', 'usd', 'EUR');
       expect(getRates).toHaveBeenCalledWith('USD');
-      expect(budget.calculateSettlement).toHaveBeenCalledWith('5', { base: 'USD', rates: { USD: 1.1 }, tripCurrency: 'EUR' });
+      expect(budget.calculateSettlement).toHaveBeenCalledWith('5', {
+        base: 'USD',
+        rates: { USD: 1.1 },
+        tripCurrency: 'EUR',
+      });
     });
 
     it('falls back to the trip currency when no base is given', async () => {
@@ -130,8 +134,18 @@ describe('BudgetService', () => {
     budget.listSettlements.mockReturnValue([{ id: 7, currency: 'USD' }] as never);
     await svc().updateSettlement('7', '5', { from_user_id: 1, to_user_id: 2, amount: 12, currency: 'USD' });
     // the settlement's stored currency is threaded through so an unchanged-currency edit keeps the frozen rate (#1445)
-    expect(budget.freezeForeignRate).toHaveBeenCalledWith('5', { from_user_id: 1, to_user_id: 2, amount: 12, currency: 'USD' }, undefined, 'USD');
-    expect(budget.updateSettlement).toHaveBeenCalledWith('7', '5', { from_user_id: 1, to_user_id: 2, amount: 12, currency: 'USD' });
+    expect(budget.freezeForeignRate).toHaveBeenCalledWith(
+      '5',
+      { from_user_id: 1, to_user_id: 2, amount: 12, currency: 'USD' },
+      undefined,
+      'USD',
+    );
+    expect(budget.updateSettlement).toHaveBeenCalledWith('7', '5', {
+      from_user_id: 1,
+      to_user_id: 2,
+      amount: 12,
+      currency: 'USD',
+    });
     svc().deleteSettlement('7', '5');
     expect(budget.deleteSettlement).toHaveBeenCalledWith('7', '5');
     svc().reorderItems('5', [3, 1]);
@@ -155,7 +169,12 @@ describe('BudgetService', () => {
       svc().syncReservationPrice('5', 42, 250, 'sock');
       const writtenMeta = JSON.parse(dbMock._stmt.run.mock.calls[0][0] as string);
       expect(writtenMeta).toEqual({ vendor: 'ACME', price: '250' });
-      expect(broadcast).toHaveBeenCalledWith('5', 'reservation:updated', { reservation: { id: 42, metadata: '{"vendor":"ACME","price":"250"}' } }, 'sock');
+      expect(broadcast).toHaveBeenCalledWith(
+        '5',
+        'reservation:updated',
+        { reservation: { id: 42, metadata: '{"vendor":"ACME","price":"250"}' } },
+        'sock',
+      );
     });
 
     it('starts from an empty object when the reservation has no metadata', () => {
@@ -166,7 +185,9 @@ describe('BudgetService', () => {
     });
 
     it('swallows errors so a sync failure never breaks the budget update', () => {
-      dbMock.prepare.mockImplementationOnce(() => { throw new Error('db gone'); });
+      dbMock.prepare.mockImplementationOnce(() => {
+        throw new Error('db gone');
+      });
       expect(() => svc().syncReservationPrice('5', 42, 250, 'sock')).not.toThrow();
       expect(broadcast).not.toHaveBeenCalled();
     });

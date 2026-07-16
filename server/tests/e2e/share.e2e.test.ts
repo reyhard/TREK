@@ -5,15 +5,18 @@
  * on auth, trip-access 404, permission 403, the create-201-vs-update-200 split
  * and the unguarded public read.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { ShareModule } from '../../src/nest/share/share.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
+import type { Server } from 'http';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import fs from 'node:fs';
-import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db, canAccessTrip } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -31,12 +34,15 @@ const { checkPermission } = vi.hoisted(() => ({ checkPermission: vi.fn() }));
 vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { shareSvc } = vi.hoisted(() => ({
-  shareSvc: { createOrUpdateShareLink: vi.fn(), getShareLink: vi.fn(), deleteShareLink: vi.fn(), getSharedTripData: vi.fn(), getSharedPlacePhotoPath: vi.fn() },
+  shareSvc: {
+    createOrUpdateShareLink: vi.fn(),
+    getShareLink: vi.fn(),
+    deleteShareLink: vi.fn(),
+    getSharedTripData: vi.fn(),
+    getSharedPlacePhotoPath: vi.fn(),
+  },
 }));
 vi.mock('../../src/services/shareService', () => shareSvc);
-
-import { ShareModule } from '../../src/nest/share/share.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Share-link e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -73,7 +79,10 @@ describe('Share-link e2e (real auth guard + temp SQLite)', () => {
 
   it('201 on first create, 200 on a subsequent update', async () => {
     shareSvc.createOrUpdateShareLink.mockReturnValueOnce({ token: 't', created: true });
-    const created = await request(server).post('/api/trips/5/share-link').set('Cookie', sessionCookie(1)).send({ share_map: true });
+    const created = await request(server)
+      .post('/api/trips/5/share-link')
+      .set('Cookie', sessionCookie(1))
+      .send({ share_map: true });
     expect(created.status).toBe(201);
     expect(created.body).toEqual({ token: 't' });
 
@@ -115,7 +124,13 @@ describe('Share-link e2e (real auth guard + temp SQLite)', () => {
     const photoBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]); // JPEG-ish header
 
     beforeAll(() => fs.writeFileSync(photoFile, photoBytes));
-    afterAll(() => { try { fs.unlinkSync(photoFile); } catch { /* ignore */ } });
+    afterAll(() => {
+      try {
+        fs.unlinkSync(photoFile);
+      } catch {
+        /* ignore */
+      }
+    });
 
     it('streams cached bytes with no cookie (unguarded) for a valid token + place', async () => {
       shareSvc.getSharedPlacePhotoPath.mockReturnValueOnce(photoFile);

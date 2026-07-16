@@ -8,7 +8,7 @@
  * 24h so a milliseconds-value typo can't produce a 1000-hour session.
  */
 export function resolveSessionTtlMs(raw: string | undefined): number {
-  const parsed = Number.parseInt(raw ?? "");
+  const parsed = Number.parseInt(raw ?? '');
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 24 * 60 * 60) * 1000 : 60 * 60 * 1000;
 }
 
@@ -17,6 +17,6 @@ export function resolveSessionTtlMs(raw: string | undefined): number {
  * (below common proxy idle timeouts like nginx-ingress's 60s). 0 disables.
  */
 export function resolveKeepaliveMs(raw: string | undefined): number {
-  const parsed = Number.parseInt(raw ?? "");
+  const parsed = Number.parseInt(raw ?? '');
   return Number.isFinite(parsed) && parsed >= 0 ? parsed * 1000 : 25_000;
 }

@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import crypto from 'node:crypto';
 import { db } from '../../db/database';
 import { encrypt_api_key, decrypt_api_key } from '../../services/apiKeyCrypto';
 import { getAppUrl } from '../../services/notifications';
-import { isPrivateIp } from './install/safe-fetch';
 import { safeFetchLlm } from '../../utils/ssrfGuard';
+import { isPrivateIp } from './install/safe-fetch';
+import { Injectable } from '@nestjs/common';
+
+import crypto from 'node:crypto';
 
 /**
  * Host-brokered outbound OAuth (#plugins). A plugin becomes an OAuth *client* of a
@@ -53,13 +54,18 @@ function assertSafeHttps(urlStr: string, what: string): URL {
   const host = u.hostname.toLowerCase();
   const ip = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
   const loopbackOrMeta =
-    ip === '::1' || ip.startsWith('127.') || ip.startsWith('0.') ||
-    ip.startsWith('169.254.') || /^fe[89ab][0-9a-f]:/.test(ip) || ip.startsWith('fd00:ec2:');
+    ip === '::1' ||
+    ip.startsWith('127.') ||
+    ip.startsWith('0.') ||
+    ip.startsWith('169.254.') ||
+    /^fe[89ab][0-9a-f]:/.test(ip) ||
+    ip.startsWith('fd00:ec2:');
   if (loopbackOrMeta) throw new Error(`${what} may not point at a loopback or metadata address`);
   if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) {
     throw new Error(`${what} may not point at a local address`);
   }
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(host) && isPrivateIp(host)) throw new Error(`${what} may not point at a private address`);
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host) && isPrivateIp(host))
+    throw new Error(`${what} may not point at a private address`);
   return u;
 }
 
@@ -92,7 +98,9 @@ export class PluginOAuthService {
   /** Whether the acting user has a stored token for this plugin. */
   status(pluginId: string, userId: number): { configured: boolean; connected: boolean } {
     const configured = this.providerConfig(pluginId) !== null;
-    const tok = db.prepare('SELECT 1 FROM plugin_oauth_tokens WHERE plugin_id = ? AND user_id = ? AND access_token IS NOT NULL').get(pluginId, userId);
+    const tok = db
+      .prepare('SELECT 1 FROM plugin_oauth_tokens WHERE plugin_id = ? AND user_id = ? AND access_token IS NOT NULL')
+      .get(pluginId, userId);
     return { configured, connected: !!tok };
   }
 
@@ -109,13 +117,9 @@ export class PluginOAuthService {
 
     // Drop this user's stale states for the plugin, then store the fresh one.
     db.prepare('DELETE FROM plugin_oauth_state WHERE plugin_id = ? AND user_id = ?').run(pluginId, userId);
-    db.prepare('INSERT INTO plugin_oauth_state (state, plugin_id, user_id, verifier, created_at) VALUES (?, ?, ?, ?, ?)').run(
-      state,
-      pluginId,
-      userId,
-      verifier,
-      nowMs,
-    );
+    db.prepare(
+      'INSERT INTO plugin_oauth_state (state, plugin_id, user_id, verifier, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).run(state, pluginId, userId, verifier, nowMs);
 
     authorize.searchParams.set('response_type', 'code');
     authorize.searchParams.set('client_id', cfg.clientId);
@@ -129,9 +133,9 @@ export class PluginOAuthService {
 
   /** Complete the callback: verify state, exchange the code, store the tokens. */
   async completeCallback(pluginId: string, userId: number, code: string, state: string, nowMs: number): Promise<void> {
-    const row = db.prepare('SELECT verifier, user_id, created_at FROM plugin_oauth_state WHERE state = ? AND plugin_id = ?').get(state, pluginId) as
-      | { verifier: string; user_id: number; created_at: number }
-      | undefined;
+    const row = db
+      .prepare('SELECT verifier, user_id, created_at FROM plugin_oauth_state WHERE state = ? AND plugin_id = ?')
+      .get(state, pluginId) as { verifier: string; user_id: number; created_at: number } | undefined;
     // State must exist, belong to THIS user, and be fresh — this binds the callback to
     // the connect request and blocks CSRF / a replayed/foreign state.
     if (!row || row.user_id !== userId || nowMs - row.created_at > STATE_TTL_MS) {
@@ -155,7 +159,11 @@ export class PluginOAuthService {
   /** A valid access token for the acting user, refreshing it if it is expiring. Null when
    *  the user hasn't connected. The plugin never receives the refresh token. */
   async getAccessToken(pluginId: string, userId: number, nowMs: number): Promise<string | null> {
-    const row = db.prepare('SELECT access_token, refresh_token, expires_at FROM plugin_oauth_tokens WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
+    const row = db
+      .prepare(
+        'SELECT access_token, refresh_token, expires_at FROM plugin_oauth_tokens WHERE plugin_id = ? AND user_id = ?',
+      )
+      .get(pluginId, userId) as
       | { access_token: string | null; refresh_token: string | null; expires_at: number | null }
       | undefined;
     if (!row || !row.access_token) return null;
@@ -183,7 +191,10 @@ export class PluginOAuthService {
 
   // --- internals ---
 
-  private async tokenRequest(cfg: OAuthProviderConfig, params: Record<string, string>): Promise<{ access_token?: string; refresh_token?: string; expires_in?: number; scope?: string }> {
+  private async tokenRequest(
+    cfg: OAuthProviderConfig,
+    params: Record<string, string>,
+  ): Promise<{ access_token?: string; refresh_token?: string; expires_in?: number; scope?: string }> {
     assertSafeHttps(cfg.tokenUrl, 'token_url');
     const body = new URLSearchParams({ ...params, client_id: cfg.clientId, client_secret: cfg.clientSecret });
     // Route the server-side token POST through the SSRF guard: it resolves the host
@@ -206,7 +217,12 @@ export class PluginOAuthService {
     };
   }
 
-  private storeToken(pluginId: string, userId: number, token: { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string }, nowMs: number): void {
+  private storeToken(
+    pluginId: string,
+    userId: number,
+    token: { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string },
+    nowMs: number,
+  ): void {
     if (!token.access_token) throw new Error('token endpoint returned no access_token');
     const expiresAt = token.expires_in ? nowMs + token.expires_in * 1000 : null;
     db.prepare(

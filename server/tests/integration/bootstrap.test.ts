@@ -6,9 +6,16 @@
  * platform/inline endpoints, and (in production) HSTS. This is the test that proves
  * server/src/bootstrap.ts + index.ts serve everything correctly without the legacy app.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import request from 'supertest';
+import { buildApp } from '../../src/bootstrap';
+import { runMigrations } from '../../src/db/migrations';
+import { createTables } from '../../src/db/schema';
+import { authCookie } from '../helpers/auth';
+import { createUser } from '../helpers/factories';
+import { resetTestDb } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
+
+import request from 'supertest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -28,7 +35,8 @@ const { testDb, dbMock } = vi.hoisted(() => {
           `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
         )
         .get(userId, tripId, userId),
-    isOwner: (tripId: any, userId: number) => !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
+    isOwner: (tripId: any, userId: number) =>
+      !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
   return { testDb: db, dbMock: mock };
 });
@@ -44,13 +52,6 @@ vi.mock('../../src/config', () => ({
   DEFAULT_LANGUAGE: 'en',
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
-
-import { createTables } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrations';
-import { resetTestDb } from '../helpers/test-db';
-import { createUser } from '../helpers/factories';
-import { authCookie } from '../helpers/auth';
-import { buildApp } from '../../src/bootstrap';
 
 describe('BOOTSTRAP (F6) — unified NestJS app serves the whole surface', () => {
   let app: INestApplication;
