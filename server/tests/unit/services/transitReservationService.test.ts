@@ -1,11 +1,49 @@
-import { describe, expect, it } from 'vitest';
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
 import {
+  buildTransitRouteFields,
   mapTransitModeGroups,
   normalizeTransitItinerary,
   rankTransitItineraries,
+  resolveTransitEndpoint,
   summarizeTransitItinerary,
 } from '../../../src/services/transitReservationService';
 import type { TransitItinerary } from '../../../src/services/transitService';
+import { createPlace, createTrip, createUser } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { testDb, dbMock } = vi.hoisted(() => {
+  const Database = require('better-sqlite3');
+  const db = new Database(':memory:');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('PRAGMA busy_timeout = 5000');
+  return {
+    testDb: db,
+    dbMock: {
+      db,
+      closeDb: () => {},
+      reinitialize: () => {},
+    },
+  };
+});
+
+vi.mock('../../../src/db/database', () => dbMock);
+
+beforeAll(() => {
+  createTables(testDb);
+  runMigrations(testDb);
+});
+
+beforeEach(() => {
+  resetTestDb(testDb);
+});
+
+afterAll(() => {
+  testDb.close();
+});
 
 function route(overrides: Partial<TransitItinerary> = {}): TransitItinerary {
   return {
@@ -17,8 +55,22 @@ function route(overrides: Partial<TransitItinerary> = {}): TransitItinerary {
     legs: [
       {
         mode: 'WALK',
-        from: { name: 'START', lat: 52.5, lng: 13.4, time: '2026-10-02T08:00:00.000Z', scheduledTime: null, track: null },
-        to: { name: 'Stop A', lat: 52.51, lng: 13.41, time: '2026-10-02T08:05:00.000Z', scheduledTime: null, track: null },
+        from: {
+          name: 'START',
+          lat: 52.5,
+          lng: 13.4,
+          time: '2026-10-02T08:00:00.000Z',
+          scheduledTime: null,
+          track: null,
+        },
+        to: {
+          name: 'Stop A',
+          lat: 52.51,
+          lng: 13.41,
+          time: '2026-10-02T08:05:00.000Z',
+          scheduledTime: null,
+          track: null,
+        },
         duration: 300,
         distance: 250,
         headsign: null,
@@ -32,7 +84,14 @@ function route(overrides: Partial<TransitItinerary> = {}): TransitItinerary {
       },
       {
         mode: 'BUS',
-        from: { name: 'Stop A', lat: 52.51, lng: 13.41, time: '2026-10-02T08:07:00.000Z', scheduledTime: null, track: '2' },
+        from: {
+          name: 'Stop A',
+          lat: 52.51,
+          lng: 13.41,
+          time: '2026-10-02T08:07:00.000Z',
+          scheduledTime: null,
+          track: '2',
+        },
         to: { name: 'END', lat: 52.52, lng: 13.42, time: '2026-10-02T08:30:00.000Z', scheduledTime: null, track: null },
         duration: 1380,
         distance: 6000,
@@ -59,9 +118,13 @@ describe('transit itinerary normalization', () => {
   });
 
   it('rejects a recomputed wall-clock duration above the itinerary limit', () => {
-    expect(() => normalizeTransitItinerary(route({
-      endTime: '2026-10-09T08:00:01.000Z',
-    }))).toThrow('Selected itinerary is invalid');
+    expect(() =>
+      normalizeTransitItinerary(
+        route({
+          endTime: '2026-10-09T08:00:01.000Z',
+        }),
+      ),
+    ).toThrow('Selected itinerary is invalid');
   });
 
   it('rejects recomputed walking time above the itinerary limit', () => {
@@ -76,8 +139,9 @@ describe('transit itinerary normalization', () => {
   });
 
   it('rejects a route with no transit leg', () => {
-    expect(() => normalizeTransitItinerary(route({ legs: [route().legs[0]] })))
-      .toThrow('Selected itinerary must include at least one transit leg');
+    expect(() => normalizeTransitItinerary(route({ legs: [route().legs[0]] }))).toThrow(
+      'Selected itinerary must include at least one transit leg',
+    );
   });
 
   it('rejects unsupported modes and invalid colors', () => {
@@ -96,8 +160,9 @@ describe('transit itinerary normalization', () => {
   });
 
   it('rejects more than 32 legs and excessive geometry', () => {
-    expect(() => normalizeTransitItinerary(route({ legs: Array.from({ length: 33 }, () => route().legs[1]) })))
-      .toThrow('Selected itinerary is invalid');
+    expect(() => normalizeTransitItinerary(route({ legs: Array.from({ length: 33 }, () => route().legs[1]) }))).toThrow(
+      'Selected itinerary is invalid',
+    );
     const tooLarge = route();
     tooLarge.legs = [
       { ...tooLarge.legs[0], geometry: 'a'.repeat(90_000) },
@@ -126,12 +191,164 @@ describe('transit ranking and presentation', () => {
   });
 
   it('maps friendly mode groups to the existing Transitous mode constants', () => {
-    expect(mapTransitModeGroups(['rail', 'bus']))
-      .toBe('HIGHSPEED_RAIL,LONG_DISTANCE,NIGHT_RAIL,REGIONAL_RAIL,SUBURBAN,BUS,COACH');
+    expect(mapTransitModeGroups(['rail', 'bus'])).toBe(
+      'HIGHSPEED_RAIL,LONG_DISTANCE,NIGHT_RAIL,REGIONAL_RAIL,SUBURBAN,BUS,COACH',
+    );
     expect(mapTransitModeGroups()).toBeUndefined();
   });
 
   it('builds a compact English route summary', () => {
     expect(summarizeTransitItinerary(route())).toBe('Walk 5 min → Bus 100');
+  });
+});
+
+describe('transit reservation fields', () => {
+  it('resolves a saved place only when it belongs to the trip and has coordinates', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id, { name: 'Hotel', lat: 35.689, lng: 139.692 });
+
+    expect(resolveTransitEndpoint(trip.id, { placeId: place.id }, 'Origin')).toEqual({
+      name: 'Hotel',
+      lat: 35.689,
+      lng: 139.692,
+    });
+  });
+
+  it('rejects a place from another trip or a place without coordinates', () => {
+    const { user } = createUser(testDb);
+    const first = createTrip(testDb, user.id);
+    const second = createTrip(testDb, user.id);
+    const foreign = createPlace(testDb, second.id);
+
+    expect(() => resolveTransitEndpoint(first.id, { placeId: foreign.id }, 'Origin')).toThrow(
+      'Place does not belong to this trip',
+    );
+
+    const missing = createPlace(testDb, first.id);
+    testDb.prepare('UPDATE places SET lat = NULL, lng = NULL WHERE id = ?').run(missing.id);
+    expect(() => resolveTransitEndpoint(first.id, { placeId: missing.id }, 'Origin')).toThrow(
+      'Place has no usable coordinates',
+    );
+  });
+
+  it('builds the exact metadata and endpoint shape rendered by the transit UI', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-10-02') as any;
+
+    const fields = buildTransitRouteFields({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'Hotel', lat: 35.689, lng: 139.692 },
+      to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
+      itinerary: route({
+        startTime: '2026-10-02T00:00:00.000Z',
+        endTime: '2026-10-02T00:30:00.000Z',
+      }),
+    });
+
+    expect(fields.type).toBe('transit');
+    expect(fields.status).toBe('confirmed');
+    expect(fields.reservation_time).toBe('2026-10-02T09:00');
+    expect(fields.reservation_end_time).toBe('2026-10-02T09:30');
+    expect(fields.endpoints[0]).toMatchObject({
+      role: 'from',
+      sequence: 0,
+      name: 'Hotel',
+      timezone: 'Asia/Tokyo',
+      local_date: '2026-10-02',
+      local_time: '09:00',
+    });
+    expect(fields.endpoints.at(-1)).toMatchObject({
+      role: 'to',
+      name: 'Temple',
+      timezone: 'Asia/Tokyo',
+      local_date: '2026-10-02',
+      local_time: '09:30',
+    });
+    expect(fields.metadata.transit).toMatchObject({
+      provider: 'transitous',
+      duration: 1800,
+      transfers: 0,
+      walk_seconds: 300,
+    });
+    expect((fields.metadata.transit as any).legs[1]).toMatchObject({
+      mode: 'BUS',
+      line: '100',
+      line_color: '#FF0000',
+      line_text_color: '#FFFFFF',
+      headsign: 'City Centre',
+      agency: 'BVG',
+      stops: 4,
+      geometry: 'def',
+      geometry_precision: 6,
+    });
+  });
+
+  it('keeps the supplied start day when the origin-local departure date differs', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const supplied = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(trip.id, '2026-10-03') as any;
+
+    const fields = buildTransitRouteFields({
+      tripId: trip.id,
+      dayId: supplied.id,
+      from: { name: 'Hotel', lat: 35.689, lng: 139.692 },
+      to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
+      itinerary: route({
+        startTime: '2026-10-02T00:00:00.000Z',
+        endTime: '2026-10-02T00:30:00.000Z',
+      }),
+    });
+
+    expect(fields.day_id).toBe(supplied.id);
+    expect(fields.end_day_id).toBe(supplied.id);
+  });
+
+  it('links an overnight arrival to the matching next trip day', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
+    const departure = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(trip.id, '2026-10-02') as any;
+    const arrival = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(trip.id, '2026-10-03') as any;
+
+    const fields = buildTransitRouteFields({
+      tripId: trip.id,
+      dayId: departure.id,
+      from: { name: 'Berlin', lat: 52.52, lng: 13.405 },
+      to: { name: 'Warsaw', lat: 52.2297, lng: 21.0122 },
+      itinerary: route({
+        startTime: '2026-10-02T21:30:00.000Z',
+        endTime: '2026-10-03T05:00:00.000Z',
+      }),
+    });
+
+    expect(fields.day_id).toBe(departure.id);
+    expect(fields.end_day_id).toBe(arrival.id);
+  });
+
+  it('falls back to the departure day when the arrival date is outside the trip', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-02' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+
+    const fields = buildTransitRouteFields({
+      tripId: trip.id,
+      dayId: day.id,
+      from: { name: 'Berlin', lat: 52.52, lng: 13.405 },
+      to: { name: 'Warsaw', lat: 52.2297, lng: 21.0122 },
+      itinerary: route({
+        startTime: '2026-10-02T21:30:00.000Z',
+        endTime: '2026-10-03T05:00:00.000Z',
+      }),
+    });
+
+    expect(fields.end_day_id).toBe(day.id);
   });
 });
