@@ -58,6 +58,52 @@ describe('RouteConnector transit action', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('provides a mobile-sized touch target without enlarging the visible connector row', () => {
+    render(
+      <RouteConnector
+        seg={seg}
+        profile="walking"
+        transitAction={transitAction()}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', {
+      name: 'Plan public transit: Origin → Destination',
+    })
+    expect(trigger).toHaveClass('route-connector-transit-trigger')
+    expect(trigger).toHaveStyle({ position: 'relative', touchAction: 'manipulation' })
+  })
+
+  it('keeps the menu open after one tap and focuses its action without scrolling', async () => {
+    const user = userEvent.setup()
+    const originalFocus = HTMLButtonElement.prototype.focus
+    const menuFocusOptions: Array<FocusOptions | undefined> = []
+    const focusSpy = vi.spyOn(HTMLButtonElement.prototype, 'focus')
+      .mockImplementation(function (options?: FocusOptions) {
+        if (this.getAttribute('role') === 'menuitem') menuFocusOptions.push(options)
+        originalFocus.call(this, options)
+      })
+
+    render(
+      <RouteConnector
+        seg={seg}
+        profile="walking"
+        transitAction={transitAction()}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', {
+      name: 'Plan public transit: Origin → Destination',
+    })
+    await user.click(trigger)
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(screen.getByRole('menuitem')).toHaveFocus()
+    expect(menuFocusOptions).toContainEqual({ preventScroll: true })
+    focusSpy.mockRestore()
+  })
+
   it.each([
     ['Enter', '{Enter}'],
     ['Space', ' '],

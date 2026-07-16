@@ -374,6 +374,19 @@ input[type="number"], input[type="time"], input[type="date"], input[type="dateti
   animation: trek-popover-enter 180ms cubic-bezier(0.23, 1, 0.32, 1);
   will-change: transform, opacity;
 }
+
+/* Keep the connector row compact while giving touch users a 44px target. */
+.route-connector-transit-trigger::before {
+  content: '';
+  position: absolute;
+  inset: -10px -8px;
+  border-radius: 12px;
+}
+
+.route-connector-transit-trigger:active {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
 .trek-modal-enter {
   animation: trek-modal-enter 220ms cubic-bezier(0.23, 1, 0.32, 1);
   will-change: transform, opacity;

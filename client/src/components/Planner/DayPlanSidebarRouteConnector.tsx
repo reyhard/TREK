@@ -30,7 +30,7 @@ export function RouteConnector({
 
   const close = (restoreFocus = false) => {
     setOpen(false)
-    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus())
+    if (restoreFocus) queueMicrotask(() => triggerRef.current?.focus({ preventScroll: true }))
   }
 
   useLayoutEffect(() => {
@@ -64,7 +64,7 @@ export function RouteConnector({
 
   useEffect(() => {
     if (!open) return
-    actionRef.current?.focus()
+    actionRef.current?.focus({ preventScroll: true })
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
@@ -107,6 +107,7 @@ export function RouteConnector({
           <button
             ref={triggerRef}
             type="button"
+            className="route-connector-transit-trigger"
             aria-label={transitAction.ariaLabel}
             aria-haspopup="menu"
             aria-expanded={open}
@@ -127,6 +128,9 @@ export function RouteConnector({
               font: 'inherit',
               lineHeight: 'inherit',
               transition: 'background 120ms ease, color 120ms ease',
+              position: 'relative',
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
             }}
             onMouseEnter={event => {
               event.currentTarget.style.background = 'var(--bg-hover)'
