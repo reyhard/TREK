@@ -160,6 +160,10 @@ function planArguments(tripId: number, dayId: number) {
   };
 }
 
+function providerError(message: string, status: number): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
 describe('MCP transit read-tool registration', () => {
   it('registers read tools for places:read but not write tools', async () => {
     const { user } = createUser(testDb);
@@ -213,11 +217,49 @@ describe('Tool: search_transit_stops', () => {
 
   it('returns the provider error message as an MCP error', async () => {
     const { user } = createUser(testDb);
-    transitMock.geocode.mockRejectedValue(new Error('Transit geocoder unavailable'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    transitMock.geocode.mockRejectedValue(providerError('Transit geocoder unavailable', 502));
     await withHarness(user.id, ['places:read'], async (h) => {
       const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
       expect(result.isError).toBe(true);
       expect((result.content[0] as any).text).toBe('Transit geocoder unavailable');
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+    errorSpy.mockRestore();
+  });
+
+  it('logs unexpected search failures without exposing internal details', async () => {
+    const { user } = createUser(testDb);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    transitMock.geocode.mockRejectedValue(new Error('database password appeared in an internal stack'));
+    await withHarness(user.id, ['places:read'], async (h) => {
+      const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Failed to search transit stops.');
+      expect((result.content[0] as any).text).not.toContain('database password');
+      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit stop search failed:', expect.any(Error));
+    });
+    errorSpy.mockRestore();
+  });
+
+  it('rate-limits the 301st stop search in the per-user geocode bucket before another provider call', async () => {
+    const first = createUser(testDb).user;
+    const second = createUser(testDb).user;
+    transitMock.geocode.mockResolvedValue({ results: [] });
+    await withHarness(first.id, ['places:read'], async (h) => {
+      for (let index = 0; index < 300; index += 1) {
+        const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
+        expect(result.isError).not.toBe(true);
+      }
+      const limited = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
+      expect(limited.isError).toBe(true);
+      expect((limited.content[0] as any).text).toBe('Transit provider rate limit exceeded. Try again later.');
+      expect(transitMock.geocode).toHaveBeenCalledTimes(300);
+    });
+    await withHarness(second.id, ['places:read'], async (h) => {
+      const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
+      expect(result.isError).not.toBe(true);
+      expect(transitMock.geocode).toHaveBeenCalledTimes(301);
     });
   });
 });
@@ -426,12 +468,30 @@ describe('Tool: plan_transit_route', () => {
   it('returns the provider error message as an MCP error', async () => {
     const { user } = createUser(testDb);
     const { trip, day } = datedTrip(user.id);
-    transitMock.plan.mockRejectedValue(new Error('Transit planner unavailable'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    transitMock.plan.mockRejectedValue(providerError('Transit planner unavailable', 502));
     await withHarness(user.id, ['places:read'], async (h) => {
       const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
       expect(result.isError).toBe(true);
       expect((result.content[0] as any).text).toBe('Transit planner unavailable');
+      expect(errorSpy).not.toHaveBeenCalled();
     });
+    errorSpy.mockRestore();
+  });
+
+  it('logs unexpected planning failures without exposing internal details', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day } = datedTrip(user.id);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    transitMock.plan.mockRejectedValue(new Error('database password appeared in an internal stack'));
+    await withHarness(user.id, ['places:read'], async (h) => {
+      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Failed to plan transit route.');
+      expect((result.content[0] as any).text).not.toContain('database password');
+      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit route planning failed:', expect.any(Error));
+    });
+    errorSpy.mockRestore();
   });
 
   it('rate-limits the 61st plan call before making another provider call', async () => {

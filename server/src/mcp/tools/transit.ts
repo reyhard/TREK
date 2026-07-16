@@ -38,8 +38,37 @@ const preferenceSchema = z.enum(['best', 'fewer_transfers', 'less_walking']).def
 
 const mcpError = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+const EXPECTED_TRANSIT_ERRORS = new Set([
+  'No supported transport modes were selected',
+  'Selected itinerary arrival must be after departure',
+  'Selected itinerary must include at least one transit leg',
+  'Selected itinerary geometry is too large',
+  'Place does not belong to this trip',
+  'Place has no usable coordinates',
+  'Could not resolve a timezone for the transit endpoint',
+  'date must use YYYY-MM-DD format',
+  'time must use HH:mm format',
+  'Transit timestamp must be an ISO date-time',
+]);
+
+const EXPECTED_TRANSIT_ERROR_PREFIXES = [
+  'Selected itinerary is invalid:',
+  'Origin coordinates are invalid',
+  'Destination coordinates are invalid',
+  'Origin name is required',
+  'Destination name is required',
+  'Origin name must be 300 characters or fewer',
+  'Destination name must be 300 characters or fewer',
+  'Invalid IANA timezone:',
+  'Could not determine UTC offset for ',
+  'Local time does not exist in ',
+];
+
+function expectedTransitErrorMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  if (typeof (error as Error & { status?: unknown }).status === 'number') return error.message;
+  if (EXPECTED_TRANSIT_ERRORS.has(error.message)) return error.message;
+  return EXPECTED_TRANSIT_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix)) ? error.message : null;
 }
 
 export function registerTransitTools(server: McpServer, userId: number, scopes: string[] | null): void {
@@ -69,7 +98,10 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
         }
         return ok(await transit.geocode(query, language, near ? `${near.lat},${near.lng}` : undefined));
       } catch (error) {
-        return mcpError(errorMessage(error));
+        const expected = expectedTransitErrorMessage(error);
+        if (expected) return mcpError(expected);
+        console.error('[MCP] transit stop search failed:', error);
+        return mcpError('Failed to search transit stops.');
       }
     },
   );
@@ -155,7 +187,10 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
           })),
         });
       } catch (error) {
-        return mcpError(errorMessage(error));
+        const expected = expectedTransitErrorMessage(error);
+        if (expected) return mcpError(expected);
+        console.error('[MCP] transit route planning failed:', error);
+        return mcpError('Failed to plan transit route.');
       }
     },
   );
