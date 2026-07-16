@@ -2158,4 +2158,112 @@ describe('DayPlanSidebar', () => {
     expect(await screen.findByText('Sparse transit journey')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryAllByText('25 min')).toHaveLength(0))
   })
+
+  it('keeps route connectors around a non-transit train reservation', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const origin = buildPlace({ id: 101, name: 'Place A', lat: 1, lng: 1 })
+    const destination = buildPlace({ id: 102, name: 'Place B', lat: 2, lng: 2 })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
+    const train = buildReservation({
+      id: 401,
+      day_id: 10,
+      end_day_id: 10,
+      type: 'train',
+      title: 'Local train',
+      status: 'confirmed',
+      reservation_time: '2026-07-16T09:30',
+      reservation_end_time: '2026-07-16T09:50',
+      day_positions: { '10': 0.5 },
+      endpoints: [
+        {
+          role: 'from', sequence: 0, name: 'Origin station', code: null,
+          lat: 1, lng: 1, timezone: null,
+          local_date: '2026-07-16', local_time: '09:30',
+        },
+        {
+          role: 'to', sequence: 1, name: 'Destination station', code: null,
+          lat: 2, lng: 2, timezone: null,
+          local_date: '2026-07-16', local_time: '09:50',
+        },
+      ],
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin, destination],
+      assignments: { '10': [a, b] },
+      reservations: [train],
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit: vi.fn(),
+    })} />)
+
+    expect(await screen.findByText('Local train')).toBeInTheDocument()
+    expect((await screen.findAllByText('25 min')).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('keeps the later connector after a transit journey', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      distanceText: '2 km', durationText: '25 min',
+      legs: [
+        { distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' },
+        { distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' },
+      ],
+    })
+    const day = buildDay({ id: 10, date: '2026-07-16' })
+    const placeA = buildPlace({ id: 101, name: 'Place A', lat: 1, lng: 1 })
+    const placeB = buildPlace({ id: 102, name: 'Place B', lat: 2, lng: 2 })
+    const placeC = buildPlace({ id: 103, name: 'Place C', lat: 3, lng: 3 })
+    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: placeA })
+    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: placeB })
+    const c = buildAssignment({ id: 203, day_id: 10, order_index: 2, place: placeC })
+    const transit = buildReservation({
+      id: 301,
+      day_id: 10,
+      end_day_id: 10,
+      type: 'transit',
+      title: 'Place A → Place B',
+      status: 'confirmed',
+      reservation_time: '2026-07-16T09:30',
+      reservation_end_time: '2026-07-16T09:50',
+      day_positions: { '10': 0.5 },
+      endpoints: [
+        {
+          role: 'from', sequence: 0, name: 'Place A', code: null,
+          lat: 1, lng: 1, timezone: null,
+          local_date: '2026-07-16', local_time: '09:30',
+        },
+        {
+          role: 'to', sequence: 1, name: 'Place B', code: null,
+          lat: 2, lng: 2, timezone: null,
+          local_date: '2026-07-16', local_time: '09:50',
+        },
+      ],
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [placeA, placeB, placeC],
+      assignments: { '10': [a, b, c] },
+      reservations: [transit],
+      selectedDayId: 10,
+      routeShown: true,
+      routeProfile: 'walking',
+      onPlanTransit: vi.fn(),
+    })} />)
+
+    expect(await screen.findByText('Place A → Place B')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText('25 min')).toHaveLength(1))
+    expect(screen.getByRole('button', {
+      name: 'Plan public transit: Place B → Place C',
+    })).toBeInTheDocument()
+  })
 })

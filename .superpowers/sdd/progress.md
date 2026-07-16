@@ -59,4 +59,19 @@
 - Stale-day/modal verification: `npm run test --workspace=client -- src/components/Planner/TransportModal.test.tsx` — passed, 1 file and 37 tests.
 - Typecheck: `npm run typecheck --workspace=client` — passed.
 - Regressions: create uses real store insertion; create/edit payloads strip the client-only hint; a changed transit day omits stale placement; manual and URL create paths reset connector state; failed positioning retains the created reservation and closes the modal.
-- Status: implementation complete; task review pending.
+- Status: complete
+- Task 4 reviewer: APPROVED; remaining Minor: when connector positioning fails, the UI shows both the positioning error toast and the reservation-created success toast.
+
+## Task 5: Add regression coverage, documentation, and full verification
+
+- Base commit: `66ae2009`
+- Missing-regression preflight: the day-header unprefilled, non-transit train connector preservation, and unaffected later B→C connector tests were absent, so all three were added.
+- First affected-file run: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebar.test.tsx src/pages/TripPlannerPage.test.tsx` — passed immediately, 2 files and 171 tests; no production defect was exposed and no production code changed.
+- Focused feature verification: `npm run test --workspace=client -- src/components/Planner/transitConnector.test.ts src/components/Planner/DayPlanSidebarRouteConnector.test.tsx src/components/Planner/TransitSearchPanel.test.tsx src/components/Planner/DayPlanSidebar.test.tsx src/pages/TripPlannerPage.test.tsx tests/unit/i18n/parity.test.ts` — passed, 6 files and 224 tests.
+- Locale parity: `node shared/scripts/i18n-parity.mjs` — passed (`File parity: OK`, `Key parity: OK`).
+- Typecheck: `npm run typecheck --workspace=client` — passed.
+- Lint: `npm run lint --workspace=client` — passed.
+- Full client test: `npm run test --workspace=client` — passed, 192 files; 3,232 passed and 38 skipped (3,270 total).
+- Client build: `npm run build --workspace=client` — passed; Vite built 2,366 modules in 8.79s (existing chunk-size and ineffective-dynamic-import warnings only).
+- Diff verification: `git diff --check` — passed; pre-commit status contained only the three Task 5 product/test documentation files plus this progress record.
+- Status: complete

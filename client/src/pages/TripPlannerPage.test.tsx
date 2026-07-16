@@ -1640,6 +1640,32 @@ describe('TripPlannerPage', () => {
       expect(capturedTransportModalProps.current.transitPrefill).toEqual(prefill);
     });
 
+    it('keeps the day-header transit shortcut unprefilled', async () => {
+      vi.useFakeTimers();
+      const { trip, day } = seedTripStore({ id: 42 });
+      seedStore(useTripStore, {
+        ...useTripStore.getState(),
+        trip: {
+          ...trip,
+          start_date: '2026-07-16',
+          end_date: '2026-07-20',
+        },
+        days: [{ ...day, id: 10, date: '2026-07-16' }],
+      } as any);
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      act(() => capturedDayPlanSidebarProps.current.onPlanTransit(10));
+
+      await waitFor(() => {
+        expect(capturedTransportModalProps.current.isOpen).toBe(true);
+      });
+      expect(capturedTransportModalProps.current.initialAutomated).toBe(true);
+      expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
+    });
+
     it('persists a created transit journey at the connector position', async () => {
       vi.useFakeTimers();
       datedTrip();
