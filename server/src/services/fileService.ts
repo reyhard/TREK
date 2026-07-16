@@ -1,18 +1,20 @@
-import path from 'path';
-import { avatarUrl } from './avatarUrl';
-import fs from 'fs';
-import type { Request } from 'express';
 import { db } from '../db/database';
-import { consumeEphemeralToken } from './ephemeralTokens';
 import { verifyJwtAndLoadUser } from '../middleware/auth';
 import { TripFile } from '../types';
+import { avatarUrl } from './avatarUrl';
+import { consumeEphemeralToken } from './ephemeralTokens';
+
+import type { Request } from 'express';
+import fs from 'fs';
+import path from 'path';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-export const DEFAULT_ALLOWED_EXTENSIONS = 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv,pkpass,pkpasses,md,markdown';
+export const DEFAULT_ALLOWED_EXTENSIONS =
+  'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv,pkpass,pkpasses,md,markdown';
 
 // Video support (#823). Gallery/media uploads accept these in addition to images,
 // independent of the admin doc-types allowlist. Videos are stored as-is and
@@ -34,11 +36,33 @@ export function isVideoExtension(ext: string): boolean {
 // wildcard doesn't silently admit executables/scripts.
 export const BLOCKED_EXTENSIONS = [
   // Server-rendered / scripted content that could XSS a viewer
-  '.svg', '.html', '.htm', '.xml', '.xhtml',
+  '.svg',
+  '.html',
+  '.htm',
+  '.xml',
+  '.xhtml',
   // Scripts
-  '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.php', '.py', '.rb', '.pl',
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.mjs',
+  '.cjs',
+  '.php',
+  '.py',
+  '.rb',
+  '.pl',
   // Executables
-  '.exe', '.bat', '.sh', '.cmd', '.msi', '.dll', '.com', '.vbs', '.ps1', '.app',
+  '.exe',
+  '.bat',
+  '.sh',
+  '.cmd',
+  '.msi',
+  '.dll',
+  '.com',
+  '.vbs',
+  '.ps1',
+  '.app',
 ];
 export const filesDir = path.join(__dirname, '../../uploads/files');
 
@@ -50,9 +74,13 @@ export { verifyTripAccess } from './tripAccess';
 
 export function getAllowedExtensions(): string {
   try {
-    const row = db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get() as { value: string } | undefined;
+    const row = db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get() as
+      | { value: string }
+      | undefined;
     return row?.value || DEFAULT_ALLOWED_EXTENSIONS;
-  } catch { return DEFAULT_ALLOWED_EXTENSIONS; }
+  } catch {
+    return DEFAULT_ALLOWED_EXTENSIONS;
+  }
 }
 
 const FILE_SELECT = `
@@ -85,15 +113,27 @@ export function formatFile(file: TripFile & { trip_id?: number; uploaded_by_avat
  */
 export function findForeignLinkTarget(
   tripId: string | number,
-  opts: { reservation_id?: string | number | null; assignment_id?: string | number | null; place_id?: string | number | null }
+  opts: {
+    reservation_id?: string | number | null;
+    assignment_id?: string | number | null;
+    place_id?: string | number | null;
+  },
 ): 'reservation_id' | 'assignment_id' | 'place_id' | null {
-  if (opts.reservation_id && !db.prepare('SELECT 1 FROM reservations WHERE id = ? AND trip_id = ?').get(opts.reservation_id, tripId)) {
+  if (
+    opts.reservation_id &&
+    !db.prepare('SELECT 1 FROM reservations WHERE id = ? AND trip_id = ?').get(opts.reservation_id, tripId)
+  ) {
     return 'reservation_id';
   }
   if (opts.place_id && !db.prepare('SELECT 1 FROM places WHERE id = ? AND trip_id = ?').get(opts.place_id, tripId)) {
     return 'place_id';
   }
-  if (opts.assignment_id && !db.prepare('SELECT 1 FROM day_assignments a JOIN days d ON a.day_id = d.id WHERE a.id = ? AND d.trip_id = ?').get(opts.assignment_id, tripId)) {
+  if (
+    opts.assignment_id &&
+    !db
+      .prepare('SELECT 1 FROM day_assignments a JOIN days d ON a.day_id = d.id WHERE a.id = ? AND d.trip_id = ?')
+      .get(opts.assignment_id, tripId)
+  ) {
     return 'assignment_id';
   }
   return null;
@@ -118,7 +158,7 @@ export function resolveFilePath(filename: string): { resolved: string; safe: boo
 export function authenticateDownload(req: Request): { userId: number } | { error: string; status: number } {
   const cookieToken = (req as any).cookies?.trek_session as string | undefined;
   const authHeader = req.headers['authorization'];
-  const bearerToken = authHeader ? (authHeader.split(' ')[1] || undefined) : undefined;
+  const bearerToken = authHeader ? authHeader.split(' ')[1] || undefined : undefined;
   const queryToken = req.query.token as string | undefined;
 
   // Cookie and Bearer both carry a full JWT — try them first (cookie wins).
@@ -156,30 +196,36 @@ export function getFileById(id: string | number, tripId: string | number): TripF
 }
 
 export function getDeletedFile(id: string | number, tripId: string | number): TripFile | undefined {
-  return db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ? AND deleted_at IS NOT NULL').get(id, tripId) as TripFile | undefined;
+  return db
+    .prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ? AND deleted_at IS NOT NULL')
+    .get(id, tripId) as TripFile | undefined;
 }
 
 export function listFiles(tripId: string | number, showTrash: boolean) {
   const where = showTrash ? 'f.trip_id = ? AND f.deleted_at IS NOT NULL' : 'f.trip_id = ? AND f.deleted_at IS NULL';
-  const files = db.prepare(`${FILE_SELECT} WHERE ${where} ORDER BY f.starred DESC, f.created_at DESC`).all(tripId) as TripFile[];
+  const files = db
+    .prepare(`${FILE_SELECT} WHERE ${where} ORDER BY f.starred DESC, f.created_at DESC`)
+    .all(tripId) as TripFile[];
 
-  const fileIds = files.map(f => f.id);
+  const fileIds = files.map((f) => f.id);
   const linksMap: Record<number, FileLink[]> = {};
   if (fileIds.length > 0) {
     const placeholders = fileIds.map(() => '?').join(',');
-    const links = db.prepare(`SELECT file_id, reservation_id, place_id FROM file_links WHERE file_id IN (${placeholders})`).all(...fileIds) as FileLink[];
+    const links = db
+      .prepare(`SELECT file_id, reservation_id, place_id FROM file_links WHERE file_id IN (${placeholders})`)
+      .all(...fileIds) as FileLink[];
     for (const link of links) {
       if (!linksMap[link.file_id]) linksMap[link.file_id] = [];
       linksMap[link.file_id].push(link);
     }
   }
 
-  return files.map(f => {
+  return files.map((f) => {
     const fileLinks = linksMap[f.id] || [];
     return {
       ...formatFile(f),
-      linked_reservation_ids: fileLinks.filter(l => l.reservation_id).map(l => l.reservation_id),
-      linked_place_ids: fileLinks.filter(l => l.place_id).map(l => l.place_id),
+      linked_reservation_ids: fileLinks.filter((l) => l.reservation_id).map((l) => l.reservation_id),
+      linked_place_ids: fileLinks.filter((l) => l.place_id).map((l) => l.place_id),
     };
   });
 }
@@ -188,22 +234,26 @@ export function createFile(
   tripId: string | number,
   file: { filename: string; originalname: string; size: number; mimetype: string },
   uploadedBy: number,
-  opts: { place_id?: string | null; reservation_id?: string | null; description?: string | null }
+  opts: { place_id?: string | null; reservation_id?: string | null; description?: string | null },
 ) {
-  const result = db.prepare(`
+  const result = db
+    .prepare(
+      `
     INSERT INTO trip_files (trip_id, place_id, reservation_id, filename, original_name, file_size, mime_type, description, uploaded_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    tripId,
-    opts.place_id || null,
-    opts.reservation_id || null,
-    file.filename,
-    file.originalname,
-    file.size,
-    file.mimetype,
-    opts.description || null,
-    uploadedBy
-  );
+  `,
+    )
+    .run(
+      tripId,
+      opts.place_id || null,
+      opts.reservation_id || null,
+      file.filename,
+      file.originalname,
+      file.size,
+      file.mimetype,
+      opts.description || null,
+      uploadedBy,
+    );
 
   const created = db.prepare(`${FILE_SELECT} WHERE f.id = ?`).get(result.lastInsertRowid) as TripFile;
   return formatFile(created);
@@ -212,19 +262,21 @@ export function createFile(
 export function updateFile(
   id: string | number,
   current: TripFile,
-  updates: { description?: string; place_id?: string | null; reservation_id?: string | null }
+  updates: { description?: string; place_id?: string | null; reservation_id?: string | null },
 ) {
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE trip_files SET
       description = ?,
       place_id = ?,
       reservation_id = ?
     WHERE id = ?
-  `).run(
+  `,
+  ).run(
     updates.description !== undefined ? updates.description : current.description,
-    updates.place_id !== undefined ? (updates.place_id || null) : current.place_id,
-    updates.reservation_id !== undefined ? (updates.reservation_id || null) : current.reservation_id,
-    id
+    updates.place_id !== undefined ? updates.place_id || null : current.place_id,
+    updates.reservation_id !== undefined ? updates.reservation_id || null : current.reservation_id,
+    id,
   );
 
   const updated = db.prepare(`${FILE_SELECT} WHERE f.id = ?`).get(id) as TripFile;
@@ -266,20 +318,24 @@ export async function permanentDeleteFile(file: TripFile): Promise<void> {
 }
 
 export async function emptyTrash(tripId: string | number): Promise<number> {
-  const trashed = db.prepare('SELECT * FROM trip_files WHERE trip_id = ? AND deleted_at IS NOT NULL').all(tripId) as TripFile[];
+  const trashed = db
+    .prepare('SELECT * FROM trip_files WHERE trip_id = ? AND deleted_at IS NOT NULL')
+    .all(tripId) as TripFile[];
   // Collect successful IDs separately so we only DELETE rows whose disk
   // content was actually removed — failing unlinks keep their DB row
   // and a retry via the single-file delete path can try again.
   const successfullyUnlinked: number[] = [];
-  await Promise.all(trashed.map(async (file) => {
-    const { resolved } = resolveFilePath(file.filename);
-    try {
-      await fs.promises.rm(resolved, { force: true });
-      successfullyUnlinked.push(Number(file.id));
-    } catch (e) {
-      console.error(`[files] unlink failed for ${file.filename}, keeping DB row:`, e);
-    }
-  }));
+  await Promise.all(
+    trashed.map(async (file) => {
+      const { resolved } = resolveFilePath(file.filename);
+      try {
+        await fs.promises.rm(resolved, { force: true });
+        successfullyUnlinked.push(Number(file.id));
+      } catch (e) {
+        console.error(`[files] unlink failed for ${file.filename}, keeping DB row:`, e);
+      }
+    }),
+  );
   if (successfullyUnlinked.length > 0) {
     const placeholders = successfullyUnlinked.map(() => '?').join(',');
     db.prepare(`DELETE FROM trip_files WHERE id IN (${placeholders})`).run(...successfullyUnlinked);
@@ -293,12 +349,12 @@ export async function emptyTrash(tripId: string | number): Promise<number> {
 
 export function createFileLink(
   fileId: string | number,
-  opts: { reservation_id?: string | null; assignment_id?: string | null; place_id?: string | null }
+  opts: { reservation_id?: string | null; assignment_id?: string | null; place_id?: string | null },
 ) {
   try {
-    db.prepare('INSERT OR IGNORE INTO file_links (file_id, reservation_id, assignment_id, place_id) VALUES (?, ?, ?, ?)').run(
-      fileId, opts.reservation_id || null, opts.assignment_id || null, opts.place_id || null
-    );
+    db.prepare(
+      'INSERT OR IGNORE INTO file_links (file_id, reservation_id, assignment_id, place_id) VALUES (?, ?, ?, ?)',
+    ).run(fileId, opts.reservation_id || null, opts.assignment_id || null, opts.place_id || null);
   } catch (err) {
     console.error('[Files] Error creating file link:', err instanceof Error ? err.message : err);
   }
@@ -310,10 +366,14 @@ export function deleteFileLink(linkId: string | number, fileId: string | number)
 }
 
 export function getFileLinks(fileId: string | number) {
-  return db.prepare(`
+  return db
+    .prepare(
+      `
     SELECT fl.*, r.title as reservation_title
     FROM file_links fl
     LEFT JOIN reservations r ON fl.reservation_id = r.id
     WHERE fl.file_id = ?
-  `).all(fileId);
+  `,
+    )
+    .all(fileId);
 }

@@ -1,26 +1,36 @@
 import {
-  budgetCreateItemRequestSchema, type BudgetCreateItemRequest,
-  budgetUpdateItemRequestSchema, type BudgetUpdateItemRequest,
-  placeCreateRequestSchema, placeUpdateRequestSchema,
-  dayCreateRequestSchema, dayUpdateRequestSchema,
-  tripUpdateRequestSchema, tripCreateRequestSchema,
-  reservationCreateRequestSchema, reservationUpdateRequestSchema,
-  reservationEndpointsInputSchema,
-  accommodationCreateRequestSchema, accommodationUpdateRequestSchema,
-  packingCreateItemRequestSchema, packingUpdateItemRequestSchema,
-  collectionCreateRequestSchema, collectionUpdateRequestSchema,
-  collectionSavePlaceRequestSchema, collectionCopyToTripRequestSchema,
-} from '@trek/shared';
-import {
   KNOWN_METHODS,
   type KnownMethod,
   type RpcError,
   type RpcRequest,
   type RpcResponse,
 } from '../protocol/envelope';
-import type { PluginDataDb } from './plugin-data.service';
 import { stripEmoji } from '../text-sanitize';
 import { auditResource, isAuditable } from './plugin-audit';
+import type { PluginDataDb } from './plugin-data.service';
+import {
+  budgetCreateItemRequestSchema,
+  type BudgetCreateItemRequest,
+  budgetUpdateItemRequestSchema,
+  type BudgetUpdateItemRequest,
+  placeCreateRequestSchema,
+  placeUpdateRequestSchema,
+  dayCreateRequestSchema,
+  dayUpdateRequestSchema,
+  tripUpdateRequestSchema,
+  tripCreateRequestSchema,
+  reservationCreateRequestSchema,
+  reservationUpdateRequestSchema,
+  reservationEndpointsInputSchema,
+  accommodationCreateRequestSchema,
+  accommodationUpdateRequestSchema,
+  packingCreateItemRequestSchema,
+  packingUpdateItemRequestSchema,
+  collectionCreateRequestSchema,
+  collectionUpdateRequestSchema,
+  collectionSavePlaceRequestSchema,
+  collectionCopyToTripRequestSchema,
+} from '@trek/shared';
 
 /**
  * The per-plugin capability router (#plugins, M1) — the ENFORCEMENT POINT.
@@ -59,7 +69,10 @@ export interface HostDeps {
   // --- Host-mediated notifications (recipient resolution + channel fan-out owned
   // by the host; the plugin supplies only target + plain text). ---
   canAccessTripForNotify(tripId: number, userId: number): boolean;
-  sendPluginNotification(pluginId: string, input: { title: string; body: string; link?: string; scope: 'user' | 'trip'; targetId: number }): Promise<unknown>;
+  sendPluginNotification(
+    pluginId: string,
+    input: { title: string; body: string; link?: string; scope: 'user' | 'trip'; targetId: number },
+  ): Promise<unknown>;
   // --- Host-mediated LLM (the host owns the credential; output is DATA the plugin
   // must still push through the gated write methods). ---
   aiConfigured(userId: number): boolean;
@@ -75,7 +88,13 @@ export interface HostDeps {
   /** Cancel a scheduled callback by name. */
   schedulerCancel(name: string): { cancelled: boolean };
   /** Optional sink for the capability audit log (host-side, hash-chained). */
-  audit?(entry: { pluginId: string; actingUserId?: number; method: string; resource: string | null; code: string }): void;
+  audit?(entry: {
+    pluginId: string;
+    actingUserId?: number;
+    method: string;
+    resource: string | null;
+    code: string;
+  }): void;
   /** Call an export on another plugin (this host's plugin is the caller). Authorizes
    * the dependency edge + the target's `provides` allowlist, forwards the acting user. */
   callPlugin(targetId: string, fn: string, args: unknown, actingUserId: number | undefined): Promise<unknown>;
@@ -218,7 +237,12 @@ export interface HostDeps {
   /** Create a reservation (accommodation/budget side effects + broadcasts, as the web app); returns it. */
   createReservation(tripId: number, input: Record<string, unknown>, actingUserId: number): unknown;
   /** Update a reservation on a trip (same side effects); returns it, or throws if it isn't on the trip. */
-  updateReservation(tripId: number, reservationId: number, input: Record<string, unknown>, actingUserId: number): unknown;
+  updateReservation(
+    tripId: number,
+    reservationId: number,
+    input: Record<string, unknown>,
+    actingUserId: number,
+  ): unknown;
   /** Delete a reservation from a trip (same side effects); returns { deleted: true }. */
   deleteReservation(tripId: number, reservationId: number, actingUserId: number): unknown;
   // --- Packing (the 'packing_edit' permission; #858 privacy-scoped broadcasts) ---
@@ -304,7 +328,9 @@ export class PluginRpcHost {
         this.tripRead(p, uid, () => deps.db.prepare('SELECT * FROM trips WHERE id = ?').get(num(p.tripId, 'tripId'))),
       );
       this.methods.set('trips.getPlaces', (p, uid) =>
-        this.tripRead(p, uid, () => deps.db.prepare('SELECT * FROM places WHERE trip_id = ? ORDER BY id').all(num(p.tripId, 'tripId'))),
+        this.tripRead(p, uid, () =>
+          deps.db.prepare('SELECT * FROM places WHERE trip_id = ? ORDER BY id').all(num(p.tripId, 'tripId')),
+        ),
       );
       // Hydrated like the REST list (endpoints, day_positions, joins, normalized
       // accommodation_id) — a strict superset of the raw row, so older callers
@@ -337,7 +363,9 @@ export class PluginRpcHost {
         return deps.listReservationsForUser(uid);
       });
       // The trip's member roster (ids + display fields only), membership-checked.
-      this.methods.set('trips.members', (p, uid) => this.tripRead(p, uid, () => deps.tripMembers(num(p.tripId, 'tripId'))));
+      this.methods.set('trips.members', (p, uid) =>
+        this.tripRead(p, uid, () => deps.tripMembers(num(p.tripId, 'tripId'))),
+      );
     }
     if (has('db:read:packing')) {
       // Delegate to the packing service, scoped to the acting user so its #858 private-
@@ -370,9 +398,12 @@ export class PluginRpcHost {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'file');
         const input = asPayload(p.input);
-        if (typeof input.name !== 'string' || input.name.trim() === '' || input.name.length > 255) throw new BadParams('file name is required (max 255 chars)');
-        if (typeof input.content_base64 !== 'string' || input.content_base64 === '') throw new BadParams('content_base64 is required');
-        if (input.content_base64.length > 14 * 1024 * 1024) throw new BadParams('file exceeds the 10MB plugin upload cap');
+        if (typeof input.name !== 'string' || input.name.trim() === '' || input.name.length > 255)
+          throw new BadParams('file name is required (max 255 chars)');
+        if (typeof input.content_base64 !== 'string' || input.content_base64 === '')
+          throw new BadParams('content_base64 is required');
+        if (input.content_base64.length > 14 * 1024 * 1024)
+          throw new BadParams('file exceeds the 10MB plugin upload cap');
         this.requireTripEdit(tripId, actor, deps.canUploadFiles);
         return deps.createTripFile(tripId, input, actor);
       });
@@ -412,8 +443,10 @@ export class PluginRpcHost {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'collab poll');
         const input = asPayload(p.input);
-        if (typeof input.question !== 'string' || input.question.trim() === '') throw new BadParams('poll question is required');
-        if (!Array.isArray(input.options) || input.options.length < 2) throw new BadParams('a poll needs at least two options');
+        if (typeof input.question !== 'string' || input.question.trim() === '')
+          throw new BadParams('poll question is required');
+        if (!Array.isArray(input.options) || input.options.length < 2)
+          throw new BadParams('a poll needs at least two options');
         this.requireTripEdit(tripId, actor, deps.canEditCollab);
         return deps.createCollabPoll(tripId, input, actor);
       });
@@ -426,7 +459,8 @@ export class PluginRpcHost {
       this.methods.set('collab.createMessage', (p, uid) => {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'collab message');
-        if (typeof p.text !== 'string' || p.text.trim() === '' || p.text.length > 4000) throw new BadParams('message text is required (max 4000 chars)');
+        if (typeof p.text !== 'string' || p.text.trim() === '' || p.text.length > 4000)
+          throw new BadParams('message text is required (max 4000 chars)');
         this.requireTripEdit(tripId, actor, deps.canEditCollab);
         return deps.createCollabMessage(tripId, p.text, typeof p.replyTo === 'number' ? p.replyTo : undefined, actor);
       });
@@ -459,10 +493,16 @@ export class PluginRpcHost {
     if (has('db:read:collab')) {
       // Collab reads mirror the REST GETs: membership only (the addon gate lives in
       // the wiring), no separate right — the write side already has collab_edit.
-      this.methods.set('collab.listNotes', (p, uid) => this.tripRead(p, uid, () => deps.listCollabNotes(num(p.tripId, 'tripId'))));
-      this.methods.set('collab.listPolls', (p, uid) => this.tripRead(p, uid, () => deps.listCollabPolls(num(p.tripId, 'tripId'))));
+      this.methods.set('collab.listNotes', (p, uid) =>
+        this.tripRead(p, uid, () => deps.listCollabNotes(num(p.tripId, 'tripId'))),
+      );
+      this.methods.set('collab.listPolls', (p, uid) =>
+        this.tripRead(p, uid, () => deps.listCollabPolls(num(p.tripId, 'tripId'))),
+      );
       this.methods.set('collab.listMessages', (p, uid) =>
-        this.tripRead(p, uid, () => deps.listCollabMessages(num(p.tripId, 'tripId'), p.before != null ? num(p.before, 'before') : undefined)),
+        this.tripRead(p, uid, () =>
+          deps.listCollabMessages(num(p.tripId, 'tripId'), p.before != null ? num(p.before, 'before') : undefined),
+        ),
       );
     }
     if (has('db:read:journal')) {
@@ -515,12 +555,14 @@ export class PluginRpcHost {
       };
       this.methods.set('collections.create', (p, uid) => {
         const parsed = collectionCreateRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid collection: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid collection: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         return deps.createCollectionForUser(requireUid(uid), parsed.data as Record<string, unknown>);
       });
       this.methods.set('collections.update', (p, uid) => {
         const parsed = collectionUpdateRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid collection: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid collection: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         return deps.updateCollectionForUser(requireUid(uid), num(p.id, 'id'), parsed.data as Record<string, unknown>);
       });
       this.methods.set('collections.savePlace', (p, uid) => {
@@ -530,10 +572,13 @@ export class PluginRpcHost {
       });
       this.methods.set('collections.copyToTrip', (p, uid) => {
         const parsed = collectionCopyToTripRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid copy request: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid copy request: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         return deps.copyCollectionToTrip(requireUid(uid), parsed.data as Record<string, unknown>);
       });
-      this.methods.set('collections.deletePlace', (p, uid) => deps.deleteCollectionPlace(requireUid(uid), num(p.placeId, 'placeId')));
+      this.methods.set('collections.deletePlace', (p, uid) =>
+        deps.deleteCollectionPlace(requireUid(uid), num(p.placeId, 'placeId')),
+      );
     }
     if (has('db:write:atlas')) {
       // Atlas write: every row is the acting user's own (visited_countries /
@@ -543,24 +588,38 @@ export class PluginRpcHost {
         return uid;
       };
       const code = (v: unknown, name: string): string => {
-        if (typeof v !== 'string' || v.trim() === '' || v.length > 8) throw new BadParams(`${name} must be a short code`);
+        if (typeof v !== 'string' || v.trim() === '' || v.length > 8)
+          throw new BadParams(`${name} must be a short code`);
         return v.trim().toUpperCase();
       };
       this.methods.set('atlas.markCountry', (p, uid) => deps.markCountryVisited(requireUid(uid), code(p.code, 'code')));
-      this.methods.set('atlas.unmarkCountry', (p, uid) => deps.unmarkCountryVisited(requireUid(uid), code(p.code, 'code')));
+      this.methods.set('atlas.unmarkCountry', (p, uid) =>
+        deps.unmarkCountryVisited(requireUid(uid), code(p.code, 'code')),
+      );
       this.methods.set('atlas.markRegion', (p, uid) => {
         const u = requireUid(uid);
-        const regionName = typeof p.regionName === 'string' && p.regionName ? p.regionName.slice(0, 128) : String(p.regionCode ?? '');
-        return deps.markRegionVisited(u, code(p.regionCode, 'regionCode'), regionName, code(p.countryCode, 'countryCode'));
+        const regionName =
+          typeof p.regionName === 'string' && p.regionName ? p.regionName.slice(0, 128) : String(p.regionCode ?? '');
+        return deps.markRegionVisited(
+          u,
+          code(p.regionCode, 'regionCode'),
+          regionName,
+          code(p.countryCode, 'countryCode'),
+        );
       });
-      this.methods.set('atlas.unmarkRegion', (p, uid) => deps.unmarkRegionVisited(requireUid(uid), code(p.regionCode, 'regionCode')));
+      this.methods.set('atlas.unmarkRegion', (p, uid) =>
+        deps.unmarkRegionVisited(requireUid(uid), code(p.regionCode, 'regionCode')),
+      );
       this.methods.set('atlas.createBucketItem', (p, uid) => {
         const u = requireUid(uid);
         const input = asPayload(p.input);
-        if (typeof input.name !== 'string' || input.name.trim() === '') throw new BadParams('bucket item name is required');
+        if (typeof input.name !== 'string' || input.name.trim() === '')
+          throw new BadParams('bucket item name is required');
         return deps.createBucketItem(u, input);
       });
-      this.methods.set('atlas.deleteBucketItem', (p, uid) => deps.deleteBucketItem(requireUid(uid), num(p.itemId, 'itemId')));
+      this.methods.set('atlas.deleteBucketItem', (p, uid) =>
+        deps.deleteBucketItem(requireUid(uid), num(p.itemId, 'itemId')),
+      );
     }
     if (has('db:write:vacay')) {
       // Vacay write: the plan is resolved host-side from the acting user's active
@@ -576,7 +635,12 @@ export class PluginRpcHost {
       };
       this.methods.set('vacay.toggleEntry', (p, uid) => deps.vacayToggleEntry(requireUid(uid), dateStr(p.date)));
       this.methods.set('vacay.toggleCompanyHoliday', (p, uid) =>
-        deps.vacayToggleCompanyHoliday(requireUid(uid), dateStr(p.date), typeof p.note === 'string' ? p.note.slice(0, 256) : undefined));
+        deps.vacayToggleCompanyHoliday(
+          requireUid(uid),
+          dateStr(p.date),
+          typeof p.note === 'string' ? p.note.slice(0, 256) : undefined,
+        ),
+      );
     }
     if (has('db:write:journal')) {
       // Journal write: journeyService.canEdit self-gates every call against the
@@ -589,14 +653,20 @@ export class PluginRpcHost {
       this.methods.set('journal.createEntry', (p, uid) => {
         const u = requireUid(uid);
         const input = asPayload(p.input);
-        if (typeof input.entry_date !== 'string' || input.entry_date === '') throw new BadParams('entry_date is required');
+        if (typeof input.entry_date !== 'string' || input.entry_date === '')
+          throw new BadParams('entry_date is required');
         return deps.createJournalEntry(u, num(p.journeyId, 'journeyId'), input);
       });
       this.methods.set('journal.updateEntry', (p, uid) =>
-        deps.updateJournalEntry(requireUid(uid), num(p.entryId, 'entryId'), asPayload(p.input)));
-      this.methods.set('journal.deleteEntry', (p, uid) => deps.deleteJournalEntry(requireUid(uid), num(p.entryId, 'entryId')));
+        deps.updateJournalEntry(requireUid(uid), num(p.entryId, 'entryId'), asPayload(p.input)),
+      );
+      this.methods.set('journal.deleteEntry', (p, uid) =>
+        deps.deleteJournalEntry(requireUid(uid), num(p.entryId, 'entryId')),
+      );
       this.methods.set('journal.createJourney', (p, uid) => deps.createJournal(requireUid(uid), asPayload(p.input)));
-      this.methods.set('journal.deleteJourney', (p, uid) => deps.deleteJournal(requireUid(uid), num(p.journeyId, 'journeyId')));
+      this.methods.set('journal.deleteJourney', (p, uid) =>
+        deps.deleteJournal(requireUid(uid), num(p.journeyId, 'journeyId')),
+      );
     }
     if (has('db:read:daynotes')) {
       // Day notes are trip-scoped (core, no addon), so the standard membership gate applies.
@@ -635,7 +705,8 @@ export class PluginRpcHost {
         const parsed = budgetCreateItemRequestSchema.safeParse(p.input);
         if (!parsed.success) throw new BadParams(`invalid cost: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         if (!this.deps.canAccessTrip(tripId, uid)) throw new ForbiddenResource(`no access to trip ${tripId}`);
-        if (!this.deps.canEditCosts(tripId, uid)) throw new ForbiddenResource(`no permission to edit costs on trip ${tripId}`);
+        if (!this.deps.canEditCosts(tripId, uid))
+          throw new ForbiddenResource(`no permission to edit costs on trip ${tripId}`);
         return deps.createCost(tripId, parsed.data);
       });
       // Same gate as costs.create — addon + trip access + the acting user's
@@ -649,7 +720,8 @@ export class PluginRpcHost {
         const parsed = budgetUpdateItemRequestSchema.safeParse(p.input);
         if (!parsed.success) throw new BadParams(`invalid cost: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         if (!this.deps.canAccessTrip(tripId, uid)) throw new ForbiddenResource(`no access to trip ${tripId}`);
-        if (!this.deps.canEditCosts(tripId, uid)) throw new ForbiddenResource(`no permission to edit costs on trip ${tripId}`);
+        if (!this.deps.canEditCosts(tripId, uid))
+          throw new ForbiddenResource(`no permission to edit costs on trip ${tripId}`);
         return deps.updateCost(tripId, itemId, parsed.data);
       });
       // Deleting a cost is a budget write too: gated by db:write:costs and, per the
@@ -660,7 +732,8 @@ export class PluginRpcHost {
         if (uid === undefined) throw new ForbiddenResource('cost writes require an authenticated user context');
         this.requireBudgetAddon();
         if (!this.deps.canAccessTrip(tripId, uid)) throw new ForbiddenResource(`no access to trip ${tripId}`);
-        if (!this.deps.canEditCosts(tripId, uid)) throw new ForbiddenResource(`no permission to edit costs on trip ${tripId}`);
+        if (!this.deps.canEditCosts(tripId, uid))
+          throw new ForbiddenResource(`no permission to edit costs on trip ${tripId}`);
         return deps.deleteCost(tripId, itemId);
       });
     }
@@ -820,7 +893,8 @@ export class PluginRpcHost {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'reservation');
         const parsed = reservationCreateRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid reservation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid reservation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         requireValidEndpoints((parsed.data as Record<string, unknown>).endpoints);
         this.requireTripEdit(tripId, actor, deps.canEditReservations);
         return deps.createReservation(tripId, parsed.data as Record<string, unknown>, actor);
@@ -830,7 +904,8 @@ export class PluginRpcHost {
         const reservationId = num(p.reservationId, 'reservationId');
         const actor = this.requireActor(uid, 'reservation');
         const parsed = reservationUpdateRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid reservation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid reservation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         requireValidEndpoints((parsed.data as Record<string, unknown>).endpoints);
         this.requireTripEdit(tripId, actor, deps.canEditReservations);
         return deps.updateReservation(tripId, reservationId, parsed.data as Record<string, unknown>, actor);
@@ -854,7 +929,8 @@ export class PluginRpcHost {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'accommodation');
         const parsed = accommodationCreateRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid accommodation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid accommodation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         this.requireTripEdit(tripId, actor, deps.canEditDays);
         return deps.createAccommodation(tripId, parsed.data as Record<string, unknown>);
       });
@@ -863,7 +939,8 @@ export class PluginRpcHost {
         const accommodationId = num(p.accommodationId, 'accommodationId');
         const actor = this.requireActor(uid, 'accommodation');
         const parsed = accommodationUpdateRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid accommodation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid accommodation: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         this.requireTripEdit(tripId, actor, deps.canEditDays);
         return deps.updateAccommodation(tripId, accommodationId, parsed.data as Record<string, unknown>);
       });
@@ -885,7 +962,8 @@ export class PluginRpcHost {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'packing item');
         const parsed = packingCreateItemRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid packing item: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid packing item: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         this.requireTripEdit(tripId, actor, deps.canEditPacking);
         return deps.createPackingItem(tripId, parsed.data as Record<string, unknown>, actor);
       });
@@ -894,7 +972,8 @@ export class PluginRpcHost {
         const itemId = num(p.itemId, 'itemId');
         const actor = this.requireActor(uid, 'packing item');
         const parsed = packingUpdateItemRequestSchema.safeParse(p.input);
-        if (!parsed.success) throw new BadParams(`invalid packing item: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
+        if (!parsed.success)
+          throw new BadParams(`invalid packing item: ${parsed.error.issues[0]?.message ?? 'bad input'}`);
         this.requireTripEdit(tripId, actor, deps.canEditPacking);
         return deps.updatePackingItem(tripId, itemId, parsed.data as Record<string, unknown>, actor);
       });
@@ -906,7 +985,9 @@ export class PluginRpcHost {
         return deps.deletePackingItem(tripId, itemId);
       });
       // Bags carry no privacy — a plain packing:bag-* broadcast to the whole room.
-      this.methods.set('packing.listBags', (p, uid) => this.tripRead(p, uid, () => deps.listPackingBags(num(p.tripId, 'tripId'))));
+      this.methods.set('packing.listBags', (p, uid) =>
+        this.tripRead(p, uid, () => deps.listPackingBags(num(p.tripId, 'tripId'))),
+      );
       this.methods.set('packing.createBag', (p, uid) => {
         const tripId = num(p.tripId, 'tripId');
         const actor = this.requireActor(uid, 'packing bag');
@@ -942,7 +1023,9 @@ export class PluginRpcHost {
 
     if (has('weather:read')) {
       // Tenant-free host cache: forecast by coordinates + optional date. No user needed.
-      this.methods.set('weather.get', (p) => deps.getWeather(num(p.lat, 'lat'), num(p.lng, 'lng'), typeof p.date === 'string' ? p.date : undefined));
+      this.methods.set('weather.get', (p) =>
+        deps.getWeather(num(p.lat, 'lat'), num(p.lng, 'lng'), typeof p.date === 'string' ? p.date : undefined),
+      );
     }
     if (has('db:read:categories')) {
       // Global, read-only reference list — carries no tenant data.
@@ -965,7 +1048,12 @@ export class PluginRpcHost {
       this.methods.set('tags.update', (p, uid) => {
         if (uid === undefined) throw new ForbiddenResource('tag writes require an authenticated user context');
         const input = asPayload(p.input);
-        return deps.updateTagForUser(uid, num(p.tagId, 'tagId'), typeof input.name === 'string' ? input.name : undefined, typeof input.color === 'string' ? input.color : undefined);
+        return deps.updateTagForUser(
+          uid,
+          num(p.tagId, 'tagId'),
+          typeof input.name === 'string' ? input.name : undefined,
+          typeof input.color === 'string' ? input.color : undefined,
+        );
       });
       this.methods.set('tags.delete', (p, uid) => {
         if (uid === undefined) throw new ForbiddenResource('tag writes require an authenticated user context');
@@ -1005,10 +1093,22 @@ export class PluginRpcHost {
       // A plugin's OWN namespaced key/value store attached to a core entity. Not
       // core data — but the entity must belong to a trip the acting user can
       // ACCESS, so a plugin can't stash/read metadata against another tenant's rows.
-      this.methods.set('meta.get', (p, uid) => { const e = this.metaEntity(p, uid, false); return deps.metaGet(e.entityType, e.entityId, str(p.key, 'key')); });
-      this.methods.set('meta.set', (p, uid) => { const e = this.metaEntity(p, uid, true); return deps.metaSet(e.entityType, e.entityId, str(p.key, 'key'), p.value); });
-      this.methods.set('meta.list', (p, uid) => { const e = this.metaEntity(p, uid, false); return deps.metaList(e.entityType, e.entityId); });
-      this.methods.set('meta.delete', (p, uid) => { const e = this.metaEntity(p, uid, true); return deps.metaDelete(e.entityType, e.entityId, str(p.key, 'key')); });
+      this.methods.set('meta.get', (p, uid) => {
+        const e = this.metaEntity(p, uid, false);
+        return deps.metaGet(e.entityType, e.entityId, str(p.key, 'key'));
+      });
+      this.methods.set('meta.set', (p, uid) => {
+        const e = this.metaEntity(p, uid, true);
+        return deps.metaSet(e.entityType, e.entityId, str(p.key, 'key'), p.value);
+      });
+      this.methods.set('meta.list', (p, uid) => {
+        const e = this.metaEntity(p, uid, false);
+        return deps.metaList(e.entityType, e.entityId);
+      });
+      this.methods.set('meta.delete', (p, uid) => {
+        const e = this.metaEntity(p, uid, true);
+        return deps.metaDelete(e.entityType, e.entityId, str(p.key, 'key'));
+      });
     }
 
     if (has('db:read:users')) {
@@ -1065,8 +1165,10 @@ export class PluginRpcHost {
         const scope = input.scope;
         if (scope !== 'user' && scope !== 'trip') throw new BadParams("scope must be 'user' or 'trip'");
         const targetId = num(input.targetId, 'targetId');
-        if (scope === 'user' && targetId !== actor) throw new ForbiddenResource('a plugin may only notify the acting user');
-        if (scope === 'trip' && !deps.canAccessTripForNotify(targetId, actor)) throw new ForbiddenResource('the acting user is not a member of that trip');
+        if (scope === 'user' && targetId !== actor)
+          throw new ForbiddenResource('a plugin may only notify the acting user');
+        if (scope === 'trip' && !deps.canAccessTripForNotify(targetId, actor))
+          throw new ForbiddenResource('the acting user is not a member of that trip');
         let link: string | undefined;
         if (typeof input.link === 'string' && input.link !== '') {
           // In-app path only. A bare startsWith check misses `/\evil.com`, `/<tab>/…`
@@ -1076,8 +1178,10 @@ export class PluginRpcHost {
           let safe: string | null = null;
           try {
             const u = new URL(input.link, 'http://x.invalid');
-            if (u.origin === 'http://x.invalid') safe = (u.pathname + u.search + u.hash);
-          } catch { /* invalid → rejected below */ }
+            if (u.origin === 'http://x.invalid') safe = u.pathname + u.search + u.hash;
+          } catch {
+            /* invalid → rejected below */
+          }
           if (!safe) throw new BadParams('link must be an in-app path starting with /');
           link = safe.slice(0, 512);
         }
@@ -1103,8 +1207,14 @@ export class PluginRpcHost {
         const text = typeof p.text === 'string' ? p.text : '';
         if (text.trim() === '') throw new BadParams('text is required');
         if (text.length > 20000) throw new BadParams('text exceeds the 20000-char cap');
-        if (typeof p.jsonSchema !== 'object' || p.jsonSchema === null) throw new BadParams('jsonSchema (an object) is required');
-        return deps.aiExtract(actor, text, p.jsonSchema as object, typeof p.prompt === 'string' ? p.prompt.slice(0, 4000) : undefined);
+        if (typeof p.jsonSchema !== 'object' || p.jsonSchema === null)
+          throw new BadParams('jsonSchema (an object) is required');
+        return deps.aiExtract(
+          actor,
+          text,
+          p.jsonSchema as object,
+          typeof p.prompt === 'string' ? p.prompt.slice(0, 4000) : undefined,
+        );
       });
     }
     if (has('oauth:client')) {
@@ -1161,7 +1271,11 @@ export class PluginRpcHost {
    * could set to any id to read another user's trips. If no acting user is bound
    * (a job / onLoad, or a forged call), the read is forbidden.
    */
-  private tripRead(p: Record<string, unknown>, actingUserId: number | undefined, read: (userId: number) => unknown): unknown {
+  private tripRead(
+    p: Record<string, unknown>,
+    actingUserId: number | undefined,
+    read: (userId: number) => unknown,
+  ): unknown {
     const tripId = num(p.tripId, 'tripId');
     if (actingUserId === undefined) {
       throw new ForbiddenResource('trip reads require an authenticated user context');
@@ -1213,7 +1327,11 @@ export class PluginRpcHost {
    * Validate a metadata target and gate it: the entity type must be one we support,
    * and the trip it belongs to must be accessible to the host-bound acting user.
    */
-  private metaEntity(p: Record<string, unknown>, uid: number | undefined, write: boolean): { entityType: string; entityId: number } {
+  private metaEntity(
+    p: Record<string, unknown>,
+    uid: number | undefined,
+    write: boolean,
+  ): { entityType: string; entityId: number } {
     const entityType = str(p.entityType, 'entityType');
     if (!META_ENTITY_TYPES.has(entityType)) {
       throw new BadParams(`invalid entityType "${entityType}" (${[...META_ENTITY_TYPES].join('|')})`);
@@ -1229,10 +1347,14 @@ export class PluginRpcHost {
     // (matches how core writes are gated). Accommodations ride on day_edit (like
     // the accommodation write path), reservations on reservation_edit.
     if (write) {
-      const canEdit = entityType === 'trip' ? this.deps.canEditTrip
-        : entityType === 'place' ? this.deps.canEditPlaces
-        : entityType === 'reservation' ? this.deps.canEditReservations
-        : this.deps.canEditDays; // day + accommodation
+      const canEdit =
+        entityType === 'trip'
+          ? this.deps.canEditTrip
+          : entityType === 'place'
+            ? this.deps.canEditPlaces
+            : entityType === 'reservation'
+              ? this.deps.canEditReservations
+              : this.deps.canEditDays; // day + accommodation
       if (!canEdit(tripId, uid)) throw new ForbiddenResource(`no permission to edit ${entityType} ${entityId}`);
     }
     return { entityType, entityId };

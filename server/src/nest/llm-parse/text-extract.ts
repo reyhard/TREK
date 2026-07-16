@@ -47,7 +47,7 @@ function cleanPdfText(text: string): string {
   return text
     .replace(/^\s*-+\s*\d+\s+of\s+\d+\s*-+\s*$/gim, '')
     .replace(/[ \t]+/g, ' ')
-    .replace(/\b(?:[A-Z] ){2,}[A-Z]\b/g, m => m.replace(/ /g, ''))
+    .replace(/\b(?:[A-Z] ){2,}[A-Z]\b/g, (m) => m.replace(/ /g, ''))
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

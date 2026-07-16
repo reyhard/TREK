@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { evaluate } from '../../../src/systemNotices/conditions.js';
 import type { SystemNotice } from '../../../src/systemNotices/types.js';
+
+import { describe, it, expect } from 'vitest';
 
 const baseNotice: SystemNotice = {
   id: 'test',
@@ -50,7 +51,10 @@ describe('existingUserBeforeVersion', () => {
 
 describe('dateWindow', () => {
   it('passes when now is inside window', () => {
-    const notice = { ...baseNotice, conditions: [{ kind: 'dateWindow' as const, startsAt: '2026-05-01T00:00:00Z', endsAt: '2026-07-01T00:00:00Z' }] };
+    const notice = {
+      ...baseNotice,
+      conditions: [{ kind: 'dateWindow' as const, startsAt: '2026-05-01T00:00:00Z', endsAt: '2026-07-01T00:00:00Z' }],
+    };
     expect(evaluate(notice, baseCtx)).toBe(true);
   });
   it('fails when now is before start', () => {
@@ -76,10 +80,10 @@ describe('role', () => {
 
 describe('AND logic', () => {
   it('requires all conditions to pass', () => {
-    const notice = { ...baseNotice, conditions: [
-      { kind: 'firstLogin' as const },
-      { kind: 'role' as const, roles: ['user'] },
-    ]};
+    const notice = {
+      ...baseNotice,
+      conditions: [{ kind: 'firstLogin' as const }, { kind: 'role' as const, roles: ['user'] }],
+    };
     // login_count=1 passes firstLogin, role=user passes role → true
     expect(evaluate(notice, { ...baseCtx, user: { ...baseCtx.user, login_count: 1 } })).toBe(true);
     // login_count=2 fails firstLogin → false

@@ -2,6 +2,12 @@
  * Unit tests for tagService — TAG-SVC-001 through TAG-SVC-015.
  * Uses a real in-memory SQLite DB so SQL logic is exercised faithfully.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { listTags, createTag, getTagByIdAndUser, updateTag, deleteTag } from '../../../src/services/tagService';
+import { createUser } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
@@ -29,12 +35,6 @@ vi.mock('../../../src/config', () => ({
   ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
   updateJwtSecret: () => {},
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-import { listTags, createTag, getTagByIdAndUser, updateTag, deleteTag } from '../../../src/services/tagService';
 
 beforeAll(() => {
   createTables(testDb);

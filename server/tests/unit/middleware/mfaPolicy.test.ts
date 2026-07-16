@@ -1,11 +1,11 @@
+import { isPublicApiPath, isMfaSetupExemptPath } from '../../../src/middleware/mfaPolicy';
+
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
   db: { prepare: () => ({ get: vi.fn(), all: vi.fn() }) },
 }));
 vi.mock('../../../src/config', () => ({ JWT_SECRET: 'test-secret' }));
-
-import { isPublicApiPath, isMfaSetupExemptPath } from '../../../src/middleware/mfaPolicy';
 
 // ── isPublicApiPath ──────────────────────────────────────────────────────────
 

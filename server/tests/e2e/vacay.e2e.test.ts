@@ -4,12 +4,15 @@
  * focuses on auth, status codes (POSTs stay 200) and a couple of validation/403
  * bodies.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { VacayModule } from '../../src/nest/vacay/vacay.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -25,19 +28,34 @@ vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: (
 
 const { svc } = vi.hoisted(() => ({
   svc: {
-    getPlanData: vi.fn(), getActivePlanId: vi.fn(), getActivePlan: vi.fn(), updatePlan: vi.fn(),
-    addHolidayCalendar: vi.fn(), updateHolidayCalendar: vi.fn(), deleteHolidayCalendar: vi.fn(),
-    getPlanUsers: vi.fn(), setUserColor: vi.fn(), sendInvite: vi.fn(), acceptInvite: vi.fn(),
-    declineInvite: vi.fn(), cancelInvite: vi.fn(), dissolvePlan: vi.fn(), getAvailableUsers: vi.fn(),
-    listYears: vi.fn(), addYear: vi.fn(), deleteYear: vi.fn(), getEntries: vi.fn(),
-    toggleEntry: vi.fn(), toggleCompanyHoliday: vi.fn(), getStats: vi.fn(), updateStats: vi.fn(),
-    getCountries: vi.fn(), getHolidays: vi.fn(),
+    getPlanData: vi.fn(),
+    getActivePlanId: vi.fn(),
+    getActivePlan: vi.fn(),
+    updatePlan: vi.fn(),
+    addHolidayCalendar: vi.fn(),
+    updateHolidayCalendar: vi.fn(),
+    deleteHolidayCalendar: vi.fn(),
+    getPlanUsers: vi.fn(),
+    setUserColor: vi.fn(),
+    sendInvite: vi.fn(),
+    acceptInvite: vi.fn(),
+    declineInvite: vi.fn(),
+    cancelInvite: vi.fn(),
+    dissolvePlan: vi.fn(),
+    getAvailableUsers: vi.fn(),
+    listYears: vi.fn(),
+    addYear: vi.fn(),
+    deleteYear: vi.fn(),
+    getEntries: vi.fn(),
+    toggleEntry: vi.fn(),
+    toggleCompanyHoliday: vi.fn(),
+    getStats: vi.fn(),
+    updateStats: vi.fn(),
+    getCountries: vi.fn(),
+    getHolidays: vi.fn(),
   },
 }));
 vi.mock('../../src/services/vacayService', () => svc);
-
-import { VacayModule } from '../../src/nest/vacay/vacay.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Vacay e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -79,8 +97,11 @@ describe('Vacay e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('200 (not 201) on POST entries/toggle, forwarding the socket id', async () => {
-    const res = await request(server).post('/api/addons/vacay/entries/toggle')
-      .set('Cookie', sessionCookie(1)).set('X-Socket-Id', 'sock-7').send({ date: '2026-07-01' });
+    const res = await request(server)
+      .post('/api/addons/vacay/entries/toggle')
+      .set('Cookie', sessionCookie(1))
+      .set('X-Socket-Id', 'sock-7')
+      .send({ date: '2026-07-01' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ action: 'added' });
     expect(svc.toggleEntry).toHaveBeenCalledWith(1, 10, '2026-07-01', 'sock-7');
@@ -93,7 +114,10 @@ describe('Vacay e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('403 on color for a user not in the plan', async () => {
-    const res = await request(server).put('/api/addons/vacay/color').set('Cookie', sessionCookie(1)).send({ color: '#fff', target_user_id: 99 });
+    const res = await request(server)
+      .put('/api/addons/vacay/color')
+      .set('Cookie', sessionCookie(1))
+      .send({ color: '#fff', target_user_id: 99 });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'User not in plan' });
   });

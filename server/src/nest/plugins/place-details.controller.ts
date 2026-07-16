@@ -1,10 +1,11 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
 import { db, canAccessTrip } from '../../db/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { pluginsEnabled } from './kill-switch';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { stripEmoji } from './text-sanitize';
+import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+
+import type { Request } from 'express';
 
 /**
  * GET /api/place-details/:placeId — extra info for a place, contributed by plugins
@@ -35,7 +36,9 @@ function safeUrl(raw: unknown): string | undefined {
   if (typeof raw !== 'string' || raw === '') return undefined;
   try {
     const u = new URL(raw);
-    return u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:' ? raw.slice(0, 2048) : undefined;
+    return u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:'
+      ? raw.slice(0, 2048)
+      : undefined;
   } catch {
     return undefined;
   }

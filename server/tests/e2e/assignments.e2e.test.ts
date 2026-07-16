@@ -3,12 +3,15 @@
  * JwtAuthGuard against a temp SQLite db. assignmentService, journeyService,
  * the permission check, canAccessTrip and the WebSocket broadcast are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { AssignmentsModule } from '../../src/nest/assignments/assignments.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -22,7 +25,12 @@ const { db } = vi.hoisted(() => {
 
 const { canAccessTrip } = vi.hoisted(() => ({ canAccessTrip: vi.fn() }));
 vi.mock('../../src/db/database', () => ({
-  db, canAccessTrip, isOwner: vi.fn(() => true), getPlaceWithTags: vi.fn(), closeDb: () => {}, reinitialize: () => {},
+  db,
+  canAccessTrip,
+  isOwner: vi.fn(() => true),
+  getPlaceWithTags: vi.fn(),
+  closeDb: () => {},
+  reinitialize: () => {},
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn() }));
 
@@ -34,15 +42,22 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { asg } = vi.hoisted(() => ({
   asg: {
-    getAssignmentWithPlace: vi.fn(), listDayAssignments: vi.fn(), dayExists: vi.fn(), placeExists: vi.fn(),
-    createAssignment: vi.fn(), assignmentExistsInDay: vi.fn(), deleteAssignment: vi.fn(), reorderAssignments: vi.fn(),
-    getAssignmentForTrip: vi.fn(), moveAssignment: vi.fn(), getParticipants: vi.fn(), updateTime: vi.fn(), setParticipants: vi.fn(),
+    getAssignmentWithPlace: vi.fn(),
+    listDayAssignments: vi.fn(),
+    dayExists: vi.fn(),
+    placeExists: vi.fn(),
+    createAssignment: vi.fn(),
+    assignmentExistsInDay: vi.fn(),
+    deleteAssignment: vi.fn(),
+    reorderAssignments: vi.fn(),
+    getAssignmentForTrip: vi.fn(),
+    moveAssignment: vi.fn(),
+    getParticipants: vi.fn(),
+    updateTime: vi.fn(),
+    setParticipants: vi.fn(),
   },
 }));
 vi.mock('../../src/services/assignmentService', () => asg);
-
-import { AssignmentsModule } from '../../src/nest/assignments/assignments.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Assignments e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -89,12 +104,18 @@ describe('Assignments e2e (real auth guard + temp SQLite)', () => {
 
   it('201 create, 404 place', async () => {
     reconcileTripSkeletons.mockClear();
-    const ok = await request(server).post('/api/trips/5/days/3/assignments').set('Cookie', sessionCookie(1)).send({ place_id: 2 });
+    const ok = await request(server)
+      .post('/api/trips/5/days/3/assignments')
+      .set('Cookie', sessionCookie(1))
+      .send({ place_id: 2 });
     expect(ok.status).toBe(201);
     expect(ok.body).toEqual({ assignment: { id: 9 } });
     expect(reconcileTripSkeletons).toHaveBeenCalledWith(5, undefined);
     asg.placeExists.mockReturnValue(false);
-    const miss = await request(server).post('/api/trips/5/days/3/assignments').set('Cookie', sessionCookie(1)).send({ place_id: 99 });
+    const miss = await request(server)
+      .post('/api/trips/5/days/3/assignments')
+      .set('Cookie', sessionCookie(1))
+      .send({ place_id: 99 });
     expect(miss.status).toBe(404);
     expect(miss.body).toEqual({ error: 'Place not found' });
   });
@@ -140,7 +161,10 @@ describe('Assignments e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('400 set participants with non-array', async () => {
-    const res = await request(server).put('/api/trips/5/assignments/9/participants').set('Cookie', sessionCookie(1)).send({ user_ids: 'no' });
+    const res = await request(server)
+      .put('/api/trips/5/assignments/9/participants')
+      .set('Cookie', sessionCookie(1))
+      .send({ user_ids: 'no' });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'user_ids must be an array' });
   });

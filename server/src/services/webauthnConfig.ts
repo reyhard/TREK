@@ -18,7 +18,8 @@ import { getAppUrl } from './notifications';
  */
 
 function getSetting(key: string): string | null {
-  const raw = (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)?.value;
+  const raw = (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)
+    ?.value;
   const trimmed = raw?.trim();
   return trimmed ? trimmed : null;
 }

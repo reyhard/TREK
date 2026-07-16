@@ -1,16 +1,17 @@
-import { Injectable } from '@nestjs/common';
-import semver from 'semver';
-import fs from 'node:fs';
-import path from 'node:path';
 import { db } from '../../../db/database';
+import { discoverPlugins } from '../install/discovery';
 import type { PluginDependency } from '../install/manifest';
-import { pluginCodeDir, pluginsCodeRoot, pluginsDataRoot } from '../paths';
+import { parseJsonText, parseManifest } from '../install/manifest';
+import { scanForNativeBinaries } from '../install/native-scan';
+import { extractArchive } from '../install/safe-extract';
 import { safeDownload, sha256Matches } from '../install/safe-fetch';
 import { verifyAuthorSignature } from '../install/verify-signature';
-import { extractArchive } from '../install/safe-extract';
-import { scanForNativeBinaries } from '../install/native-scan';
-import { parseJsonText, parseManifest } from '../install/manifest';
-import { discoverPlugins } from '../install/discovery';
+import { pluginCodeDir, pluginsCodeRoot, pluginsDataRoot } from '../paths';
+import { Injectable } from '@nestjs/common';
+
+import fs from 'node:fs';
+import path from 'node:path';
+import semver from 'semver';
 
 /**
  * TREK-side of the plugin registry (#plugins, M5). Fetches the single aggregated
@@ -113,7 +114,10 @@ export class PluginRegistryService {
     try {
       const url = force ? `${REGISTRY_URL}${REGISTRY_URL.includes('?') ? '&' : '?'}_=${Date.now()}` : REGISTRY_URL;
       const headers: Record<string, string> = { 'User-Agent': 'TREK-Server' };
-      if (force) { headers['Cache-Control'] = 'no-cache'; headers.Pragma = 'no-cache'; }
+      if (force) {
+        headers['Cache-Control'] = 'no-cache';
+        headers.Pragma = 'no-cache';
+      }
       const resp = await fetch(url, { headers });
       if (!resp.ok) throw new Error(`registry ${resp.status}`);
       const data = (await resp.json()) as Registry;
@@ -126,16 +130,35 @@ export class PluginRegistryService {
   }
 
   /** The browse list the admin UI renders (metadata only, no code). */
-  async browse(force = false): Promise<Array<Omit<RegistryEntry, 'versions'> & { latest: string | null; minTrekVersion: string | null; requiredAddons: string[]; pluginDependencies: PluginDependency[]; screenshotUrl: string | null }>> {
+  async browse(force = false): Promise<
+    Array<
+      Omit<RegistryEntry, 'versions'> & {
+        latest: string | null;
+        minTrekVersion: string | null;
+        requiredAddons: string[];
+        pluginDependencies: PluginDependency[];
+        screenshotUrl: string | null;
+      }
+    >
+  > {
     const reg = await this.fetchRegistry(force);
     return reg.plugins.map((p) => {
       const latest = p.versions[0] ?? null;
       return {
-        id: p.id, name: p.name, author: p.author, description: p.description, repo: p.repo,
-        homepage: p.homepage, tags: p.tags, type: p.type, reviewedAt: p.reviewedAt ?? null,
+        id: p.id,
+        name: p.name,
+        author: p.author,
+        description: p.description,
+        repo: p.repo,
+        homepage: p.homepage,
+        tags: p.tags,
+        type: p.type,
+        reviewedAt: p.reviewedAt ?? null,
         downloadCount: p.downloadCount ?? null,
-        latest: latest?.version ?? null, minTrekVersion: latest?.minTrekVersion ?? null,
-        requiredAddons: latest?.requiredAddons ?? [], pluginDependencies: latest?.pluginDependencies ?? [],
+        latest: latest?.version ?? null,
+        minTrekVersion: latest?.minTrekVersion ?? null,
+        requiredAddons: latest?.requiredAddons ?? [],
+        pluginDependencies: latest?.pluginDependencies ?? [],
         screenshotUrl: latest ? rawFileUrl(p.repo, latest.commitSha, 'docs/screenshot.png') : null,
       };
     });
@@ -161,7 +184,10 @@ export class PluginRegistryService {
     let manifest: ManifestPreview | null = null;
     if (latest) {
       try {
-        const { bytes } = await safeDownload(rawFileUrl(entry.repo, latest.commitSha, 'trek-plugin.json'), MANIFEST_MAX_BYTES);
+        const { bytes } = await safeDownload(
+          rawFileUrl(entry.repo, latest.commitSha, 'trek-plugin.json'),
+          MANIFEST_MAX_BYTES,
+        );
         manifest = previewManifest(parseJsonText(bytes.toString('utf8')));
       } catch {
         // Soft-fail: the detail view still renders from registry metadata alone.
@@ -169,12 +195,22 @@ export class PluginRegistryService {
     }
 
     const data = {
-      id: entry.id, name: entry.name, author: entry.author, description: entry.description,
-      repo: entry.repo, homepage: entry.homepage ?? null, tags: entry.tags ?? [], type: entry.type,
-      reviewedAt: entry.reviewedAt ?? null, downloadCount: entry.downloadCount ?? null,
-      latest: latest?.version ?? null, minTrekVersion: latest?.minTrekVersion ?? null,
-      size: latest?.size ?? null, publishedAt: latest?.publishedAt ?? null,
-      requiredAddons: latest?.requiredAddons ?? [], pluginDependencies: latest?.pluginDependencies ?? [],
+      id: entry.id,
+      name: entry.name,
+      author: entry.author,
+      description: entry.description,
+      repo: entry.repo,
+      homepage: entry.homepage ?? null,
+      tags: entry.tags ?? [],
+      type: entry.type,
+      reviewedAt: entry.reviewedAt ?? null,
+      downloadCount: entry.downloadCount ?? null,
+      latest: latest?.version ?? null,
+      minTrekVersion: latest?.minTrekVersion ?? null,
+      size: latest?.size ?? null,
+      publishedAt: latest?.publishedAt ?? null,
+      requiredAddons: latest?.requiredAddons ?? [],
+      pluginDependencies: latest?.pluginDependencies ?? [],
       screenshotUrl: latest ? rawFileUrl(entry.repo, latest.commitSha, 'docs/screenshot.png') : null,
       manifest,
     };
@@ -210,7 +246,10 @@ export class PluginRegistryService {
   }
 
   /** Install a version from the registry. Returns the installed plugin id + version. */
-  async install(id: string, opts?: { version?: string; constraint?: string }): Promise<{ id: string; version: string }> {
+  async install(
+    id: string,
+    opts?: { version?: string; constraint?: string },
+  ): Promise<{ id: string; version: string }> {
     const reg = await this.fetchRegistry();
     const entry = reg.plugins.find((p) => p.id === id);
     if (!entry) throw new RegistryError(`plugin ${id} not in registry`);
@@ -251,7 +290,11 @@ export class PluginRegistryService {
       // 7. register INACTIVE (record provenance)
       discoverPlugins(db);
       db.prepare('UPDATE plugins SET source_repo = ?, source_commit = ?, sha256 = ?, reviewed_at = ? WHERE id = ?').run(
-        entry.repo, ver.commitSha, ver.sha256, entry.reviewedAt ?? null, id,
+        entry.repo,
+        ver.commitSha,
+        ver.sha256,
+        entry.reviewedAt ?? null,
+        id,
       );
       // Pin the author key on first successful install of a signed plugin (TOFU).
       if (entry.authorPublicKey) {
@@ -270,8 +313,13 @@ export class PluginRegistryService {
    * can't be installed; they're collected and returned so the caller can prompt the
    * admin to enable them. Cycle-safe. Already-installed plugins are left untouched.
    */
-  async installWithDependencies(id: string, constraint?: string): Promise<{ installed: string[]; requiredAddons: string[] }> {
-    const installedNow = new Set((db.prepare('SELECT id FROM plugins').all() as Array<{ id: string }>).map((r) => r.id));
+  async installWithDependencies(
+    id: string,
+    constraint?: string,
+  ): Promise<{ installed: string[]; requiredAddons: string[] }> {
+    const installedNow = new Set(
+      (db.prepare('SELECT id FROM plugins').all() as Array<{ id: string }>).map((r) => r.id),
+    );
     const done = new Set<string>();
     const installed: string[] = [];
     const requiredAddons = new Set<string>();
@@ -334,9 +382,9 @@ export class PluginRegistryService {
       // an existing row's status, so replacing a plugin that was active must not
       // leave the new code marked active — the admin re-activates (and re-consents
       // to permissions) explicitly.
-      db.prepare("UPDATE plugins SET source_repo = ?, source_commit = ?, sha256 = ?, reviewed_at = ?, author_pubkey = NULL, status = 'inactive', enabled = 0 WHERE id = ?").run(
-        'local:upload', null, null, null, staged.id,
-      );
+      db.prepare(
+        "UPDATE plugins SET source_repo = ?, source_commit = ?, sha256 = ?, reviewed_at = ?, author_pubkey = NULL, status = 'inactive', enabled = 0 WHERE id = ?",
+      ).run('local:upload', null, null, null, staged.id);
     } finally {
       fs.rmSync(staged.stagingDir, { recursive: true, force: true });
     }
@@ -354,7 +402,9 @@ export class PluginRegistryService {
    *   (author change / rotation / attack; needs an explicit admin re-trust).
    */
   private verifySignatureAndTofu(id: string, bytes: Buffer, entry: RegistryEntry, ver: RegistryVersion): void {
-    const pinned = (db.prepare('SELECT author_pubkey FROM plugins WHERE id = ?').get(id) as { author_pubkey?: string } | undefined)?.author_pubkey ?? null;
+    const pinned =
+      (db.prepare('SELECT author_pubkey FROM plugins WHERE id = ?').get(id) as { author_pubkey?: string } | undefined)
+        ?.author_pubkey ?? null;
 
     if (!entry.authorPublicKey && !ver.signature) {
       if (pinned) throw new RegistryError('this plugin was signed before but the update is unsigned — refusing');
@@ -364,7 +414,9 @@ export class PluginRegistryService {
       throw new RegistryError('incomplete signature: an author key and a version signature must both be present');
     }
     if (pinned && pinned !== entry.authorPublicKey) {
-      throw new RegistryError("the plugin's author signing key changed since it was installed — re-trust it explicitly to continue");
+      throw new RegistryError(
+        "the plugin's author signing key changed since it was installed — re-trust it explicitly to continue",
+      );
     }
     if (!verifyAuthorSignature(bytes, ver.signature, entry.authorPublicKey)) {
       throw new RegistryError('author signature verification failed');
@@ -415,7 +467,10 @@ function previewManifest(raw: unknown): ManifestPreview {
   const pluginDependencies = Array.isArray(m.pluginDependencies)
     ? m.pluginDependencies
         .filter((d): d is Record<string, unknown> => !!d && typeof d === 'object')
-        .map((d) => ({ id: typeof d.id === 'string' ? d.id : '', version: typeof d.version === 'string' ? d.version : '' }))
+        .map((d) => ({
+          id: typeof d.id === 'string' ? d.id : '',
+          version: typeof d.version === 'string' ? d.version : '',
+        }))
         .filter((d) => d.id && d.version)
     : [];
   return {

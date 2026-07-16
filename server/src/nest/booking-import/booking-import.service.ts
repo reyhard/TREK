@@ -1,31 +1,42 @@
-import { Injectable, HttpException } from '@nestjs/common';
-import { broadcast } from '../../websocket';
-import { checkPermission } from '../../services/permissions';
-import { verifyTripAccess } from '../../services/tripAccess';
-import { createReservation } from '../../services/reservationService';
-import { createPlace } from '../../services/placeService';
-import { createBudgetItem, freezeForeignRate } from '../../services/budgetService';
-import { isAddonEnabled } from '../../services/adminService';
 import { ADDON_IDS } from '../../addons';
-import { searchNominatim } from '../../services/mapsService';
 import { db } from '../../db/database';
+import { isAddonEnabled } from '../../services/adminService';
+import { createBudgetItem, freezeForeignRate } from '../../services/budgetService';
+import { searchNominatim } from '../../services/mapsService';
+import { checkPermission } from '../../services/permissions';
+import { createPlace } from '../../services/placeService';
+import { createReservation } from '../../services/reservationService';
+import { verifyTripAccess } from '../../services/tripAccess';
 import type { User } from '../../types';
-import { KitineraryExtractorService } from './kitinerary-extractor.service';
+import { broadcast } from '../../websocket';
 import { LlmParseService } from '../llm-parse/llm-parse.service';
+import { KitineraryExtractorService } from './kitinerary-extractor.service';
 import { mapReservations } from './kitinerary-mapper';
-import { typeToCostCategory } from '@trek/shared';
-import type { BookingImportPreviewItem, BookingImportPreviewResponse, BookingImportConfirmResponse, BookingImportMode, BookingImportFileReport, Reservation } from '@trek/shared';
 import type { ParsedBookingItem, KiReservation } from './kitinerary.types';
+import { Injectable, HttpException } from '@nestjs/common';
+import { typeToCostCategory } from '@trek/shared';
+import type {
+  BookingImportPreviewItem,
+  BookingImportPreviewResponse,
+  BookingImportConfirmResponse,
+  BookingImportMode,
+  BookingImportFileReport,
+  Reservation,
+} from '@trek/shared';
 
 function resolveDayId(tripId: string, iso: string | null | undefined): number | null {
   if (!iso) return null;
   const date = iso.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  const exact = db.prepare('SELECT id FROM days WHERE trip_id = ? AND date = ? LIMIT 1').get(tripId, date) as { id: number } | undefined;
+  const exact = db.prepare('SELECT id FROM days WHERE trip_id = ? AND date = ? LIMIT 1').get(tripId, date) as
+    | { id: number }
+    | undefined;
   if (exact) return exact.id;
   // Clamp to the nearest trip day so an out-of-range / unmatched check-in still
   // resolves and the accommodation row is inserted.
-  const nearest = db.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY ABS(JULIANDAY(date) - JULIANDAY(?)) ASC, date ASC LIMIT 1').get(tripId, date) as { id: number } | undefined;
+  const nearest = db
+    .prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY ABS(JULIANDAY(date) - JULIANDAY(?)) ASC, date ASC LIMIT 1')
+    .get(tripId, date) as { id: number } | undefined;
   return nearest?.id ?? null;
 }
 
@@ -87,7 +98,9 @@ export class BookingImportService {
         try {
           kiItems = await this.extractor.extract(file.buffer, file.originalname);
         } catch (err) {
-          allWarnings.push(`${file.originalname}: extraction failed — ${err instanceof Error ? err.message : String(err)}`);
+          allWarnings.push(
+            `${file.originalname}: extraction failed — ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
 
@@ -200,16 +213,25 @@ export class BookingImportService {
         // Build create_accommodation for hotel reservations.
         // start_day_id / end_day_id are resolved from check-in/out ISO dates so
         // the accommodation row is actually inserted (createReservation gates on them).
-        let createAccommodation: { place_id?: number; start_day_id?: number; end_day_id?: number; check_in?: string; check_out?: string; confirmation?: string } | undefined;
+        let createAccommodation:
+          | {
+              place_id?: number;
+              start_day_id?: number;
+              end_day_id?: number;
+              check_in?: string;
+              check_out?: string;
+              confirmation?: string;
+            }
+          | undefined;
         if (item.type === 'hotel' && _accommodation) {
           const startDayId = resolveDayId(tripId, _accommodation.check_in);
-          const endDayId   = resolveDayId(tripId, _accommodation.check_out);
+          const endDayId = resolveDayId(tripId, _accommodation.check_out);
           createAccommodation = {
             place_id: placeId,
             start_day_id: startDayId ?? undefined,
-            end_day_id:   endDayId   ?? undefined,
-            check_in:     _accommodation.check_in,
-            check_out:    _accommodation.check_out,
+            end_day_id: endDayId ?? undefined,
+            check_in: _accommodation.check_in,
+            check_out: _accommodation.check_out,
             confirmation: _accommodation.confirmation,
           };
         }
@@ -258,7 +280,10 @@ export class BookingImportService {
 
         created.push(reservation);
       } catch (err) {
-        console.error(`[booking-import] Failed to create reservation "${item.title}":`, err instanceof Error ? err.message : err);
+        console.error(
+          `[booking-import] Failed to create reservation "${item.title}":`,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 

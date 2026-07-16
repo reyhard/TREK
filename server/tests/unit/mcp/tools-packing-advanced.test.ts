@@ -5,6 +5,12 @@
  * set_packing_category_assignees, apply_packing_template, save_packing_template,
  * bulk_import_packing.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { createUser, createAdmin, createTrip, createPackingItem } from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -19,7 +25,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -35,12 +45,6 @@ vi.mock('../../../src/config', () => ({
 
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createAdmin, createTrip, createPackingItem } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 
 beforeAll(() => {
   createTables(testDb);
@@ -59,7 +63,11 @@ afterAll(() => {
 
 async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: false });
-  try { await fn(h); } finally { await h.cleanup(); }
+  try {
+    await fn(h);
+  } finally {
+    await h.cleanup();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +127,9 @@ describe('Tool: list_packing_bags', () => {
   it('returns bags that exist', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    testDb.prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)').run(trip.id, 'Carry-on', '#ff0000');
+    testDb
+      .prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)')
+      .run(trip.id, 'Carry-on', '#ff0000');
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
         name: 'list_packing_bags',
@@ -189,7 +199,9 @@ describe('Tool: update_packing_bag', () => {
   it('updates bag name and broadcasts', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const r = testDb.prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)').run(trip.id, 'Old Name', '#aabbcc');
+    const r = testDb
+      .prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)')
+      .run(trip.id, 'Old Name', '#aabbcc');
     const bag = testDb.prepare('SELECT * FROM packing_bags WHERE id = ?').get(r.lastInsertRowid) as any;
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
@@ -225,7 +237,9 @@ describe('Tool: delete_packing_bag', () => {
   it('deletes a bag and broadcasts', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const r = testDb.prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)').run(trip.id, 'Delete Me', '#000000');
+    const r = testDb
+      .prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)')
+      .run(trip.id, 'Delete Me', '#000000');
     const bagId = r.lastInsertRowid as number;
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
@@ -261,7 +275,9 @@ describe('Tool: set_bag_members', () => {
   it('sets bag members and broadcasts', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const r = testDb.prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)').run(trip.id, 'My Bag', '#123456');
+    const r = testDb
+      .prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)')
+      .run(trip.id, 'My Bag', '#123456');
     const bagId = r.lastInsertRowid as number;
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
@@ -271,14 +287,20 @@ describe('Tool: set_bag_members', () => {
       const data = parseToolResult(result) as any;
       // Returns the hydrated members list (REST parity), not { success }.
       expect(data.members.map((m: any) => m.user_id)).toEqual([user.id]);
-      expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'packing:bag-members-updated', expect.objectContaining({ members: expect.any(Array) }));
+      expect(broadcastMock).toHaveBeenCalledWith(
+        trip.id,
+        'packing:bag-members-updated',
+        expect.objectContaining({ members: expect.any(Array) }),
+      );
     });
   });
 
   it('clears bag members when passed empty array', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const r = testDb.prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)').run(trip.id, 'My Bag', '#123456');
+    const r = testDb
+      .prepare('INSERT INTO packing_bags (trip_id, name, color) VALUES (?, ?, ?)')
+      .run(trip.id, 'My Bag', '#123456');
     const bagId = r.lastInsertRowid as number;
     testDb.prepare('INSERT OR IGNORE INTO packing_bag_members (bag_id, user_id) VALUES (?, ?)').run(bagId, user.id);
     await withHarness(user.id, async (h) => {
@@ -327,14 +349,20 @@ describe('Tool: set_packing_category_assignees', () => {
       const data = parseToolResult(result) as any;
       // Returns the hydrated assignees list (REST parity), not { success }.
       expect(data.assignees.map((a: any) => a.user_id)).toEqual([user.id]);
-      expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'packing:assignees', expect.objectContaining({ category: 'Clothing', assignees: expect.any(Array) }));
+      expect(broadcastMock).toHaveBeenCalledWith(
+        trip.id,
+        'packing:assignees',
+        expect.objectContaining({ category: 'Clothing', assignees: expect.any(Array) }),
+      );
     });
   });
 
   it('clears assignees when passed empty array', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    testDb.prepare('INSERT INTO packing_category_assignees (trip_id, category_name, user_id) VALUES (?, ?, ?)').run(trip.id, 'Clothing', user.id);
+    testDb
+      .prepare('INSERT INTO packing_category_assignees (trip_id, category_name, user_id) VALUES (?, ?, ?)')
+      .run(trip.id, 'Clothing', user.id);
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
         name: 'set_packing_category_assignees',
@@ -449,15 +477,19 @@ describe('Tool: list_packing_templates', () => {
     const trip = createTrip(testDb, user.id);
     createPackingItem(testDb, trip.id, { name: 'Toothbrush', category: 'Toiletries' });
     await withHarness(user.id, async (h) => {
-      const saved = parseToolResult(await h.client.callTool({
-        name: 'save_packing_template',
-        arguments: { tripId: trip.id, templateName: 'Beach' },
-      })) as any;
+      const saved = parseToolResult(
+        await h.client.callTool({
+          name: 'save_packing_template',
+          arguments: { tripId: trip.id, templateName: 'Beach' },
+        }),
+      ) as any;
 
-      const listed = parseToolResult(await h.client.callTool({
-        name: 'list_packing_templates',
-        arguments: { tripId: trip.id },
-      })) as any;
+      const listed = parseToolResult(
+        await h.client.callTool({
+          name: 'list_packing_templates',
+          arguments: { tripId: trip.id },
+        }),
+      ) as any;
       expect(listed.templates.some((t: any) => t.id === saved.template.id && t.name === 'Beach')).toBe(true);
     });
   });
@@ -483,16 +515,20 @@ describe('Tool: delete_packing_template', () => {
     const trip = createTrip(testDb, user.id);
     createPackingItem(testDb, trip.id, { name: 'Toothbrush', category: 'Toiletries' });
     await withHarness(user.id, async (h) => {
-      const saved = parseToolResult(await h.client.callTool({
-        name: 'save_packing_template',
-        arguments: { tripId: trip.id, templateName: 'Ski' },
-      })) as any;
+      const saved = parseToolResult(
+        await h.client.callTool({
+          name: 'save_packing_template',
+          arguments: { tripId: trip.id, templateName: 'Ski' },
+        }),
+      ) as any;
       const id = saved.template.id;
 
-      const deleted = parseToolResult(await h.client.callTool({
-        name: 'delete_packing_template',
-        arguments: { templateId: id },
-      })) as any;
+      const deleted = parseToolResult(
+        await h.client.callTool({
+          name: 'delete_packing_template',
+          arguments: { templateId: id },
+        }),
+      ) as any;
       expect(deleted.success).toBe(true);
       const remaining = testDb.prepare('SELECT count(*) as cnt FROM packing_templates WHERE id = ?').get(id) as any;
       expect(remaining.cnt).toBe(0);
@@ -547,7 +583,11 @@ describe('Tool: bulk_import_packing', () => {
       expect(Array.isArray(data.items)).toBe(true);
       expect(data.items).toHaveLength(items.length);
       expect(data.items[0].name).toBe('Passport');
-      expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'packing:created', expect.objectContaining({ item: expect.any(Object) }));
+      expect(broadcastMock).toHaveBeenCalledWith(
+        trip.id,
+        'packing:created',
+        expect.objectContaining({ item: expect.any(Object) }),
+      );
       expect(broadcastMock).toHaveBeenCalledTimes(items.length);
     });
   });

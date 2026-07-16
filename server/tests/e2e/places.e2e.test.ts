@@ -4,12 +4,15 @@
  * journeyService, the permission check, canAccessTrip and the WebSocket
  * broadcast are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { PlacesModule } from '../../src/nest/places/places.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -23,25 +26,39 @@ const { db } = vi.hoisted(() => {
 
 const { canAccessTrip } = vi.hoisted(() => ({ canAccessTrip: vi.fn() }));
 vi.mock('../../src/db/database', () => ({
-  db, canAccessTrip, isOwner: vi.fn(() => true), getPlaceWithTags: vi.fn(), closeDb: () => {}, reinitialize: () => {},
+  db,
+  canAccessTrip,
+  isOwner: vi.fn(() => true),
+  getPlaceWithTags: vi.fn(),
+  closeDb: () => {},
+  reinitialize: () => {},
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn() }));
-vi.mock('../../src/services/journeyService', () => ({ onPlaceCreated: vi.fn(), onPlaceUpdated: vi.fn(), onPlaceDeleted: vi.fn() }));
+vi.mock('../../src/services/journeyService', () => ({
+  onPlaceCreated: vi.fn(),
+  onPlaceUpdated: vi.fn(),
+  onPlaceDeleted: vi.fn(),
+}));
 
 const { checkPermission } = vi.hoisted(() => ({ checkPermission: vi.fn() }));
 vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { pl } = vi.hoisted(() => ({
   pl: {
-    listPlaces: vi.fn(), createPlace: vi.fn(), getPlace: vi.fn(), updatePlace: vi.fn(), deletePlace: vi.fn(),
-    deletePlacesMany: vi.fn(), importGpx: vi.fn(), importMapFile: vi.fn(), importGoogleList: vi.fn(),
-    importNaverList: vi.fn(), searchPlaceImage: vi.fn(),
+    listPlaces: vi.fn(),
+    createPlace: vi.fn(),
+    getPlace: vi.fn(),
+    updatePlace: vi.fn(),
+    deletePlace: vi.fn(),
+    deletePlacesMany: vi.fn(),
+    importGpx: vi.fn(),
+    importMapFile: vi.fn(),
+    importGoogleList: vi.fn(),
+    importNaverList: vi.fn(),
+    searchPlaceImage: vi.fn(),
   },
 }));
 vi.mock('../../src/services/placeService', () => pl);
-
-import { PlacesModule } from '../../src/nest/places/places.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Places e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -88,19 +105,31 @@ describe('Places e2e (real auth guard + temp SQLite)', () => {
     const ok = await request(server).post('/api/trips/5/places').set('Cookie', sessionCookie(1)).send({ name: 'Spot' });
     expect(ok.status).toBe(201);
     expect(ok.body).toEqual({ place: { id: 9, name: 'Spot' } });
-    const long = await request(server).post('/api/trips/5/places').set('Cookie', sessionCookie(1)).send({ name: 'x'.repeat(201) });
+    const long = await request(server)
+      .post('/api/trips/5/places')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'x'.repeat(201) });
     expect(long.status).toBe(400);
     expect(long.body).toEqual({ error: 'name must be 200 characters or less' });
     checkPermission.mockReturnValue(false);
-    const forbidden = await request(server).post('/api/trips/5/places').set('Cookie', sessionCookie(1)).send({ name: 'Spot' });
+    const forbidden = await request(server)
+      .post('/api/trips/5/places')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Spot' });
     expect(forbidden.status).toBe(403);
   });
 
   it('200 (not 201) bulk-delete, 400 on bad ids', async () => {
-    const ok = await request(server).post('/api/trips/5/places/bulk-delete').set('Cookie', sessionCookie(1)).send({ ids: [1, 2] });
+    const ok = await request(server)
+      .post('/api/trips/5/places/bulk-delete')
+      .set('Cookie', sessionCookie(1))
+      .send({ ids: [1, 2] });
     expect(ok.status).toBe(200);
     expect(ok.body).toEqual({ deleted: [1, 2], count: 2 });
-    const bad = await request(server).post('/api/trips/5/places/bulk-delete').set('Cookie', sessionCookie(1)).send({ ids: ['a'] });
+    const bad = await request(server)
+      .post('/api/trips/5/places/bulk-delete')
+      .set('Cookie', sessionCookie(1))
+      .send({ ids: ['a'] });
     expect(bad.status).toBe(400);
     expect(bad.body).toEqual({ error: 'ids must be an array of numbers' });
   });

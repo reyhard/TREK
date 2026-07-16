@@ -1,4 +1,5 @@
 import { canAccessTrip } from '../../db/database';
+import { isDemoUser } from '../../services/authService';
 import { getDay } from '../../services/dayService';
 import { checkTransitUsage } from '../../services/transitRateLimit';
 import {
@@ -14,7 +15,6 @@ import {
 } from '../../services/transitReservationService';
 import * as transit from '../../services/transitService';
 import { localDateTimeToUtc, resolveTransitTimezone } from '../../services/transitTime';
-import { isDemoUser } from '../../services/authService';
 import { canRead, canWrite } from '../scopes';
 import {
   demoDenied,
@@ -99,139 +99,141 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
   const canPlaces = canRead(scopes, 'places');
   const canReservations = canWrite(scopes, 'reservations');
 
-  if (canPlaces) server.registerTool(
-    'search_transit_stops',
-    {
-      description: 'Search public-transit stops and stations by name. Optionally bias results near coordinates.',
-      inputSchema: {
-        query: z.string().trim().min(2).max(200),
-        language: z.string().trim().min(2).max(5).optional(),
-        near: z
-          .object({
-            lat: z.number().finite().min(-90).max(90),
-            lng: z.number().finite().min(-180).max(180),
-          })
-          .strict()
-          .optional(),
+  if (canPlaces)
+    server.registerTool(
+      'search_transit_stops',
+      {
+        description: 'Search public-transit stops and stations by name. Optionally bias results near coordinates.',
+        inputSchema: {
+          query: z.string().trim().min(2).max(200),
+          language: z.string().trim().min(2).max(5).optional(),
+          near: z
+            .object({
+              lat: z.number().finite().min(-90).max(90),
+              lng: z.number().finite().min(-180).max(180),
+            })
+            .strict()
+            .optional(),
+        },
+        annotations: TOOL_ANNOTATIONS_READONLY,
       },
-      annotations: TOOL_ANNOTATIONS_READONLY,
-    },
-    async ({ query, language, near }) => {
-      try {
-        if (!checkTransitUsage('geocode', `mcp:user:${userId}`)) {
-          return mcpError('Transit provider rate limit exceeded. Try again later.');
-        }
+      async ({ query, language, near }) => {
         try {
-          return ok(await transit.geocode(query, language, near ? `${near.lat},${near.lng}` : undefined));
+          if (!checkTransitUsage('geocode', `mcp:user:${userId}`)) {
+            return mcpError('Transit provider rate limit exceeded. Try again later.');
+          }
+          try {
+            return ok(await transit.geocode(query, language, near ? `${near.lat},${near.lng}` : undefined));
+          } catch (error) {
+            const provider = providerErrorMessage(error);
+            if (provider) return mcpError(provider);
+            throw error;
+          }
         } catch (error) {
-          const provider = providerErrorMessage(error);
-          if (provider) return mcpError(provider);
-          throw error;
+          const expected = expectedTransitErrorMessage(error);
+          if (expected) return mcpError(expected);
+          console.error('[MCP] transit stop search failed:', error);
+          return mcpError('Failed to search transit stops.');
         }
-      } catch (error) {
-        const expected = expectedTransitErrorMessage(error);
-        if (expected) return mcpError(expected);
-        console.error('[MCP] transit stop search failed:', error);
-        return mcpError('Failed to search transit stops.');
-      }
-    },
-  );
-
-  if (canPlaces) server.registerTool(
-    'plan_transit_route',
-    {
-      description:
-        'Plan and rank public-transit route candidates for a dated trip day. Returns every candidate for selection and does not save a route.',
-      inputSchema: {
-        tripId: z.number().int().positive(),
-        dayId: z.number().int().positive(),
-        from: endpointReferenceSchema,
-        to: endpointReferenceSchema,
-        time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
-        timeMode: timeModeSchema,
-        modes: z.array(modeGroupSchema).min(1).max(6).optional(),
-        preference: preferenceSchema,
-        maxTransfers: z.number().int().min(0).max(10).optional(),
       },
-      annotations: TOOL_ANNOTATIONS_READONLY,
-    },
-    async ({ tripId, dayId, from, to, time, timeMode, modes, preference, maxTransfers }) => {
-      try {
-        if (!canAccessTrip(tripId, userId)) return noAccess();
+    );
 
-        const day = getDay(dayId, tripId);
-        if (!day) return mcpError('Day does not belong to this trip.');
-        if (!day.date) return mcpError('The selected day has no date.');
-
-        const resolvedFrom = resolveTransitEndpoint(tripId, from, 'Origin');
-        const resolvedTo = resolveTransitEndpoint(tripId, to, 'Destination');
-        const anchorZone =
-          timeMode === 'arrive_by'
-            ? resolveTransitTimezone(resolvedTo.lat, resolvedTo.lng)
-            : resolveTransitTimezone(resolvedFrom.lat, resolvedFrom.lng);
-        const timeIso = localDateTimeToUtc(day.date, time, anchorZone);
-        const transitModes = mapTransitModeGroups(modes);
-
-        if (!checkTransitUsage('plan', `mcp:user:${userId}`)) {
-          return mcpError('Transit provider rate limit exceeded. Try again later.');
-        }
-
-        let result;
+  if (canPlaces)
+    server.registerTool(
+      'plan_transit_route',
+      {
+        description:
+          'Plan and rank public-transit route candidates for a dated trip day. Returns every candidate for selection and does not save a route.',
+        inputSchema: {
+          tripId: z.number().int().positive(),
+          dayId: z.number().int().positive(),
+          from: endpointReferenceSchema,
+          to: endpointReferenceSchema,
+          time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+          timeMode: timeModeSchema,
+          modes: z.array(modeGroupSchema).min(1).max(6).optional(),
+          preference: preferenceSchema,
+          maxTransfers: z.number().int().min(0).max(10).optional(),
+        },
+        annotations: TOOL_ANNOTATIONS_READONLY,
+      },
+      async ({ tripId, dayId, from, to, time, timeMode, modes, preference, maxTransfers }) => {
         try {
-          result = await transit.plan({
-            from: `${resolvedFrom.lat},${resolvedFrom.lng}`,
-            to: `${resolvedTo.lat},${resolvedTo.lng}`,
-            time: timeIso,
-            arriveBy: timeMode === 'arrive_by',
-            modes: transitModes,
-            maxTransfers,
+          if (!canAccessTrip(tripId, userId)) return noAccess();
+
+          const day = getDay(dayId, tripId);
+          if (!day) return mcpError('Day does not belong to this trip.');
+          if (!day.date) return mcpError('The selected day has no date.');
+
+          const resolvedFrom = resolveTransitEndpoint(tripId, from, 'Origin');
+          const resolvedTo = resolveTransitEndpoint(tripId, to, 'Destination');
+          const anchorZone =
+            timeMode === 'arrive_by'
+              ? resolveTransitTimezone(resolvedTo.lat, resolvedTo.lng)
+              : resolveTransitTimezone(resolvedFrom.lat, resolvedFrom.lng);
+          const timeIso = localDateTimeToUtc(day.date, time, anchorZone);
+          const transitModes = mapTransitModeGroups(modes);
+
+          if (!checkTransitUsage('plan', `mcp:user:${userId}`)) {
+            return mcpError('Transit provider rate limit exceeded. Try again later.');
+          }
+
+          let result;
+          try {
+            result = await transit.plan({
+              from: `${resolvedFrom.lat},${resolvedFrom.lng}`,
+              to: `${resolvedTo.lat},${resolvedTo.lng}`,
+              time: timeIso,
+              arriveBy: timeMode === 'arrive_by',
+              modes: transitModes,
+              maxTransfers,
+            });
+          } catch (error) {
+            const provider = providerErrorMessage(error);
+            if (provider) return mcpError(provider);
+            throw error;
+          }
+          const cleaned = result.itineraries.map((item) => {
+            const normalized = normalizeTransitItinerary(item);
+            return {
+              ...normalized,
+              legs: normalized.legs.map((leg) => ({
+                ...leg,
+                from: { ...leg.from, name: leg.from.name === 'START' ? resolvedFrom.name : leg.from.name },
+                to: { ...leg.to, name: leg.to.name === 'END' ? resolvedTo.name : leg.to.name },
+              })),
+            };
+          });
+          const ranked = rankTransitItineraries(cleaned, preference);
+          const query = {
+            tripId,
+            dayId,
+            date: day.date,
+            time,
+            timeMode,
+            preference,
+            modes: modes ?? ALL_MODE_GROUPS,
+            ...(maxTransfers === undefined ? {} : { maxTransfers }),
+          };
+
+          return ok({
+            query,
+            from: resolvedFrom,
+            to: resolvedTo,
+            itineraries: ranked.map((item, routeIndex) => ({
+              routeIndex,
+              summary: summarizeTransitItinerary(item),
+              ...item,
+            })),
           });
         } catch (error) {
-          const provider = providerErrorMessage(error);
-          if (provider) return mcpError(provider);
-          throw error;
+          const expected = expectedTransitErrorMessage(error);
+          if (expected) return mcpError(expected);
+          console.error('[MCP] transit route planning failed:', error);
+          return mcpError('Failed to plan transit route.');
         }
-        const cleaned = result.itineraries.map((item) => {
-          const normalized = normalizeTransitItinerary(item);
-          return {
-            ...normalized,
-            legs: normalized.legs.map((leg) => ({
-              ...leg,
-              from: { ...leg.from, name: leg.from.name === 'START' ? resolvedFrom.name : leg.from.name },
-              to: { ...leg.to, name: leg.to.name === 'END' ? resolvedTo.name : leg.to.name },
-            })),
-          };
-        });
-        const ranked = rankTransitItineraries(cleaned, preference);
-        const query = {
-          tripId,
-          dayId,
-          date: day.date,
-          time,
-          timeMode,
-          preference,
-          modes: modes ?? ALL_MODE_GROUPS,
-          ...(maxTransfers === undefined ? {} : { maxTransfers }),
-        };
-
-        return ok({
-          query,
-          from: resolvedFrom,
-          to: resolvedTo,
-          itineraries: ranked.map((item, routeIndex) => ({
-            routeIndex,
-            summary: summarizeTransitItinerary(item),
-            ...item,
-          })),
-        });
-      } catch (error) {
-        const expected = expectedTransitErrorMessage(error);
-        if (expected) return mcpError(expected);
-        console.error('[MCP] transit route planning failed:', error);
-        return mcpError('Failed to plan transit route.');
-      }
-    },
-  );
+      },
+    );
 
   if (!canReservations) return;
 

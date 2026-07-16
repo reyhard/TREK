@@ -1,4 +1,5 @@
 import { ArgumentMetadata, HttpException, Injectable, PipeTransform } from '@nestjs/common';
+
 import type { ZodType } from 'zod';
 
 /**
@@ -18,9 +19,7 @@ export class ZodValidationPipe implements PipeTransform {
   transform(value: unknown, _metadata: ArgumentMetadata): unknown {
     const result = this.schema.safeParse(value);
     if (!result.success) {
-      const message = result.error.issues
-        .map((i) => `${i.path.join('.') || 'body'}: ${i.message}`)
-        .join('; ');
+      const message = result.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
       throw new HttpException({ error: message }, 400);
     }
     return result.data;

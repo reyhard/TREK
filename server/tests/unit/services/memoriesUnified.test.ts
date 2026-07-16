@@ -2,6 +2,20 @@
  * Unit tests for memories/unifiedService — MEM-UNIFIED-001 to MEM-UNIFIED-010.
  * Covers error paths: access denied, disabled provider, no providers enabled.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  listTripPhotos,
+  listTripAlbumLinks,
+  addTripPhotos,
+  setTripPhotoSharing,
+  removeTripPhoto,
+  createTripAlbumLink,
+  removeAlbumLink,
+} from '../../../src/services/memories/unifiedService';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup ─────────────────────────────────────────────────────────────────
@@ -18,11 +32,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`
+      db
+        .prepare(
+          `
         SELECT t.id FROM trips t
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?
         WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)
-      `).get(userId, tripId, userId),
+      `,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -39,20 +57,6 @@ vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn() }));
 vi.mock('../../../src/services/notificationService', () => ({
   send: vi.fn().mockResolvedValue(undefined),
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import {
-  listTripPhotos,
-  listTripAlbumLinks,
-  addTripPhotos,
-  setTripPhotoSharing,
-  removeTripPhoto,
-  createTripAlbumLink,
-  removeAlbumLink,
-} from '../../../src/services/memories/unifiedService';
 
 beforeAll(() => {
   createTables(testDb);
@@ -127,9 +131,11 @@ describe('addTripPhotos', () => {
     const trip = createTrip(testDb, user.id);
 
     // Insert a disabled provider
-    testDb.prepare(
-      'INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run('disabled-prov', 'Disabled', 'Disabled provider', 'Image', 0, 99);
+    testDb
+      .prepare(
+        'INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run('disabled-prov', 'Disabled', 'Disabled provider', 'Image', 0, 99);
 
     const result = await addTripPhotos(
       String(trip.id),
@@ -195,9 +201,11 @@ describe('createTripAlbumLink', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    testDb.prepare(
-      'INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run('disabled-prov2', 'Disabled2', 'desc', 'Image', 0, 100);
+    testDb
+      .prepare(
+        'INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run('disabled-prov2', 'Disabled2', 'desc', 'Image', 0, 100);
 
     const result = createTripAlbumLink(String(trip.id), user.id, 'disabled-prov2', 'album-1', 'My Album');
     expect(result.success).toBe(false);

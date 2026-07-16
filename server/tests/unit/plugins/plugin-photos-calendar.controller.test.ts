@@ -4,14 +4,14 @@
  * mandatory hardening: image URLs are http/https only, fields are normalized/length-capped,
  * counts are capped, and a slow/failing source is skipped rather than fatal.
  */
+import { PluginCalendarController } from '../../../src/nest/plugins/plugin-calendar.controller';
+import { PluginPhotosController } from '../../../src/nest/plugins/plugin-photos.controller';
+import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { pluginsEnabled } = vi.hoisted(() => ({ pluginsEnabled: vi.fn(() => true) }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled }));
-
-import { PluginPhotosController } from '../../../src/nest/plugins/plugin-photos.controller';
-import { PluginCalendarController } from '../../../src/nest/plugins/plugin-calendar.controller';
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const req = (id?: number) => ({ user: id === undefined ? undefined : { id } }) as any;
@@ -38,27 +38,48 @@ describe('PluginPhotosController (photoProvider hook)', () => {
     const photos = [
       { id: 'a', title: 'Sunset', thumbnailUrl: 'https://x/t.jpg', fullUrl: 'https://x/f.jpg', takenAt: '2026-01-01' },
       { id: 'evil', thumbnailUrl: 'javascript:alert(1)', fullUrl: 'https://x/f.jpg' }, // bad thumb → dropped
-      { id: 'nofull', thumbnailUrl: 'https://x/t.jpg', fullUrl: 'data:image/png,x' },   // bad full → dropped
-      { title: 'noid', thumbnailUrl: 'https://x/t.jpg', fullUrl: 'https://x/f.jpg' },    // no id → dropped
+      { id: 'nofull', thumbnailUrl: 'https://x/t.jpg', fullUrl: 'data:image/png,x' }, // bad full → dropped
+      { title: 'noid', thumbnailUrl: 'https://x/t.jpg', fullUrl: 'https://x/f.jpg' }, // no id → dropped
     ];
-    const c = new PluginPhotosController(runtime(['pics'], (_id, fn) => (fn === 'search' ? { photos, total: 99, hasMore: true } : null)));
+    const c = new PluginPhotosController(
+      runtime(['pics'], (_id, fn) => (fn === 'search' ? { photos, total: 99, hasMore: true } : null)),
+    );
     const out = (await c.search('sun', '1', req(5))).providers;
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ pluginId: 'pics', total: 99, hasMore: true });
     expect(out[0].photos).toHaveLength(1);
-    expect(out[0].photos[0]).toEqual({ id: 'a', pluginId: 'pics', title: 'Sunset', thumbnailUrl: 'https://x/t.jpg', fullUrl: 'https://x/f.jpg', takenAt: '2026-01-01' });
+    expect(out[0].photos[0]).toEqual({
+      id: 'a',
+      pluginId: 'pics',
+      title: 'Sunset',
+      thumbnailUrl: 'https://x/t.jpg',
+      fullUrl: 'https://x/f.jpg',
+      takenAt: '2026-01-01',
+    });
   });
 
   it('passes the query + page to the hook and skips a source that throws', async () => {
-    const rt = runtime(['ok', 'bad'], (id, _fn) => { if (id === 'bad') throw new Error('slow'); return { photos: [{ id: '1', thumbnailUrl: 'https://x/t', fullUrl: 'https://x/f' }] }; });
+    const rt = runtime(['ok', 'bad'], (id, _fn) => {
+      if (id === 'bad') throw new Error('slow');
+      return { photos: [{ id: '1', thumbnailUrl: 'https://x/t', fullUrl: 'https://x/f' }] };
+    });
     const c = new PluginPhotosController(rt);
     const out = (await c.search('beach', '3', req(7))).providers;
     expect(out.map((p) => p.pluginId)).toEqual(['ok']);
-    expect(rt.invokeHook).toHaveBeenCalledWith('ok', 'photoProvider', 'search', ['beach', { page: 3, limit: 60 }], 7, 5000);
+    expect(rt.invokeHook).toHaveBeenCalledWith(
+      'ok',
+      'photoProvider',
+      'search',
+      ['beach', { page: 3, limit: 60 }],
+      7,
+      5000,
+    );
   });
 
   it('item: returns one normalized photo from a known provider, null for an unknown one', async () => {
-    const c = new PluginPhotosController(runtime(['pics'], () => ({ id: 'z', thumbnailUrl: 'https://x/t', fullUrl: 'https://x/f' })));
+    const c = new PluginPhotosController(
+      runtime(['pics'], () => ({ id: 'z', thumbnailUrl: 'https://x/t', fullUrl: 'https://x/f' })),
+    );
     expect((await c.item('pics', 'z', req(5))).photo).toMatchObject({ id: 'z', pluginId: 'pics' });
     expect((await c.item('ghost', 'z', req(5))).photo).toBeNull(); // not a granted provider
   });
@@ -81,12 +102,26 @@ describe('PluginCalendarController (calendarSource hook)', () => {
     expect(out[0].events).toHaveLength(1);
     expect(out[0].events[0]).toMatchObject({ id: 'e1', title: 'Flight', allDay: false });
     // getEvents got the user + the window
-    expect(rt.invokeHook).toHaveBeenCalledWith('cal', 'calendarSource', 'getEvents', [9, '2026-07-01T00:00:00Z', '2026-08-01T00:00:00Z'], 9, 5000);
+    expect(rt.invokeHook).toHaveBeenCalledWith(
+      'cal',
+      'calendarSource',
+      'getEvents',
+      [9, '2026-07-01T00:00:00Z', '2026-08-01T00:00:00Z'],
+      9,
+      5000,
+    );
   });
 
   it('gates on user + plugins-enabled, and skips a failing source', async () => {
-    expect(await new PluginCalendarController(runtime(['c'], () => [])).get(undefined, undefined, req(undefined))).toEqual({ sources: [] });
-    const rt = runtime(['a', 'b'], (id, fn) => { if (id === 'b' && fn === 'getEvents') throw new Error('boom'); return fn === 'getName' ? 'A' : [{ id: '1', title: 't', start: '2026-01-01T00:00:00Z', end: '2026-01-01T01:00:00Z' }]; });
+    expect(
+      await new PluginCalendarController(runtime(['c'], () => [])).get(undefined, undefined, req(undefined)),
+    ).toEqual({ sources: [] });
+    const rt = runtime(['a', 'b'], (id, fn) => {
+      if (id === 'b' && fn === 'getEvents') throw new Error('boom');
+      return fn === 'getName'
+        ? 'A'
+        : [{ id: '1', title: 't', start: '2026-01-01T00:00:00Z', end: '2026-01-01T01:00:00Z' }];
+    });
     const out = (await new PluginCalendarController(rt).get(undefined, undefined, req(5))).sources;
     expect(out.map((s) => s.pluginId)).toEqual(['a']); // b threw → skipped; defaults window used
   });

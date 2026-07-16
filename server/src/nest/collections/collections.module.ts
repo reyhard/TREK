@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
+import { CollectionsAddonGuard } from './collections-addon.guard';
 import { CollectionsController } from './collections.controller';
 import { CollectionsService } from './collections.service';
-import { CollectionsAddonGuard } from './collections-addon.guard';
+import { Module } from '@nestjs/common';
 
 @Module({
   controllers: [CollectionsController],

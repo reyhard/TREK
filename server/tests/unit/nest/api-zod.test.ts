@@ -2,14 +2,17 @@
  * zodToOpenApi (#1412): Zod → OpenAPI 3.0 conversion + the degrade path.
  * The end-to-end enricher behaviour is covered by tests/integration/api-docs.
  */
+import { zodToOpenApi } from '../../../src/nest/common/api-zod';
+
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { zodToOpenApi } from '../../../src/nest/common/api-zod';
 
 describe('zodToOpenApi', () => {
   it('converts an object schema with required/optional split', () => {
     const out = zodToOpenApi(z.object({ name: z.string(), count: z.number().optional() })) as {
-      type: string; properties: Record<string, unknown>; required: string[];
+      type: string;
+      properties: Record<string, unknown>;
+      required: string[];
     };
     expect(out.type).toBe('object');
     expect(out.properties.name).toEqual({ type: 'string' });

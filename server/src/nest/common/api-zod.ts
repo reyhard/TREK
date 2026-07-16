@@ -1,10 +1,11 @@
+import { ZodValidationPipe } from './zod-validation.pipe';
 import type { INestApplication } from '@nestjs/common';
 import { RequestMethod } from '@nestjs/common';
-import { ModulesContainer } from '@nestjs/core';
 import { PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
-import { z, type ZodType } from 'zod';
+import { ModulesContainer } from '@nestjs/core';
 import type { OpenAPIObject } from '@nestjs/swagger';
-import { ZodValidationPipe } from './zod-validation.pipe';
+
+import { z, type ZodType } from 'zod';
 
 /**
  * Phase 2 of #1412: real request-body schemas without annotating anything
@@ -18,7 +19,10 @@ import { ZodValidationPipe } from './zod-validation.pipe';
 /** Zod → OpenAPI 3.0 schema; degrades to a bare object for unrepresentable schemas. */
 export function zodToOpenApi(schema: ZodType): Record<string, unknown> {
   try {
-    return z.toJSONSchema(schema, { target: 'openapi-3.0', io: 'input', unrepresentable: 'any' }) as Record<string, unknown>;
+    return z.toJSONSchema(schema, { target: 'openapi-3.0', io: 'input', unrepresentable: 'any' }) as Record<
+      string,
+      unknown
+    >;
   } catch {
     return { type: 'object' };
   }
@@ -65,16 +69,18 @@ export function attachZodBodySchemas(app: INestApplication, document: OpenAPIObj
           string,
           { index: number; data?: unknown; pipes?: unknown[] }
         >;
-        const bodyArg = Object.entries(args).find(([key, meta]) =>
-          key.startsWith(`${BODY_PARAMTYPE}:`)
-          // @Body('field') picks a sub-field — only whole-body pipes describe the request body
-          && meta.data === undefined
-          && (meta.pipes ?? []).some((p) => p instanceof ZodValidationPipe),
+        const bodyArg = Object.entries(args).find(
+          ([key, meta]) =>
+            key.startsWith(`${BODY_PARAMTYPE}:`) &&
+            // @Body('field') picks a sub-field — only whole-body pipes describe the request body
+            meta.data === undefined &&
+            (meta.pipes ?? []).some((p) => p instanceof ZodValidationPipe),
         );
         if (!bodyArg) continue;
         const zodPipe = (bodyArg[1].pipes ?? []).find((p): p is ZodValidationPipe => p instanceof ZodValidationPipe)!;
 
-        const route = document.paths[joinPath(basePath, Reflect.getMetadata(PATH_METADATA, handler) as string | undefined)];
+        const route =
+          document.paths[joinPath(basePath, Reflect.getMetadata(PATH_METADATA, handler) as string | undefined)];
         const operation = route?.[verb as 'get' | 'post' | 'put' | 'patch' | 'delete'];
         if (!operation) continue;
         operation.requestBody = {

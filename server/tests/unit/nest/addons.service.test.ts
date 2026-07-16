@@ -1,3 +1,5 @@
+import { AddonsService } from '../../../src/nest/addons/addons.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Three distinct prepare(...).all() reads (addons, photo_providers, photo_provider_fields).
@@ -17,18 +19,13 @@ vi.mock('../../../src/services/adminService', () => ({ getBagTracking, getCollab
 const { getPhotoProviderConfig } = vi.hoisted(() => ({ getPhotoProviderConfig: vi.fn(() => ({})) }));
 vi.mock('../../../src/services/memories/helpersService', () => ({ getPhotoProviderConfig }));
 
-import { AddonsService } from '../../../src/nest/addons/addons.service';
-
 function svc() {
   return new AddonsService();
 }
 
 // Feed the three reads in order: addons, providers, fields.
 function feedReads(addons: unknown[], providers: unknown[], fields: unknown[]) {
-  dbMock._stmt.all
-    .mockReturnValueOnce(addons)
-    .mockReturnValueOnce(providers)
-    .mockReturnValueOnce(fields);
+  dbMock._stmt.all.mockReturnValueOnce(addons).mockReturnValueOnce(providers).mockReturnValueOnce(fields);
 }
 
 beforeEach(() => {
@@ -69,11 +66,7 @@ describe('AddonsService.list', () => {
   });
 
   it('maps a photo provider with no fields to an empty fields array (the || [] fallback)', () => {
-    feedReads(
-      [],
-      [{ id: 'immich', name: 'Immich', icon: 'image', enabled: 1, sort_order: 0 }],
-      [],
-    );
+    feedReads([], [{ id: 'immich', name: 'Immich', icon: 'image', enabled: 1, sort_order: 0 }], []);
     getPhotoProviderConfig.mockReturnValue({ baseUrl: 'http://x' });
 
     const res = svc().list();
@@ -92,11 +85,7 @@ describe('AddonsService.list', () => {
   });
 
   it('coerces a disabled photo provider enabled flag to false', () => {
-    feedReads(
-      [],
-      [{ id: 'synology', name: 'Synology', icon: 'image', enabled: 0, sort_order: 1 }],
-      [],
-    );
+    feedReads([], [{ id: 'synology', name: 'Synology', icon: 'image', enabled: 0, sort_order: 1 }], []);
 
     const res = svc().list();
     expect((res.addons[0] as { enabled: boolean }).enabled).toBe(false);

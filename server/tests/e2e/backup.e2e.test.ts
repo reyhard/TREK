@@ -4,12 +4,15 @@
  * audit log are mocked; this focuses on auth (401), the admin gate (403 for a
  * non-admin), the rate-limit 429, filename guards and status codes.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { BackupModule } from '../../src/nest/backup/backup.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -26,16 +29,22 @@ vi.mock('../../src/services/auditLog', () => ({ writeAudit: vi.fn(), getClientIp
 
 const { backupSvc } = vi.hoisted(() => ({
   backupSvc: {
-    listBackups: vi.fn(), createBackup: vi.fn(), restoreFromZip: vi.fn(), getAutoSettings: vi.fn(),
-    updateAutoSettings: vi.fn(), deleteBackup: vi.fn(), isValidBackupFilename: vi.fn(), backupFilePath: vi.fn(),
-    backupFileExists: vi.fn(), checkRateLimit: vi.fn(), getUploadTmpDir: () => '/tmp', BACKUP_RATE_WINDOW: 3600000,
+    listBackups: vi.fn(),
+    createBackup: vi.fn(),
+    restoreFromZip: vi.fn(),
+    getAutoSettings: vi.fn(),
+    updateAutoSettings: vi.fn(),
+    deleteBackup: vi.fn(),
+    isValidBackupFilename: vi.fn(),
+    backupFilePath: vi.fn(),
+    backupFileExists: vi.fn(),
+    checkRateLimit: vi.fn(),
+    getUploadTmpDir: () => '/tmp',
+    BACKUP_RATE_WINDOW: 3600000,
     MAX_BACKUP_UPLOAD_SIZE: 1024,
   },
 }));
 vi.mock('../../src/services/backupService', () => backupSvc);
-
-import { BackupModule } from '../../src/nest/backup/backup.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Backup e2e (real auth + admin guard + temp SQLite)', () => {
   let server: Server;

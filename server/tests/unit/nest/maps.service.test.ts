@@ -1,3 +1,6 @@
+import type { DatabaseService } from '../../../src/nest/database/database.service';
+import { MapsService } from '../../../src/nest/maps/maps.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { maps } = vi.hoisted(() => ({
@@ -16,9 +19,6 @@ vi.mock('../../../src/services/mapsService', () => maps);
 
 const { serveFilePath } = vi.hoisted(() => ({ serveFilePath: vi.fn() }));
 vi.mock('../../../src/services/placePhotoCache', () => ({ serveFilePath }));
-
-import { MapsService } from '../../../src/nest/maps/maps.service';
-import type { DatabaseService } from '../../../src/nest/database/database.service';
 
 /** A DatabaseService stub whose get() returns the row the test wants. */
 function makeDb(row?: { value: string }) {

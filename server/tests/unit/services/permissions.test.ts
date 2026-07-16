@@ -1,3 +1,11 @@
+import {
+  checkPermission,
+  getPermissionLevel,
+  savePermissions,
+  invalidatePermissionsCache,
+  PERMISSION_ACTIONS,
+} from '../../../src/services/permissions';
+
 import { describe, it, expect, vi } from 'vitest';
 
 // Mutable rows array so individual tests can inject DB rows
@@ -14,8 +22,6 @@ vi.mock('../../../src/db/database', () => ({
     transaction: (fn: () => void) => fn,
   },
 }));
-
-import { checkPermission, getPermissionLevel, savePermissions, invalidatePermissionsCache, PERMISSION_ACTIONS } from '../../../src/services/permissions';
 
 describe('permissions', () => {
   describe('checkPermission — admin bypass', () => {

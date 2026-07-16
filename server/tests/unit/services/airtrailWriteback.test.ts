@@ -1,3 +1,11 @@
+import { db } from '../../../src/db/database';
+import {
+  getConnectionSettings,
+  isAirtrailWriteEnabled,
+  saveSettings,
+} from '../../../src/services/airtrail/airtrailService';
+import { createUser } from '../../helpers/factories';
+
 import { describe, it, expect, vi } from 'vitest';
 
 // Avoid any real DNS/network from the SSRF guard during saveSettings.
@@ -5,14 +13,6 @@ vi.mock('../../../src/utils/ssrfGuard', () => ({
   checkSsrf: vi.fn(async () => ({ allowed: true, isPrivate: false })),
   safeFetch: vi.fn(),
 }));
-
-import { db } from '../../../src/db/database';
-import { createUser } from '../../helpers/factories';
-import {
-  getConnectionSettings,
-  isAirtrailWriteEnabled,
-  saveSettings,
-} from '../../../src/services/airtrail/airtrailService';
 
 describe('airtrail writeback opt-in persistence (#1240)', () => {
   it('defaults the writeback opt-in to off for a new user', () => {

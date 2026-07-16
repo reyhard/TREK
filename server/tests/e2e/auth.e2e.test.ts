@@ -6,12 +6,15 @@
  * cleared on logout, that /me requires a session, and that /app-config is
  * optional-auth.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { AuthModule } from '../../src/nest/auth/auth.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -25,23 +28,46 @@ const { db } = vi.hoisted(() => {
 
 vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: () => {} }));
 vi.mock('../../src/services/auditLog', () => ({ writeAudit: vi.fn(), getClientIp: vi.fn(() => '1.2.3.4') }));
-vi.mock('../../src/services/notifications', () => ({ getAppUrl: () => 'https://x', sendPasswordResetEmail: vi.fn().mockResolvedValue({ delivered: true }) }));
+vi.mock('../../src/services/notifications', () => ({
+  getAppUrl: () => 'https://x',
+  sendPasswordResetEmail: vi.fn().mockResolvedValue({ delivered: true }),
+}));
 
 const { authSvc } = vi.hoisted(() => ({
   authSvc: {
-    getAppConfig: vi.fn(), demoLogin: vi.fn(), validateInviteToken: vi.fn(), registerUser: vi.fn(), loginUser: vi.fn(),
-    requestPasswordReset: vi.fn(), resetPassword: vi.fn(), verifyMfaLogin: vi.fn(), getCurrentUser: vi.fn(),
-    changePassword: vi.fn(), deleteAccount: vi.fn(), updateMapsKey: vi.fn(), updateApiKeys: vi.fn(), updateSettings: vi.fn(),
-    getSettings: vi.fn(), saveAvatar: vi.fn(), deleteAvatar: vi.fn(), listUsers: vi.fn(), validateKeys: vi.fn(),
-    getAppSettings: vi.fn(), updateAppSettings: vi.fn(), getTravelStats: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(),
-    disableMfa: vi.fn(), listMcpTokens: vi.fn(), createMcpToken: vi.fn(), deleteMcpToken: vi.fn(), createWsToken: vi.fn(),
+    getAppConfig: vi.fn(),
+    demoLogin: vi.fn(),
+    validateInviteToken: vi.fn(),
+    registerUser: vi.fn(),
+    loginUser: vi.fn(),
+    requestPasswordReset: vi.fn(),
+    resetPassword: vi.fn(),
+    verifyMfaLogin: vi.fn(),
+    getCurrentUser: vi.fn(),
+    changePassword: vi.fn(),
+    deleteAccount: vi.fn(),
+    updateMapsKey: vi.fn(),
+    updateApiKeys: vi.fn(),
+    updateSettings: vi.fn(),
+    getSettings: vi.fn(),
+    saveAvatar: vi.fn(),
+    deleteAvatar: vi.fn(),
+    listUsers: vi.fn(),
+    validateKeys: vi.fn(),
+    getAppSettings: vi.fn(),
+    updateAppSettings: vi.fn(),
+    getTravelStats: vi.fn(),
+    setupMfa: vi.fn(),
+    enableMfa: vi.fn(),
+    disableMfa: vi.fn(),
+    listMcpTokens: vi.fn(),
+    createMcpToken: vi.fn(),
+    deleteMcpToken: vi.fn(),
+    createWsToken: vi.fn(),
     createResourceToken: vi.fn(),
   },
 }));
 vi.mock('../../src/services/authService', () => authSvc);
-
-import { AuthModule } from '../../src/nest/auth/auth.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Auth e2e (real auth guard + real cookie service + temp SQLite)', () => {
   let server: Server;
@@ -100,7 +126,9 @@ describe('Auth e2e (real auth guard + real cookie service + temp SQLite)', () =>
 
   it('POST /login with remember_me sets a persistent cookie (Max-Age present)', async () => {
     authSvc.loginUser.mockReturnValue({ token: 'jwt.token.value', user: { id: 1 }, remember: true });
-    const res = await request(server).post('/api/auth/login').send({ email: 'u@example.test', password: 'pw', remember_me: true });
+    const res = await request(server)
+      .post('/api/auth/login')
+      .send({ email: 'u@example.test', password: 'pw', remember_me: true });
     expect(res.status).toBe(200);
     const setCookie = res.headers['set-cookie'] as unknown as string[];
     const cookie = setCookie.find((c) => c.startsWith('trek_session='))!;

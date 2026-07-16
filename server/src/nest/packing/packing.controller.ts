@@ -1,3 +1,8 @@
+import { isUpdateConflict } from '../../services/conflictResult';
+import type { User } from '../../types';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PackingService } from './packing.service';
 import {
   Body,
   Controller,
@@ -11,14 +16,14 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import type { User } from '../../types';
-import { PackingService } from './packing.service';
-import { isUpdateConflict } from '../../services/conflictResult';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
 
 /** A packing item row carrying the privacy fields (#858) used to scope broadcasts. */
-type PackingItemRow = { is_private?: number; owner_id?: number | null; recipients?: { user_id: number }[]; [key: string]: unknown };
+type PackingItemRow = {
+  is_private?: number;
+  owner_id?: number | null;
+  recipients?: { user_id: number }[];
+  [key: string]: unknown;
+};
 
 /**
  * /api/trips/:tripId/packing — trip-scoped packing list (items, bags, templates,
@@ -81,7 +86,15 @@ export class PackingController {
   create(
     @CurrentUser() user: User,
     @Param('tripId') tripId: string,
-    @Body() body: { name?: string; category?: string; checked?: boolean; is_private?: boolean; visibility?: 'common' | 'personal' | 'shared'; recipient_ids?: number[] },
+    @Body()
+    body: {
+      name?: string;
+      category?: string;
+      checked?: boolean;
+      is_private?: boolean;
+      visibility?: 'common' | 'personal' | 'shared';
+      recipient_ids?: number[];
+    },
     @Headers('x-socket-id') socketId?: string,
   ) {
     const trip = this.requireTrip(tripId, user);
@@ -89,14 +102,31 @@ export class PackingController {
     if (!body.name) {
       throw new HttpException({ error: 'Item name is required' }, 400);
     }
-    const item = this.packing.createItem(tripId, { name: body.name, category: body.category, checked: body.checked, is_private: body.is_private, visibility: body.visibility, recipient_ids: body.recipient_ids }, user.id);
+    const item = this.packing.createItem(
+      tripId,
+      {
+        name: body.name,
+        category: body.category,
+        checked: body.checked,
+        is_private: body.is_private,
+        visibility: body.visibility,
+        recipient_ids: body.recipient_ids,
+      },
+      user.id,
+    );
     this.emitToViewers(tripId, 'packing:created', { item }, item, socketId);
     return { item };
   }
 
   /** Deliver an item event to exactly the people who can see it (#858): the whole
    *  room for a Common item, or owner + recipients for a restricted one. */
-  private emitToViewers(tripId: string, event: string, payload: Record<string, unknown>, item: PackingItemRow, socketId: string | undefined): void {
+  private emitToViewers(
+    tripId: string,
+    event: string,
+    payload: Record<string, unknown>,
+    item: PackingItemRow,
+    socketId: string | undefined,
+  ): void {
     const viewers = this.packing.viewersOf(item);
     if (viewers === null) {
       this.packing.broadcast(tripId, event, payload, socketId);
@@ -133,7 +163,14 @@ export class PackingController {
     // the broadcast correctly instead of leaking a freshly-privatized item.
     const before = this.packing.getItemPrivacy(tripId, id);
     const { name, checked, category, weight_grams, bag_id, quantity, is_private } = body as Record<string, never>;
-    const updated = this.packing.updateItem(tripId, id, { name, checked, category, weight_grams, bag_id, quantity, is_private }, Object.keys(body), ifMatch, user.id);
+    const updated = this.packing.updateItem(
+      tripId,
+      id,
+      { name, checked, category, weight_grams, bag_id, quantity, is_private },
+      Object.keys(body),
+      ifMatch,
+      user.id,
+    );
     if (!updated) {
       throw new HttpException({ error: 'Item not found' }, 404);
     }
@@ -207,7 +244,13 @@ export class PackingController {
     if (body.visibility !== 'common' && body.visibility !== 'personal' && body.visibility !== 'shared') {
       throw new HttpException({ error: 'Invalid visibility' }, 400);
     }
-    const updated = this.packing.setItemSharing(tripId, id, user.id, body.visibility, Array.isArray(body.recipient_ids) ? body.recipient_ids : []);
+    const updated = this.packing.setItemSharing(
+      tripId,
+      id,
+      user.id,
+      body.visibility,
+      Array.isArray(body.recipient_ids) ? body.recipient_ids : [],
+    );
     if (!updated) {
       throw new HttpException({ error: 'Item not found' }, 404);
     }
@@ -312,7 +355,12 @@ export class PackingController {
     const trip = this.requireTrip(tripId, user);
     this.requireEdit(trip, user);
     const { name, color, weight_limit_grams, user_id } = body as Record<string, never>;
-    const updated = this.packing.updateBag(tripId, bagId, { name, color, weight_limit_grams, user_id }, Object.keys(body));
+    const updated = this.packing.updateBag(
+      tripId,
+      bagId,
+      { name, color, weight_limit_grams, user_id },
+      Object.keys(body),
+    );
     if (!updated) {
       throw new HttpException({ error: 'Bag not found' }, 404);
     }
@@ -379,11 +427,7 @@ export class PackingController {
   }
 
   @Post('save-as-template')
-  saveAsTemplate(
-    @CurrentUser() user: User,
-    @Param('tripId') tripId: string,
-    @Body('name') name?: string,
-  ) {
+  saveAsTemplate(@CurrentUser() user: User, @Param('tripId') tripId: string, @Body('name') name?: string) {
     this.requireTrip(tripId, user);
     if (user.role !== 'admin') {
       throw new HttpException({ error: 'Admin access required' }, 403);

@@ -1,3 +1,31 @@
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  getOwnPlan,
+  getActivePlan,
+  getPlanUsers,
+  migrateHolidayCalendars,
+  updatePlan,
+  addHolidayCalendar,
+  updateHolidayCalendar,
+  deleteHolidayCalendar,
+  setUserColor,
+  acceptInvite,
+  declineInvite,
+  cancelInvite,
+  getAvailableUsers,
+  listYears,
+  addYear,
+  deleteYear,
+  getEntries,
+  toggleEntry,
+  toggleCompanyHoliday,
+  getStats,
+  applyHolidayCalendars,
+} from '../../../src/services/vacayService';
+import { createUser } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup (real in-memory SQLite) ─────────────────────────────────────────
@@ -26,35 +54,6 @@ vi.mock('../../../src/config', () => ({
 // Mock websocket so notifyPlanUsers doesn't throw
 vi.mock('../../../src/websocket', () => ({ broadcastToUser: vi.fn() }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-
-import {
-  getOwnPlan,
-  getActivePlan,
-  getPlanUsers,
-  migrateHolidayCalendars,
-  updatePlan,
-  addHolidayCalendar,
-  updateHolidayCalendar,
-  deleteHolidayCalendar,
-  setUserColor,
-  acceptInvite,
-  declineInvite,
-  cancelInvite,
-  getAvailableUsers,
-  listYears,
-  addYear,
-  deleteYear,
-  getEntries,
-  toggleEntry,
-  toggleCompanyHoliday,
-  getStats,
-  applyHolidayCalendars,
-} from '../../../src/services/vacayService';
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 beforeAll(() => {
@@ -66,10 +65,13 @@ beforeEach(() => {
   resetTestDb(testDb);
   // Stub fetch with empty holiday list by default so updatePlan / applyHolidayCalendars
   // never makes real network calls.
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => [],
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  );
 });
 
 afterAll(() => {
@@ -81,9 +83,9 @@ afterAll(() => {
 
 /** Insert a vacay_plan_members row directly (no service factory for it). */
 function insertMember(planId: number, userId: number, status: 'pending' | 'accepted'): void {
-  testDb.prepare(
-    "INSERT INTO vacay_plan_members (plan_id, user_id, status) VALUES (?, ?, ?)"
-  ).run(planId, userId, status);
+  testDb
+    .prepare('INSERT INTO vacay_plan_members (plan_id, user_id, status) VALUES (?, ?, ?)')
+    .run(planId, userId, status);
 }
 
 /** Fast helper: create a user and immediately materialise their own plan. */
@@ -118,9 +120,7 @@ describe('getOwnPlan', () => {
     const plan = getOwnPlan(user.id);
     const yr = new Date().getFullYear();
 
-    const row = testDb
-      .prepare('SELECT * FROM vacay_years WHERE plan_id = ? AND year = ?')
-      .get(plan.id, yr);
+    const row = testDb.prepare('SELECT * FROM vacay_years WHERE plan_id = ? AND year = ?').get(plan.id, yr);
 
     expect(row).toBeDefined();
   });
@@ -194,8 +194,8 @@ describe('getPlanUsers', () => {
     const users = getPlanUsers(plan.id);
 
     expect(users).toHaveLength(2);
-    expect(users.map(u => u.id)).toContain(owner.id);
-    expect(users.map(u => u.id)).toContain(member.id);
+    expect(users.map((u) => u.id)).toContain(owner.id);
+    expect(users.map((u) => u.id)).toContain(member.id);
   });
 
   it('VACAY-SVC-010: pending membership members are NOT included in plan users', () => {
@@ -204,7 +204,7 @@ describe('getPlanUsers', () => {
     insertMember(plan.id, pendingUser.id, 'pending');
 
     const users = getPlanUsers(plan.id);
-    expect(users.map(u => u.id)).not.toContain(pendingUser.id);
+    expect(users.map((u) => u.id)).not.toContain(pendingUser.id);
   });
 
   it('VACAY-SVC-011: returns empty array for a non-existent plan id', () => {
@@ -222,9 +222,7 @@ describe('migrateHolidayCalendars', () => {
 
     await migrateHolidayCalendars(plan.id, planRow);
 
-    const rows = testDb
-      .prepare('SELECT * FROM vacay_holiday_calendars WHERE plan_id = ?')
-      .all(plan.id);
+    const rows = testDb.prepare('SELECT * FROM vacay_holiday_calendars WHERE plan_id = ?').all(plan.id);
     expect(rows).toHaveLength(0);
   });
 
@@ -234,9 +232,9 @@ describe('migrateHolidayCalendars', () => {
 
     await migrateHolidayCalendars(plan.id, planRow);
 
-    const rows = testDb
-      .prepare('SELECT * FROM vacay_holiday_calendars WHERE plan_id = ?')
-      .all(plan.id) as { region: string }[];
+    const rows = testDb.prepare('SELECT * FROM vacay_holiday_calendars WHERE plan_id = ?').all(plan.id) as {
+      region: string;
+    }[];
     expect(rows).toHaveLength(1);
     expect(rows[0].region).toBe('DE');
   });
@@ -249,9 +247,7 @@ describe('migrateHolidayCalendars', () => {
     // Call a second time — should NOT insert another row
     await migrateHolidayCalendars(plan.id, planRow);
 
-    const rows = testDb
-      .prepare('SELECT * FROM vacay_holiday_calendars WHERE plan_id = ?')
-      .all(plan.id);
+    const rows = testDb.prepare('SELECT * FROM vacay_holiday_calendars WHERE plan_id = ?').all(plan.id);
     expect(rows).toHaveLength(1);
   });
 });
@@ -264,9 +260,9 @@ describe('updatePlan', () => {
 
     await updatePlan(plan.id, { block_weekends: true }, undefined);
 
-    const updated = testDb
-      .prepare('SELECT block_weekends FROM vacay_plans WHERE id = ?')
-      .get(plan.id) as { block_weekends: number };
+    const updated = testDb.prepare('SELECT block_weekends FROM vacay_plans WHERE id = ?').get(plan.id) as {
+      block_weekends: number;
+    };
     expect(updated.block_weekends).toBe(1);
   });
 
@@ -275,9 +271,9 @@ describe('updatePlan', () => {
 
     await updatePlan(plan.id, { holidays_enabled: true }, undefined);
 
-    const updated = testDb
-      .prepare('SELECT holidays_enabled FROM vacay_plans WHERE id = ?')
-      .get(plan.id) as { holidays_enabled: number };
+    const updated = testDb.prepare('SELECT holidays_enabled FROM vacay_plans WHERE id = ?').get(plan.id) as {
+      holidays_enabled: number;
+    };
     expect(updated.holidays_enabled).toBe(1);
   });
 
@@ -443,14 +439,20 @@ describe('addYear', () => {
     // Enable carry-over and seed some entries for the current year
     testDb.prepare('UPDATE vacay_plans SET carry_over_enabled = 1 WHERE id = ?').run(plan.id);
     // Ensure current year row exists with 10 vacation days
-    testDb.prepare(`
+    testDb
+      .prepare(
+        `
       INSERT OR REPLACE INTO vacay_user_years (user_id, plan_id, year, vacation_days, carried_over)
       VALUES (?, ?, ?, 10, 0)
-    `).run(user.id, plan.id, currentYear);
+    `,
+      )
+      .run(user.id, plan.id, currentYear);
     // Add 3 entries (used days) in the current year
     for (let day = 1; day <= 3; day++) {
       const dateStr = `${currentYear}-06-0${day}`;
-      testDb.prepare('INSERT OR IGNORE INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)').run(plan.id, user.id, dateStr, '');
+      testDb
+        .prepare('INSERT OR IGNORE INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)')
+        .run(plan.id, user.id, dateStr, '');
     }
 
     addYear(plan.id, nextYear, undefined);
@@ -476,13 +478,11 @@ describe('deleteYear', () => {
 
     deleteYear(plan.id, targetYear, undefined);
 
-    const yearRow = testDb
-      .prepare('SELECT * FROM vacay_years WHERE plan_id = ? AND year = ?')
-      .get(plan.id, targetYear);
+    const yearRow = testDb.prepare('SELECT * FROM vacay_years WHERE plan_id = ? AND year = ?').get(plan.id, targetYear);
     expect(yearRow).toBeUndefined();
 
     const entries = testDb
-      .prepare("SELECT * FROM vacay_entries WHERE plan_id = ? AND date LIKE ?")
+      .prepare('SELECT * FROM vacay_entries WHERE plan_id = ? AND date LIKE ?')
       .all(plan.id, `${targetYear}-%`);
     expect(entries).toHaveLength(0);
   });
@@ -653,9 +653,9 @@ describe('getAvailableUsers', () => {
 
     const available = getAvailableUsers(owner.id, plan.id) as { id: number }[];
 
-    expect(available.map(u => u.id)).toContain(unrelated.id);
+    expect(available.map((u) => u.id)).toContain(unrelated.id);
     // Owner themselves should NOT appear (excluded by u.id != ?)
-    expect(available.map(u => u.id)).not.toContain(owner.id);
+    expect(available.map((u) => u.id)).not.toContain(owner.id);
   });
 
   it('VACAY-SVC-043: excludes users who already have an accepted membership in any plan', () => {
@@ -666,7 +666,7 @@ describe('getAvailableUsers', () => {
 
     const available = getAvailableUsers(owner.id, plan.id) as { id: number }[];
 
-    expect(available.map(u => u.id)).not.toContain(alreadyFused.id);
+    expect(available.map((u) => u.id)).not.toContain(alreadyFused.id);
   });
 });
 
@@ -730,10 +730,13 @@ describe('applyHolidayCalendars', () => {
       .run(plan.id, user.id, holidayDate, '');
 
     // Override fetch to return one global holiday matching that entry
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [{ date: holidayDate, global: true }],
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [{ date: holidayDate, global: true }],
+      }),
+    );
 
     await applyHolidayCalendars(plan.id);
 

@@ -1,58 +1,18 @@
 /**
  * Unit tests for server/src/services/oauthService.ts.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
-import crypto from 'crypto';
-
-const { testDb, dbMock } = vi.hoisted(() => {
-  const Database = require('better-sqlite3');
-  const db = new Database(':memory:');
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec('PRAGMA busy_timeout = 5000');
-  const mock = {
-    db,
-    closeDb: () => {},
-    reinitialize: () => {},
-    getPlaceWithTags: () => null,
-    canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
-    isOwner: (tripId: any, userId: number) =>
-      !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
-  };
-  return { testDb: db, dbMock: mock };
-});
-
-vi.mock('../../../src/db/database', () => dbMock);
-vi.mock('../../../src/config', () => ({
-  JWT_SECRET: 'test-jwt-secret-for-trek-testing-only',
-  ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
-  updateJwtSecret: () => {},
-}));
-vi.mock('../../../src/services/apiKeyCrypto', () => ({
-  encrypt_api_key: (v: string) => v,
-  decrypt_api_key: (v: string) => v,
-  maybe_encrypt_api_key: (v: string) => v,
-}));
-vi.mock('../../../src/mcp/sessionManager', () => ({ revokeUserSessions: vi.fn(), revokeUserSessionsForClient: vi.fn(), sessions: new Map() }));
-import { revokeUserSessionsForClient } from '../../../src/mcp/sessionManager';
-vi.mock('../../../src/demo/demo-reset', () => ({ saveBaseline: vi.fn() }));
-vi.mock('../../../src/services/adminService', () => ({
-  isAddonEnabled: vi.fn().mockReturnValue(true),
-  getCollabFeatures: vi.fn().mockReturnValue({ chat: true, notes: true, polls: true, whatsnext: true }),
-}));
-
-import { createTables } from '../../../src/db/schema';
 import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-// PKCE helper — generates a valid code_verifier + code_challenge pair (RFC 7636)
-function makePkce() {
-  const verifier = crypto.randomBytes(32).toString('base64url');   // 43 chars
-  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url'); // 43 chars
-  return { verifier, challenge };
-}
-
+import { createTables } from '../../../src/db/schema';
+import { validateScopes } from '../../../src/mcp/scopes';
+import { revokeUserSessionsForClient } from '../../../src/mcp/sessionManager';
+import { isAddonEnabled } from '../../../src/services/adminService';
+import {
+  isPluginScopeAllowed,
+  parsePluginResource,
+  parsePluginScope,
+  pluginResourceUri,
+  pluginScope,
+} from '../../../src/services/oauthResources';
 import {
   createOAuthClient,
   listOAuthClients,
@@ -74,9 +34,64 @@ import {
   isConsentSufficient,
   validateOAuthResourceAndScopes,
 } from '../../../src/services/oauthService';
-import { isPluginScopeAllowed, parsePluginResource, parsePluginScope, pluginResourceUri, pluginScope } from '../../../src/services/oauthResources';
-import { validateScopes } from '../../../src/mcp/scopes';
-import { isAddonEnabled } from '../../../src/services/adminService';
+import { createUser } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
+import crypto from 'crypto';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+
+const { testDb, dbMock } = vi.hoisted(() => {
+  const Database = require('better-sqlite3');
+  const db = new Database(':memory:');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('PRAGMA busy_timeout = 5000');
+  const mock = {
+    db,
+    closeDb: () => {},
+    reinitialize: () => {},
+    getPlaceWithTags: () => null,
+    canAccessTrip: (tripId: any, userId: number) =>
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
+    isOwner: (tripId: any, userId: number) =>
+      !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
+  };
+  return { testDb: db, dbMock: mock };
+});
+
+vi.mock('../../../src/db/database', () => dbMock);
+vi.mock('../../../src/config', () => ({
+  JWT_SECRET: 'test-jwt-secret-for-trek-testing-only',
+  ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
+  updateJwtSecret: () => {},
+}));
+vi.mock('../../../src/services/apiKeyCrypto', () => ({
+  encrypt_api_key: (v: string) => v,
+  decrypt_api_key: (v: string) => v,
+  maybe_encrypt_api_key: (v: string) => v,
+}));
+vi.mock('../../../src/mcp/sessionManager', () => ({
+  revokeUserSessions: vi.fn(),
+  revokeUserSessionsForClient: vi.fn(),
+  sessions: new Map(),
+}));
+
+vi.mock('../../../src/demo/demo-reset', () => ({ saveBaseline: vi.fn() }));
+vi.mock('../../../src/services/adminService', () => ({
+  isAddonEnabled: vi.fn().mockReturnValue(true),
+  getCollabFeatures: vi.fn().mockReturnValue({ chat: true, notes: true, polls: true, whatsnext: true }),
+}));
+
+// PKCE helper — generates a valid code_verifier + code_challenge pair (RFC 7636)
+function makePkce() {
+  const verifier = crypto.randomBytes(32).toString('base64url'); // 43 chars
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url'); // 43 chars
+  return { verifier, challenge };
+}
 
 beforeAll(() => {
   createTables(testDb);
@@ -109,8 +124,12 @@ describe('plugin OAuth resources', () => {
   });
 
   it('validates installed plugin resource and scope compatibility', () => {
-    testDb.prepare("INSERT INTO plugins (id, name, version, status) VALUES ('mymap-sync', 'MyMap Sync', '1.0.0', 'active')").run();
-    expect(validateOAuthResourceAndScopes(pluginResourceUri('mymap-sync'), ['plugin:mymap-sync:read'])).toEqual({ valid: true });
+    testDb
+      .prepare("INSERT INTO plugins (id, name, version, status) VALUES ('mymap-sync', 'MyMap Sync', '1.0.0', 'active')")
+      .run();
+    expect(validateOAuthResourceAndScopes(pluginResourceUri('mymap-sync'), ['plugin:mymap-sync:read'])).toEqual({
+      valid: true,
+    });
     expect(validateOAuthResourceAndScopes(`${pluginResourceUri('mymap-sync')}`, ['trips:read']).valid).toBe(false);
     expect(validateOAuthResourceAndScopes('http://localhost:3001/mcp', ['plugin:mymap-sync:read']).valid).toBe(false);
   });
@@ -122,7 +141,7 @@ describe('plugin OAuth resources', () => {
 
 function makeClient(
   userId: number,
-  overrides: Partial<{ name: string; redirectUris: string[]; scopes: string[] }> = {}
+  overrides: Partial<{ name: string; redirectUris: string[]; scopes: string[] }> = {},
 ) {
   return createOAuthClient(
     userId,
@@ -149,9 +168,7 @@ describe('createOAuthClient', () => {
   it('client_id is a UUID', () => {
     const { user } = createUser(testDb);
     const result = makeClient(user.id);
-    expect(result.client!.client_id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-    );
+    expect(result.client!.client_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it('returns 400 error if name is empty', () => {
@@ -224,12 +241,7 @@ describe('createOAuthClient', () => {
       );
       expect(allowed.error).toBeUndefined();
 
-      const denied = createOAuthClient(
-        user.id,
-        'Other LAN',
-        ['http://other.example/callback'],
-        ['trips:read'],
-      );
+      const denied = createOAuthClient(user.id, 'Other LAN', ['http://other.example/callback'], ['trips:read']);
       expect(denied.status).toBe(400);
     } finally {
       delete process.env.OAUTH_HTTP_REDIRECT_HOSTS;
@@ -274,7 +286,11 @@ describe('listOAuthClients', () => {
 
   it('returns created clients with redirect_uris and allowed_scopes as arrays', () => {
     const { user } = createUser(testDb);
-    makeClient(user.id, { name: 'Client A', redirectUris: ['https://a.com/cb'], scopes: ['trips:read', 'budget:read'] });
+    makeClient(user.id, {
+      name: 'Client A',
+      redirectUris: ['https://a.com/cb'],
+      scopes: ['trips:read', 'budget:read'],
+    });
     const clients = listOAuthClients(user.id);
     expect(clients).toHaveLength(1);
     expect(clients[0].name).toBe('Client A');
@@ -444,7 +460,9 @@ describe('issueTokens + getUserByAccessToken', () => {
     const { user } = createUser(testDb);
     const created = makeClient(user.id);
     const tokens = issueTokens(created.client!.client_id as string, user.id, ['trips:read']);
-    const row = testDb.prepare('SELECT user_password_version FROM oauth_tokens').get() as { user_password_version: number };
+    const row = testDb.prepare('SELECT user_password_version FROM oauth_tokens').get() as {
+      user_password_version: number;
+    };
     expect(row.user_password_version).toBe(0);
     testDb.prepare('UPDATE users SET password_version = password_version + 1 WHERE id = ?').run(user.id);
     expect(getUserByAccessToken(tokens.access_token)).toBeNull();
@@ -461,7 +479,10 @@ describe('refreshTokens', () => {
     const created = makeClient(user.id);
     const tokens = issueTokens(created.client!.client_id as string, user.id, ['trips:read']);
     testDb.prepare('UPDATE users SET password_version = password_version + 1 WHERE id = ?').run(user.id);
-    expect(refreshTokens(tokens.refresh_token, created.client!.client_id as string, created.client!.client_secret as string).error).toBe('invalid_grant');
+    expect(
+      refreshTokens(tokens.refresh_token, created.client!.client_id as string, created.client!.client_secret as string)
+        .error,
+    ).toBe('invalid_grant');
   });
 
   it('exchanges a refresh token for a new token pair', () => {
@@ -610,14 +631,16 @@ describe('validateAuthorizeRequest', () => {
   // Use a proper 43-char S256 code_challenge to pass H1 format validation
   const { challenge: VALID_CHALLENGE } = makePkce();
 
-  function makeParams(overrides: Partial<{
-    response_type: string;
-    client_id: string;
-    redirect_uri: string;
-    scope: string;
-    code_challenge: string;
-    code_challenge_method: string;
-  }> = {}) {
+  function makeParams(
+    overrides: Partial<{
+      response_type: string;
+      client_id: string;
+      redirect_uri: string;
+      scope: string;
+      code_challenge: string;
+      code_challenge_method: string;
+    }> = {},
+  ) {
     return {
       response_type: 'code',
       client_id: '',
@@ -664,7 +687,7 @@ describe('validateAuthorizeRequest', () => {
 
     const result = validateAuthorizeRequest(
       makeParams({ client_id: clientId, redirect_uri: 'https://evil.com/callback' }),
-      user.id
+      user.id,
     );
     expect(result.valid).toBe(false);
     expect(result.error).toBe('invalid_redirect_uri');
@@ -675,18 +698,24 @@ describe('validateAuthorizeRequest', () => {
     const created = makeClient(user.id, { redirectUris: ['http://127.0.0.1/callback'] });
     const clientId = created.client!.client_id as string;
 
-    expect(validateAuthorizeRequest(
-      makeParams({ client_id: clientId, redirect_uri: 'http://127.0.0.1:49152/callback' }),
-      user.id,
-    ).valid).toBe(true);
-    expect(validateAuthorizeRequest(
-      makeParams({ client_id: clientId, redirect_uri: 'http://127.0.0.1:49152/other' }),
-      user.id,
-    ).error).toBe('invalid_redirect_uri');
-    expect(validateAuthorizeRequest(
-      makeParams({ client_id: clientId, redirect_uri: 'http://localhost:49152/callback' }),
-      user.id,
-    ).error).toBe('invalid_redirect_uri');
+    expect(
+      validateAuthorizeRequest(
+        makeParams({ client_id: clientId, redirect_uri: 'http://127.0.0.1:49152/callback' }),
+        user.id,
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateAuthorizeRequest(
+        makeParams({ client_id: clientId, redirect_uri: 'http://127.0.0.1:49152/other' }),
+        user.id,
+      ).error,
+    ).toBe('invalid_redirect_uri');
+    expect(
+      validateAuthorizeRequest(
+        makeParams({ client_id: clientId, redirect_uri: 'http://localhost:49152/callback' }),
+        user.id,
+      ).error,
+    ).toBe('invalid_redirect_uri');
   });
 
   it('validates scope against client allowed_scopes', () => {
@@ -694,10 +723,7 @@ describe('validateAuthorizeRequest', () => {
     const created = makeClient(user.id, { scopes: ['trips:read'] });
     const clientId = created.client!.client_id as string;
 
-    const result = validateAuthorizeRequest(
-      makeParams({ client_id: clientId, scope: 'budget:write' }),
-      user.id
-    );
+    const result = validateAuthorizeRequest(makeParams({ client_id: clientId, scope: 'budget:write' }), user.id);
     expect(result.valid).toBe(false);
     expect(result.error).toBe('invalid_scope');
   });
@@ -981,14 +1007,17 @@ describe('validateAuthorizeRequest — PKCE format (H1)', () => {
     const created = makeClient(user.id);
     const clientId = created.client!.client_id as string;
 
-    const result = validateAuthorizeRequest({
-      response_type: 'code',
-      client_id: clientId,
-      redirect_uri: 'https://example.com/callback',
-      scope: 'trips:read',
-      code_challenge: 'tooshort',
-      code_challenge_method: 'S256',
-    }, user.id);
+    const result = validateAuthorizeRequest(
+      {
+        response_type: 'code',
+        client_id: clientId,
+        redirect_uri: 'https://example.com/callback',
+        scope: 'trips:read',
+        code_challenge: 'tooshort',
+        code_challenge_method: 'S256',
+      },
+      user.id,
+    );
     expect(result.valid).toBe(false);
     expect(result.error).toBe('invalid_request');
   });
@@ -1000,14 +1029,17 @@ describe('validateAuthorizeRequest — PKCE format (H1)', () => {
 
     // 43 chars but includes '=' which is not base64url
     const badChallenge = '='.repeat(43);
-    const result = validateAuthorizeRequest({
-      response_type: 'code',
-      client_id: clientId,
-      redirect_uri: 'https://example.com/callback',
-      scope: 'trips:read',
-      code_challenge: badChallenge,
-      code_challenge_method: 'S256',
-    }, user.id);
+    const result = validateAuthorizeRequest(
+      {
+        response_type: 'code',
+        client_id: clientId,
+        redirect_uri: 'https://example.com/callback',
+        scope: 'trips:read',
+        code_challenge: badChallenge,
+        code_challenge_method: 'S256',
+      },
+      user.id,
+    );
     expect(result.valid).toBe(false);
     expect(result.error).toBe('invalid_request');
   });
@@ -1024,14 +1056,17 @@ describe('validateAuthorizeRequest — unauthenticated strips client info (H3)',
     const clientId = created.client!.client_id as string;
     const { challenge } = makePkce();
 
-    const result = validateAuthorizeRequest({
-      response_type: 'code',
-      client_id: clientId,
-      redirect_uri: 'https://example.com/callback',
-      scope: 'trips:read',
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-    }, null /* unauthenticated */);
+    const result = validateAuthorizeRequest(
+      {
+        response_type: 'code',
+        client_id: clientId,
+        redirect_uri: 'https://example.com/callback',
+        scope: 'trips:read',
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+      },
+      null /* unauthenticated */,
+    );
 
     expect(result.valid).toBe(true);
     expect(result.loginRequired).toBe(true);

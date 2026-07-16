@@ -1,3 +1,8 @@
+import { isUpdateConflict } from '../../services/conflictResult';
+import type { User } from '../../types';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PlacesService } from './places.service';
 import {
   Body,
   Controller,
@@ -15,12 +20,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+
 import { memoryStorage } from 'multer';
-import type { User } from '../../types';
-import { PlacesService } from './places.service';
-import { isUpdateConflict } from '../../services/conflictResult';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
 
 const STRING_LIMITS: Record<string, number> = { name: 200, description: 2000, address: 500, notes: 2000 };
 const UPLOAD = { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } };
@@ -118,7 +119,12 @@ export class PlacesController {
     if (!importWaypoints && !importRoutes && !importTracks) {
       throw new HttpException({ error: 'No import types selected' }, 400);
     }
-    const result = this.places.importGpx(tripId, file.buffer, { importWaypoints, importRoutes, importTracks, defaultName: file.originalname });
+    const result = this.places.importGpx(tripId, file.buffer, {
+      importWaypoints,
+      importRoutes,
+      importTracks,
+      defaultName: file.originalname,
+    });
     if (!result) {
       throw new HttpException({ error: 'No matching places found in GPX file' }, 400);
     }
@@ -148,7 +154,10 @@ export class PlacesController {
       throw new HttpException({ error: 'No import types selected' }, 400);
     }
     try {
-      const result = await this.places.importMapFile(tripId, file.buffer, file.originalname, { importPoints, importPaths });
+      const result = await this.places.importMapFile(tripId, file.buffer, file.originalname, {
+        importPoints,
+        importPaths,
+      });
       if (result.summary?.totalPlacemarks === 0) {
         throw new HttpException({ error: 'No valid Placemarks found in map file', summary: result.summary }, 400);
       }
@@ -164,17 +173,36 @@ export class PlacesController {
   }
 
   @Post('import/google-list')
-  async importGoogle(@CurrentUser() user: User, @Param('tripId') tripId: string, @Body('url') url: unknown, @Body('enrich') enrich: unknown, @Headers('x-socket-id') socketId?: string) {
+  async importGoogle(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Body('url') url: unknown,
+    @Body('enrich') enrich: unknown,
+    @Headers('x-socket-id') socketId?: string,
+  ) {
     return this.importList('google', user, tripId, url, enrich, socketId);
   }
 
   @Post('import/naver-list')
-  async importNaver(@CurrentUser() user: User, @Param('tripId') tripId: string, @Body('url') url: unknown, @Body('enrich') enrich: unknown, @Headers('x-socket-id') socketId?: string) {
+  async importNaver(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Body('url') url: unknown,
+    @Body('enrich') enrich: unknown,
+    @Headers('x-socket-id') socketId?: string,
+  ) {
     return this.importList('naver', user, tripId, url, enrich, socketId);
   }
 
   /** Shared google/naver list import — identical flow, different provider + error string. */
-  private async importList(provider: 'google' | 'naver', user: User, tripId: string, url: unknown, enrich: unknown, socketId?: string) {
+  private async importList(
+    provider: 'google' | 'naver',
+    user: User,
+    tripId: string,
+    url: unknown,
+    enrich: unknown,
+    socketId?: string,
+  ) {
     const trip = this.requireTrip(tripId, user);
     this.requireEdit(trip, user);
     if (!url || typeof url !== 'string') {
@@ -185,9 +213,10 @@ export class PlacesController {
     const opts = { enrich: parseBool(enrich, false), userId: user.id };
     const label = provider === 'google' ? 'Google' : 'Naver';
     try {
-      const result = provider === 'google'
-        ? await this.places.importGoogleList(tripId, url, opts)
-        : await this.places.importNaverList(tripId, url, opts);
+      const result =
+        provider === 'google'
+          ? await this.places.importGoogleList(tripId, url, opts)
+          : await this.places.importNaverList(tripId, url, opts);
       if ('error' in result) {
         throw new HttpException({ error: result.error }, result.status);
       }
@@ -198,7 +227,10 @@ export class PlacesController {
     } catch (err: unknown) {
       if (err instanceof HttpException) throw err;
       console.error(`[Places] ${label} list import error:`, err instanceof Error ? err.message : err);
-      throw new HttpException({ error: `Failed to import ${label} Maps list. Make sure the list is shared publicly.` }, 400);
+      throw new HttpException(
+        { error: `Failed to import ${label} Maps list. Make sure the list is shared publicly.` },
+        400,
+      );
     }
   }
 
@@ -310,7 +342,12 @@ export class PlacesController {
   }
 
   @Delete(':id')
-  remove(@CurrentUser() user: User, @Param('tripId') tripId: string, @Param('id') id: string, @Headers('x-socket-id') socketId?: string) {
+  remove(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Param('id') id: string,
+    @Headers('x-socket-id') socketId?: string,
+  ) {
     const trip = this.requireTrip(tripId, user);
     this.requireEdit(trip, user);
     this.places.onDeleted(Number(id)); // sync before actual delete

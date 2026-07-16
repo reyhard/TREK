@@ -3,12 +3,15 @@
  * through the real JwtAuthGuard against a temp SQLite db. budgetService, the
  * permission check and the WebSocket broadcast are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { BudgetModule } from '../../src/nest/budget/budget.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -28,16 +31,26 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { svc } = vi.hoisted(() => ({
   svc: {
-    verifyTripAccess: vi.fn(), listBudgetItems: vi.fn(), createBudgetItem: vi.fn(), updateBudgetItem: vi.fn(),
-    deleteBudgetItem: vi.fn(), updateMembers: vi.fn(), toggleMemberPaid: vi.fn(), getPerPersonSummary: vi.fn(),
-    calculateSettlement: vi.fn(), freezeForeignRate: vi.fn(), reorderBudgetItems: vi.fn(), reorderBudgetCategories: vi.fn(),
-    setItemPayers: vi.fn(), listSettlements: vi.fn(() => []), createSettlement: vi.fn(), updateSettlement: vi.fn(), deleteSettlement: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    listBudgetItems: vi.fn(),
+    createBudgetItem: vi.fn(),
+    updateBudgetItem: vi.fn(),
+    deleteBudgetItem: vi.fn(),
+    updateMembers: vi.fn(),
+    toggleMemberPaid: vi.fn(),
+    getPerPersonSummary: vi.fn(),
+    calculateSettlement: vi.fn(),
+    freezeForeignRate: vi.fn(),
+    reorderBudgetItems: vi.fn(),
+    reorderBudgetCategories: vi.fn(),
+    setItemPayers: vi.fn(),
+    listSettlements: vi.fn(() => []),
+    createSettlement: vi.fn(),
+    updateSettlement: vi.fn(),
+    deleteSettlement: vi.fn(),
   },
 }));
 vi.mock('../../src/services/budgetService', () => svc);
-
-import { BudgetModule } from '../../src/nest/budget/budget.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Budget e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -88,34 +101,49 @@ describe('Budget e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('201 on create with permission', async () => {
-    const res = await request(server).post('/api/trips/5/budget').set('Cookie', sessionCookie(1)).send({ name: 'Hotel' });
+    const res = await request(server)
+      .post('/api/trips/5/budget')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Hotel' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ item: { id: 9, name: 'Hotel' } });
   });
 
   it('403 on create without permission', async () => {
     checkPermission.mockReturnValue(false);
-    const res = await request(server).post('/api/trips/5/budget').set('Cookie', sessionCookie(1)).send({ name: 'Hotel' });
+    const res = await request(server)
+      .post('/api/trips/5/budget')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Hotel' });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: 'No permission' });
   });
 
   it('400 on member update with a non-array user_ids', async () => {
-    const res = await request(server).put('/api/trips/5/budget/9/members').set('Cookie', sessionCookie(1)).send({ user_ids: 'no' });
+    const res = await request(server)
+      .put('/api/trips/5/budget/9/members')
+      .set('Cookie', sessionCookie(1))
+      .send({ user_ids: 'no' });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'user_ids must be an array' });
   });
 
   it('200 on settlement update with permission', async () => {
     svc.updateSettlement.mockReturnValue({ id: 7, from_user_id: 2, to_user_id: 1, amount: 15 });
-    const res = await request(server).put('/api/trips/5/budget/settlements/7').set('Cookie', sessionCookie(1)).send({ from_user_id: 2, to_user_id: 1, amount: 15 });
+    const res = await request(server)
+      .put('/api/trips/5/budget/settlements/7')
+      .set('Cookie', sessionCookie(1))
+      .send({ from_user_id: 2, to_user_id: 1, amount: 15 });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ settlement: { id: 7, from_user_id: 2, to_user_id: 1, amount: 15 } });
   });
 
   it('404 on settlement update when it does not exist', async () => {
     svc.updateSettlement.mockReturnValue(null);
-    const res = await request(server).put('/api/trips/5/budget/settlements/7').set('Cookie', sessionCookie(1)).send({ from_user_id: 2, to_user_id: 1, amount: 15 });
+    const res = await request(server)
+      .put('/api/trips/5/budget/settlements/7')
+      .set('Cookie', sessionCookie(1))
+      .send({ from_user_id: 2, to_user_id: 1, amount: 15 });
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Settlement not found' });
   });

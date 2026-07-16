@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { describe, it, expect } from 'vitest';
 import zlib from 'zlib';
 
 // Data-integrity guard for the shipped Atlas region bundle. geoBoundaries fills
@@ -14,13 +14,13 @@ describe('Atlas admin1 region bundle (#1217)', () => {
     properties: { iso_a2: string | null; iso_3166_2: string };
   }[];
 
-  const regions = (a2: string) => features.filter(f => f.properties.iso_a2 === a2);
+  const regions = (a2: string) => features.filter((f) => f.properties.iso_a2 === a2);
 
   it('ATLAS-BUNDLE-001 — previously-broken countries now have distinct region codes', () => {
     for (const a2 of ['ES', 'CN', 'CL', 'OM']) {
       const f = regions(a2);
       expect(f.length, `${a2} should ship regions`).toBeGreaterThan(1);
-      expect(new Set(f.map(r => r.properties.iso_3166_2)).size, `${a2} region codes must be unique`).toBe(f.length);
+      expect(new Set(f.map((r) => r.properties.iso_3166_2)).size, `${a2} region codes must be unique`).toBe(f.length);
     }
   });
 
@@ -29,8 +29,8 @@ describe('Atlas admin1 region bundle (#1217)', () => {
       const f = regions(a2);
       expect(f.length).toBeGreaterThan(1);
       // real ISO 3166-2 form, e.g. DE-BW
-      expect(f.some(r => /^[A-Z]{2}-[A-Z0-9]+$/.test(r.properties.iso_3166_2))).toBe(true);
-      expect(new Set(f.map(r => r.properties.iso_3166_2)).size).toBe(f.length);
+      expect(f.some((r) => /^[A-Z]{2}-[A-Z0-9]+$/.test(r.properties.iso_3166_2))).toBe(true);
+      expect(new Set(f.map((r) => r.properties.iso_3166_2)).size).toBe(f.length);
     }
   });
 });

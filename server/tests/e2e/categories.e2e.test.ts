@@ -3,12 +3,16 @@
  * through the real JwtAuthGuard + AdminGuard against a temp SQLite db seeded
  * with an admin and a normal user. categoryService is mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import request from 'supertest';
+import { CategoriesModule } from '../../src/nest/categories/categories.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { DatabaseModule } from '../../src/nest/database/database.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -32,10 +36,6 @@ const { mocks } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../src/services/categoryService', () => mocks);
-
-import { CategoriesModule } from '../../src/nest/categories/categories.module';
-import { DatabaseModule } from '../../src/nest/database/database.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 const cat = { id: 1, name: 'Food', color: '#fff', icon: '🍔' };
 
@@ -86,7 +86,10 @@ describe('Categories e2e (real JwtAuthGuard + AdminGuard + temp SQLite)', () => 
   });
 
   it('201 when an admin creates a category', async () => {
-    const res = await request(server).post('/api/categories').set('Cookie', sessionCookie(1)).send({ name: 'Food', color: '#fff', icon: '🍔' });
+    const res = await request(server)
+      .post('/api/categories')
+      .set('Cookie', sessionCookie(1))
+      .send({ name: 'Food', color: '#fff', icon: '🍔' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ category: cat });
     expect(mocks.createCategory).toHaveBeenCalledWith(1, 'Food', '#fff', '🍔');

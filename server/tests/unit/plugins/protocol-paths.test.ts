@@ -2,10 +2,21 @@
  * Small pure helpers of the plugin module (#plugins): permission recognition and
  * the code/data path resolution (both the env-override and default branches).
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import {
+  pluginsCodeRoot,
+  pluginsDataRoot,
+  pluginCodeDir,
+  pluginDbFile,
+  resolveChildEntry,
+  serverCodeRoot,
+  pluginPermissionArgs,
+  pluginRealCodeDir,
+  ensurePluginModuleType,
+} from '../../../src/nest/plugins/paths';
 import { isKnownPermission, METHOD_PERMISSION, KNOWN_METHODS } from '../../../src/nest/plugins/protocol/envelope';
+
 import path from 'node:path';
-import { pluginsCodeRoot, pluginsDataRoot, pluginCodeDir, pluginDbFile, resolveChildEntry, serverCodeRoot, pluginPermissionArgs, pluginRealCodeDir, ensurePluginModuleType } from '../../../src/nest/plugins/paths';
+import { describe, it, expect, afterEach } from 'vitest';
 
 afterEach(() => {
   delete process.env.TREK_PLUGINS_DIR;

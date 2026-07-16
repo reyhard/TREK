@@ -2,6 +2,17 @@
  * DB-backed unit tests for budgetService trip-scoping (BUDGET-SVC-DB-001+).
  * Uses a real in-memory SQLite DB so the SQL WHERE clauses are exercised.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  createBudgetItem,
+  updateMembers,
+  toggleMemberPaid,
+  calculateSettlement,
+} from '../../../src/services/budgetService';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -27,12 +38,6 @@ vi.mock('../../../src/config', () => ({
   ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
   updateJwtSecret: () => {},
 }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { createBudgetItem, updateMembers, toggleMemberPaid, calculateSettlement } from '../../../src/services/budgetService';
 
 beforeAll(() => {
   createTables(testDb);

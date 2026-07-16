@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
+import { LlmParseModule } from '../llm-parse/llm-parse.module';
 import { BookingImportController } from './booking-import.controller';
 import { BookingImportService } from './booking-import.service';
+import { FeaturesController } from './features.controller';
 import { ImportJobsService } from './import-jobs.service';
 import { KitineraryExtractorService } from './kitinerary-extractor.service';
-import { FeaturesController } from './features.controller';
-import { LlmParseModule } from '../llm-parse/llm-parse.module';
+import { Module } from '@nestjs/common';
 
 @Module({
   imports: [LlmParseModule],

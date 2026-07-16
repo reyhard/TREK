@@ -2,6 +2,27 @@
  * Unit tests for notificationPreferencesService.
  * Covers NPREF-001 to NPREF-021.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  isEnabledForEvent,
+  getPreferencesMatrix,
+  setPreferences,
+  setAdminPreferences,
+  getAdminGlobalPref,
+  getActiveChannels,
+  isSmtpConfigured,
+  isWebhookConfigured,
+} from '../../../src/services/notificationPreferencesService';
+import {
+  createUser,
+  createAdmin,
+  setAppSetting,
+  setNotificationChannels,
+  disableNotificationPref,
+} from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -32,21 +53,6 @@ vi.mock('../../../src/services/apiKeyCrypto', () => ({
   encrypt_api_key: (v: string) => v,
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createAdmin, setAppSetting, setNotificationChannels, disableNotificationPref } from '../../helpers/factories';
-import {
-  isEnabledForEvent,
-  getPreferencesMatrix,
-  setPreferences,
-  setAdminPreferences,
-  getAdminGlobalPref,
-  getActiveChannels,
-  isSmtpConfigured,
-  isWebhookConfigured,
-} from '../../../src/services/notificationPreferencesService';
-
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -72,9 +78,11 @@ describe('isEnabledForEvent', () => {
 
   it('NPREF-002 — returns true when row exists with enabled=1', () => {
     const { user } = createUser(testDb);
-    testDb.prepare(
-      'INSERT INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, 1)'
-    ).run(user.id, 'trip_invite', 'email');
+    testDb
+      .prepare(
+        'INSERT INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, 1)',
+      )
+      .run(user.id, 'trip_invite', 'email');
     expect(isEnabledForEvent(user.id, 'trip_invite', 'email')).toBe(true);
   });
 
@@ -137,21 +145,21 @@ describe('getPreferencesMatrix', () => {
   it('NPREF-008 — the inapp channel is always active', () => {
     const { user } = createUser(testDb);
     const { channels } = getPreferencesMatrix(user.id, 'user');
-    expect(channels.find(c => c.id === 'inapp')?.active).toBe(true);
+    expect(channels.find((c) => c.id === 'inapp')?.active).toBe(true);
   });
 
   it('NPREF-009 — email is active when email is in notification_channels', () => {
     const { user } = createUser(testDb);
     setNotificationChannels(testDb, 'email');
     const { channels } = getPreferencesMatrix(user.id, 'user');
-    expect(channels.find(c => c.id === 'email')?.active).toBe(true);
+    expect(channels.find((c) => c.id === 'email')?.active).toBe(true);
   });
 
   it('NPREF-010 — email is inactive when email is not in notification_channels', () => {
     const { user } = createUser(testDb);
     // No notification_channels set → defaults to none
     const { channels } = getPreferencesMatrix(user.id, 'user');
-    expect(channels.find(c => c.id === 'email')?.active).toBe(false);
+    expect(channels.find((c) => c.id === 'email')?.active).toBe(false);
   });
 
   it('NPREF-011 — implemented_combos maps version_available to [inapp, email, webhook, ntfy]', () => {
@@ -174,9 +182,11 @@ describe('setPreferences', () => {
   it('NPREF-012 — disabling a preference inserts a row with enabled=0', () => {
     const { user } = createUser(testDb);
     setPreferences(user.id, { trip_invite: { email: false } });
-    const row = testDb.prepare(
-      'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
-    ).get(user.id, 'trip_invite', 'email') as { enabled: number } | undefined;
+    const row = testDb
+      .prepare(
+        'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
+      )
+      .get(user.id, 'trip_invite', 'email') as { enabled: number } | undefined;
     expect(row).toBeDefined();
     expect(row!.enabled).toBe(0);
   });
@@ -187,9 +197,11 @@ describe('setPreferences', () => {
     disableNotificationPref(testDb, user.id, 'trip_invite', 'email');
     // Then re-enable
     setPreferences(user.id, { trip_invite: { email: true } });
-    const row = testDb.prepare(
-      'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
-    ).get(user.id, 'trip_invite', 'email');
+    const row = testDb
+      .prepare(
+        'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
+      )
+      .get(user.id, 'trip_invite', 'email');
     // Row should be deleted — default is enabled
     expect(row).toBeUndefined();
   });
@@ -205,9 +217,11 @@ describe('setPreferences', () => {
     expect(isEnabledForEvent(user.id, 'trip_invite', 'webhook')).toBe(false);
     expect(isEnabledForEvent(user.id, 'booking_change', 'email')).toBe(false);
     // trip_reminder webhook was set to true → no row, default enabled
-    const row = testDb.prepare(
-      'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
-    ).get(user.id, 'trip_reminder', 'webhook');
+    const row = testDb
+      .prepare(
+        'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
+      )
+      .get(user.id, 'trip_reminder', 'webhook');
     expect(row).toBeUndefined();
   });
 });
@@ -282,20 +296,26 @@ describe('setAdminPreferences', () => {
     const { user } = createAdmin(testDb);
     setAdminPreferences(user.id, { version_available: { email: false } });
     expect(getAdminGlobalPref('version_available', 'email')).toBe(false);
-    const row = testDb.prepare("SELECT value FROM app_settings WHERE key = ?").get('admin_notif_pref_version_available_email') as { value: string } | undefined;
+    const row = testDb
+      .prepare('SELECT value FROM app_settings WHERE key = ?')
+      .get('admin_notif_pref_version_available_email') as { value: string } | undefined;
     expect(row?.value).toBe('0');
   });
 
   it('NPREF-023 — disabling inapp for version_available stores per-user row in notification_channel_preferences', () => {
     const { user } = createAdmin(testDb);
     setAdminPreferences(user.id, { version_available: { inapp: false } });
-    const row = testDb.prepare(
-      'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
-    ).get(user.id, 'version_available', 'inapp') as { enabled: number } | undefined;
+    const row = testDb
+      .prepare(
+        'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
+      )
+      .get(user.id, 'version_available', 'inapp') as { enabled: number } | undefined;
     expect(row).toBeDefined();
     expect(row!.enabled).toBe(0);
     // Global app_settings should NOT have an inapp key
-    const globalRow = testDb.prepare("SELECT value FROM app_settings WHERE key = ?").get('admin_notif_pref_version_available_inapp');
+    const globalRow = testDb
+      .prepare('SELECT value FROM app_settings WHERE key = ?')
+      .get('admin_notif_pref_version_available_inapp');
     expect(globalRow).toBeUndefined();
   });
 
@@ -305,9 +325,11 @@ describe('setAdminPreferences', () => {
     disableNotificationPref(testDb, user.id, 'version_available', 'inapp');
     // Then re-enable via setAdminPreferences
     setAdminPreferences(user.id, { version_available: { inapp: true } });
-    const row = testDb.prepare(
-      'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
-    ).get(user.id, 'version_available', 'inapp');
+    const row = testDb
+      .prepare(
+        'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
+      )
+      .get(user.id, 'version_available', 'inapp');
     expect(row).toBeUndefined();
   });
 
@@ -317,7 +339,9 @@ describe('setAdminPreferences', () => {
     setAdminPreferences(user.id, { version_available: { email: false } });
     setAdminPreferences(user.id, { version_available: { email: true } });
     expect(getAdminGlobalPref('version_available', 'email')).toBe(true);
-    const row = testDb.prepare("SELECT value FROM app_settings WHERE key = ?").get('admin_notif_pref_version_available_email') as { value: string } | undefined;
+    const row = testDb
+      .prepare('SELECT value FROM app_settings WHERE key = ?')
+      .get('admin_notif_pref_version_available_email') as { value: string } | undefined;
     expect(row?.value).toBe('1');
   });
 });

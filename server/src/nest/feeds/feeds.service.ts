@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { db } from '../../db/database';
 import { exportICS } from '../../services/tripService';
+import { Injectable } from '@nestjs/common';
+
+import { randomUUID } from 'crypto';
 
 const ninetyDaysAgo = () => {
   const d = new Date();
@@ -81,9 +82,7 @@ export class FeedsService {
   // ── ICS generation ───────────────────────────────────────────────────────
 
   buildTripIcs(token: string): { ics: string; filename: string } | null {
-    const row = db.prepare('SELECT id FROM trips WHERE feed_token = ?').get(token) as
-      | { id: number }
-      | undefined;
+    const row = db.prepare('SELECT id FROM trips WHERE feed_token = ?').get(token) as { id: number } | undefined;
     if (!row) return null;
     try {
       const { ics, filename } = exportICS(row.id);

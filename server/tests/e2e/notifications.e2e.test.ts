@@ -4,12 +4,15 @@
  * services are mocked; this focuses on auth, the inline admin gate on
  * /test-smtp, routing (the /in-app/all ordering trap) and status/body shapes.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { NotificationsModule } from '../../src/nest/notifications/notifications.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -26,21 +29,28 @@ vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: (
 const { prefs, inapp, channels } = vi.hoisted(() => ({
   prefs: { getPreferencesMatrix: vi.fn(), setPreferences: vi.fn() },
   inapp: {
-    getNotifications: vi.fn(), getUnreadCount: vi.fn(), markRead: vi.fn(), markUnread: vi.fn(),
-    markAllRead: vi.fn(), deleteNotification: vi.fn(), deleteAll: vi.fn(), respondToBoolean: vi.fn(),
+    getNotifications: vi.fn(),
+    getUnreadCount: vi.fn(),
+    markRead: vi.fn(),
+    markUnread: vi.fn(),
+    markAllRead: vi.fn(),
+    deleteNotification: vi.fn(),
+    deleteAll: vi.fn(),
+    respondToBoolean: vi.fn(),
   },
   channels: {
-    testSmtp: vi.fn(), testWebhook: vi.fn(), testNtfy: vi.fn(),
-    getUserWebhookUrl: vi.fn(), getAdminWebhookUrl: vi.fn(),
-    getUserNtfyConfig: vi.fn(), getAdminNtfyConfig: vi.fn(),
+    testSmtp: vi.fn(),
+    testWebhook: vi.fn(),
+    testNtfy: vi.fn(),
+    getUserWebhookUrl: vi.fn(),
+    getAdminWebhookUrl: vi.fn(),
+    getUserNtfyConfig: vi.fn(),
+    getAdminNtfyConfig: vi.fn(),
   },
 }));
 vi.mock('../../src/services/notificationPreferencesService', () => prefs);
 vi.mock('../../src/services/inAppNotifications', () => inapp);
 vi.mock('../../src/services/notifications', () => channels);
-
-import { NotificationsModule } from '../../src/nest/notifications/notifications.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Notifications e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -60,7 +70,12 @@ describe('Notifications e2e (real auth guard + temp SQLite)', () => {
     seedUser(db as never, { id: 2, role: 'user', email: 'user@example.test' });
     app = await build();
     server = app.getHttpServer();
-    prefs.getPreferencesMatrix.mockReturnValue({ preferences: {}, available_channels: {}, event_types: [], implemented_combos: {} });
+    prefs.getPreferencesMatrix.mockReturnValue({
+      preferences: {},
+      available_channels: {},
+      event_types: [],
+      implemented_combos: {},
+    });
     inapp.getUnreadCount.mockReturnValue(2);
     inapp.deleteAll.mockReturnValue(4);
     channels.testSmtp.mockResolvedValue({ success: true });
@@ -89,7 +104,10 @@ describe('Notifications e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('200 test-smtp for an admin (stays 200, not 201)', async () => {
-    const res = await request(server).post('/api/notifications/test-smtp').set('Cookie', sessionCookie(1)).send({ email: 'x@y.z' });
+    const res = await request(server)
+      .post('/api/notifications/test-smtp')
+      .set('Cookie', sessionCookie(1))
+      .send({ email: 'x@y.z' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true });
   });

@@ -2,10 +2,25 @@
  * Journey API integration tests.
  * Covers JOURNEY-INT-001 through JOURNEY-INT-020.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
-import request from 'supertest';
-import type { Application } from 'express';
+import { buildApp } from '../../src/bootstrap';
+import { runMigrations } from '../../src/db/migrations';
+import { createTables } from '../../src/db/schema';
+import { invalidatePermissionsCache } from '../../src/services/permissions';
+import { authCookie } from '../helpers/auth';
+import {
+  createUser,
+  createAdmin,
+  createTrip,
+  createJourney,
+  createJourneyEntry,
+  addJourneyContributor,
+} from '../helpers/factories';
+import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
+
+import type { Application } from 'express';
+import request from 'supertest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 1: Bare in-memory DB — schema applied in beforeAll after mocks register
@@ -22,16 +37,32 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: number) => {
-      const place: any = db.prepare(`
+      const place: any = db
+        .prepare(
+          `
         SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon
         FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?
-      `).get(placeId);
+      `,
+        )
+        .get(placeId);
       if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -60,21 +91,6 @@ vi.mock('../../src/services/memories/immichService', () => ({
   getImmichCredentials: vi.fn(() => null),
 }));
 
-import { buildApp } from '../../src/bootstrap';
-import { createTables } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrations';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import {
-  createUser,
-  createAdmin,
-  createTrip,
-  createJourney,
-  createJourneyEntry,
-  addJourneyContributor,
-} from '../helpers/factories';
-import { authCookie } from '../helpers/auth';
-import { invalidatePermissionsCache } from '../../src/services/permissions';
-
 let nestApp: INestApplication;
 let app: Application;
 
@@ -89,9 +105,11 @@ beforeEach(() => {
   resetRateLimits(nestApp);
   invalidatePermissionsCache();
   // Enable the journey addon
-  testDb.prepare(
-    "INSERT OR REPLACE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('journey', 'Journey', 'Travel journal', 'global', 'Compass', 1, 35)"
-  ).run();
+  testDb
+    .prepare(
+      "INSERT OR REPLACE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('journey', 'Journey', 'Travel journal', 'global', 'Compass', 1, 35)",
+    )
+    .run();
 });
 afterAll(async () => {
   await nestApp.close();
@@ -106,9 +124,7 @@ describe('List journeys', () => {
   it('JOURNEY-INT-001 — GET /api/journeys returns 200 with empty list initially', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .get('/api/journeys')
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get('/api/journeys').set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.journeys).toEqual([]);
@@ -139,9 +155,7 @@ describe('Create journey', () => {
     expect(res.body.id).toBeDefined();
 
     // Should appear in listing now
-    const list = await request(app)
-      .get('/api/journeys')
-      .set('Cookie', authCookie(user.id));
+    const list = await request(app).get('/api/journeys').set('Cookie', authCookie(user.id));
     expect(list.body.journeys).toHaveLength(1);
     expect(list.body.journeys[0].title).toBe('Japan 2026');
   });
@@ -156,9 +170,7 @@ describe('Get journey detail', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id, { title: 'Iceland' });
 
-    const res = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('Iceland');
@@ -170,9 +182,7 @@ describe('Get journey detail', () => {
   it('JOURNEY-INT-005 — GET /api/journeys/:id returns 404 for non-existent', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .get('/api/journeys/99999')
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get('/api/journeys/99999').set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(404);
   });
@@ -207,17 +217,13 @@ describe('Delete journey', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
 
-    const res = await request(app)
-      .delete(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).delete(`/api/journeys/${journey.id}`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
 
     // Verify it's gone
-    const get = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(user.id));
+    const get = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(user.id));
     expect(get.status).toBe(404);
   });
 });
@@ -241,9 +247,7 @@ describe('Journey trips', () => {
     expect(res.body.success).toBe(true);
 
     // Verify trip appears in journey detail
-    const detail = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(user.id));
+    const detail = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(user.id));
     expect(detail.body.trips).toHaveLength(1);
     expect(detail.body.trips[0].trip_id).toBe(trip.id);
   });
@@ -277,16 +281,13 @@ describe('Journey entries', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
 
-    const res = await request(app)
-      .post(`/api/journeys/${journey.id}/entries`)
-      .set('Cookie', authCookie(user.id))
-      .send({
-        title: 'First day in Tokyo',
-        story: 'Arrived at Narita airport.',
-        entry_date: '2026-04-01',
-        entry_time: '14:00',
-        location_name: 'Narita Airport',
-      });
+    const res = await request(app).post(`/api/journeys/${journey.id}/entries`).set('Cookie', authCookie(user.id)).send({
+      title: 'First day in Tokyo',
+      story: 'Arrived at Narita airport.',
+      entry_date: '2026-04-01',
+      entry_time: '14:00',
+      location_name: 'Narita Airport',
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.title).toBe('First day in Tokyo');
@@ -320,9 +321,7 @@ describe('Journey entries', () => {
       entry_date: '2026-04-02',
     });
 
-    const res = await request(app)
-      .delete(`/api/journeys/entries/${entry.id}`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).delete(`/api/journeys/entries/${entry.id}`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -348,9 +347,7 @@ describe('Journey contributors', () => {
     expect(res.body.success).toBe(true);
 
     // Contributor should now be able to access the journey
-    const detail = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(contributor.id));
+    const detail = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(contributor.id));
     expect(detail.status).toBe(200);
     expect(detail.body.title).toBeDefined();
   });
@@ -369,9 +366,7 @@ describe('Journey contributors', () => {
     expect(res.body.success).toBe(true);
 
     // Contributor should no longer access the journey
-    const detail = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(contributor.id));
+    const detail = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(contributor.id));
     expect(detail.status).toBe(404);
   });
 });
@@ -385,9 +380,7 @@ describe('Journey share link', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
 
-    const res = await request(app)
-      .get(`/api/journeys/${journey.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/journeys/${journey.id}/share-link`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.link).toBeNull();
@@ -408,9 +401,7 @@ describe('Journey share link', () => {
     expect(res.body.created).toBe(true);
 
     // GET should now return the link
-    const get = await request(app)
-      .get(`/api/journeys/${journey.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const get = await request(app).get(`/api/journeys/${journey.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(get.body.link).not.toBeNull();
     expect(get.body.link.token).toBe(res.body.token);
     expect(get.body.link.share_timeline).toBe(true);
@@ -429,17 +420,13 @@ describe('Journey share link', () => {
       .send({ share_timeline: true, share_gallery: true, share_map: true });
 
     // Delete
-    const res = await request(app)
-      .delete(`/api/journeys/${journey.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).delete(`/api/journeys/${journey.id}/share-link`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
 
     // Verify it's gone
-    const get = await request(app)
-      .get(`/api/journeys/${journey.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const get = await request(app).get(`/api/journeys/${journey.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(get.body.link).toBeNull();
   });
 });
@@ -457,16 +444,12 @@ describe('Journey permissions', () => {
     addJourneyContributor(testDb, journey.id, viewer.id, 'viewer');
 
     // Viewer can read
-    const viewerRes = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(viewer.id));
+    const viewerRes = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(viewer.id));
     expect(viewerRes.status).toBe(200);
     expect(viewerRes.body.title).toBe('Private Journey');
 
     // Outsider cannot
-    const outsiderRes = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(outsider.id));
+    const outsiderRes = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(outsider.id));
     expect(outsiderRes.status).toBe(404);
   });
 
@@ -477,21 +460,15 @@ describe('Journey permissions', () => {
     addJourneyContributor(testDb, journey.id, editor.id, 'editor');
 
     // Editor can read
-    const readRes = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(editor.id));
+    const readRes = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(editor.id));
     expect(readRes.status).toBe(200);
 
     // Editor cannot delete — only owner can
-    const delRes = await request(app)
-      .delete(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(editor.id));
+    const delRes = await request(app).delete(`/api/journeys/${journey.id}`).set('Cookie', authCookie(editor.id));
     expect(delRes.status).toBe(404);
 
     // Journey still exists
-    const verify = await request(app)
-      .get(`/api/journeys/${journey.id}`)
-      .set('Cookie', authCookie(owner.id));
+    const verify = await request(app).get(`/api/journeys/${journey.id}`).set('Cookie', authCookie(owner.id));
     expect(verify.status).toBe(200);
   });
 });
@@ -511,9 +488,7 @@ describe('Journey suggestions', () => {
       end_date: '2026-03-05',
     });
 
-    const res = await request(app)
-      .get('/api/journeys/suggestions')
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get('/api/journeys/suggestions').set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.trips).toBeDefined();
@@ -530,9 +505,7 @@ describe('Available trips', () => {
     const { user } = createUser(testDb);
     createTrip(testDb, user.id, { title: 'My Trip', start_date: '2026-05-01', end_date: '2026-05-03' });
 
-    const res = await request(app)
-      .get('/api/journeys/available-trips')
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get('/api/journeys/available-trips').set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.trips).toBeDefined();
@@ -562,10 +535,7 @@ describe('Create journey validation', () => {
   it('JOURNEY-INT-023 — POST /api/journeys returns 400 for blank title', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .post('/api/journeys')
-      .set('Cookie', authCookie(user.id))
-      .send({ title: '   ' });
+    const res = await request(app).post('/api/journeys').set('Cookie', authCookie(user.id)).send({ title: '   ' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Title is required');
@@ -729,9 +699,7 @@ describe('Delete photo (route)', () => {
   it('JOURNEY-INT-032 — DELETE /api/journeys/photos/:id returns 404 for non-existent', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .delete('/api/journeys/photos/99999')
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).delete('/api/journeys/photos/99999').set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(404);
   });
@@ -748,9 +716,7 @@ describe('Journey entries sub-routes', () => {
     createJourneyEntry(testDb, journey.id, user.id, { title: 'Day 1', entry_date: '2026-04-01' });
     createJourneyEntry(testDb, journey.id, user.id, { title: 'Day 2', entry_date: '2026-04-02' });
 
-    const res = await request(app)
-      .get(`/api/journeys/${journey.id}/entries`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/journeys/${journey.id}/entries`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.entries).toHaveLength(2);
@@ -761,9 +727,7 @@ describe('Journey entries sub-routes', () => {
     const { user: outsider } = createUser(testDb);
     const journey = createJourney(testDb, owner.id);
 
-    const res = await request(app)
-      .get(`/api/journeys/${journey.id}/entries`)
-      .set('Cookie', authCookie(outsider.id));
+    const res = await request(app).get(`/api/journeys/${journey.id}/entries`).set('Cookie', authCookie(outsider.id));
 
     expect(res.status).toBe(404);
   });
@@ -801,9 +765,7 @@ describe('Update entry edge cases', () => {
   it('JOURNEY-INT-037 — DELETE /api/journeys/entries/:id returns 404 for non-existent entry', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .delete('/api/journeys/entries/99999')
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).delete('/api/journeys/entries/99999').set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(404);
   });
@@ -925,9 +887,7 @@ describe('Share link update', () => {
     expect(update.body.created).toBe(false);
 
     // Verify updated permissions
-    const get = await request(app)
-      .get(`/api/journeys/${journey.id}/share-link`)
-      .set('Cookie', authCookie(user.id));
+    const get = await request(app).get(`/api/journeys/${journey.id}/share-link`).set('Cookie', authCookie(user.id));
     expect(get.body.link.share_timeline).toBe(true);
     expect(get.body.link.share_gallery).toBe(false);
     expect(get.body.link.share_map).toBe(false);
@@ -965,7 +925,8 @@ describe('Provider photos — passphrase persistence', () => {
 
     expect(res.status).toBe(201);
 
-    const row = testDb.prepare('SELECT passphrase FROM trek_photos WHERE provider = ? AND asset_id = ? AND owner_id = ?')
+    const row = testDb
+      .prepare('SELECT passphrase FROM trek_photos WHERE provider = ? AND asset_id = ? AND owner_id = ?')
       .get('synologyphotos', 'shared-asset-1', user.id) as { passphrase: string | null } | undefined;
     expect(row?.passphrase).not.toBeNull();
     expect(typeof row?.passphrase).toBe('string');
@@ -985,7 +946,8 @@ describe('Provider photos — passphrase persistence', () => {
     expect(res.body.added).toBe(2);
 
     for (const assetId of ['batch-asset-1', 'batch-asset-2']) {
-      const row = testDb.prepare('SELECT passphrase FROM trek_photos WHERE provider = ? AND asset_id = ? AND owner_id = ?')
+      const row = testDb
+        .prepare('SELECT passphrase FROM trek_photos WHERE provider = ? AND asset_id = ? AND owner_id = ?')
         .get('synologyphotos', assetId, user.id) as { passphrase: string | null } | undefined;
       expect(row?.passphrase).not.toBeNull();
     }
@@ -1001,9 +963,7 @@ describe('Photo upload validation', () => {
     const journey = createJourney(testDb, user.id);
     const entry = createJourneyEntry(testDb, journey.id, user.id, { entry_date: '2026-04-01' });
 
-    const res = await request(app)
-      .post(`/api/journeys/entries/${entry.id}/photos`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).post(`/api/journeys/entries/${entry.id}/photos`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('No files uploaded');

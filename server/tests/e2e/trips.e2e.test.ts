@@ -4,12 +4,15 @@
  * list-services, auditLog, demo, the permission check, canAccessTrip and the
  * WebSocket broadcast are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { TripsModule } from '../../src/nest/trips/trips.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -24,11 +27,20 @@ const { db } = vi.hoisted(() => {
 
 const { canAccessTrip } = vi.hoisted(() => ({ canAccessTrip: vi.fn() }));
 vi.mock('../../src/db/database', () => ({
-  db, canAccessTrip, isOwner: vi.fn(() => true), getPlaceWithTags: vi.fn(), closeDb: () => {}, reinitialize: () => {},
+  db,
+  canAccessTrip,
+  isOwner: vi.fn(() => true),
+  getPlaceWithTags: vi.fn(),
+  closeDb: () => {},
+  reinitialize: () => {},
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn() }));
 vi.mock('../../src/services/notificationService', () => ({ send: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('../../src/services/auditLog', () => ({ writeAudit: vi.fn(), getClientIp: vi.fn(() => '1.2.3.4'), logInfo: vi.fn() }));
+vi.mock('../../src/services/auditLog', () => ({
+  writeAudit: vi.fn(),
+  getClientIp: vi.fn(() => '1.2.3.4'),
+  logInfo: vi.fn(),
+}));
 vi.mock('../../src/services/demo', () => ({ isDemoEmail: vi.fn(() => false) }));
 
 const { checkPermission } = vi.hoisted(() => ({ checkPermission: vi.fn() }));
@@ -36,10 +48,24 @@ vi.mock('../../src/services/permissions', () => ({ checkPermission }));
 
 const { tripSvc } = vi.hoisted(() => ({
   tripSvc: {
-    listTrips: vi.fn(), createTrip: vi.fn(), getTrip: vi.fn(), updateTrip: vi.fn(), deleteTrip: vi.fn(),
-    getTripRaw: vi.fn(), getTripOwner: vi.fn(), deleteOldCover: vi.fn(), updateCoverImage: vi.fn(),
-    listMembers: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), exportICS: vi.fn(), copyTripById: vi.fn(),
-    verifyTripAccess: vi.fn(), NotFoundError: class NotFoundError extends Error {}, ValidationError: class ValidationError extends Error {}, TRIP_SELECT: 'SELECT',
+    listTrips: vi.fn(),
+    createTrip: vi.fn(),
+    getTrip: vi.fn(),
+    updateTrip: vi.fn(),
+    deleteTrip: vi.fn(),
+    getTripRaw: vi.fn(),
+    getTripOwner: vi.fn(),
+    deleteOldCover: vi.fn(),
+    updateCoverImage: vi.fn(),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    removeMember: vi.fn(),
+    exportICS: vi.fn(),
+    copyTripById: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    NotFoundError: class NotFoundError extends Error {},
+    ValidationError: class ValidationError extends Error {},
+    TRIP_SELECT: 'SELECT',
   },
 }));
 vi.mock('../../src/services/tripService', () => tripSvc);
@@ -50,9 +76,6 @@ vi.mock('../../src/services/todoService', () => ({ listItems: () => [] }));
 vi.mock('../../src/services/budgetService', () => ({ listBudgetItems: () => [] }));
 vi.mock('../../src/services/reservationService', () => ({ listReservations: () => [] }));
 vi.mock('../../src/services/fileService', () => ({ listFiles: () => [] }));
-
-import { TripsModule } from '../../src/nest/trips/trips.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Trips e2e (real auth guard + temp SQLite)', () => {
   let server: Server;

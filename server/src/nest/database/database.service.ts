@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import type Database from 'better-sqlite3';
 import { db } from '../../db/database';
+import { Injectable } from '@nestjs/common';
+
+import type Database from 'better-sqlite3';
 
 /**
  * Injectable wrapper around TREK's existing better-sqlite3 connection.

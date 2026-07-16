@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { broadcast } from '../../websocket';
 import { canAccessTrip } from '../../db/database';
-import { checkPermission } from '../../services/permissions';
-import type { User } from '../../types';
 import * as svc from '../../services/assignmentService';
 import { reconcileTripSkeletons } from '../../services/journeyService';
+import { checkPermission } from '../../services/permissions';
+import type { User } from '../../types';
+import { broadcast } from '../../websocket';
+import { Injectable } from '@nestjs/common';
 
 type Trip = { user_id: number };
 
@@ -50,7 +50,11 @@ export class AssignmentsService {
    * the journey stays in sync. Non-fatal, like the route's try/catch.
    */
   reconcile(tripId: string, socketId?: string): void {
-    try { reconcileTripSkeletons(Number(tripId), socketId); } catch { /* non-fatal */ }
+    try {
+      reconcileTripSkeletons(Number(tripId), socketId);
+    } catch {
+      /* non-fatal */
+    }
   }
 
   assignmentExistsInDay(id: string, dayId: string, tripId: string) {

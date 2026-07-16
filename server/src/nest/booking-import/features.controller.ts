@@ -1,7 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
-import { KitineraryExtractorService } from './kitinerary-extractor.service';
-import { isAddonEnabled } from '../../services/adminService';
 import { ADDON_IDS } from '../../addons';
+import { isAddonEnabled } from '../../services/adminService';
+import { KitineraryExtractorService } from './kitinerary-extractor.service';
+import { Controller, Get } from '@nestjs/common';
 
 /** Exposes server feature flags consumed by the frontend to show/hide optional UI. */
 @Controller('api/health')

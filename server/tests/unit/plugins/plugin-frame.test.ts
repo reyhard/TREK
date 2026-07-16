@@ -3,16 +3,16 @@
  * assets with a locked-down per-frame CSP and a strict path guard, only when the
  * plugin is active and the runtime is enabled.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { PluginFrameController } from '../../../src/nest/plugins/plugin-frame.controller';
+import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { pluginsEnabledMock } = vi.hoisted(() => ({ pluginsEnabledMock: vi.fn(() => true) }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled: pluginsEnabledMock }));
-
-import { PluginFrameController } from '../../../src/nest/plugins/plugin-frame.controller';
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
 
 let codeRoot: string;
 beforeAll(() => {
@@ -33,14 +33,26 @@ function fakeRes() {
     headers: {} as Record<string, string>,
     sent: undefined as unknown,
     filePath: undefined as string | undefined,
-    status(c: number) { res.statusCode = c; return res; },
-    setHeader(k: string, v: string) { res.headers[k] = v; },
-    send(b: unknown) { res.sent = b; return res; },
-    sendFile(p: string) { res.filePath = p; res.statusCode ||= 200; },
+    status(c: number) {
+      res.statusCode = c;
+      return res;
+    },
+    setHeader(k: string, v: string) {
+      res.headers[k] = v;
+    },
+    send(b: unknown) {
+      res.sent = b;
+      return res;
+    },
+    sendFile(p: string) {
+      res.filePath = p;
+      res.statusCode ||= 200;
+    },
   };
   return res;
 }
-const req = (p: string, host?: string) => ({ params: { path: p }, get: (h: string) => (h.toLowerCase() === 'host' ? host : undefined) }) as never;
+const req = (p: string, host?: string) =>
+  ({ params: { path: p }, get: (h: string) => (h.toLowerCase() === 'host' ? host : undefined) }) as never;
 
 function runtime(active = true, hosts: string[] = []): PluginRuntimeService {
   return { isActive: vi.fn(() => active), outboundHostsOf: vi.fn(() => hosts) } as unknown as PluginRuntimeService;
@@ -56,7 +68,7 @@ describe('PluginFrameController', () => {
     expect(csp).toContain('sandbox allow-scripts allow-forms');
     expect(csp).not.toContain('allow-popups');
     expect(csp).not.toContain('allow-same-origin');
-    expect(csp).toContain('connect-src \'self\' https://api.weather.com');
+    expect(csp).toContain("connect-src 'self' https://api.weather.com");
     expect(res.headers['X-Content-Type-Options']).toBe('nosniff');
   });
 

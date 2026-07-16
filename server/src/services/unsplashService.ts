@@ -1,9 +1,10 @@
-import path from 'path';
-import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
-import { safeFetch } from '../utils/ssrfGuard';
 import { db } from '../db/database';
+import { safeFetch } from '../utils/ssrfGuard';
 import { decrypt_api_key } from './apiKeyCrypto';
+
+import fs from 'fs';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 interface UnsplashSearchResponse {
   results?: {
@@ -37,10 +38,16 @@ export interface UnsplashPhoto {
 export function getUnsplashKey(userId: number): string | null {
   const env_key = process.env.UNSPLASH_ACCESS_KEY?.trim();
   if (env_key) return env_key;
-  const user = db.prepare('SELECT unsplash_api_key FROM users WHERE id = ?').get(userId) as { unsplash_api_key: string | null } | undefined;
+  const user = db.prepare('SELECT unsplash_api_key FROM users WHERE id = ?').get(userId) as
+    | { unsplash_api_key: string | null }
+    | undefined;
   const user_key = decrypt_api_key(user?.unsplash_api_key);
   if (user_key) return user_key;
-  const admin = db.prepare("SELECT unsplash_api_key FROM users WHERE role = 'admin' AND unsplash_api_key IS NOT NULL AND unsplash_api_key != '' LIMIT 1").get() as { unsplash_api_key: string } | undefined;
+  const admin = db
+    .prepare(
+      "SELECT unsplash_api_key FROM users WHERE role = 'admin' AND unsplash_api_key IS NOT NULL AND unsplash_api_key != '' LIMIT 1",
+    )
+    .get() as { unsplash_api_key: string } | undefined;
   return decrypt_api_key(admin?.unsplash_api_key) || null;
 }
 
@@ -78,7 +85,7 @@ export async function searchUnsplashPhotos(query: string, perPage = 9, accessKey
       });
   let data: UnsplashSearchResponse;
   try {
-    data = await response.json() as UnsplashSearchResponse;
+    data = (await response.json()) as UnsplashSearchResponse;
   } catch {
     return { error: 'Unsplash search unavailable', status: response.ok ? 502 : response.status };
   }

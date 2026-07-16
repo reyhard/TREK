@@ -1,11 +1,12 @@
-import type Database from 'better-sqlite3';
 import { db } from '../db/database';
 import { isSmtpConfigured } from './notifications';
-import { listChannels, type ExternalChannel } from './notifications/channelRegistry';
 // Side-effect import: populates the registry with email/webhook/ntfy. Safe from
 // here — builtins only reaches ../notifications, which imports this module's
 // types with `import type`, so there is no runtime cycle.
 import './notifications/builtins';
+import { listChannels, type ExternalChannel } from './notifications/channelRegistry';
+
+import type Database from 'better-sqlite3';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,12 @@ export interface ChannelDescriptor {
  * decide for themselves (today: everything except `synology_session_cleared`).
  */
 export function combosFor(event: NotifEventType): NotifChannel[] {
-  return [INAPP_CHANNEL, ...listChannels().filter(c => c.supportsEvent(event)).map(c => c.id)];
+  return [
+    INAPP_CHANNEL,
+    ...listChannels()
+      .filter((c) => c.supportsEvent(event))
+      .map((c) => c.id),
+  ];
 }
 
 function allCombos(): Record<string, NotifChannel[]> {
@@ -85,7 +91,10 @@ export const ADMIN_SCOPED_EVENTS = new Set<NotifEventType>(['version_available']
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function getAppSetting(key: string): string | null {
-  return (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)?.value || null;
+  return (
+    (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)?.value ||
+    null
+  );
 }
 
 // ── Active channels (admin-configured) ────────────────────────────────────
@@ -104,8 +113,15 @@ function getAppSetting(key: string): string | null {
 export function getActiveChannels(): NotifChannel[] {
   const raw = getAppSetting('notification_channels') || getAppSetting('notification_channel') || 'none';
   if (raw === 'none') return [];
-  const builtins = new Set(listChannels().filter(c => c.source === 'builtin').map(c => c.id));
-  return raw.split(',').map(c => c.trim()).filter(c => builtins.has(c));
+  const builtins = new Set(
+    listChannels()
+      .filter((c) => c.source === 'builtin')
+      .map((c) => c.id),
+  );
+  return raw
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => builtins.has(c));
 }
 
 /** Is this channel switched on? Plugin channels are on by virtue of being live. */
@@ -120,9 +136,11 @@ export function isChannelActive(channel: ExternalChannel): boolean {
  * Default (no row) = enabled. Only returns false if there's an explicit disabled row.
  */
 export function isEnabledForEvent(userId: number, eventType: NotifEventType, channel: NotifChannel): boolean {
-  const row = db.prepare(
-    'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
-  ).get(userId, eventType, channel) as { enabled: number } | undefined;
+  const row = db
+    .prepare(
+      'SELECT enabled FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
+    )
+    .get(userId, eventType, channel) as { enabled: number } | undefined;
   return row === undefined || row.enabled === 1;
 }
 
@@ -200,10 +218,14 @@ function describeChannels(userId: number, scope: 'user' | 'admin'): ChannelDescr
  * scope='user'  — excludes admin-scoped events (for user settings page)
  * scope='admin' — returns only admin-scoped events (for admin notifications tab)
  */
-export function getPreferencesMatrix(userId: number, userRole: string, scope: 'user' | 'admin' = 'user'): PreferencesMatrix {
-  const rows = db.prepare(
-    'SELECT event_type, channel, enabled FROM notification_channel_preferences WHERE user_id = ?'
-  ).all(userId) as Array<{ event_type: string; channel: string; enabled: number }>;
+export function getPreferencesMatrix(
+  userId: number,
+  userRole: string,
+  scope: 'user' | 'admin' = 'user',
+): PreferencesMatrix {
+  const rows = db
+    .prepare('SELECT event_type, channel, enabled FROM notification_channel_preferences WHERE user_id = ?')
+    .all(userId) as Array<{ event_type: string; channel: string; enabled: number }>;
 
   // Build a lookup from stored rows
   const stored: Partial<Record<string, Partial<Record<string, boolean>>>> = {};
@@ -230,9 +252,10 @@ export function getPreferencesMatrix(userId: number, userRole: string, scope: 'u
   }
 
   // Filter event types by scope
-  const event_types = scope === 'admin'
-    ? ALL_EVENT_TYPES.filter(e => ADMIN_SCOPED_EVENTS.has(e))
-    : ALL_EVENT_TYPES.filter(e => !ADMIN_SCOPED_EVENTS.has(e));
+  const event_types =
+    scope === 'admin'
+      ? ALL_EVENT_TYPES.filter((e) => ADMIN_SCOPED_EVENTS.has(e))
+      : ALL_EVENT_TYPES.filter((e) => !ADMIN_SCOPED_EVENTS.has(e));
 
   return {
     preferences,
@@ -270,7 +293,7 @@ export function getAdminGlobalPref(event: NotifEventType, channel: AdminGlobalCh
 function setAdminGlobalPref(event: NotifEventType, channel: AdminGlobalChannel, enabled: boolean): void {
   db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(
     `admin_notif_pref_${event}_${channel}`,
-    enabled ? '1' : '0'
+    enabled ? '1' : '0',
   );
 }
 
@@ -282,7 +305,7 @@ function applyUserChannelPrefs(
   userId: number,
   prefs: Partial<Record<string, Partial<Record<string, boolean>>>>,
   upsert: Database.Statement<unknown[]>,
-  del: Database.Statement<unknown[]>
+  del: Database.Statement<unknown[]>,
 ): void {
   for (const [eventType, channels] of Object.entries(prefs)) {
     if (!channels) continue;
@@ -301,15 +324,12 @@ function applyUserChannelPrefs(
  * Bulk-update preferences from the matrix UI.
  * Inserts disabled rows (enabled=0) and removes rows that are enabled (default).
  */
-export function setPreferences(
-  userId: number,
-  prefs: Partial<Record<string, Partial<Record<string, boolean>>>>
-): void {
+export function setPreferences(userId: number, prefs: Partial<Record<string, Partial<Record<string, boolean>>>>): void {
   const upsert = db.prepare(
-    'INSERT OR REPLACE INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, ?)',
   );
   const del = db.prepare(
-    'DELETE FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
+    'DELETE FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
   );
   db.transaction(() => applyUserChannelPrefs(userId, prefs, upsert, del))();
 }
@@ -321,13 +341,13 @@ export function setPreferences(
  */
 export function setAdminPreferences(
   userId: number,
-  prefs: Partial<Record<string, Partial<Record<string, boolean>>>>
+  prefs: Partial<Record<string, Partial<Record<string, boolean>>>>,
 ): void {
   const upsert = db.prepare(
-    'INSERT OR REPLACE INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, ?)',
   );
   const del = db.prepare(
-    'DELETE FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?'
+    'DELETE FROM notification_channel_preferences WHERE user_id = ? AND event_type = ? AND channel = ?',
   );
 
   // Split global (email/webhook) from per-user (inapp) prefs

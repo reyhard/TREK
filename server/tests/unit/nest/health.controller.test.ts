@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
+import { DatabaseService } from '../../../src/nest/database/database.service';
 import { HealthController } from '../../../src/nest/health/health.controller';
 import { HealthService } from '../../../src/nest/health/health.service';
-import { DatabaseService } from '../../../src/nest/database/database.service';
 import type { User } from '../../../src/types';
+
+import { describe, it, expect, vi } from 'vitest';
 
 const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
 

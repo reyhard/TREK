@@ -2,6 +2,29 @@
  * Unit tests for packingService.ts — uncovered functions.
  * Covers PACK-SVC-001 to PACK-SVC-012.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  saveAsTemplate,
+  applyTemplate,
+  listTemplates,
+  setBagMembers,
+  createBag,
+  updateBag,
+  deleteBag,
+  bulkImport,
+  createItem,
+  updateItem,
+  deleteItem,
+  listItems,
+  setItemSharing,
+  addContributor,
+  removeContributor,
+  cloneItem,
+} from '../../../src/services/packingService';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB mock setup (vi.hoisted so it is available before vi.mock calls) ────────
@@ -30,29 +53,6 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import {
-  saveAsTemplate,
-  applyTemplate,
-  listTemplates,
-  setBagMembers,
-  createBag,
-  updateBag,
-  deleteBag,
-  bulkImport,
-  createItem,
-  updateItem,
-  deleteItem,
-  listItems,
-  setItemSharing,
-  addContributor,
-  removeContributor,
-  cloneItem,
-} from '../../../src/services/packingService';
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 beforeAll(() => {
@@ -75,9 +75,15 @@ describe('saveAsTemplate', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    testDb.prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)').run(trip.id, 'Shirt', 'Clothes', 0);
-    testDb.prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)').run(trip.id, 'Shorts', 'Clothes', 1);
-    testDb.prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)').run(trip.id, 'Toothbrush', 'Toiletries', 2);
+    testDb
+      .prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)')
+      .run(trip.id, 'Shirt', 'Clothes', 0);
+    testDb
+      .prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)')
+      .run(trip.id, 'Shorts', 'Clothes', 1);
+    testDb
+      .prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)')
+      .run(trip.id, 'Toothbrush', 'Toiletries', 2);
 
     const result = saveAsTemplate(trip.id, user.id, 'My Template');
 
@@ -109,8 +115,12 @@ describe('listTemplates', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    testDb.prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)').run(trip.id, 'Shirt', 'Clothes', 0);
-    testDb.prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)').run(trip.id, 'Toothbrush', 'Toiletries', 1);
+    testDb
+      .prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)')
+      .run(trip.id, 'Shirt', 'Clothes', 0);
+    testDb
+      .prepare('INSERT INTO packing_items (trip_id, name, category, checked, sort_order) VALUES (?, ?, ?, 0, ?)')
+      .run(trip.id, 'Toothbrush', 'Toiletries', 1);
     const saved = saveAsTemplate(trip.id, user.id, 'Weekend');
 
     const templates = listTemplates();
@@ -131,14 +141,22 @@ describe('applyTemplate', () => {
     const trip = createTrip(testDb, user.id);
 
     // Insert a template with one category and two items directly
-    const templateResult = testDb.prepare('INSERT INTO packing_templates (name, created_by) VALUES (?, ?)').run('Camping', user.id);
+    const templateResult = testDb
+      .prepare('INSERT INTO packing_templates (name, created_by) VALUES (?, ?)')
+      .run('Camping', user.id);
     const templateId = templateResult.lastInsertRowid as number;
 
-    const catResult = testDb.prepare('INSERT INTO packing_template_categories (template_id, name, sort_order) VALUES (?, ?, ?)').run(templateId, 'Gear', 0);
+    const catResult = testDb
+      .prepare('INSERT INTO packing_template_categories (template_id, name, sort_order) VALUES (?, ?, ?)')
+      .run(templateId, 'Gear', 0);
     const catId = catResult.lastInsertRowid as number;
 
-    testDb.prepare('INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, ?, ?)').run(catId, 'Tent', 0);
-    testDb.prepare('INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, ?, ?)').run(catId, 'Sleeping Bag', 1);
+    testDb
+      .prepare('INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, ?, ?)')
+      .run(catId, 'Tent', 0);
+    testDb
+      .prepare('INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, ?, ?)')
+      .run(catId, 'Sleeping Bag', 1);
 
     const result = applyTemplate(trip.id, templateId);
 
@@ -156,7 +174,9 @@ describe('applyTemplate', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
 
-    const templateResult = testDb.prepare('INSERT INTO packing_templates (name, created_by) VALUES (?, ?)').run('Empty Template', user.id);
+    const templateResult = testDb
+      .prepare('INSERT INTO packing_templates (name, created_by) VALUES (?, ?)')
+      .run('Empty Template', user.id);
     const templateId = templateResult.lastInsertRowid as number;
 
     const result = applyTemplate(trip.id, templateId);
@@ -265,12 +285,16 @@ describe('setBagMembers', () => {
 
     // assigning to an outsider must not stick — the CASE keeps user_id null
     updateBag(trip.id, bag.id, { user_id: outsider.id }, ['user_id']);
-    const stored = testDb.prepare('SELECT user_id FROM packing_bags WHERE id = ?').get(bag.id) as { user_id: number | null };
+    const stored = testDb.prepare('SELECT user_id FROM packing_bags WHERE id = ?').get(bag.id) as {
+      user_id: number | null;
+    };
     expect(stored.user_id).toBeNull();
 
     // assigning to the owner (on the roster) does stick
     updateBag(trip.id, bag.id, { user_id: user.id }, ['user_id']);
-    const stored2 = testDb.prepare('SELECT user_id FROM packing_bags WHERE id = ?').get(bag.id) as { user_id: number | null };
+    const stored2 = testDb.prepare('SELECT user_id FROM packing_bags WHERE id = ?').get(bag.id) as {
+      user_id: number | null;
+    };
     expect(stored2.user_id).toBe(user.id);
   });
 });
@@ -287,7 +311,9 @@ describe('bulkImport with bag field', () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toBeDefined();
 
-    const bags = testDb.prepare('SELECT * FROM packing_bags WHERE trip_id = ? AND name = ?').all(trip.id, 'Carry-On') as any[];
+    const bags = testDb
+      .prepare('SELECT * FROM packing_bags WHERE trip_id = ? AND name = ?')
+      .all(trip.id, 'Carry-On') as any[];
     expect(bags).toHaveLength(1);
 
     const items = testDb.prepare('SELECT * FROM packing_items WHERE trip_id = ?').all(trip.id) as any[];
@@ -306,7 +332,9 @@ describe('bulkImport with bag field', () => {
 
     expect(result).toHaveLength(2);
 
-    const bags = testDb.prepare('SELECT * FROM packing_bags WHERE trip_id = ? AND name = ?').all(trip.id, 'Carry-On') as any[];
+    const bags = testDb
+      .prepare('SELECT * FROM packing_bags WHERE trip_id = ? AND name = ?')
+      .all(trip.id, 'Carry-On') as any[];
     expect(bags).toHaveLength(1);
 
     const items = testDb.prepare('SELECT * FROM packing_items WHERE trip_id = ?').all(trip.id) as any[];
@@ -356,7 +384,7 @@ describe('private items (#858)', () => {
     expect(secret.owner_id).toBe(user.id);
   });
 
-  it('PACK-SVC-015: listItems hides another member\'s private items but shows the owner theirs', () => {
+  it("PACK-SVC-015: listItems hides another member's private items but shows the owner theirs", () => {
     const { user: owner } = createUser(testDb);
     const { user: other } = createUser(testDb);
     const trip = createTrip(testDb, owner.id);
@@ -368,8 +396,8 @@ describe('private items (#858)', () => {
     const otherView = listItems(trip.id, other.id) as any[];
     const unscoped = listItems(trip.id) as any[];
 
-    expect(ownerView.map(i => i.name).sort()).toEqual(['Private', 'Shared']);
-    expect(otherView.map(i => i.name)).toEqual(['Shared']);
+    expect(ownerView.map((i) => i.name).sort()).toEqual(['Private', 'Shared']);
+    expect(otherView.map((i) => i.name)).toEqual(['Shared']);
     // Without a viewer (internal callers) nothing is filtered.
     expect(unscoped).toHaveLength(2);
   });
@@ -379,7 +407,13 @@ describe('private items (#858)', () => {
     const trip = createTrip(testDb, user.id);
 
     // Legacy-style row with no owner.
-    const id = Number((testDb.prepare('INSERT INTO packing_items (trip_id, name, checked, sort_order) VALUES (?, ?, 0, 0)').run(trip.id, 'Legacy') as any).lastInsertRowid);
+    const id = Number(
+      (
+        testDb
+          .prepare('INSERT INTO packing_items (trip_id, name, checked, sort_order) VALUES (?, ?, 0, 0)')
+          .run(trip.id, 'Legacy') as any
+      ).lastInsertRowid,
+    );
 
     const updated = updateItem(trip.id, id, { is_private: true }, ['is_private'], undefined, user.id) as any;
     expect(updated.is_private).toBe(1);
@@ -409,23 +443,25 @@ describe('private items (#858)', () => {
 
     bulkImport(trip.id, [{ name: 'A' }, { name: 'B', is_private: true }], user.id);
     const rows = testDb.prepare('SELECT * FROM packing_items WHERE trip_id = ? ORDER BY name').all(trip.id) as any[];
-    expect(rows.every(r => r.owner_id === user.id)).toBe(true);
-    expect(rows.find(r => r.name === 'B').is_private).toBe(1);
-    expect(rows.find(r => r.name === 'A').is_private).toBe(0);
+    expect(rows.every((r) => r.owner_id === user.id)).toBe(true);
+    expect(rows.find((r) => r.name === 'B').is_private).toBe(1);
+    expect(rows.find((r) => r.name === 'A').is_private).toBe(0);
   });
 });
 
 // ── Three-tier sharing (#858 follow-up) ───────────────────────────────────────
 
 describe('three-tier packing sharing (#858)', () => {
-  const names = (rows: any[]) => rows.map(r => r.name).sort();
+  const names = (rows: any[]) => rows.map((r) => r.name).sort();
 
   it('PACK-SVC-040: existing/common items are visible to everyone (non-breaking)', () => {
     const { user: owner } = createUser(testDb);
     const { user: other } = createUser(testDb);
     const trip = createTrip(testDb, owner.id);
     // A legacy-style row written directly (is_private defaults 0) = Common.
-    testDb.prepare('INSERT INTO packing_items (trip_id, name, checked, sort_order) VALUES (?, ?, 0, 0)').run(trip.id, 'Tent');
+    testDb
+      .prepare('INSERT INTO packing_items (trip_id, name, checked, sort_order) VALUES (?, ?, 0, 0)')
+      .run(trip.id, 'Tent');
     createItem(trip.id, { name: 'Stove', visibility: 'common' }, owner.id);
 
     expect(names(listItems(trip.id, owner.id) as any[])).toEqual(['Stove', 'Tent']);
@@ -438,14 +474,18 @@ describe('three-tier packing sharing (#858)', () => {
     const { user: stranger } = createUser(testDb);
     const trip = createTrip(testDb, owner.id);
 
-    const item = createItem(trip.id, { name: 'Power bank', visibility: 'shared', recipient_ids: [friend.id] }, owner.id) as any;
+    const item = createItem(
+      trip.id,
+      { name: 'Power bank', visibility: 'shared', recipient_ids: [friend.id] },
+      owner.id,
+    ) as any;
     expect(item.is_private).toBe(1);
     expect(item.owner_username).toBe(owner.username);
     expect(item.recipients.map((r: any) => r.user_id)).toEqual([friend.id]);
 
-    expect(names(listItems(trip.id, owner.id) as any[])).toEqual(['Power bank']);   // bringer
-    expect(names(listItems(trip.id, friend.id) as any[])).toEqual(['Power bank']);  // covered person
-    expect(names(listItems(trip.id, stranger.id) as any[])).toEqual([]);            // nobody else
+    expect(names(listItems(trip.id, owner.id) as any[])).toEqual(['Power bank']); // bringer
+    expect(names(listItems(trip.id, friend.id) as any[])).toEqual(['Power bank']); // covered person
+    expect(names(listItems(trip.id, stranger.id) as any[])).toEqual([]); // nobody else
   });
 
   it('PACK-SVC-042: a Personal item is visible only to its owner', () => {
@@ -493,11 +533,15 @@ describe('three-tier packing sharing (#858)', () => {
     expect(cleared.contributors).toEqual([]);
   });
 
-  it('PACK-SVC-045: cloneItem copies an item onto the cloner\'s personal list', () => {
+  it("PACK-SVC-045: cloneItem copies an item onto the cloner's personal list", () => {
     const { user: owner } = createUser(testDb);
     const { user: cloner } = createUser(testDb);
     const trip = createTrip(testDb, owner.id);
-    const common = createItem(trip.id, { name: 'Travel adapter', category: 'Electronics', visibility: 'common' }, owner.id) as any;
+    const common = createItem(
+      trip.id,
+      { name: 'Travel adapter', category: 'Electronics', visibility: 'common' },
+      owner.id,
+    ) as any;
 
     const clone = cloneItem(trip.id, common.id, cloner.id) as any;
     expect(clone.name).toBe('Travel adapter');
@@ -505,7 +549,7 @@ describe('three-tier packing sharing (#858)', () => {
     expect(clone.is_private).toBe(1);
     expect(clone.owner_id).toBe(cloner.id);
     // The clone is the cloner's alone.
-    expect(names(listItems(trip.id, owner.id) as any[])).toEqual(['Travel adapter']);     // owner sees only the common one
+    expect(names(listItems(trip.id, owner.id) as any[])).toEqual(['Travel adapter']); // owner sees only the common one
     expect(names(listItems(trip.id, cloner.id) as any[])).toEqual(['Travel adapter', 'Travel adapter']); // common + own clone
   });
 });

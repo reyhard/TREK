@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { OidcService } from '../../../src/nest/oidc/oidc.service';
+
 import type { Request, Response } from 'express';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // The Nest service is a thin pass-through to the legacy OIDC helpers plus a few
 // adjacent service modules. Mock each one and assert the wrapper forwards every
@@ -31,8 +33,6 @@ vi.mock('../../../src/services/authService', () => ({ resolveAuthToggles }));
 
 const { setAuthCookie } = vi.hoisted(() => ({ setAuthCookie: vi.fn() }));
 vi.mock('../../../src/services/cookie', () => ({ setAuthCookie }));
-
-import { OidcService } from '../../../src/nest/oidc/oidc.service';
 
 let s: OidcService;
 beforeEach(() => {

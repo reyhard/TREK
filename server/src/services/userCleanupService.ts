@@ -1,6 +1,7 @@
-import fs from 'node:fs';
 import { db } from '../db/database';
 import { pluginsDataRoot } from '../nest/plugins/paths';
+
+import fs from 'node:fs';
 
 /**
  * Erase a user's PLUGIN-held data on account deletion. Two parts:
@@ -17,15 +18,26 @@ import { pluginsDataRoot } from '../nest/plugins/paths';
  */
 export function erasePluginUserData(userId: number): void {
   for (const table of ['plugin_user_config', 'plugin_oauth_tokens', 'plugin_oauth_state']) {
-    try { db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId); } catch { /* table absent (slim schema) */ }
+    try {
+      db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+    } catch {
+      /* table absent (slim schema) */
+    }
   }
   try {
-    const rows = db.prepare('SELECT id, permissions FROM plugins').all() as Array<{ id: string; permissions: string | null }>;
+    const rows = db.prepare('SELECT id, permissions FROM plugins').all() as Array<{
+      id: string;
+      permissions: string | null;
+    }>;
     const installed = new Set(rows.map((r) => r.id));
     const insert = db.prepare('INSERT OR IGNORE INTO plugin_user_erasure_queue (plugin_id, user_id) VALUES (?, ?)');
     for (const r of rows) {
       let perms: unknown;
-      try { perms = JSON.parse(r.permissions ?? '[]'); } catch { perms = []; }
+      try {
+        perms = JSON.parse(r.permissions ?? '[]');
+      } catch {
+        perms = [];
+      }
       if (Array.isArray(perms) && perms.includes('hook:user-data')) insert.run(r.id, userId);
     }
     // Also enqueue for plugins UNINSTALLED with their data retained (deleteData=false):
@@ -37,8 +49,12 @@ export function erasePluginUserData(userId: number): void {
       for (const entry of fs.readdirSync(pluginsDataRoot(), { withFileTypes: true })) {
         if (entry.isDirectory() && !installed.has(entry.name)) insert.run(entry.name, userId);
       }
-    } catch { /* no plugin data root yet */ }
-  } catch { /* plugins / queue table absent (slim schema) */ }
+    } catch {
+      /* no plugin data root yet */
+    }
+  } catch {
+    /* plugins / queue table absent (slim schema) */
+  }
 }
 
 function cleanupUserReferences(userId: number): void {

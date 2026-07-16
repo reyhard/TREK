@@ -3,6 +3,8 @@
  * Covers PENRICH-001 to PENRICH-004 — the coordinate-validation guard that
  * prevents a name search from overwriting an imported place with the wrong POI.
  */
+import { pickEnrichmentMatch } from '../../../src/services/placeEnrichment';
+
 import { describe, it, expect, vi } from 'vitest';
 
 // placeEnrichment pulls in the DB, websocket and maps service at import time;
@@ -14,8 +16,6 @@ vi.mock('../../../src/services/mapsService', () => ({
   searchPlaces: async () => ({ places: [], source: 'none' }),
   getPlacePhoto: async () => ({ photoUrl: '', attribution: null }),
 }));
-
-import { pickEnrichmentMatch } from '../../../src/services/placeEnrichment';
 
 const target = { lat: 48.85, lng: 2.35 };
 

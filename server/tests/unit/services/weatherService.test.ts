@@ -1,3 +1,12 @@
+import {
+  estimateCondition,
+  cacheKey,
+  getWeather,
+  getDetailedWeather,
+  ApiError,
+  type WeatherResult,
+} from '../../../src/services/weatherService';
+
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 
 // Prevent the module-level setInterval from running during tests
@@ -7,15 +16,6 @@ vi.useFakeTimers();
 vi.stubGlobal('fetch', vi.fn());
 
 afterAll(() => vi.unstubAllGlobals());
-
-import {
-  estimateCondition,
-  cacheKey,
-  getWeather,
-  getDetailedWeather,
-  ApiError,
-  type WeatherResult,
-} from '../../../src/services/weatherService';
 
 // ── estimateCondition ────────────────────────────────────────────────────────
 
@@ -271,8 +271,8 @@ describe('getWeather', () => {
       };
 
       vi.mocked(fetch)
-          .mockResolvedValueOnce(mockResponse(forecastBody))
-          .mockResolvedValueOnce(mockResponse(archiveBody));
+        .mockResolvedValueOnce(mockResponse(forecastBody))
+        .mockResolvedValueOnce(mockResponse(archiveBody));
 
       const result = await getWeather('13.00', '23.00', date, 'en');
 
@@ -307,7 +307,9 @@ describe('getWeather', () => {
 
     it('returns no_forecast error when archive has no data for the date', async () => {
       const date = dateOffset(-5);
-      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], weathercode: [] } }));
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse({ daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], weathercode: [] } }),
+      );
 
       const result = await getWeather('14.01', '24.01', date, 'en');
 

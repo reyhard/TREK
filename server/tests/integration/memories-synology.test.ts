@@ -8,10 +8,26 @@
  *
  * No real HTTP calls are made.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
-import request from 'supertest';
-import type { Application } from 'express';
+import { buildApp } from '../../src/bootstrap';
+import { runMigrations } from '../../src/db/migrations';
+import { createTables } from '../../src/db/schema';
+import { encrypt_api_key } from '../../src/services/apiKeyCrypto';
+import { decrypt_api_key } from '../../src/services/apiKeyCrypto';
+// ── Passphrase persistence fixes ─────────────────────────────────────────────
+
+import { getOrCreateTrekPhoto, deleteTrekPhotoIfOrphan } from '../../src/services/memories/photoResolverService';
+import { safeFetch } from '../../src/utils/ssrfGuard';
+import { authCookie } from '../helpers/auth';
+import { createUser, createTrip, addTripMember, addTripPhoto, setSynologyCredentials } from '../helpers/factories';
+// ── Album sync ────────────────────────────────────────────────────────────────
+
+import { addAlbumLink } from '../helpers/factories';
+import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
+
+import type { Application } from 'express';
+import request from 'supertest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── Hoisted DB mock ──────────────────────────────────────────────────────────
 
@@ -27,7 +43,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -62,16 +82,15 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
       apiName = params.get('api') || '';
     } catch {}
     if (!apiName && init?.body) {
-      params = init.body instanceof URLSearchParams
-        ? init.body
-        : new URLSearchParams(String(init.body));
+      params = init.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init.body));
       apiName = params.get('api') || '';
     }
 
     // Auth login — used by settings save, status, test-connection
     if (apiName === 'SYNO.API.Auth') {
       return Promise.resolve({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: () => Promise.resolve({ success: true, data: { sid: 'fake-session-id-abc' } }),
         body: null,
@@ -81,17 +100,19 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
     // Album list
     if (apiName === 'SYNO.Foto.Browse.Album') {
       return Promise.resolve({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
-        json: () => Promise.resolve({
-          success: true,
-          data: {
-            list: [
-              { id: 1, name: 'Summer Trip', item_count: 15 },
-              { id: 2, name: 'Winter Holiday', item_count: 8 },
-            ],
-          },
-        }),
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              list: [
+                { id: 1, name: 'Summer Trip', item_count: 15 },
+                { id: 2, name: 'Winter Holiday', item_count: 8 },
+              ],
+            },
+          }),
         body: null,
       });
     }
@@ -99,31 +120,39 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
     // Search photos
     if (apiName === 'SYNO.Foto.Search.Search') {
       return Promise.resolve({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
-        json: () => Promise.resolve({
-          success: true,
-          data: {
-            list: [
-              {
-                id: 101,
-                filename: 'photo1.jpg',
-                filesize: 1024000,
-                time: 1717228800, // 2024-06-01 in Unix timestamp
-                additional: {
-                  thumbnail: { cache_key: '101_cachekey' },
-                  address: { city: 'Tokyo', country: 'Japan', state: 'Tokyo' },
-                  exif: { camera: 'Sony A7IV', focal_length: '50', aperture: '1.8', exposure_time: '1/250', iso: 400 },
-                  gps: { latitude: 35.6762, longitude: 139.6503 },
-                  resolution: { width: 6000, height: 4000 },
-                  orientation: 1,
-                  description: 'Tokyo street',
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              list: [
+                {
+                  id: 101,
+                  filename: 'photo1.jpg',
+                  filesize: 1024000,
+                  time: 1717228800, // 2024-06-01 in Unix timestamp
+                  additional: {
+                    thumbnail: { cache_key: '101_cachekey' },
+                    address: { city: 'Tokyo', country: 'Japan', state: 'Tokyo' },
+                    exif: {
+                      camera: 'Sony A7IV',
+                      focal_length: '50',
+                      aperture: '1.8',
+                      exposure_time: '1/250',
+                      iso: 400,
+                    },
+                    gps: { latitude: 35.6762, longitude: 139.6503 },
+                    resolution: { width: 6000, height: 4000 },
+                    orientation: 1,
+                    description: 'Tokyo street',
+                  },
                 },
-              },
-            ],
-            total: 1,
-          },
-        }),
+              ],
+              total: 1,
+            },
+          }),
         body: null,
       });
     }
@@ -131,43 +160,51 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
     // Browse items (for album sync or asset info)
     if (apiName === 'SYNO.Foto.Browse.Item') {
       return Promise.resolve({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
-        json: () => Promise.resolve({
-          success: true,
-          data: {
-            list: [
-              {
-                id: 101,
-                filename: 'photo1.jpg',
-                filesize: 1024000,
-                time: 1717228800,
-                additional: {
-                  thumbnail: { cache_key: '101_cachekey' },
-                  address: { city: 'Tokyo', country: 'Japan', state: 'Tokyo' },
-                  exif: { camera: 'Sony A7IV' },
-                  gps: { latitude: 35.6762, longitude: 139.6503 },
-                  resolution: { width: 6000, height: 4000 },
-                  orientation: 1,
-                  description: null,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              list: [
+                {
+                  id: 101,
+                  filename: 'photo1.jpg',
+                  filesize: 1024000,
+                  time: 1717228800,
+                  additional: {
+                    thumbnail: { cache_key: '101_cachekey' },
+                    address: { city: 'Tokyo', country: 'Japan', state: 'Tokyo' },
+                    exif: { camera: 'Sony A7IV' },
+                    gps: { latitude: 35.6762, longitude: 139.6503 },
+                    resolution: { width: 6000, height: 4000 },
+                    orientation: 1,
+                    description: null,
+                  },
                 },
-              },
-            ],
-          },
-        }),
+              ],
+            },
+          }),
         body: null,
       });
     }
 
     // Thumbnail stream
     if (apiName === 'SYNO.Foto.Thumbnail') {
-      if (!(['sm', 'm', 'xl', 'preview'].includes(params.get('size') || '')))
+      if (!['sm', 'm', 'xl', 'preview'].includes(params.get('size') || ''))
         return Promise.reject(new Error(`Unexpected thumbnail size: ${params.get('size')}`));
       const imageBytes = Buffer.from('fake-synology-thumbnail');
       return Promise.resolve({
-        ok: true, status: 200,
-        headers: { get: (h: string) => h === 'content-type' ? 'image/jpeg' : null },
-        body: new ReadableStream({ start(c) { c.enqueue(imageBytes); c.close(); } }),
+        ok: true,
+        status: 200,
+        headers: { get: (h: string) => (h === 'content-type' ? 'image/jpeg' : null) },
+        body: new ReadableStream({
+          start(c) {
+            c.enqueue(imageBytes);
+            c.close();
+          },
+        }),
       });
     }
 
@@ -194,14 +231,6 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
     safeFetch: vi.fn().mockImplementation(makeFakeSynologyFetch),
   };
 });
-
-import { buildApp } from '../../src/bootstrap';
-import { createTables } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrations';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import { createUser, createTrip, addTripMember, addTripPhoto, setSynologyCredentials } from '../helpers/factories';
-import { authCookie } from '../helpers/auth';
-import { safeFetch } from '../../src/utils/ssrfGuard';
 
 let nestApp: INestApplication;
 let app: Application;
@@ -231,9 +260,7 @@ describe('Synology settings', () => {
   it('SYNO-001 — GET /settings when not configured returns 400', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .get(`${SYNO}/settings`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/settings`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(400);
   });
@@ -241,14 +268,11 @@ describe('Synology settings', () => {
   it('SYNO-002 — PUT /settings saves credentials and returns success', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .put(`${SYNO}/settings`)
-      .set('Cookie', authCookie(user.id))
-      .send({
-        synology_url: 'https://synology.example.com',
-        synology_username: 'admin',
-        synology_password: 'secure-password',
-      });
+    const res = await request(app).put(`${SYNO}/settings`).set('Cookie', authCookie(user.id)).send({
+      synology_url: 'https://synology.example.com',
+      synology_username: 'admin',
+      synology_password: 'secure-password',
+    });
 
     expect(res.status).toBe(200);
 
@@ -260,14 +284,11 @@ describe('Synology settings', () => {
   it('SYNO-003 — PUT /settings with SSRF-blocked URL returns 400', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .put(`${SYNO}/settings`)
-      .set('Cookie', authCookie(user.id))
-      .send({
-        synology_url: 'http://192.168.1.100',
-        synology_username: 'admin',
-        synology_password: 'pass',
-      });
+    const res = await request(app).put(`${SYNO}/settings`).set('Cookie', authCookie(user.id)).send({
+      synology_url: 'http://192.168.1.100',
+      synology_username: 'admin',
+      synology_password: 'pass',
+    });
 
     expect(res.status).toBe(400);
   });
@@ -290,9 +311,7 @@ describe('Synology connection', () => {
   it('SYNO-010 — GET /status when not configured returns { connected: false }', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .get(`${SYNO}/status`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/status`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(false);
@@ -302,9 +321,7 @@ describe('Synology connection', () => {
     const { user } = createUser(testDb);
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
 
-    const res = await request(app)
-      .get(`${SYNO}/status`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/status`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(true);
@@ -313,14 +330,11 @@ describe('Synology connection', () => {
   it('SYNO-012 — POST /test with valid credentials returns { connected: true }', async () => {
     const { user } = createUser(testDb);
 
-    const res = await request(app)
-      .post(`${SYNO}/test`)
-      .set('Cookie', authCookie(user.id))
-      .send({
-        synology_url: 'https://synology.example.com',
-        synology_username: 'admin',
-        synology_password: 'secure-password',
-      });
+    const res = await request(app).post(`${SYNO}/test`).set('Cookie', authCookie(user.id)).send({
+      synology_url: 'https://synology.example.com',
+      synology_username: 'admin',
+      synology_password: 'secure-password',
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(true);
@@ -347,10 +361,7 @@ describe('Synology search and albums', () => {
     const { user } = createUser(testDb);
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
 
-    const res = await request(app)
-      .post(`${SYNO}/search`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const res = await request(app).post(`${SYNO}/search`).set('Cookie', authCookie(user.id)).send({});
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.assets)).toBe(true);
@@ -364,17 +375,15 @@ describe('Synology search and albums', () => {
     // Auth call succeeds, search call throws a network error
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'fake-sid' } }),
         body: null,
       } as any)
       .mockRejectedValueOnce(new Error('Synology unreachable'));
 
-    const res = await request(app)
-      .post(`${SYNO}/search`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const res = await request(app).post(`${SYNO}/search`).set('Cookie', authCookie(user.id)).send({});
 
     expect(res.status).toBe(500);
     expect(res.body.error).toBeDefined();
@@ -384,9 +393,7 @@ describe('Synology search and albums', () => {
     const { user } = createUser(testDb);
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.albums)).toBe(true);
@@ -401,8 +408,12 @@ describe('Synology listSynologyAlbums multi-source merge', () => {
   // Capture and restore the default safeFetch implementation around each test
   // in this block so the persistent mockImplementation we set doesn't leak.
   let _savedImpl: ((...args: any[]) => any) | undefined;
-  beforeEach(() => { _savedImpl = vi.mocked(safeFetch).getMockImplementation(); });
-  afterEach(() => { if (_savedImpl) vi.mocked(safeFetch).mockImplementation(_savedImpl); });
+  beforeEach(() => {
+    _savedImpl = vi.mocked(safeFetch).getMockImplementation();
+  });
+  afterEach(() => {
+    if (_savedImpl) vi.mocked(safeFetch).mockImplementation(_savedImpl);
+  });
 
   it('SYNO-027 — personal-only: shared and shared-with-me return failure → merged result contains personal albums, no error', async () => {
     const { user } = createUser(testDb);
@@ -410,31 +421,60 @@ describe('Synology listSynologyAlbums multi-source merge', () => {
 
     vi.mocked(safeFetch).mockImplementation((_url: string, init?: any) => {
       // Always read both URL params and body params; body takes precedence for request-specific fields.
-      const urlParams = (() => { try { return new URL(String(_url)).searchParams; } catch { return new URLSearchParams(); } })();
-      const bodyParams: URLSearchParams = init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
+      const urlParams = (() => {
+        try {
+          return new URL(String(_url)).searchParams;
+        } catch {
+          return new URLSearchParams();
+        }
+      })();
+      const bodyParams: URLSearchParams =
+        init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
       const api = urlParams.get('api') || bodyParams.get('api') || '';
       const category = bodyParams.get('category') || urlParams.get('category');
 
       if (api === 'SYNO.API.Auth') {
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { sid: 'sid-027' } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: true, data: { sid: 'sid-027' } }),
+          body: null,
+        } as any);
       }
       if (api === 'SYNO.Foto.Browse.Album') {
         if (!category) {
           // personal albums
-          return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [{ id: 1, name: 'Personal Album', item_count: 5 }] } }), body: null } as any);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ success: true, data: { list: [{ id: 1, name: 'Personal Album', item_count: 5 }] } }),
+            body: null,
+          } as any);
         }
         // shared category → failure
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: false, error: { code: 400 } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: false, error: { code: 400 } }),
+          body: null,
+        } as any);
       }
       if (api === 'SYNO.Foto.Sharing.Misc') {
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: false, error: { code: 400 } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: false, error: { code: 400 } }),
+          body: null,
+        } as any);
       }
       return Promise.reject(new Error(`Unexpected API: ${api}`));
     });
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.albums)).toBe(true);
@@ -447,30 +487,73 @@ describe('Synology listSynologyAlbums multi-source merge', () => {
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
 
     vi.mocked(safeFetch).mockImplementation((_url: string, init?: any) => {
-      const urlParams = (() => { try { return new URL(String(_url)).searchParams; } catch { return new URLSearchParams(); } })();
-      const bodyParams: URLSearchParams = init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
+      const urlParams = (() => {
+        try {
+          return new URL(String(_url)).searchParams;
+        } catch {
+          return new URLSearchParams();
+        }
+      })();
+      const bodyParams: URLSearchParams =
+        init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
       const api = urlParams.get('api') || bodyParams.get('api') || '';
       const category = bodyParams.get('category') || urlParams.get('category');
 
       if (api === 'SYNO.API.Auth') {
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { sid: 'sid-028' } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: true, data: { sid: 'sid-028' } }),
+          body: null,
+        } as any);
       }
       if (api === 'SYNO.Foto.Browse.Album') {
         if (!category) {
-          return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [{ id: 10, name: 'Alpha Album', item_count: 3 }, { id: 11, name: 'Beta Album', item_count: 7 }] } }), body: null } as any);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({
+              success: true,
+              data: {
+                list: [
+                  { id: 10, name: 'Alpha Album', item_count: 3 },
+                  { id: 11, name: 'Beta Album', item_count: 7 },
+                ],
+              },
+            }),
+            body: null,
+          } as any);
         }
         // shared category — one album with passphrase
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [{ id: 20, name: 'Shared Out', item_count: 2, passphrase: 'pp-abc' }] } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({
+            success: true,
+            data: { list: [{ id: 20, name: 'Shared Out', item_count: 2, passphrase: 'pp-abc' }] },
+          }),
+          body: null,
+        } as any);
       }
       if (api === 'SYNO.Foto.Sharing.Misc') {
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [{ id: 30, name: 'Shared With Me', item_count: 4, sharing_info: { passphrase: 'pp-xyz' } }] } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({
+            success: true,
+            data: { list: [{ id: 30, name: 'Shared With Me', item_count: 4, sharing_info: { passphrase: 'pp-xyz' } }] },
+          }),
+          body: null,
+        } as any);
       }
       return Promise.reject(new Error(`Unexpected API: ${api}`));
     });
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.albums)).toBe(true);
@@ -491,32 +574,64 @@ describe('Synology listSynologyAlbums multi-source merge', () => {
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
 
     vi.mocked(safeFetch).mockImplementation((_url: string, init?: any) => {
-      const urlParams = (() => { try { return new URL(String(_url)).searchParams; } catch { return new URLSearchParams(); } })();
-      const bodyParams: URLSearchParams = init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
+      const urlParams = (() => {
+        try {
+          return new URL(String(_url)).searchParams;
+        } catch {
+          return new URLSearchParams();
+        }
+      })();
+      const bodyParams: URLSearchParams =
+        init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
       const api = urlParams.get('api') || bodyParams.get('api') || '';
       const category = bodyParams.get('category') || urlParams.get('category');
 
       if (api === 'SYNO.API.Auth') {
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { sid: 'sid-029' } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: true, data: { sid: 'sid-029' } }),
+          body: null,
+        } as any);
       }
       if (api === 'SYNO.Foto.Browse.Album') {
         if (!category) {
           // personal: album id=99 without passphrase
-          return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [{ id: 99, name: 'Dup Album', item_count: 10 }] } }), body: null } as any);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ success: true, data: { list: [{ id: 99, name: 'Dup Album', item_count: 10 }] } }),
+            body: null,
+          } as any);
         }
         // shared: no entries
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [] } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: true, data: { list: [] } }),
+          body: null,
+        } as any);
       }
       if (api === 'SYNO.Foto.Sharing.Misc') {
         // shared-with-me: same album id=99 with passphrase
-        return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { list: [{ id: 99, name: 'Dup Album', item_count: 10, passphrase: 'pp-dup' }] } }), body: null } as any);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({
+            success: true,
+            data: { list: [{ id: 99, name: 'Dup Album', item_count: 10, passphrase: 'pp-dup' }] },
+          }),
+          body: null,
+        } as any);
       }
       return Promise.reject(new Error(`Unexpected API: ${api}`));
     });
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.albums)).toBe(true);
@@ -577,16 +692,14 @@ describe('Synology asset access', () => {
     const { user } = createUser(testDb);
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
 
-    const insert = testDb.prepare(
-      'INSERT INTO trek_photos (provider, asset_id, owner_id) VALUES (?, ?, ?)'
-    ).run('synologyphotos', '101_cachekey', user.id);
+    const insert = testDb
+      .prepare('INSERT INTO trek_photos (provider, asset_id, owner_id) VALUES (?, ?, ?)')
+      .run('synologyphotos', '101_cachekey', user.id);
     const trekPhotoId = Number(insert.lastInsertRowid);
 
     vi.mocked(safeFetch).mockClear();
 
-    const res = await request(app)
-      .get(`/api/photos/${trekPhotoId}/thumbnail`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/photos/${trekPhotoId}/thumbnail`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
   });
@@ -624,11 +737,15 @@ describe('Synology asset access', () => {
     const { user: member } = createUser(testDb);
     // Insert a shared photo referencing a trip that doesn't exist (FK disabled temporarily)
     testDb.exec('PRAGMA foreign_keys = OFF');
-    testDb.prepare('INSERT OR IGNORE INTO trek_photos (provider, asset_id, owner_id) VALUES (?, ?, ?)').run('synologyphotos', '101_cachekey', owner.id);
-    const tkpSyno35 = testDb.prepare('SELECT id FROM trek_photos WHERE provider = ? AND asset_id = ? AND owner_id = ?').get('synologyphotos', '101_cachekey', owner.id) as any;
-    testDb.prepare(
-      'INSERT INTO trip_photos (trip_id, user_id, photo_id, shared) VALUES (?, ?, ?, ?)'
-    ).run(9999, owner.id, tkpSyno35.id, 1);
+    testDb
+      .prepare('INSERT OR IGNORE INTO trek_photos (provider, asset_id, owner_id) VALUES (?, ?, ?)')
+      .run('synologyphotos', '101_cachekey', owner.id);
+    const tkpSyno35 = testDb
+      .prepare('SELECT id FROM trek_photos WHERE provider = ? AND asset_id = ? AND owner_id = ?')
+      .get('synologyphotos', '101_cachekey', owner.id) as any;
+    testDb
+      .prepare('INSERT INTO trip_photos (trip_id, user_id, photo_id, shared) VALUES (?, ?, ?, ?)')
+      .run(9999, owner.id, tkpSyno35.id, 1);
     testDb.exec('PRAGMA foreign_keys = ON');
 
     const res = await request(app)
@@ -648,7 +765,8 @@ describe('Synology asset access', () => {
     // Auth call succeeds, Browse.Item call throws a network error
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'fake-sid' } }),
         body: null,
@@ -700,11 +818,6 @@ describe('Synology auth checks', () => {
   });
 });
 
-// ── Album sync ────────────────────────────────────────────────────────────────
-
-import { addAlbumLink } from '../helpers/factories';
-import { encrypt_api_key } from '../../src/services/apiKeyCrypto';
-
 describe('Synology syncSynologyAlbumLink', () => {
   it('SYNO-050 — POST sync happy path: trip owner with album link saves photos to DB', async () => {
     const { user } = createUser(testDb);
@@ -725,11 +838,15 @@ describe('Synology syncSynologyAlbumLink', () => {
     expect(typeof res.body.total).toBe('number');
 
     // Verify photos were inserted into the DB
-    const photos = testDb.prepare(`
+    const photos = testDb
+      .prepare(
+        `
       SELECT tp.*, tkp.provider FROM trip_photos tp
       JOIN trek_photos tkp ON tkp.id = tp.photo_id
       WHERE tp.trip_id = ? AND tp.user_id = ?
-    `).all(trip.id, user.id) as any[];
+    `,
+      )
+      .all(trip.id, user.id) as any[];
     expect(photos.length).toBeGreaterThan(0);
     expect(photos[0].provider).toBe('synologyphotos');
   });
@@ -774,34 +891,56 @@ describe('Synology syncSynologyAlbumLink', () => {
 
     // Insert a link with an encrypted passphrase directly into the DB.
     const rawPassphrase = 'syno-share-pass-abc';
-    const result = testDb.prepare(
-      'INSERT INTO trip_album_links (trip_id, user_id, provider, album_id, album_name, passphrase) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(trip.id, user.id, 'synologyphotos', '99', 'Shared Album', encrypt_api_key(rawPassphrase));
+    const result = testDb
+      .prepare(
+        'INSERT INTO trip_album_links (trip_id, user_id, provider, album_id, album_name, passphrase) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(trip.id, user.id, 'synologyphotos', '99', 'Shared Album', encrypt_api_key(rawPassphrase));
     const link = testDb.prepare('SELECT * FROM trip_album_links WHERE id = ?').get(result.lastInsertRowid) as any;
 
     // Override safeFetch so browse-item only succeeds when called with the passphrase param.
     vi.mocked(safeFetch).mockImplementation(async (url: any, init?: any) => {
-      const bodyParams = init?.body instanceof URLSearchParams
-        ? init.body
-        : new URLSearchParams(String(init?.body ?? ''));
+      const bodyParams =
+        init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
       const apiName = bodyParams.get('api') || (new URL(String(url)).searchParams.get('api') ?? '');
 
       if (apiName === 'SYNO.API.Auth') {
-        return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: true, data: { sid: 'fake-sid-054' } }), body: null } as any;
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ success: true, data: { sid: 'fake-sid-054' } }),
+          body: null,
+        } as any;
       }
 
       if (apiName === 'SYNO.Foto.Browse.Item') {
         // Only respond successfully when the passphrase param is present.
         if (bodyParams.get('passphrase') !== rawPassphrase) {
-          return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ success: false, error: { code: 105 } }), body: null } as any;
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ success: false, error: { code: 105 } }),
+            body: null,
+          } as any;
         }
         return {
-          ok: true, status: 200,
+          ok: true,
+          status: 200,
           headers: { get: () => 'application/json' },
           json: async () => ({
             success: true,
             data: {
-              list: [{ id: 201, filename: 'shared.jpg', filesize: 512000, time: 1717228800, additional: { thumbnail: { cache_key: '201_sharedkey' } } }],
+              list: [
+                {
+                  id: 201,
+                  filename: 'shared.jpg',
+                  filesize: 512000,
+                  time: 1717228800,
+                  additional: { thumbnail: { cache_key: '201_sharedkey' } },
+                },
+              ],
             },
           }),
           body: null,
@@ -819,12 +958,16 @@ describe('Synology syncSynologyAlbumLink', () => {
     expect(res.body.added).toBeGreaterThan(0);
 
     // The trek_photos row for the synced photo must have a non-null passphrase.
-    const photo = testDb.prepare(`
+    const photo = testDb
+      .prepare(
+        `
       SELECT tkp.passphrase FROM trip_photos tp
       JOIN trek_photos tkp ON tkp.id = tp.photo_id
       WHERE tp.trip_id = ? AND tp.user_id = ?
       LIMIT 1
-    `).get(trip.id, user.id) as { passphrase: string | null } | undefined;
+    `,
+      )
+      .get(trip.id, user.id) as { passphrase: string | null } | undefined;
 
     expect(photo).toBeDefined();
     expect(photo!.passphrase).not.toBeNull();
@@ -849,28 +992,32 @@ describe('Synology session retry on error codes 106/107/119', () => {
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
         // call 1: initial login
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'first-sid' } }),
         body: null,
       } as any)
       .mockResolvedValueOnce({
         // call 2: album list → session expired (119)
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: false, error: { code: 119 } }),
         body: null,
       } as any)
       .mockResolvedValueOnce({
         // call 3: retry login after clearing SID
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'second-sid' } }),
         body: null,
       } as any)
       .mockResolvedValueOnce({
         // call 4: retry album list → success
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({
           success: true,
@@ -881,9 +1028,7 @@ describe('Synology session retry on error codes 106/107/119', () => {
         body: null,
       } as any);
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.albums)).toBe(true);
@@ -900,25 +1045,29 @@ describe('Synology session retry on error codes 106/107/119', () => {
     vi.mocked(safeFetch).mockClear();
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'sid-one' } }),
         body: null,
       } as any)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: false, error: { code: 106 } }),
         body: null,
       } as any)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'sid-two' } }),
         body: null,
       } as any)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({
           success: true,
@@ -927,9 +1076,7 @@ describe('Synology session retry on error codes 106/107/119', () => {
         body: null,
       } as any);
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.albums[0]).toMatchObject({ albumName: 'Timeout Album' });
@@ -951,17 +1098,18 @@ describe('Synology searchSynologyPhotos date range', () => {
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
         // login
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'fake-sid' } }),
         body: null,
       } as any)
       .mockImplementationOnce((_url: string, init?: any) => {
-        capturedBody = init?.body instanceof URLSearchParams
-          ? init.body
-          : new URLSearchParams(String(init?.body ?? ''));
+        capturedBody =
+          init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
         return Promise.resolve({
-          ok: true, status: 200,
+          ok: true,
+          status: 200,
           headers: { get: () => 'application/json' },
           json: async () => ({
             success: true,
@@ -1014,27 +1162,25 @@ describe('Synology searchSynologyPhotos date range', () => {
     let capturedBody: URLSearchParams | null = null;
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'fake-sid' } }),
         body: null,
       } as any)
       .mockImplementationOnce((_url: string, init?: any) => {
-        capturedBody = init?.body instanceof URLSearchParams
-          ? init.body
-          : new URLSearchParams(String(init?.body ?? ''));
+        capturedBody =
+          init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
         return Promise.resolve({
-          ok: true, status: 200,
+          ok: true,
+          status: 200,
           headers: { get: () => 'application/json' },
           json: async () => ({ success: true, data: { list: [] } }),
           body: null,
         } as any);
       });
 
-    const res = await request(app)
-      .post(`${SYNO}/search`)
-      .set('Cookie', authCookie(user.id))
-      .send({});
+    const res = await request(app).post(`${SYNO}/search`).set('Cookie', authCookie(user.id)).send({});
 
     expect(res.status).toBe(200);
     expect(capturedBody).not.toBeNull();
@@ -1054,17 +1200,18 @@ describe('Synology search pagination', () => {
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
         // login
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'fake-sid' } }),
         body: null,
       } as any)
       .mockImplementationOnce((_url: string, init?: any) => {
-        capturedBody = init?.body instanceof URLSearchParams
-          ? init.body
-          : new URLSearchParams(String(init?.body ?? ''));
+        capturedBody =
+          init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
         return Promise.resolve({
-          ok: true, status: 200,
+          ok: true,
+          status: 200,
           headers: { get: () => 'application/json' },
           json: async () => ({ success: true, data: { list: [] } }),
           body: null,
@@ -1090,17 +1237,18 @@ describe('Synology search pagination', () => {
     let capturedBody: URLSearchParams | null = null;
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'fake-sid' } }),
         body: null,
       } as any)
       .mockImplementationOnce((_url: string, init?: any) => {
-        capturedBody = init?.body instanceof URLSearchParams
-          ? init.body
-          : new URLSearchParams(String(init?.body ?? ''));
+        capturedBody =
+          init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
         return Promise.resolve({
-          ok: true, status: 200,
+          ok: true,
+          status: 200,
           headers: { get: () => 'application/json' },
           json: async () => ({ success: true, data: { list: [] } }),
           body: null,
@@ -1134,9 +1282,7 @@ describe('Synology SSRF blocked error handling', () => {
     // getSynologyStatus receives the failure from _getSynologySession and returns { connected: false }.
     vi.mocked(safeFetch).mockRejectedValueOnce(new SsrfErr('Private IP not allowed'));
 
-    const res = await request(app)
-      .get(`${SYNO}/status`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/status`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(false);
@@ -1149,9 +1295,13 @@ describe('Synology SSRF blocked error handling', () => {
     const { SsrfBlockedError: SsrfErr } = await import('../../src/utils/ssrfGuard');
 
     const emptyAlbumResponse = {
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       headers: { get: () => 'application/json' },
-      json: async () => ({ success: true, data: { list: [{ id: 99, name: 'Shared Album', item_count: 2, passphrase: 'pp-test' }] } }),
+      json: async () => ({
+        success: true,
+        data: { list: [{ id: 99, name: 'Shared Album', item_count: 2, passphrase: 'pp-test' }] },
+      }),
       body: null,
     } as any;
 
@@ -1159,7 +1309,8 @@ describe('Synology SSRF blocked error handling', () => {
     // listSynologyAlbums uses Promise.allSettled so the SSRF failure is logged and skipped.
     vi.mocked(safeFetch)
       .mockResolvedValueOnce({
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         headers: { get: () => 'application/json' },
         json: async () => ({ success: true, data: { sid: 'sid-x' } }),
         body: null,
@@ -1168,9 +1319,7 @@ describe('Synology SSRF blocked error handling', () => {
       .mockResolvedValueOnce(emptyAlbumResponse)
       .mockResolvedValueOnce(emptyAlbumResponse);
 
-    const res = await request(app)
-      .get(`${SYNO}/albums`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`${SYNO}/albums`).set('Cookie', authCookie(user.id));
 
     // Personal failed (SSRF), shared sources returned an album — 200 with non-empty list.
     expect(res.status).toBe(200);
@@ -1178,11 +1327,6 @@ describe('Synology SSRF blocked error handling', () => {
     expect(res.body.albums.length).toBeGreaterThan(0);
   });
 });
-
-// ── Passphrase persistence fixes ─────────────────────────────────────────────
-
-import { getOrCreateTrekPhoto, deleteTrekPhotoIfOrphan } from '../../src/services/memories/photoResolverService';
-import { decrypt_api_key } from '../../src/services/apiKeyCrypto';
 
 describe('trek_photos passphrase healing (SYNO-090)', () => {
   it('SYNO-090 — getOrCreateTrekPhoto overwrites an existing bad passphrase when a new one is supplied', () => {
@@ -1210,9 +1354,9 @@ describe('trek_photos orphan cleanup (SYNO-091)', () => {
 
     const trekPhotoId = getOrCreateTrekPhoto('synologyphotos', 'asset-orphan-test', user.id, 'pass-A');
 
-    testDb.prepare(
-      'INSERT OR IGNORE INTO trip_photos (trip_id, user_id, photo_id, shared) VALUES (?, ?, ?, 1)'
-    ).run(trip.id, user.id, trekPhotoId);
+    testDb
+      .prepare('INSERT OR IGNORE INTO trip_photos (trip_id, user_id, photo_id, shared) VALUES (?, ?, ?, 1)')
+      .run(trip.id, user.id, trekPhotoId);
 
     // Still referenced — must not be deleted.
     deleteTrekPhotoIfOrphan(trekPhotoId);
@@ -1234,9 +1378,9 @@ describe('trek_photos orphan cleanup (SYNO-091)', () => {
 
     // Add with wrong passphrase, then remove (simulating the bug scenario).
     const id1 = getOrCreateTrekPhoto('synologyphotos', 'asset-readd-test', user.id, firstPass);
-    testDb.prepare(
-      'INSERT OR IGNORE INTO trip_photos (trip_id, user_id, photo_id, shared) VALUES (?, ?, ?, 1)'
-    ).run(trip.id, user.id, id1);
+    testDb
+      .prepare('INSERT OR IGNORE INTO trip_photos (trip_id, user_id, photo_id, shared) VALUES (?, ?, ?, 1)')
+      .run(trip.id, user.id, id1);
     testDb.prepare('DELETE FROM trip_photos WHERE photo_id = ?').run(id1);
     deleteTrekPhotoIfOrphan(id1);
 

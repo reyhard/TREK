@@ -1,10 +1,17 @@
 import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
 import { ALL_SCOPES, SCOPE_INFO } from '../../../src/mcp/scopes';
+import { invalidatePermissionsCache } from '../../../src/services/permissions';
 import { resetTransitUsageLimits } from '../../../src/services/transitRateLimit';
 import type { TransitItinerary } from '../../../src/services/transitService';
-import { invalidatePermissionsCache } from '../../../src/services/permissions';
-import { addTripMember, createDay, createPlace, createReservation, createTrip, createUser } from '../../helpers/factories';
+import {
+  addTripMember,
+  createDay,
+  createPlace,
+  createReservation,
+  createTrip,
+  createUser,
+} from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
 
@@ -691,9 +698,7 @@ describe('Tool: create_transit_route', () => {
         arguments: writeArguments(trip.id, day.id),
       });
       expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe(
-        'You do not have permission to perform this action on this trip.',
-      );
+      expect((result.content[0] as any).text).toBe('You do not have permission to perform this action on this trip.');
     });
     expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
   });
@@ -724,7 +729,9 @@ describe('Tool: create_transit_route', () => {
     const { user } = createUser(testDb);
     const { trip, day } = datedTrip(user.id);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    testDb.exec("CREATE TRIGGER fail_transit_insert BEFORE INSERT ON reservations BEGIN SELECT RAISE(ABORT, 'database password leaked'); END");
+    testDb.exec(
+      "CREATE TRIGGER fail_transit_insert BEFORE INSERT ON reservations BEGIN SELECT RAISE(ABORT, 'database password leaked'); END",
+    );
     await withHarness(user.id, ['reservations:write'], async (h) => {
       const result = await h.client.callTool({
         name: 'create_transit_route',

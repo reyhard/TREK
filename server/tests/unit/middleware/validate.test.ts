@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
 import { maxLength, validateStringLengths } from '../../../src/middleware/validate';
+
 import type { Request, Response, NextFunction } from 'express';
+import { describe, it, expect, vi } from 'vitest';
 
 function makeReq(body: Record<string, unknown> = {}): Request {
   return { body } as Request;

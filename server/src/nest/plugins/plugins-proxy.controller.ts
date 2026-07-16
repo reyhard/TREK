@@ -1,10 +1,11 @@
-import { All, Controller, Param, Req, Res } from '@nestjs/common';
-import type { Request, Response } from 'express';
 import { extractToken, verifyJwtAndLoadUser } from '../../middleware/auth';
+import { isPluginScopeAllowed, pluginResourceUri } from '../../services/oauthResources';
+import { getUserByAccessToken } from '../../services/oauthService';
 import { pluginsEnabled } from './kill-switch';
 import { PluginRuntimeService } from './plugin-runtime.service';
-import { getUserByAccessToken } from '../../services/oauthService';
-import { isPluginScopeAllowed, pluginResourceUri } from '../../services/oauthResources';
+import { All, Controller, Param, Req, Res } from '@nestjs/common';
+
+import type { Request, Response } from 'express';
 
 /**
  * Proxies a plugin's own HTTP routes at /api/plugins/:id/* (#plugins, M2).
@@ -31,12 +32,24 @@ const SAFE_RESPONSE_HEADERS = new Set(['content-type', 'cache-control']);
 // so a forwarded header can never leak a TREK session or be replayed. Signature +
 // event headers from the common providers (GitHub/Stripe/Svix/GitLab/generic) pass.
 const SAFE_INBOUND_HEADERS = new Set([
-  'content-type', 'user-agent', 'x-request-id', 'x-idempotency-key',
-  'x-hub-signature', 'x-hub-signature-256', 'x-github-event', 'x-github-delivery',
+  'content-type',
+  'user-agent',
+  'x-request-id',
+  'x-idempotency-key',
+  'x-hub-signature',
+  'x-hub-signature-256',
+  'x-github-event',
+  'x-github-delivery',
   'stripe-signature',
-  'svix-id', 'svix-timestamp', 'svix-signature',
-  'x-gitlab-event', 'x-gitlab-token',
-  'x-signature', 'x-signature-256', 'x-webhook-signature', 'x-event-type',
+  'svix-id',
+  'svix-timestamp',
+  'svix-signature',
+  'x-gitlab-event',
+  'x-gitlab-token',
+  'x-signature',
+  'x-signature-256',
+  'x-webhook-signature',
+  'x-event-type',
 ]);
 
 function pickInboundHeaders(raw: Record<string, unknown> | undefined): Record<string, string> {
@@ -138,7 +151,8 @@ export class PluginsProxyController {
             // so a non-UTF-8 signed body survives) — the plugin decodes and verifies a
             // provider's HMAC over the exact payload; the parsed JSON can't be
             // re-serialised identically.
-            rawBodyBase64: route.auth === false ? ((req as { rawBody?: Buffer }).rawBody?.toString('base64') ?? null) : undefined,
+            rawBodyBase64:
+              route.auth === false ? ((req as { rawBody?: Buffer }).rawBody?.toString('base64') ?? null) : undefined,
             // Only auth:false routes (webhooks) get inbound headers, and only the
             // allowlisted, credential-free subset — an authenticated route never
             // needs them and must not see even the safe ones.

@@ -11,12 +11,15 @@
  * exportICS is mocked so the test owns the ICS payload and can assert which trips
  * the all-trips feed pulled in without seeding the full trip/day/reservation schema.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { FeedsModule } from '../../src/nest/feeds/feeds.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -43,9 +46,6 @@ const SAMPLE_ICS =
   'END:VCALENDAR\r\n';
 const { exportICS } = vi.hoisted(() => ({ exportICS: vi.fn() }));
 vi.mock('../../src/services/tripService', () => ({ exportICS }));
-
-import { FeedsModule } from '../../src/nest/feeds/feeds.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 const BASE = 'https://trek.example.test';
 
@@ -77,7 +77,9 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
     exportICS.mockReturnValue({ ics: SAMPLE_ICS, filename: 'sample.ics' });
     // Reset feed tokens + trips between tests for isolation.
     db.exec('DELETE FROM trips; DELETE FROM trip_members; UPDATE users SET feed_token = NULL;');
-    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (5, 1, 'Owned', 0, '2026-01-01', '2099-01-01')").run();
+    db.prepare(
+      "INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (5, 1, 'Owned', 0, '2026-01-01', '2099-01-01')",
+    ).run();
   });
 
   afterAll(async () => {
@@ -180,8 +182,12 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
 
   it('all-trips feed excludes archived and >90-day-old trips', async () => {
     // user 1 already owns active trip 5 (end 2099). Add an archived + a long-finished one.
-    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (6, 1, 'Archived', 1, '2026-01-01', '2099-01-01')").run();
-    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (7, 1, 'Old', 0, '2000-01-01', '2000-01-10')").run();
+    db.prepare(
+      "INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (6, 1, 'Archived', 1, '2026-01-01', '2099-01-01')",
+    ).run();
+    db.prepare(
+      "INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (7, 1, 'Old', 0, '2000-01-01', '2000-01-10')",
+    ).run();
 
     const gen = await request(server).post('/api/feed/user/token').set('Cookie', sessionCookie(1));
     const token = gen.body.feed_url.match(/user\/([0-9a-f-]+)\.ics$/)![1];
@@ -199,7 +205,9 @@ describe('Calendar-feed e2e (real auth guard + temp SQLite)', () => {
   it('all-trips feed includes trips shared with the user as a member, not just owned trips', async () => {
     // user 1 owns active trip 5. Trip 8 is owned by user 2 but shared with user 1 as a
     // member — "All Trips" must include it, mirroring the single-trip feed's member access.
-    db.prepare("INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (8, 2, 'Shared', 0, '2026-01-01', '2099-01-01')").run();
+    db.prepare(
+      "INSERT INTO trips (id, user_id, title, is_archived, start_date, end_date) VALUES (8, 2, 'Shared', 0, '2026-01-01', '2099-01-01')",
+    ).run();
     db.prepare('INSERT INTO trip_members (trip_id, user_id) VALUES (8, 1)').run();
 
     const gen = await request(server).post('/api/feed/user/token').set('Cookie', sessionCookie(1));

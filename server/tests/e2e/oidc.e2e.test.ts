@@ -4,11 +4,14 @@
  * unauthenticated, the sso-disabled 403, the login redirect, and that /exchange
  * sets the httpOnly trek_session cookie from a valid auth code.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { OidcModule } from '../../src/nest/oidc/oidc.module';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 vi.mock('../../src/services/notifications', () => ({ getAppUrl: () => 'https://app' }));
 
@@ -17,15 +20,22 @@ vi.mock('../../src/services/authService', () => ({ resolveAuthToggles: () => tog
 
 const { oidcSvc } = vi.hoisted(() => ({
   oidcSvc: {
-    getOidcConfig: vi.fn(), discover: vi.fn(), createState: vi.fn(), consumeState: vi.fn(), createAuthCode: vi.fn(),
-    consumeAuthCode: vi.fn(), exchangeCodeForToken: vi.fn(), getUserInfo: vi.fn(), verifyIdToken: vi.fn(),
-    findOrCreateUser: vi.fn(), touchLastLogin: vi.fn(), generateToken: vi.fn(), frontendUrl: (p: string) => 'https://app' + p,
+    getOidcConfig: vi.fn(),
+    discover: vi.fn(),
+    createState: vi.fn(),
+    consumeState: vi.fn(),
+    createAuthCode: vi.fn(),
+    consumeAuthCode: vi.fn(),
+    exchangeCodeForToken: vi.fn(),
+    getUserInfo: vi.fn(),
+    verifyIdToken: vi.fn(),
+    findOrCreateUser: vi.fn(),
+    touchLastLogin: vi.fn(),
+    generateToken: vi.fn(),
+    frontendUrl: (p: string) => 'https://app' + p,
   },
 }));
 vi.mock('../../src/services/oidcService', () => oidcSvc);
-
-import { OidcModule } from '../../src/nest/oidc/oidc.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('OIDC e2e (real cookie service)', () => {
   let server: Server;
@@ -44,13 +54,24 @@ describe('OIDC e2e (real cookie service)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     app = await build();
     server = app.getHttpServer();
-    oidcSvc.getOidcConfig.mockReturnValue({ issuer: 'https://idp', clientId: 'c', clientSecret: 's', discoveryUrl: null });
-    oidcSvc.discover.mockResolvedValue({ authorization_endpoint: 'https://idp/auth', userinfo_endpoint: 'https://idp/ui', issuer: 'https://idp' });
+    oidcSvc.getOidcConfig.mockReturnValue({
+      issuer: 'https://idp',
+      clientId: 'c',
+      clientSecret: 's',
+      discoveryUrl: null,
+    });
+    oidcSvc.discover.mockResolvedValue({
+      authorization_endpoint: 'https://idp/auth',
+      userinfo_endpoint: 'https://idp/ui',
+      issuer: 'https://idp',
+    });
     oidcSvc.createState.mockReturnValue({ state: 'st', codeChallenge: 'cc' });
     oidcSvc.consumeAuthCode.mockReturnValue({ token: 'jwt.value' });
   });
 
-  beforeEach(() => { toggles.oidc_login = true; });
+  beforeEach(() => {
+    toggles.oidc_login = true;
+  });
 
   afterAll(async () => {
     await app.close();

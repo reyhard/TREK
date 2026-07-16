@@ -1,6 +1,6 @@
+import { safeFetchLlm } from '../../../utils/ssrfGuard';
 import type { LlmExtractionClient, LlmExtractionInput } from '../llm-provider.interface';
 import { isNuExtractModel, buildNuExtractUserText, nuExtractToKiReservations } from './nuextract';
-import { safeFetchLlm } from '../../../utils/ssrfGuard';
 
 // Generous: a local CPU model (Ollama, no GPU) may cold-load several GB and then
 // take a few minutes on a longer document before the first token.
@@ -98,7 +98,11 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
 /** Strip code fences and JSON.parse; `null` on failure. */
 function parseJson(content: string | undefined | null): unknown {
   if (!content) return null;
-  const stripped = content.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const stripped = content
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim();
   try {
     return JSON.parse(stripped);
   } catch {

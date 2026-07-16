@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { buildSavePayload } from '../../../src/services/airtrail/airtrailSync';
 import type { AirtrailAirport, AirtrailFlightRaw } from '../../../src/services/airtrail/airtrailClient';
+import { buildSavePayload } from '../../../src/services/airtrail/airtrailSync';
+
+import { describe, it, expect } from 'vitest';
 
 function airport(over: Partial<AirtrailAirport> = {}): AirtrailAirport {
   return {
@@ -65,7 +66,14 @@ function reservation(over: Record<string, unknown> = {}): Record<string, unknown
     reservation_time: '2021-09-01T19:00',
     reservation_end_time: '2021-09-02T08:00',
     notes: 'window seat',
-    metadata: JSON.stringify({ airline: 'BAW', flight_number: 'BA178', aircraft: 'B772', aircraft_reg: 'G-VIIL', flight_reason: 'leisure', seat: '12A' }),
+    metadata: JSON.stringify({
+      airline: 'BAW',
+      flight_number: 'BA178',
+      aircraft: 'B772',
+      aircraft_reg: 'G-VIIL',
+      flight_reason: 'leisure',
+      seat: '12A',
+    }),
     endpoints: [
       { role: 'from', code: 'JFK' },
       { role: 'to', code: 'LHR' },
@@ -105,7 +113,10 @@ describe('airtrailSync.buildSavePayload', () => {
   });
 
   it('blanks the scheduled time when the TREK reservation has only a date', () => {
-    const payload = buildSavePayload(reservation({ reservation_time: '2021-09-01', reservation_end_time: null }), existingFlight());
+    const payload = buildSavePayload(
+      reservation({ reservation_time: '2021-09-01', reservation_end_time: null }),
+      existingFlight(),
+    );
     // A date carrier with no HH:MM leaves AirTrail's scheduled instant unset.
     expect(payload?.departureScheduledTime).toBeNull();
     expect(payload?.arrivalScheduled).toBeNull();
@@ -172,7 +183,10 @@ describe('airtrailSync.buildSavePayload', () => {
   });
 
   it('returns null when an endpoint code is missing and no fallback exists', () => {
-    const payload = buildSavePayload(reservation({ endpoints: [] }), existingFlight({ from: airport({ iata: null, icao: null }) }));
+    const payload = buildSavePayload(
+      reservation({ endpoints: [] }),
+      existingFlight({ from: airport({ iata: null, icao: null }) }),
+    );
     expect(payload).toBeNull();
   });
 });

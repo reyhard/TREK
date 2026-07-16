@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Query, Body, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LlmLocalService } from './llm-local.service';
+import { Controller, Get, Post, Query, Body, Res, UseGuards } from '@nestjs/common';
+
+import type { Response } from 'express';
 
 /**
  * Admin-only management of a local LLM server (Ollama): list installed models and

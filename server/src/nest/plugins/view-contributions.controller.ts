@@ -1,10 +1,11 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
 import { canAccessTrip } from '../../db/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { pluginsEnabled } from './kill-switch';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { stripEmoji } from './text-sanitize';
+import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+
+import type { Request } from 'express';
 
 /**
  * GET /api/view-contributions/:view/:tripId — host-rendered columns/actions that
@@ -21,11 +22,38 @@ import { stripEmoji } from './text-sanitize';
  */
 type Tone = 'default' | 'success' | 'warn' | 'danger';
 type ActionTarget = { kind: 'frame'; sub: string } | { kind: 'route'; method: 'GET' | 'POST'; sub: string };
-interface Column { kind: 'column'; pluginId: string; entityId: number; id: string; label: string; value?: string; url?: string; icon?: string; tone: Tone; }
-interface Action { kind: 'action'; pluginId: string; entityId: number; id: string; label: string; icon?: string; target: ActionTarget; }
+interface Column {
+  kind: 'column';
+  pluginId: string;
+  entityId: number;
+  id: string;
+  label: string;
+  value?: string;
+  url?: string;
+  icon?: string;
+  tone: Tone;
+}
+interface Action {
+  kind: 'action';
+  pluginId: string;
+  entityId: number;
+  id: string;
+  label: string;
+  icon?: string;
+  target: ActionTarget;
+}
 type Contribution = Column | Action;
 
-const VIEWS: ReadonlySet<string> = new Set(['reservations', 'transports', 'places', 'day', 'costs', 'packing', 'files', 'todos']);
+const VIEWS: ReadonlySet<string> = new Set([
+  'reservations',
+  'transports',
+  'places',
+  'day',
+  'costs',
+  'packing',
+  'files',
+  'todos',
+]);
 const TONES: ReadonlySet<string> = new Set(['default', 'success', 'warn', 'danger']);
 const MAX_COLUMNS = 20;
 const MAX_ACTIONS = 10;
@@ -88,7 +116,13 @@ function normalize(pluginId: string, raw: unknown): Contribution[] {
       let target: ActionTarget | undefined;
       if (t && t.kind === 'frame' && typeof t.sub === 'string' && t.sub) {
         target = { kind: 'frame', sub: cap(t.sub, SUB_MAX) };
-      } else if (t && t.kind === 'route' && (t.method === 'GET' || t.method === 'POST') && typeof t.sub === 'string' && t.sub) {
+      } else if (
+        t &&
+        t.kind === 'route' &&
+        (t.method === 'GET' || t.method === 'POST') &&
+        typeof t.sub === 'string' &&
+        t.sub
+      ) {
         target = { kind: 'route', method: t.method, sub: cap(t.sub, SUB_MAX) };
       }
       if (!target) continue; // a malformed target drops the action, never renders a dead button
@@ -119,7 +153,14 @@ export class ViewContributionsController {
     const perProvider = await Promise.all(
       ids.map(async (id): Promise<Contribution[]> => {
         try {
-          const raw = await this.runtime.invokeHook(id, 'tableContributor', 'getContributions', [view, tripId], userId, 5000);
+          const raw = await this.runtime.invokeHook(
+            id,
+            'tableContributor',
+            'getContributions',
+            [view, tripId],
+            userId,
+            5000,
+          );
           return normalize(id, raw);
         } catch {
           return []; // a slow / failing provider contributes nothing

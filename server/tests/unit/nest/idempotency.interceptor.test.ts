@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { HttpException } from '@nestjs/common';
-import type { CallHandler, ExecutionContext } from '@nestjs/common';
-import { of, lastValueFrom } from 'rxjs';
 import { IdempotencyInterceptor } from '../../../src/nest/common/idempotency.interceptor';
 import type { DatabaseService } from '../../../src/nest/database/database.service';
+import { HttpException } from '@nestjs/common';
+import type { CallHandler, ExecutionContext } from '@nestjs/common';
+
+import { of, lastValueFrom } from 'rxjs';
+import { describe, it, expect, vi } from 'vitest';
 
 type ReqShape = {
   method: string;
@@ -64,7 +65,10 @@ describe('IdempotencyInterceptor (parity with the legacy applyIdempotency middle
     const db = makeDb();
     const h = handler('done');
     await lastValueFrom(
-      new IdempotencyInterceptor(db).intercept(ctx({ method: 'POST', headers: { 'x-idempotency-key': 'k' } }, makeRes()), h),
+      new IdempotencyInterceptor(db).intercept(
+        ctx({ method: 'POST', headers: { 'x-idempotency-key': 'k' } }, makeRes()),
+        h,
+      ),
     );
     expect(h.handle).toHaveBeenCalled();
     expect(db.get).not.toHaveBeenCalled();
@@ -102,10 +106,7 @@ describe('IdempotencyInterceptor (parity with the legacy applyIdempotency middle
     expect(res.status).toHaveBeenCalledWith(201);
     expect(out).toEqual({ id: 5 });
     expect(h.handle).not.toHaveBeenCalled();
-    expect(db.get).toHaveBeenCalledWith(
-      expect.stringContaining('idempotency_keys'),
-      'k', 1, 'POST', '/api/categories',
-    );
+    expect(db.get).toHaveBeenCalledWith(expect.stringContaining('idempotency_keys'), 'k', 1, 'POST', '/api/categories');
   });
 
   it('captures a successful JSON response under the key', async () => {
@@ -125,7 +126,13 @@ describe('IdempotencyInterceptor (parity with the legacy applyIdempotency middle
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith(
       expect.stringContaining('INSERT OR IGNORE INTO idempotency_keys'),
-      'k', 1, 'POST', '/api/categories', 201, '{"created":true}', expect.any(Number),
+      'k',
+      1,
+      'POST',
+      '/api/categories',
+      201,
+      '{"created":true}',
+      expect.any(Number),
     );
   });
 
@@ -187,7 +194,10 @@ describe('IdempotencyInterceptor (parity with the legacy applyIdempotency middle
     const h = handler('done');
     await lastValueFrom(
       new IdempotencyInterceptor(db).intercept(
-        ctx({ method: 'PATCH', headers: { 'x-idempotency-key': 'k' }, path: '/api/categories/1', user: { id: 1 } }, res),
+        ctx(
+          { method: 'PATCH', headers: { 'x-idempotency-key': 'k' }, path: '/api/categories/1', user: { id: 1 } },
+          res,
+        ),
         h,
       ),
     );

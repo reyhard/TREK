@@ -5,12 +5,15 @@
  * join are mocked; this focuses on auth (401), trip-access 404, the share_manage
  * 403, the login-required join, and invalid-token 404s (#1143).
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { TripInviteModule } from '../../src/nest/trip-invite/trip-invite.module';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db, canAccessTrip } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -42,9 +45,6 @@ vi.mock('../../src/services/tripMembership', () => ({ joinTripAsMember }));
 
 vi.mock('../../src/services/auditLog', () => ({ writeAudit: vi.fn(), getClientIp: () => '127.0.0.1' }));
 
-import { TripInviteModule } from '../../src/nest/trip-invite/trip-invite.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-
 describe('Trip invite-link e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
   let app: Awaited<ReturnType<typeof build>>;
@@ -74,7 +74,9 @@ describe('Trip invite-link e2e (real auth guard + temp SQLite)', () => {
     joinTripAsMember.mockReset();
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    await app.close();
+  });
 
   // ── manage ──
   it('401 without a session cookie', async () => {

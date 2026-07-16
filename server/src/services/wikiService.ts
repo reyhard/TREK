@@ -1,5 +1,5 @@
-import path from 'path';
 import { promises as fs } from 'fs';
+import path from 'path';
 
 /**
  * In-app Help/Wiki content, sourced from the TREK GitHub wiki (kept in the repo

@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { AppModule } from '../../../src/nest/app.module';
+import { AdminGuard } from '../../../src/nest/auth/admin.guard';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+import { HealthController } from '../../../src/nest/health/health.controller';
 import { HttpException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { AppModule } from '../../../src/nest/app.module';
-import { HealthController } from '../../../src/nest/health/health.controller';
-import { DatabaseService } from '../../../src/nest/database/database.service';
-import { AdminGuard } from '../../../src/nest/auth/admin.guard';
+
+import { describe, it, expect } from 'vitest';
 
 function ctx(user: unknown) {
   return { switchToHttp: () => ({ getRequest: () => ({ user }) }) } as never;

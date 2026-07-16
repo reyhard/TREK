@@ -1,3 +1,15 @@
+import {
+  utcSuffix,
+  stripUserForClient,
+  maskKey,
+  avatarUrl,
+  normalizeBackupCode,
+  hashBackupCode,
+  generateBackupCodes,
+  parseBackupCodeHashes,
+} from '../../../src/services/authService';
+import type { User } from '../../../src/types';
+
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
@@ -11,22 +23,13 @@ vi.mock('../../../src/services/apiKeyCrypto', () => ({
   maybe_encrypt_api_key: vi.fn((v) => v),
   encrypt_api_key: vi.fn((v) => v),
 }));
-vi.mock('../../../src/services/permissions', () => ({ getAllPermissions: vi.fn(() => ({})), checkPermission: vi.fn() }));
+vi.mock('../../../src/services/permissions', () => ({
+  getAllPermissions: vi.fn(() => ({})),
+  checkPermission: vi.fn(),
+}));
 vi.mock('../../../src/services/ephemeralTokens', () => ({ createEphemeralToken: vi.fn() }));
 vi.mock('../../../src/mcp', () => ({ revokeUserSessions: vi.fn() }));
 vi.mock('../../../src/scheduler', () => ({ startTripReminders: vi.fn(), buildCronExpression: vi.fn() }));
-
-import {
-  utcSuffix,
-  stripUserForClient,
-  maskKey,
-  avatarUrl,
-  normalizeBackupCode,
-  hashBackupCode,
-  generateBackupCodes,
-  parseBackupCodeHashes,
-} from '../../../src/services/authService';
-import type { User } from '../../../src/types';
 
 // ── utcSuffix ────────────────────────────────────────────────────────────────
 

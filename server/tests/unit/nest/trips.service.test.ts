@@ -1,3 +1,5 @@
+import { TripsService } from '../../../src/nest/trips/trips.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { dbMock } = vi.hoisted(() => {
@@ -14,12 +16,25 @@ vi.mock('../../../src/services/permissions', () => ({ checkPermission }));
 
 const { tripSvc } = vi.hoisted(() => ({
   tripSvc: {
-    listTrips: vi.fn(), createTrip: vi.fn(), getTrip: vi.fn(), updateTrip: vi.fn(), deleteTrip: vi.fn(),
-    getTripRaw: vi.fn(), getTripOwner: vi.fn(), deleteOldCover: vi.fn(), updateCoverImage: vi.fn(),
-    listMembers: vi.fn(() => ({ owner: { id: 1 }, members: [] })), addMember: vi.fn(), removeMember: vi.fn(),
+    listTrips: vi.fn(),
+    createTrip: vi.fn(),
+    getTrip: vi.fn(),
+    updateTrip: vi.fn(),
+    deleteTrip: vi.fn(),
+    getTripRaw: vi.fn(),
+    getTripOwner: vi.fn(),
+    deleteOldCover: vi.fn(),
+    updateCoverImage: vi.fn(),
+    listMembers: vi.fn(() => ({ owner: { id: 1 }, members: [] })),
+    addMember: vi.fn(),
+    removeMember: vi.fn(),
     transferOwnership: vi.fn(),
-    createGuest: vi.fn(), renameGuest: vi.fn(), deleteGuest: vi.fn(),
-    exportICS: vi.fn(), copyTripById: vi.fn(), TRIP_SELECT: 'SELECT * FROM trips t',
+    createGuest: vi.fn(),
+    renameGuest: vi.fn(),
+    deleteGuest: vi.fn(),
+    exportICS: vi.fn(),
+    copyTripById: vi.fn(),
+    TRIP_SELECT: 'SELECT * FROM trips t',
   },
 }));
 vi.mock('../../../src/services/tripService', () => tripSvc);
@@ -31,32 +46,50 @@ vi.mock('../../../src/services/budgetService', () => ({ listBudgetItems: () => [
 vi.mock('../../../src/services/reservationService', () => ({ listReservations: () => [] }));
 vi.mock('../../../src/services/fileService', () => ({ listFiles: () => [] }));
 
-import { TripsService } from '../../../src/nest/trips/trips.service';
-
-function svc() { return new TripsService(); }
+function svc() {
+  return new TripsService();
+}
 beforeEach(() => vi.clearAllMocks());
 
 describe('TripsService (wrapper delegation + bundle/copy/notify helpers)', () => {
   it('delegates the simple wrappers to tripService', () => {
     const s = svc();
-    s.list(1, 0); expect(tripSvc.listTrips).toHaveBeenCalledWith(1, 0);
-    s.create(1, { title: 'T' } as never); expect(tripSvc.createTrip).toHaveBeenCalledWith(1, { title: 'T' });
-    s.get('9', 1); expect(tripSvc.getTrip).toHaveBeenCalledWith('9', 1);
-    s.getRaw('9'); expect(tripSvc.getTripRaw).toHaveBeenCalledWith('9');
-    s.getOwner('9'); expect(tripSvc.getTripOwner).toHaveBeenCalledWith('9');
-    s.update('9', 1, {} as never, 'user'); expect(tripSvc.updateTrip).toHaveBeenCalledWith('9', 1, {}, 'user');
-    s.remove('9', 1, 'user'); expect(tripSvc.deleteTrip).toHaveBeenCalledWith('9', 1, 'user');
-    s.deleteOldCover('/old.jpg'); expect(tripSvc.deleteOldCover).toHaveBeenCalledWith('/old.jpg');
-    s.updateCoverImage('9', '/n.jpg'); expect(tripSvc.updateCoverImage).toHaveBeenCalledWith('9', '/n.jpg');
-    s.copy('9', 1, 'C'); expect(tripSvc.copyTripById).toHaveBeenCalledWith('9', 1, 'C');
-    s.listMembers('9', 1); expect(tripSvc.listMembers).toHaveBeenCalledWith('9', 1);
-    s.addMember('9', 'b@x.y', 1, 1); expect(tripSvc.addMember).toHaveBeenCalledWith('9', 'b@x.y', 1, 1);
-    s.removeMember('9', 2); expect(tripSvc.removeMember).toHaveBeenCalledWith('9', 2);
-    s.transferOwnership('9', 2, 1); expect(tripSvc.transferOwnership).toHaveBeenCalledWith('9', 2, 1);
-    s.createGuest('9', 'Anna', 1); expect(tripSvc.createGuest).toHaveBeenCalledWith('9', 'Anna', 1);
-    s.renameGuest('9', 7, 'Bob'); expect(tripSvc.renameGuest).toHaveBeenCalledWith('9', 7, 'Bob');
-    s.deleteGuest('9', 7); expect(tripSvc.deleteGuest).toHaveBeenCalledWith('9', 7);
-    s.exportICS('9'); expect(tripSvc.exportICS).toHaveBeenCalledWith('9');
+    s.list(1, 0);
+    expect(tripSvc.listTrips).toHaveBeenCalledWith(1, 0);
+    s.create(1, { title: 'T' } as never);
+    expect(tripSvc.createTrip).toHaveBeenCalledWith(1, { title: 'T' });
+    s.get('9', 1);
+    expect(tripSvc.getTrip).toHaveBeenCalledWith('9', 1);
+    s.getRaw('9');
+    expect(tripSvc.getTripRaw).toHaveBeenCalledWith('9');
+    s.getOwner('9');
+    expect(tripSvc.getTripOwner).toHaveBeenCalledWith('9');
+    s.update('9', 1, {} as never, 'user');
+    expect(tripSvc.updateTrip).toHaveBeenCalledWith('9', 1, {}, 'user');
+    s.remove('9', 1, 'user');
+    expect(tripSvc.deleteTrip).toHaveBeenCalledWith('9', 1, 'user');
+    s.deleteOldCover('/old.jpg');
+    expect(tripSvc.deleteOldCover).toHaveBeenCalledWith('/old.jpg');
+    s.updateCoverImage('9', '/n.jpg');
+    expect(tripSvc.updateCoverImage).toHaveBeenCalledWith('9', '/n.jpg');
+    s.copy('9', 1, 'C');
+    expect(tripSvc.copyTripById).toHaveBeenCalledWith('9', 1, 'C');
+    s.listMembers('9', 1);
+    expect(tripSvc.listMembers).toHaveBeenCalledWith('9', 1);
+    s.addMember('9', 'b@x.y', 1, 1);
+    expect(tripSvc.addMember).toHaveBeenCalledWith('9', 'b@x.y', 1, 1);
+    s.removeMember('9', 2);
+    expect(tripSvc.removeMember).toHaveBeenCalledWith('9', 2);
+    s.transferOwnership('9', 2, 1);
+    expect(tripSvc.transferOwnership).toHaveBeenCalledWith('9', 2, 1);
+    s.createGuest('9', 'Anna', 1);
+    expect(tripSvc.createGuest).toHaveBeenCalledWith('9', 'Anna', 1);
+    s.renameGuest('9', 7, 'Bob');
+    expect(tripSvc.renameGuest).toHaveBeenCalledWith('9', 7, 'Bob');
+    s.deleteGuest('9', 7);
+    expect(tripSvc.deleteGuest).toHaveBeenCalledWith('9', 7);
+    s.exportICS('9');
+    expect(tripSvc.exportICS).toHaveBeenCalledWith('9');
   });
 
   it('canAccessTrip delegates to the db helper', () => {

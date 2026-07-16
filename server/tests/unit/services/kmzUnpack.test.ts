@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import path from 'path';
+import { unpackKmzToKml, KMZ_DECOMPRESSED_SIZE_LIMIT } from '../../../src/services/placeService';
+
 import fs from 'fs';
+import path from 'path';
+import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
   db: { prepare: vi.fn() },
@@ -11,8 +13,6 @@ vi.mock('../../../src/config', () => ({
   ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
   updateJwtSecret: () => {},
 }));
-
-import { unpackKmzToKml, KMZ_DECOMPRESSED_SIZE_LIMIT } from '../../../src/services/placeService';
 
 const KMZ_FIXTURE = path.join(__dirname, '../../fixtures/test.kmz');
 

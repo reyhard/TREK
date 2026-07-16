@@ -4,11 +4,22 @@
  *
  * Starts a real HTTP server on a random port and connects via the `ws` library.
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { buildApp } from '../../src/bootstrap';
+import { runMigrations } from '../../src/db/migrations';
+import { createTables } from '../../src/db/schema';
+import { createWsToken } from '../../src/services/authService';
+import { createEphemeralToken } from '../../src/services/ephemeralTokens';
+import { broadcastToUser, getOnlineUserIds } from '../../src/websocket';
+import { setupWebSocket } from '../../src/websocket';
+import { authCookie } from '../helpers/auth';
+import { createUser, createTrip } from '../helpers/factories';
+import { resetTestDb, resetRateLimits } from '../helpers/test-db';
+import type { INestApplication } from '@nestjs/common';
+
 import http from 'http';
 import request from 'supertest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import WebSocket from 'ws';
-import { broadcastToUser, getOnlineUserIds } from '../../src/websocket';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -21,13 +32,29 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: number) => {
-      const place: any = db.prepare(`SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`).get(placeId);
+      const place: any = db
+        .prepare(
+          `SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`,
+        )
+        .get(placeId);
       if (!place) return null;
-      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
-      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
+      const tags = db
+        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
+        .all(placeId);
+      return {
+        ...place,
+        category: place.category_id
+          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
+          : null,
+        tags,
+      };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -45,17 +72,6 @@ vi.mock('../../src/config', () => ({
   DEFAULT_LANGUAGE: 'en',
 }));
 
-import type { INestApplication } from '@nestjs/common';
-import { buildApp } from '../../src/bootstrap';
-import { createTables } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrations';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import { createUser, createTrip } from '../helpers/factories';
-import { authCookie } from '../helpers/auth';
-import { setupWebSocket } from '../../src/websocket';
-import { createEphemeralToken } from '../../src/services/ephemeralTokens';
-import { createWsToken } from '../../src/services/authService';
-
 let server: http.Server;
 let wsUrl: string;
 let nestApp: INestApplication;
@@ -70,15 +86,13 @@ beforeAll(async () => {
   server = http.createServer(nestApp.getHttpAdapter().getInstance());
   setupWebSocket(server);
 
-  await new Promise<void>(resolve => server.listen(0, resolve));
+  await new Promise<void>((resolve) => server.listen(0, resolve));
   const addr = server.address() as { port: number };
   wsUrl = `ws://127.0.0.1:${addr.port}/ws`;
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) =>
-    server.close(err => err ? reject(err) : resolve())
-  );
+  await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   await nestApp.close();
   testDb.close();
 });
@@ -122,8 +136,12 @@ class WsClient {
     });
   }
 
-  send(msg: object) { this.ws.send(JSON.stringify(msg)); }
-  close() { this.ws.close(); }
+  send(msg: object) {
+    this.ws.send(JSON.stringify(msg));
+  }
+  close() {
+    this.ws.close();
+  }
 
   /** Wait for any message matching predicate within timeout. */
   waitFor(predicate: (m: any) => boolean, timeoutMs = 3000): Promise<any> {
@@ -148,7 +166,7 @@ class WsClient {
 
   /** Collect messages for a given duration. */
   collectFor(ms: number): Promise<any[]> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       const msgs: any[] = [...this.buffer.splice(0)];
       const handleMsg = (msg: any) => msgs.push(msg);
       this.ws.on('message', (data) => handleMsg(JSON.parse(data.toString())));
@@ -490,22 +508,37 @@ function connectRawWs(token: string): Promise<{ ws: WebSocket; received: any[] }
     const received: any[] = [];
     const ws = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`);
     ws.on('message', (data) => {
-      try { received.push(JSON.parse(data.toString())); } catch { /* ignore parse errors */ }
+      try {
+        received.push(JSON.parse(data.toString()));
+      } catch {
+        /* ignore parse errors */
+      }
     });
     ws.once('open', () => resolve({ ws, received }));
     ws.once('error', reject);
-    ws.once('close', (code) => { if (code === 4001) reject(new Error('WS closed 4001')); });
+    ws.once('close', (code) => {
+      if (code === 4001) reject(new Error('WS closed 4001'));
+    });
   });
 }
 
 /** Wait until `received` array has at least `n` items, up to `timeoutMs`. */
 function waitForMessages(received: any[], n = 1, timeoutMs = 3000): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (received.length >= n) { resolve(); return; }
+    if (received.length >= n) {
+      resolve();
+      return;
+    }
     const start = Date.now();
     const poll = () => {
-      if (received.length >= n) { resolve(); return; }
-      if (Date.now() - start > timeoutMs) { reject(new Error(`Timeout waiting for ${n} messages`)); return; }
+      if (received.length >= n) {
+        resolve();
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error(`Timeout waiting for ${n} messages`));
+        return;
+      }
       setTimeout(poll, 20);
     };
     poll();
@@ -525,10 +558,10 @@ describe('WS message processing edge cases', () => {
     rawWs.send('{ this is not json }');
     rawWs.send('{broken');
 
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300));
 
     // No error messages should have been sent by the server
-    const errMsgs = received.filter(m => m.type === 'error');
+    const errMsgs = received.filter((m) => m.type === 'error');
     expect(errMsgs).toHaveLength(0);
     // Connection should still be open
     expect(rawWs.readyState).toBe(WebSocket.OPEN);
@@ -549,10 +582,10 @@ describe('WS message processing edge cases', () => {
     // Send valid JSON number — should be ignored
     rawWs.send('42');
 
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300));
 
     // The only message received should be the welcome; no errors emitted
-    const errors = received.filter(m => m.type === 'error');
+    const errors = received.filter((m) => m.type === 'error');
     expect(errors).toHaveLength(0);
 
     rawWs.close();
@@ -570,9 +603,9 @@ describe('WS message processing edge cases', () => {
     rawWs.send(JSON.stringify({ tripId: 1 }));
     rawWs.send(JSON.stringify({ type: 42, tripId: 1 }));
 
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300));
 
-    const errors = received.filter(m => m.type === 'error');
+    const errors = received.filter((m) => m.type === 'error');
     expect(errors).toHaveLength(0);
 
     rawWs.close();
@@ -596,13 +629,13 @@ describe('WS message processing edge cases', () => {
     for (let i = 0; i < 30; i++) {
       rawWs.send(JSON.stringify({ type: 'noop' }));
     }
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 200));
 
     // Message 31 — triggers the `count > WS_MSG_LIMIT` branch, sends rate-limit error
     rawWs.send(JSON.stringify({ type: 'noop' }));
     await waitForMessages(received, 2, 3000); // welcome + rate-limit error
 
-    const rateLimitErrors = received.filter(m => m.type === 'error' && m.message?.includes('Rate limit'));
+    const rateLimitErrors = received.filter((m) => m.type === 'error' && m.message?.includes('Rate limit'));
     expect(rateLimitErrors.length).toBeGreaterThanOrEqual(1);
 
     rawWs.close();
@@ -627,7 +660,7 @@ describe('WS disconnect and room cleanup', () => {
 
     // Disconnect — triggers the 'close' handler that calls leaveRoom for all rooms
     client.close();
-    await new Promise(r => setTimeout(r, 200)); // let the close event propagate
+    await new Promise((r) => setTimeout(r, 200)); // let the close event propagate
 
     // Now create a second client that also joins the room, then creates a place.
     // The first client (now disconnected) must NOT receive it (it can't, but more
@@ -795,7 +828,7 @@ describe('broadcastToUser and getOnlineUserIds', () => {
 
     // Disconnect
     client.close();
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 200));
 
     // User should no longer appear in online set
     expect(getOnlineUserIds().has(user.id)).toBe(false);
@@ -863,7 +896,7 @@ describe('broadcastToUser and getOnlineUserIds', () => {
 
       // Close client1 abruptly — the underlying socket may momentarily remain in the room map
       client1.close();
-      await new Promise(r => setTimeout(r, 50)); // brief pause
+      await new Promise((r) => setTimeout(r, 50)); // brief pause
 
       // Trigger broadcast via REST — should not crash even if client1's socket is closed
       const res = await request(server)

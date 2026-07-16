@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { HttpException } from '@nestjs/common';
-import type { Response } from 'express';
 import { AtlasController } from '../../../src/nest/atlas/atlas.controller';
 import type { AtlasService } from '../../../src/nest/atlas/atlas.service';
 import type { User } from '../../../src/types';
+import { HttpException } from '@nestjs/common';
+
+import type { Response } from 'express';
+import { describe, it, expect, vi } from 'vitest';
 
 const user = { id: 8 } as User;
 
@@ -83,7 +84,8 @@ describe('AtlasController (parity with the legacy /api/addons/atlas route)', () 
     it('400 when name or country_code is missing', () => {
       const markRegion = vi.fn();
       return thrown(() => makeController({ markRegion }).markRegion(user, 'by', undefined, 'DE')).then((r) =>
-        expect(r).toEqual({ status: 400, body: { error: 'name and country_code are required' } }));
+        expect(r).toEqual({ status: 400, body: { error: 'name and country_code are required' } }),
+      );
     });
 
     it('marks a region, upper-casing both codes', () => {
@@ -102,32 +104,44 @@ describe('AtlasController (parity with the legacy /api/addons/atlas route)', () 
     it('400 on create with a blank name', () => {
       const createBucketItem = vi.fn();
       return thrown(() => makeController({ createBucketItem }).createBucketItem(user, { name: '  ' })).then((r) =>
-        expect(r).toEqual({ status: 400, body: { error: 'Name is required' } }));
+        expect(r).toEqual({ status: 400, body: { error: 'Name is required' } }),
+      );
     });
 
     it('201-shape create returns { item }', () => {
       const createBucketItem = vi.fn().mockReturnValue({ id: 1, name: 'Tokyo' });
-      expect(makeController({ createBucketItem }).createBucketItem(user, { name: 'Tokyo', lat: 35, lng: 139 }))
-        .toEqual({ item: { id: 1, name: 'Tokyo' } });
-      expect(createBucketItem).toHaveBeenCalledWith(8, { name: 'Tokyo', lat: 35, lng: 139, country_code: undefined, notes: undefined, target_date: undefined });
+      expect(makeController({ createBucketItem }).createBucketItem(user, { name: 'Tokyo', lat: 35, lng: 139 })).toEqual(
+        { item: { id: 1, name: 'Tokyo' } },
+      );
+      expect(createBucketItem).toHaveBeenCalledWith(8, {
+        name: 'Tokyo',
+        lat: 35,
+        lng: 139,
+        country_code: undefined,
+        notes: undefined,
+        target_date: undefined,
+      });
     });
 
     it('404 on update of a missing item', () => {
       const updateBucketItem = vi.fn().mockReturnValue(null);
       return thrown(() => makeController({ updateBucketItem }).updateBucketItem(user, '9', { name: 'X' })).then((r) =>
-        expect(r).toEqual({ status: 404, body: { error: 'Item not found' } }));
+        expect(r).toEqual({ status: 404, body: { error: 'Item not found' } }),
+      );
     });
 
     it('updates an existing item', () => {
       const updateBucketItem = vi.fn().mockReturnValue({ id: 1, name: 'Kyoto' });
-      expect(makeController({ updateBucketItem }).updateBucketItem(user, '1', { name: 'Kyoto' }))
-        .toEqual({ item: { id: 1, name: 'Kyoto' } });
+      expect(makeController({ updateBucketItem }).updateBucketItem(user, '1', { name: 'Kyoto' })).toEqual({
+        item: { id: 1, name: 'Kyoto' },
+      });
     });
 
     it('404 on delete of a missing item', () => {
       const deleteBucketItem = vi.fn().mockReturnValue(false);
       return thrown(() => makeController({ deleteBucketItem }).deleteBucketItem(user, '9')).then((r) =>
-        expect(r).toEqual({ status: 404, body: { error: 'Item not found' } }));
+        expect(r).toEqual({ status: 404, body: { error: 'Item not found' } }),
+      );
     });
 
     it('deletes an existing item', () => {

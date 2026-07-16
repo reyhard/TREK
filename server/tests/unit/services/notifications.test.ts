@@ -1,3 +1,15 @@
+import { logError } from '../../../src/services/auditLog';
+import {
+  getEventText,
+  buildEmailHtml,
+  buildWebhookBody,
+  sendWebhook,
+  sendNtfy,
+  resolveNtfyUrl,
+  type NtfyConfig,
+} from '../../../src/services/notifications';
+import { checkSsrf } from '../../../src/utils/ssrfGuard';
+
 import { describe, it, expect, vi, afterEach, afterAll, beforeEach } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
@@ -23,10 +35,6 @@ vi.mock('../../../src/utils/ssrfGuard', () => ({
   checkSsrf: vi.fn(async () => ({ allowed: true, isPrivate: false, resolvedIp: '1.2.3.4' })),
   createPinnedDispatcher: vi.fn(() => ({})),
 }));
-
-import { getEventText, buildEmailHtml, buildWebhookBody, sendWebhook, sendNtfy, resolveNtfyUrl, type NtfyConfig } from '../../../src/services/notifications';
-import { checkSsrf } from '../../../src/utils/ssrfGuard';
-import { logError } from '../../../src/services/auditLog';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -76,7 +84,15 @@ describe('getEventText', () => {
   });
 
   it('all 7 event types produce non-empty title and body in English', () => {
-    const events = ['trip_invite', 'booking_change', 'trip_reminder', 'vacay_invite', 'photos_shared', 'collab_message', 'packing_tagged'] as const;
+    const events = [
+      'trip_invite',
+      'booking_change',
+      'trip_reminder',
+      'vacay_invite',
+      'photos_shared',
+      'collab_message',
+      'packing_tagged',
+    ] as const;
     for (const event of events) {
       const result = getEventText('en', event, params);
       expect(result.title, `title for ${event}`).toBeTruthy();
@@ -85,7 +101,15 @@ describe('getEventText', () => {
   });
 
   it('all 7 event types produce non-empty title and body in German', () => {
-    const events = ['trip_invite', 'booking_change', 'trip_reminder', 'vacay_invite', 'photos_shared', 'collab_message', 'packing_tagged'] as const;
+    const events = [
+      'trip_invite',
+      'booking_change',
+      'trip_reminder',
+      'vacay_invite',
+      'photos_shared',
+      'collab_message',
+      'packing_tagged',
+    ] as const;
     for (const event of events) {
       const result = getEventText('de', event, params);
       expect(result.title, `de title for ${event}`).toBeTruthy();
@@ -264,7 +288,9 @@ describe('sendWebhook SSRF protection (SEC-017)', () => {
 
   it('blocks loopback address and returns false', async () => {
     vi.mocked(checkSsrf).mockResolvedValueOnce({
-      allowed: false, isPrivate: true, resolvedIp: '127.0.0.1',
+      allowed: false,
+      isPrivate: true,
+      resolvedIp: '127.0.0.1',
       error: 'Requests to loopback and link-local addresses are not allowed',
     });
 
@@ -275,7 +301,9 @@ describe('sendWebhook SSRF protection (SEC-017)', () => {
 
   it('blocks cloud metadata endpoint (169.254.169.254) and returns false', async () => {
     vi.mocked(checkSsrf).mockResolvedValueOnce({
-      allowed: false, isPrivate: true, resolvedIp: '169.254.169.254',
+      allowed: false,
+      isPrivate: true,
+      resolvedIp: '169.254.169.254',
       error: 'Requests to loopback and link-local addresses are not allowed',
     });
 
@@ -286,7 +314,9 @@ describe('sendWebhook SSRF protection (SEC-017)', () => {
 
   it('blocks private network addresses and returns false', async () => {
     vi.mocked(checkSsrf).mockResolvedValueOnce({
-      allowed: false, isPrivate: true, resolvedIp: '192.168.1.1',
+      allowed: false,
+      isPrivate: true,
+      resolvedIp: '192.168.1.1',
       error: 'Requests to private/internal network addresses are not allowed',
     });
 
@@ -297,7 +327,8 @@ describe('sendWebhook SSRF protection (SEC-017)', () => {
 
   it('blocks non-HTTP protocols', async () => {
     vi.mocked(checkSsrf).mockResolvedValueOnce({
-      allowed: false, isPrivate: false,
+      allowed: false,
+      isPrivate: false,
       error: 'Only HTTP and HTTPS URLs are allowed',
     });
 
@@ -309,7 +340,9 @@ describe('sendWebhook SSRF protection (SEC-017)', () => {
     const mockFetch = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     mockFetch.mockClear();
     vi.mocked(checkSsrf).mockResolvedValueOnce({
-      allowed: false, isPrivate: true, resolvedIp: '127.0.0.1',
+      allowed: false,
+      isPrivate: true,
+      resolvedIp: '127.0.0.1',
       error: 'blocked',
     });
 
@@ -417,7 +450,9 @@ describe('sendNtfy', () => {
 
   it('NTFY-005 — SSRF guard blocks private URL and returns false', async () => {
     vi.mocked(checkSsrf).mockResolvedValueOnce({
-      allowed: false, isPrivate: true, resolvedIp: '192.168.1.1',
+      allowed: false,
+      isPrivate: true,
+      resolvedIp: '192.168.1.1',
       error: 'Requests to private/internal network addresses are not allowed',
     });
 

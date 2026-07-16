@@ -1,6 +1,7 @@
-import * as crypto from 'node:crypto';
 import type { AirtrailAirport, AirtrailFlightRaw, AirtrailNamedCode } from './airtrailClient';
 import type { AirtrailFlight } from '@trek/shared';
+
+import * as crypto from 'node:crypto';
 
 /** Preferred display/lookup code for an airport. */
 function airportCode(a: AirtrailAirport | null): string | null {
@@ -44,7 +45,7 @@ function localParts(iso: string | null, tz: string | null): { date: string | nul
       hour12: false,
     });
     const parts = fmt.formatToParts(d);
-    const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
     const date = `${get('year')}-${get('month')}-${get('day')}`;
     let hh = get('hour');
     if (hh === '24') hh = '00'; // some ICU builds emit 24:00 for midnight
@@ -69,7 +70,7 @@ export function normalizeFlight(raw: AirtrailFlightRaw): AirtrailFlight {
     airline: entityName(raw.airline),
     flightNumber: raw.flightNumber ?? null,
     aircraft: entityCode(raw.aircraft),
-    seatClass: (raw.seats?.find(s => s.userId) ?? raw.seats?.[0])?.seatClass ?? null,
+    seatClass: (raw.seats?.find((s) => s.userId) ?? raw.seats?.[0])?.seatClass ?? null,
   };
 }
 
@@ -153,7 +154,7 @@ export function mapFlightToReservation(raw: AirtrailFlightRaw): MappedReservatio
     needsReview = 1;
   }
 
-  const seat = raw.seats?.find(s => s.userId) ?? raw.seats?.[0];
+  const seat = raw.seats?.find((s) => s.userId) ?? raw.seats?.[0];
   const airlineName = entityName(raw.airline);
   const airlineCode = entityCode(raw.airline);
   const aircraftCode = entityCode(raw.aircraft);
@@ -209,7 +210,7 @@ export function canonicalHash(raw: AirtrailFlightRaw): string {
     flightReason: raw.flightReason ?? null,
     note: raw.note ?? null,
     seats: (raw.seats ?? [])
-      .map(s => ({
+      .map((s) => ({
         userId: s.userId ?? null,
         guestName: s.guestName ?? null,
         seat: s.seat ?? null,

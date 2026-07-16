@@ -62,7 +62,13 @@ const webhookChannel: ExternalChannel = {
   async sendToUser(userId, msg) {
     const url = getUserWebhookUrl(userId);
     if (!url) return false;
-    return sendWebhook(url, { event: msg.event, title: msg.title, body: msg.body, tripName: msg.tripName, link: msg.url });
+    return sendWebhook(url, {
+      event: msg.event,
+      title: msg.title,
+      body: msg.body,
+      tripName: msg.tripName,
+      link: msg.url,
+    });
   },
   async sendGlobal(msg: ChannelMessage) {
     const url = getAdminWebhookUrl();
@@ -88,7 +94,12 @@ const ntfyChannel: ExternalChannel = {
     const adminCfg = getAdminNtfyConfig();
     const url = resolveNtfyUrl(adminCfg, userCfg);
     if (!url) return false;
-    return sendNtfy(url, userCfg?.token ?? adminCfg.token, { event: msg.event, title: msg.title, body: msg.body, link: msg.url });
+    return sendNtfy(url, userCfg?.token ?? adminCfg.token, {
+      event: msg.event,
+      title: msg.title,
+      body: msg.body,
+      link: msg.url,
+    });
   },
   async sendGlobal(msg: ChannelMessage) {
     const adminCfg = getAdminNtfyConfig();

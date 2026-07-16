@@ -4,6 +4,12 @@
  * lat/lng/timezone from the airport database (the columns are NOT NULL), and
  * endpoints that can't be resolved produce a clean error instead of a SQL crash.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { createUser, createTrip } from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -18,7 +24,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
+      db
+        .prepare(
+          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
+        )
+        .get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -34,12 +44,6 @@ vi.mock('../../../src/config', () => ({
 
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 
 beforeAll(() => {
   createTables(testDb);
@@ -58,7 +62,11 @@ afterAll(() => {
 
 async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: false });
-  try { await fn(h); } finally { await h.cleanup(); }
+  try {
+    await fn(h);
+  } finally {
+    await h.cleanup();
+  }
 }
 
 const flightEndpoints = [
@@ -83,8 +91,10 @@ describe('Tool: create_transport', () => {
       expect(typeof from.lng).toBe('number');
       expect(from.timezone).toBe('Europe/Zurich');
       // persisted NOT NULL columns are populated
-      const rows = testDb.prepare('SELECT lat, lng FROM reservation_endpoints WHERE reservation_id = ?').all(data.reservation.id) as any[];
-      expect(rows.every(r => r.lat != null && r.lng != null)).toBe(true);
+      const rows = testDb
+        .prepare('SELECT lat, lng FROM reservation_endpoints WHERE reservation_id = ?')
+        .all(data.reservation.id) as any[];
+      expect(rows.every((r) => r.lat != null && r.lng != null)).toBe(true);
     });
   });
 
@@ -95,7 +105,9 @@ describe('Tool: create_transport', () => {
       const result = await h.client.callTool({
         name: 'create_transport',
         arguments: {
-          tripId: trip.id, type: 'train', title: 'Scenic train',
+          tripId: trip.id,
+          type: 'train',
+          title: 'Scenic train',
           endpoints: [
             { role: 'from', sequence: 0, name: 'Station A', lat: 46.0, lng: 7.0, timezone: 'Europe/Zurich' },
             { role: 'to', sequence: 1, name: 'Station B', lat: 46.5, lng: 7.5 },
@@ -116,7 +128,9 @@ describe('Tool: create_transport', () => {
       const result = await h.client.callTool({
         name: 'create_transport',
         arguments: {
-          tripId: trip.id, type: 'flight', title: 'Bad flight',
+          tripId: trip.id,
+          type: 'flight',
+          title: 'Bad flight',
           endpoints: [{ role: 'from', sequence: 0, name: 'Nowhere', code: 'ZZZ' }],
         },
       });
@@ -132,7 +146,9 @@ describe('Tool: create_transport', () => {
       const result = await h.client.callTool({
         name: 'create_transport',
         arguments: {
-          tripId: trip.id, type: 'car', title: 'Road trip',
+          tripId: trip.id,
+          type: 'car',
+          title: 'Road trip',
           endpoints: [{ role: 'from', sequence: 0, name: 'My house' }],
         },
       });
@@ -160,14 +176,17 @@ describe('Tool: update_transport', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     await withHarness(user.id, async (h) => {
-      const created = parseToolResult(await h.client.callTool({
-        name: 'create_transport',
-        arguments: { tripId: trip.id, type: 'flight', title: 'F', endpoints: flightEndpoints },
-      })) as any;
+      const created = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transport',
+          arguments: { tripId: trip.id, type: 'flight', title: 'F', endpoints: flightEndpoints },
+        }),
+      ) as any;
       const result = await h.client.callTool({
         name: 'update_transport',
         arguments: {
-          tripId: trip.id, reservationId: created.reservation.id,
+          tripId: trip.id,
+          reservationId: created.reservation.id,
           endpoints: [
             { role: 'from', sequence: 0, name: 'JFK', code: 'JFK' },
             { role: 'to', sequence: 1, name: 'Zurich', code: 'ZRH' },
@@ -185,10 +204,12 @@ describe('Tool: update_transport', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     await withHarness(user.id, async (h) => {
-      const created = parseToolResult(await h.client.callTool({
-        name: 'create_transport',
-        arguments: { tripId: trip.id, type: 'flight', title: 'F', endpoints: flightEndpoints },
-      })) as any;
+      const created = parseToolResult(
+        await h.client.callTool({
+          name: 'create_transport',
+          arguments: { tripId: trip.id, type: 'flight', title: 'F', endpoints: flightEndpoints },
+        }),
+      ) as any;
       const result = await h.client.callTool({
         name: 'update_transport',
         arguments: { tripId: trip.id, reservationId: created.reservation.id, status: 'confirmed' },

@@ -4,12 +4,15 @@
  * helpers are mocked; this focuses on auth (401), the admin gate (403 for a
  * non-admin), create-201, validation 400 and the dev-only 404.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { AdminModule } from '../../src/nest/admin/admin.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { seedUser, sessionCookie } from './harness';
+import { Test } from '@nestjs/testing';
+
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import { Test } from '@nestjs/testing';
-import { seedUser, sessionCookie } from './harness';
+import request from 'supertest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -24,17 +27,20 @@ const { db } = vi.hoisted(() => {
 vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: () => {} }));
 vi.mock('../../src/services/auditLog', () => ({ writeAudit: vi.fn(), getClientIp: () => '1.2.3.4', logInfo: vi.fn() }));
 vi.mock('../../src/mcp', () => ({ invalidateMcpSessions: vi.fn() }));
-vi.mock('../../src/services/notificationPreferencesService', () => ({ getPreferencesMatrix: vi.fn(() => ({})), setAdminPreferences: vi.fn() }));
-vi.mock('../../src/services/settingsService', () => ({ getAdminUserDefaults: vi.fn(() => ({})), setAdminUserDefaults: vi.fn() }));
+vi.mock('../../src/services/notificationPreferencesService', () => ({
+  getPreferencesMatrix: vi.fn(() => ({})),
+  setAdminPreferences: vi.fn(),
+}));
+vi.mock('../../src/services/settingsService', () => ({
+  getAdminUserDefaults: vi.fn(() => ({})),
+  setAdminUserDefaults: vi.fn(),
+}));
 vi.mock('../../src/services/notificationService', () => ({ send: vi.fn().mockResolvedValue(undefined) }));
 
 const { adminSvc } = vi.hoisted(() => ({
   adminSvc: { listUsers: vi.fn(), createUser: vi.fn(), updatePlacesPhotos: vi.fn() },
 }));
 vi.mock('../../src/services/adminService', () => adminSvc);
-
-import { AdminModule } from '../../src/nest/admin/admin.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Admin e2e (real auth + admin guard + temp SQLite)', () => {
   let server: Server;
@@ -57,7 +63,9 @@ describe('Admin e2e (real auth + admin guard + temp SQLite)', () => {
     adminSvc.listUsers.mockReturnValue([{ id: 1 }]);
   });
 
-  beforeEach(() => { delete process.env.NODE_ENV; });
+  beforeEach(() => {
+    delete process.env.NODE_ENV;
+  });
 
   afterAll(async () => {
     await app.close();
@@ -81,13 +89,19 @@ describe('Admin e2e (real auth + admin guard + temp SQLite)', () => {
 
   it('201 on user create', async () => {
     adminSvc.createUser.mockReturnValue({ user: { id: 3 }, insertedId: 3, auditDetails: {} });
-    const res = await request(server).post('/api/admin/users').set('Cookie', sessionCookie(1)).send({ email: 'new@x.y' });
+    const res = await request(server)
+      .post('/api/admin/users')
+      .set('Cookie', sessionCookie(1))
+      .send({ email: 'new@x.y' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ user: { id: 3 } });
   });
 
   it('400 on a non-boolean feature toggle', async () => {
-    const res = await request(server).put('/api/admin/places-photos').set('Cookie', sessionCookie(1)).send({ enabled: 'yes' });
+    const res = await request(server)
+      .put('/api/admin/places-photos')
+      .set('Cookie', sessionCookie(1))
+      .send({ enabled: 'yes' });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'enabled must be a boolean' });
   });

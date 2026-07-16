@@ -1,19 +1,27 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import os from 'os';
+import {
+  searchUnsplashPhotos,
+  getUnsplashKey,
+  saveUnsplashCover,
+  isUnsplashCoverUrl,
+} from '../../../src/services/unsplashService';
+
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 // safeFetch is mocked so saveUnsplashCover never hits the network.
 // db is mocked so getUnsplashKey resolves from a controllable stub, and
 // decrypt_api_key is a passthrough so stored values compare as plaintext.
-const { safeFetch, mockDbGet } = vi.hoisted(() => ({ safeFetch: vi.fn(), mockDbGet: vi.fn(() => undefined as unknown) }));
+const { safeFetch, mockDbGet } = vi.hoisted(() => ({
+  safeFetch: vi.fn(),
+  mockDbGet: vi.fn(() => undefined as unknown),
+}));
 vi.mock('../../../src/utils/ssrfGuard', () => ({ safeFetch }));
 vi.mock('../../../src/db/database', () => ({
   db: { prepare: () => ({ get: mockDbGet, all: vi.fn(() => []), run: vi.fn() }) },
 }));
 vi.mock('../../../src/services/apiKeyCrypto', () => ({ decrypt_api_key: (v: string | null) => v }));
-
-import { searchUnsplashPhotos, getUnsplashKey, saveUnsplashCover, isUnsplashCoverUrl } from '../../../src/services/unsplashService';
 
 const ORIGINAL_UNSPLASH_ENV = process.env.UNSPLASH_ACCESS_KEY;
 
@@ -29,7 +37,7 @@ function fakeRes(init: { ok: boolean; status?: number; type?: string; bytes?: nu
   return {
     ok: init.ok,
     status: init.status ?? (init.ok ? 200 : 500),
-    headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? init.type ?? '' : null) },
+    headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? (init.type ?? '') : null) },
     arrayBuffer: async () => new ArrayBuffer(init.bytes ?? 8),
     json: async () => init.json ?? {},
   } as unknown as Response;
@@ -51,22 +59,39 @@ describe('unsplashService.searchUnsplashPhotos', () => {
   });
 
   it('UNSPLASH-003: maps a non-ok response to an error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeRes({ ok: false, status: 429, type: 'application/json', json: { errors: ['Rate limited'] } })));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          fakeRes({ ok: false, status: 429, type: 'application/json', json: { errors: ['Rate limited'] } }),
+        ),
+    );
     expect(await searchUnsplashPhotos('paris')).toEqual({ error: 'Rate limited', status: 429 });
   });
 
   it('UNSPLASH-004: returns normalised photos on success and drops entries missing a url/thumb', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeRes({
-      ok: true,
-      type: 'application/json',
-      json: {
-        results: [
-          { id: 'a', urls: { regular: 'https://images.unsplash.com/a', small: 'https://images.unsplash.com/a-s' }, user: { name: 'Alice' }, links: { html: 'https://unsplash.com/a' } },
-          { id: 'b', urls: {} }, // dropped — no url/thumb
-        ],
-      },
-    })));
-    const res = await searchUnsplashPhotos('paris') as { photos: { id: string }[] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        fakeRes({
+          ok: true,
+          type: 'application/json',
+          json: {
+            results: [
+              {
+                id: 'a',
+                urls: { regular: 'https://images.unsplash.com/a', small: 'https://images.unsplash.com/a-s' },
+                user: { name: 'Alice' },
+                links: { html: 'https://unsplash.com/a' },
+              },
+              { id: 'b', urls: {} }, // dropped — no url/thumb
+            ],
+          },
+        }),
+      ),
+    );
+    const res = (await searchUnsplashPhotos('paris')) as { photos: { id: string }[] };
     expect(res.photos).toHaveLength(1);
     expect(res.photos[0]).toMatchObject({ id: 'a', photographer: 'Alice', link: 'https://unsplash.com/a' });
   });
@@ -121,7 +146,13 @@ describe('unsplashService.getUnsplashKey', () => {
 
 describe('unsplashService.saveUnsplashCover', () => {
   const dir = path.join(os.tmpdir(), 'trek-unsplash-cover-test');
-  afterEach(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ } });
+  afterEach(() => {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
 
   it('UNSPLASH-005: rejects a non-Unsplash host before any fetch', async () => {
     await expect(saveUnsplashCover('https://evil.example.com/x.jpg', dir)).rejects.toThrow('Not an Unsplash image URL');
@@ -137,12 +168,16 @@ describe('unsplashService.saveUnsplashCover', () => {
 
   it('UNSPLASH-007: rejects an unsupported content type', async () => {
     safeFetch.mockResolvedValue(fakeRes({ ok: true, type: 'text/html' }));
-    await expect(saveUnsplashCover('https://images.unsplash.com/photo-1', dir)).rejects.toThrow(/Unsupported cover image type/);
+    await expect(saveUnsplashCover('https://images.unsplash.com/photo-1', dir)).rejects.toThrow(
+      /Unsupported cover image type/,
+    );
   });
 
   it('UNSPLASH-008: rejects an oversized image', async () => {
     safeFetch.mockResolvedValue(fakeRes({ ok: true, type: 'image/png', bytes: 16 * 1024 * 1024 }));
-    await expect(saveUnsplashCover('https://images.unsplash.com/photo-1', dir)).rejects.toThrow('Cover image too large');
+    await expect(saveUnsplashCover('https://images.unsplash.com/photo-1', dir)).rejects.toThrow(
+      'Cover image too large',
+    );
   });
 
   it('UNSPLASH-009: throws when the download fails', async () => {

@@ -1,19 +1,21 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { db } from '../../../src/db/database';
+import { extractToken, authenticate, adminOnly } from '../../../src/middleware/auth';
+
+import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
   db: { prepare: vi.fn(() => ({ get: vi.fn(), all: vi.fn() })) },
 }));
 vi.mock('../../../src/config', () => ({ JWT_SECRET: 'test-secret' }));
 
-import { extractToken, authenticate, adminOnly } from '../../../src/middleware/auth';
-import { db } from '../../../src/db/database';
-import type { Request, Response, NextFunction } from 'express';
-
-function makeReq(overrides: {
-  cookies?: Record<string, string>;
-  headers?: Record<string, string>;
-} = {}): Request {
+function makeReq(
+  overrides: {
+    cookies?: Record<string, string>;
+    headers?: Record<string, string>;
+  } = {},
+): Request {
   return {
     cookies: overrides.cookies || {},
     headers: overrides.headers || {},
@@ -114,11 +116,9 @@ describe('authenticate', () => {
   });
 
   it('AUTH-MW-005: returns 401 for an expired JWT', () => {
-    const expiredToken = jwt.sign(
-      { id: 1, exp: Math.floor(Date.now() / 1000) - 3600 },
-      'test-secret',
-      { algorithm: 'HS256' }
-    );
+    const expiredToken = jwt.sign({ id: 1, exp: Math.floor(Date.now() / 1000) - 3600 }, 'test-secret', {
+      algorithm: 'HS256',
+    });
     const next = vi.fn() as unknown as NextFunction;
     const { res, status } = makeRes();
     authenticate(makeReq({ cookies: { trek_session: expiredToken } }), res, next);

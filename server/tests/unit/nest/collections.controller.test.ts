@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { HttpException } from '@nestjs/common';
 import { CollectionsController } from '../../../src/nest/collections/collections.controller';
 import type { CollectionsService } from '../../../src/nest/collections/collections.service';
 import type { User } from '../../../src/types';
+import { HttpException } from '@nestjs/common';
+
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 const user = { id: 1, username: 'owner', role: 'user', email: 'u@example.test' } as User;
 
@@ -53,7 +54,9 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
 }
 
 describe('CollectionsController', () => {
-  afterEach(() => { delete process.env.DEMO_MODE; });
+  afterEach(() => {
+    delete process.env.DEMO_MODE;
+  });
 
   it('lists / creates / reads / deletes lists (pass-throughs)', () => {
     const svc = makeService();
@@ -69,10 +72,14 @@ describe('CollectionsController', () => {
 
   describe('reorder', () => {
     it('400 when orderedIds is not an array of numbers', () => {
-      expect(thrown(() => new CollectionsController(makeService()).reorder(user, 'nope' as never)))
-        .toEqual({ status: 400, body: { error: 'orderedIds must be an array of numbers' } });
-      expect(thrown(() => new CollectionsController(makeService()).reorder(user, [1, 'x'] as never)))
-        .toEqual({ status: 400, body: { error: 'orderedIds must be an array of numbers' } });
+      expect(thrown(() => new CollectionsController(makeService()).reorder(user, 'nope' as never))).toEqual({
+        status: 400,
+        body: { error: 'orderedIds must be an array of numbers' },
+      });
+      expect(thrown(() => new CollectionsController(makeService()).reorder(user, [1, 'x'] as never))).toEqual({
+        status: 400,
+        body: { error: 'orderedIds must be an array of numbers' },
+      });
     });
     it('reorders a valid array', () => {
       const svc = makeService();
@@ -99,8 +106,10 @@ describe('CollectionsController', () => {
     });
 
     it('deleteMany 400 on a bad payload, deletes a valid one', () => {
-      expect(thrown(() => new CollectionsController(makeService()).deleteMany(user, { nope: 1 } as never)))
-        .toEqual({ status: 400, body: { error: 'ids must be an array of numbers' } });
+      expect(thrown(() => new CollectionsController(makeService()).deleteMany(user, { nope: 1 } as never))).toEqual({
+        status: 400,
+        body: { error: 'ids must be an array of numbers' },
+      });
       const svc = makeService();
       expect(new CollectionsController(svc).deleteMany(user, [1, 2] as never, 'sid')).toEqual({ deleted: [1, 2] });
       expect(svc.deletePlacesMany).toHaveBeenCalledWith(1, [1, 2], 'sid');
@@ -111,36 +120,55 @@ describe('CollectionsController', () => {
     it('parses lat/lng when present', () => {
       const svc = makeService();
       new CollectionsController(svc).membership(user, 'gpid', undefined, 'Rome', '41.9', '12.5');
-      expect(svc.findMembership).toHaveBeenCalledWith(1, { google_place_id: 'gpid', google_ftid: undefined, name: 'Rome', lat: 41.9, lng: 12.5 });
+      expect(svc.findMembership).toHaveBeenCalledWith(1, {
+        google_place_id: 'gpid',
+        google_ftid: undefined,
+        name: 'Rome',
+        lat: 41.9,
+        lng: 12.5,
+      });
     });
     it('leaves lat/lng undefined when absent', () => {
       const svc = makeService();
       new CollectionsController(svc).membership(user);
-      expect(svc.findMembership).toHaveBeenCalledWith(1, { google_place_id: undefined, google_ftid: undefined, name: undefined, lat: undefined, lng: undefined });
+      expect(svc.findMembership).toHaveBeenCalledWith(1, {
+        google_place_id: undefined,
+        google_ftid: undefined,
+        name: undefined,
+        lat: undefined,
+        lng: undefined,
+      });
     });
   });
 
   describe('invites (owner-gated)', () => {
     it('403 when a non-owner invites', () => {
       const svc = makeService({ isOwner: vi.fn().mockReturnValue(false) });
-      expect(thrown(() => new CollectionsController(svc).invite(user, { collection_id: 3, user_id: 2 } as never)))
-        .toEqual({ status: 403, body: { error: 'Only the owner can invite' } });
+      expect(
+        thrown(() => new CollectionsController(svc).invite(user, { collection_id: 3, user_id: 2 } as never)),
+      ).toEqual({ status: 403, body: { error: 'Only the owner can invite' } });
     });
     it('surfaces a sendInvite error with its status', () => {
       const svc = makeService({ sendInvite: vi.fn().mockReturnValue({ error: 'Already a member', status: 409 }) });
-      expect(thrown(() => new CollectionsController(svc).invite(user, { collection_id: 3, user_id: 2 } as never)))
-        .toEqual({ status: 409, body: { error: 'Already a member' } });
+      expect(
+        thrown(() => new CollectionsController(svc).invite(user, { collection_id: 3, user_id: 2 } as never)),
+      ).toEqual({ status: 409, body: { error: 'Already a member' } });
     });
     it('invites successfully as owner', () => {
       const svc = makeService();
-      expect(new CollectionsController(svc).invite(user, { collection_id: 3, user_id: 2 } as never)).toEqual({ success: true });
+      expect(new CollectionsController(svc).invite(user, { collection_id: 3, user_id: 2 } as never)).toEqual({
+        success: true,
+      });
     });
     it('accept surfaces an error, else succeeds', () => {
       const bad = makeService({ acceptInvite: vi.fn().mockReturnValue({ error: 'Gone', status: 404 }) });
-      expect(thrown(() => new CollectionsController(bad).acceptInvite(user, { collection_id: 3 } as never, 'sid')))
-        .toEqual({ status: 404, body: { error: 'Gone' } });
+      expect(
+        thrown(() => new CollectionsController(bad).acceptInvite(user, { collection_id: 3 } as never, 'sid')),
+      ).toEqual({ status: 404, body: { error: 'Gone' } });
       const svc = makeService();
-      expect(new CollectionsController(svc).acceptInvite(user, { collection_id: 3 } as never, 'sid')).toEqual({ success: true });
+      expect(new CollectionsController(svc).acceptInvite(user, { collection_id: 3 } as never, 'sid')).toEqual({
+        success: true,
+      });
       expect(svc.acceptInvite).toHaveBeenCalledWith(1, 3, 'sid');
     });
     it('decline + leave forward the socket id', () => {
@@ -153,26 +181,34 @@ describe('CollectionsController', () => {
     });
     it('cancel is owner-gated', () => {
       const notOwner = makeService({ isOwner: vi.fn().mockReturnValue(false) });
-      expect(thrown(() => new CollectionsController(notOwner).cancelInvite(user, { collection_id: 3, user_id: 2 } as never)))
-        .toEqual({ status: 403, body: { error: 'Only the owner can cancel invites' } });
+      expect(
+        thrown(() => new CollectionsController(notOwner).cancelInvite(user, { collection_id: 3, user_id: 2 } as never)),
+      ).toEqual({ status: 403, body: { error: 'Only the owner can cancel invites' } });
       const svc = makeService();
-      expect(new CollectionsController(svc).cancelInvite(user, { collection_id: 3, user_id: 2 } as never)).toEqual({ success: true });
+      expect(new CollectionsController(svc).cancelInvite(user, { collection_id: 3, user_id: 2 } as never)).toEqual({
+        success: true,
+      });
     });
   });
 
   describe('members', () => {
     it('removeMember is owner-gated', () => {
       const notOwner = makeService({ isOwner: vi.fn().mockReturnValue(false) });
-      expect(thrown(() => new CollectionsController(notOwner).removeMember(user, { collection_id: 3, user_id: 2 } as never)))
-        .toEqual({ status: 403, body: { error: 'Only the owner can remove members' } });
+      expect(
+        thrown(() => new CollectionsController(notOwner).removeMember(user, { collection_id: 3, user_id: 2 } as never)),
+      ).toEqual({ status: 403, body: { error: 'Only the owner can remove members' } });
       const svc = makeService();
-      expect(new CollectionsController(svc).removeMember(user, { collection_id: 3, user_id: 2 } as never)).toEqual({ success: true });
+      expect(new CollectionsController(svc).removeMember(user, { collection_id: 3, user_id: 2 } as never)).toEqual({
+        success: true,
+      });
       expect(svc.removeMember).toHaveBeenCalledWith(1, 3, 2);
     });
     it('availableUsers is owner-gated', () => {
       const notOwner = makeService({ isOwner: vi.fn().mockReturnValue(false) });
-      expect(thrown(() => new CollectionsController(notOwner).availableUsers(user, '3')))
-        .toEqual({ status: 403, body: { error: 'Only the owner can manage members' } });
+      expect(thrown(() => new CollectionsController(notOwner).availableUsers(user, '3'))).toEqual({
+        status: 403,
+        body: { error: 'Only the owner can manage members' },
+      });
       expect(new CollectionsController(makeService()).availableUsers(user, '3')).toEqual({ users: [{ id: 2 }] });
     });
   });
@@ -182,12 +218,16 @@ describe('CollectionsController', () => {
     it('403 in demo mode for a demo user', () => {
       process.env.DEMO_MODE = 'true';
       const demo = { ...user, email: 'demo@trek.app' } as User;
-      expect(thrown(() => new CollectionsController(makeService()).uploadCover(demo, '3', file)))
-        .toEqual({ status: 403, body: { error: 'Uploads are disabled in demo mode. Self-host TREK for full functionality.' } });
+      expect(thrown(() => new CollectionsController(makeService()).uploadCover(demo, '3', file))).toEqual({
+        status: 403,
+        body: { error: 'Uploads are disabled in demo mode. Self-host TREK for full functionality.' },
+      });
     });
     it('400 when no file was uploaded', () => {
-      expect(thrown(() => new CollectionsController(makeService()).uploadCover(user, '3', undefined)))
-        .toEqual({ status: 400, body: { error: 'No image uploaded' } });
+      expect(thrown(() => new CollectionsController(makeService()).uploadCover(user, '3', undefined))).toEqual({
+        status: 400,
+        body: { error: 'No image uploaded' },
+      });
     });
     it('stores the cover and forwards the socket id', () => {
       const svc = makeService();

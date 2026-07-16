@@ -1,11 +1,11 @@
+import { formatAssignmentWithPlace } from '../../../src/services/queryHelpers';
+import type { AssignmentRow, Tag, Participant } from '../../../src/types';
+
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
   db: { prepare: () => ({ all: () => [], get: vi.fn() }) },
 }));
-
-import { formatAssignmentWithPlace } from '../../../src/services/queryHelpers';
-import type { AssignmentRow, Tag, Participant } from '../../../src/types';
 
 function makeRow(overrides: Partial<AssignmentRow> = {}): AssignmentRow {
   return {
@@ -40,13 +40,9 @@ function makeRow(overrides: Partial<AssignmentRow> = {}): AssignmentRow {
   } as AssignmentRow;
 }
 
-const sampleTags: Partial<Tag>[] = [
-  { id: 1, name: 'Must-see', color: '#ef4444' },
-];
+const sampleTags: Partial<Tag>[] = [{ id: 1, name: 'Must-see', color: '#ef4444' }];
 
-const sampleParticipants: Participant[] = [
-  { user_id: 42, username: 'alice', avatar: null },
-];
+const sampleParticipants: Participant[] = [{ user_id: 42, username: 'alice', avatar: null }];
 
 describe('formatAssignmentWithPlace', () => {
   it('nests place fields correctly from flat row', () => {

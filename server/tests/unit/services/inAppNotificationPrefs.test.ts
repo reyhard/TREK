@@ -2,6 +2,16 @@
  * Unit tests for in-app notification preference filtering in createNotification().
  * Covers INOTIF-001 to INOTIF-004.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  createNotification,
+  createNotificationForRecipient,
+  respondToBoolean,
+} from '../../../src/services/inAppNotifications';
+import { createUser, createAdmin, disableNotificationPref } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -31,12 +41,6 @@ vi.mock('../../../src/config', () => ({
 // when the vi.mock factory is evaluated (factories are hoisted before const declarations)
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcastToUser: broadcastMock }));
-
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createAdmin, disableNotificationPref } from '../../helpers/factories';
-import { createNotification, createNotificationForRecipient, respondToBoolean } from '../../../src/services/inAppNotifications';
 
 beforeAll(() => {
   createTables(testDb);
@@ -100,7 +104,8 @@ describe('createNotification — preference filtering', () => {
     disableNotificationPref(testDb, recipient2.id, 'trip_invite', 'inapp');
 
     // Use a trip to target both members
-    const tripId = (testDb.prepare('INSERT INTO trips (title, user_id) VALUES (?, ?)').run('Test Trip', sender.id)).lastInsertRowid as number;
+    const tripId = testDb.prepare('INSERT INTO trips (title, user_id) VALUES (?, ?)').run('Test Trip', sender.id)
+      .lastInsertRowid as number;
     testDb.prepare('INSERT INTO trip_members (trip_id, user_id) VALUES (?, ?)').run(tripId, recipient1.id);
     testDb.prepare('INSERT INTO trip_members (trip_id, user_id) VALUES (?, ?)').run(tripId, recipient2.id);
 
@@ -159,11 +164,13 @@ describe('createNotification — preference filtering', () => {
         navigate_target: '/trips/99',
       },
       recipient.id,
-      { username: 'admin', avatar: null }
+      { username: 'admin', avatar: null },
     );
 
     expect(id).toBeTypeOf('number');
-    const row = testDb.prepare('SELECT * FROM notifications WHERE id = ?').get(id) as { recipient_id: number; navigate_target: string } | undefined;
+    const row = testDb.prepare('SELECT * FROM notifications WHERE id = ?').get(id) as
+      | { recipient_id: number; navigate_target: string }
+      | undefined;
     expect(row).toBeDefined();
     expect(row!.recipient_id).toBe(recipient.id);
     expect(row!.navigate_target).toBe('/trips/99');
@@ -204,7 +211,9 @@ describe('createNotification — preference filtering', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function insertBooleanNotification(recipientId: number, senderId: number | null = null): number {
-  const result = testDb.prepare(`
+  const result = testDb
+    .prepare(
+      `
     INSERT INTO notifications (
       type, scope, target, sender_id, recipient_id,
       title_key, title_params, text_key, text_params,
@@ -213,17 +222,23 @@ function insertBooleanNotification(recipientId: number, senderId: number | null 
       'notif.action.accept', 'notif.action.decline',
       '{"action":"test_approve","payload":{}}', '{"action":"test_deny","payload":{}}'
     )
-  `).run(recipientId, senderId, recipientId);
+  `,
+    )
+    .run(recipientId, senderId, recipientId);
   return result.lastInsertRowid as number;
 }
 
 function insertSimpleNotification(recipientId: number): number {
-  const result = testDb.prepare(`
+  const result = testDb
+    .prepare(
+      `
     INSERT INTO notifications (
       type, scope, target, sender_id, recipient_id,
       title_key, title_params, text_key, text_params
     ) VALUES ('simple', 'user', ?, NULL, ?, 'notif.test.title', '{}', 'notif.test.text', '{}')
-  `).run(recipientId, recipientId);
+  `,
+    )
+    .run(recipientId, recipientId);
   return result.lastInsertRowid as number;
 }
 
