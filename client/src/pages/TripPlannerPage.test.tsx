@@ -1760,6 +1760,8 @@ describe('TripPlannerPage', () => {
       });
       useTripStore.setState({ addReservation } as any);
       vi.spyOn(reservationsApi, 'updatePositions').mockRejectedValue(new Error('Position failed'));
+      const toastSpy = vi.fn();
+      window.__addToast = toastSpy;
       renderPlannerPage(42);
       act(() => { vi.runAllTimers(); });
       vi.useRealTimers();
@@ -1772,6 +1774,9 @@ describe('TripPlannerPage', () => {
 
       expect(useTripStore.getState().reservations.some(r => r.id === 302)).toBe(true);
       expect(screen.queryByTestId('transport-modal')).not.toBeInTheDocument();
+      expect(toastSpy).toHaveBeenCalledWith('Position failed', 'error', undefined);
+      expect(toastSpy).not.toHaveBeenCalledWith(expect.any(String), 'success', undefined);
+      delete window.__addToast;
     });
   });
 

@@ -184,18 +184,15 @@ describe('getMergedItems', () => {
     expect(types).toEqual(['place', 'transport', 'place'])
   })
 
-  it('orders a timed transport chronologically regardless of a stale per-day position', () => {
+  it('keeps an explicit connector placement authoritative over chronological ordering', () => {
     const dayAssignments = [
-      { id: 1, order_index: 0, place: { place_time: '08:00' } },
-      { id: 2, order_index: 1, place: { place_time: '13:00' } },
+      { id: 1, order_index: 0, place: { place_time: '09:00' } },
+      { id: 2, order_index: 1, place: { place_time: '10:00' } },
     ]
-    // The train is at 10:30, so it sorts between the 08:00 and 13:00 places by time —
-    // timed items are arranged chronologically even if an old manual position exists.
     const dayTransports = [
-      { id: 20, type: 'train', day_id: 5, end_day_id: 5, reservation_time: '10:30', day_positions: { 5: 1.5 } },
+      { id: 20, type: 'transit', day_id: 5, end_day_id: 5, reservation_time: '13:00', day_positions: { 5: 0.5 } },
     ]
     const result = getMergedItems({ dayAssignments, dayNotes: [], dayTransports, dayId: 5 })
-    const types = result.map(i => i.type)
-    expect(types).toEqual(['place', 'transport', 'place'])
+    expect(result.map(i => i.data.id)).toEqual([1, 20, 2])
   })
 })

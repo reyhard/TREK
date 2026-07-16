@@ -75,3 +75,19 @@
 - Client build: `npm run build --workspace=client` — passed; Vite built 2,366 modules in 8.79s (existing chunk-size and ineffective-dynamic-import warnings only).
 - Diff verification: `git diff --check` — passed; pre-commit status contained only the three Task 5 product/test documentation files plus this progress record.
 - Status: complete
+
+## Whole-branch review fixes
+
+- Base commit: `fa0c1baaf910244b3ed9c95febf3429aea66cc31`
+- IMPORTANT — explicit connector timeline placement was lost during final chronological ordering. Added a regression with places at 09:00/10:00 and a 13:00 first-class transit reservation at per-day position `0.5`; the final order now remains place A, transit, place B. Unpositioned transports retain the existing chronological fallback.
+- MINOR — the connector menu measured transformed `getBoundingClientRect()` dimensions during its entrance animation. It now uses transform-independent `offsetWidth`/`offsetHeight`, with bounding-rect fallback only when layout dimensions are unavailable; trigger placement still uses its bounding rect.
+- MINOR — a successful reservation create followed by failed connector-position persistence emitted both error and success toasts. The created reservation is still retained, returned, and the modal closes, but only the position error toast is emitted.
+- Red day merge: `npm run test --workspace=client -- src/utils/dayMerge.test.ts` — failed 1 of 26 as expected (`[1, 2, 20]` instead of `[1, 20, 2]`).
+- Red connector geometry: `npm run test --workspace=client -- src/components/Planner/DayPlanSidebarRouteConnector.test.tsx` — failed 1 of 10 as expected (`left: 122px; top: 74px` instead of `left: 12px; top: 36px`).
+- Red toast behavior: `npm run test --workspace=client -- src/pages/TripPlannerPage.test.tsx -t "keeps the created reservation and closes when connector positioning fails"` — failed as expected because the success toast followed the error toast.
+- Green direct regressions: `npm run test --workspace=client -- src/utils/dayMerge.test.ts src/components/Planner/DayPlanSidebarRouteConnector.test.tsx src/pages/TripPlannerPage.test.tsx` — passed, 3 files and 96 tests.
+- Green connector/sidebar regressions: `npm run test --workspace=client -- src/components/Planner/transitConnector.test.ts src/components/Planner/DayPlanSidebarRouteConnector.test.tsx src/components/Planner/DayPlanSidebar.test.tsx` — passed, 3 files and 134 tests.
+- Typecheck: `npm run typecheck --workspace=client` — passed.
+- Changed-file lint: `npm exec --workspace=client -- eslint src/utils/dayMerge.ts src/utils/dayMerge.test.ts src/components/Planner/DayPlanSidebarRouteConnector.tsx src/components/Planner/DayPlanSidebarRouteConnector.test.tsx src/pages/tripPlanner/useTripPlanner.ts src/pages/TripPlannerPage.test.tsx` — passed with pre-existing warnings only and no errors.
+- Diff check: `git diff --check` — passed.
+- Status: all whole-branch findings resolved.

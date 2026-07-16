@@ -162,7 +162,7 @@ describe('RouteConnector transit action', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
   })
 
-  it('clamps horizontally and vertically using the rendered menu bounds', async () => {
+  it('clamps using transform-independent menu dimensions while measuring the trigger bounds', async () => {
     const user = userEvent.setup()
     const originalWidth = window.innerWidth
     const originalHeight = window.innerHeight
@@ -175,11 +175,11 @@ describe('RouteConnector transit action', () => {
             x: 0,
             y: 0,
             top: 0,
-            right: 220,
-            bottom: 76,
+            right: 110,
+            bottom: 38,
             left: 0,
-            width: 220,
-            height: 76,
+            width: 110,
+            height: 38,
             toJSON: () => ({}),
           }
         }
@@ -195,6 +195,10 @@ describe('RouteConnector transit action', () => {
           toJSON: () => ({}),
         }
       })
+    const offsetWidthSpy = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(function () { return this.getAttribute('role') === 'menu' ? 220 : 0 })
+    const offsetHeightSpy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockImplementation(function () { return this.getAttribute('role') === 'menu' ? 76 : 0 })
 
     render(
       <RouteConnector
@@ -212,8 +216,11 @@ describe('RouteConnector transit action', () => {
       left: '12px',
       top: '36px',
     })
+    expect(rectSpy).toHaveBeenCalledTimes(1)
 
     rectSpy.mockRestore()
+    offsetWidthSpy.mockRestore()
+    offsetHeightSpy.mockRestore()
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight })
   })

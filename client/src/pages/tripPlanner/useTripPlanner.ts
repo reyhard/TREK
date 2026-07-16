@@ -731,6 +731,7 @@ export function useTripPlanner() {
         return r
       } else {
         const r = await tripActions.addReservation(tripId, reservationData)
+        let positioningFailed = false
         if (r?.id && _connectorPlacement) {
           try {
             await reservationsApi.updatePositions(
@@ -751,10 +752,11 @@ export function useTripPlanner() {
                 : reservation),
             }))
           } catch (err: unknown) {
+            positioningFailed = true
             toast.error(err instanceof Error ? err.message : t('common.unknownError'))
           }
         }
-        toast.success(t('trip.toast.reservationAdded'))
+        if (!positioningFailed) toast.success(t('trip.toast.reservationAdded'))
         setShowTransportModal(false)
         setEditingTransport(null)
         setTransportModalDayId(null)

@@ -174,6 +174,8 @@ function applyChronoOrder(
   const timeOf = (it: MergedItem): number | null => {
     if (it.type === 'place') return parseTimeToMinutes(it.data?.place?.place_time)
     if (it.type === 'note') return parseTimeToMinutes(it.data?.time)
+    const perDayPosition = it.data?.day_positions?.[dayId] ?? it.data?.day_positions?.[String(dayId)]
+    if (perDayPosition != null) return null
     return parseTimeToMinutes(getDisplayTime(it.data, dayId))
   }
   let last = -Infinity
