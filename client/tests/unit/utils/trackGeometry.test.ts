@@ -28,6 +28,21 @@ describe('trackGeometry', () => {
     expect(parsed?.maxElevation).toBe(25)
   })
 
+  it('filters invalid rows when at least two valid coordinates remain', () => {
+    const parsed = parseTrackGeometry(JSON.stringify([
+      [52, 5],
+      [null, 5.005],
+      [52, 5.01],
+    ]))
+
+    expect(parsed?.coordinates).toEqual([
+      [52, 5],
+      [52, 5.01],
+    ])
+    expect(parsed?.distance).toBeGreaterThan(680)
+    expect(parsed?.distance).toBeLessThan(690)
+  })
+
   it.each([
     null,
     '',
