@@ -5,6 +5,8 @@ import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useAuthStore } from '../../store/authStore';
 import { useTripStore } from '../../store/tripStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { formatDistance, formatElevation } from '../../utils/units';
+import { getTrackMovement } from '../../utils/trackGeometry';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -553,17 +555,25 @@ describe('PlaceInspector', () => {
     expect(screen.getByText(/\d+(?:\.\d+)? (?:m|km)/)).toBeInTheDocument()
   });
 
-  it('FE-PLANNER-INSPECTOR-037: GPX track stats shown with 3D points (elevation data)', () => {
+  it('FE-PLANNER-INSPECTOR-037: GPX track stats match shared track movement metrics', () => {
     const pts = [
       [48.8584, 2.2945, 100],
+      ['invalid', 2.2975, 999],
       [48.8600, 2.3000, 120],
       [48.8620, 2.3050, 110],
       [48.8640, 2.3100, 130],
     ];
     const p = buildPlace({ id: 303, route_geometry: JSON.stringify(pts) } as any);
-    const { container } = render(<PlaceInspector {...defaultProps} place={p} />);
-    // Elevation stats should show max elevation 130m
-    expect(screen.getByText(/130 m/)).toBeTruthy();
+    const track = getTrackMovement(p)!;
+
+    render(<PlaceInspector {...defaultProps} place={p} />);
+
+    expect(screen.getByText(formatDistance(track.distance / 1000, 'metric'))).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(track.maxElevation!, 'metric'))).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(track.minElevation!, 'metric'))).toBeInTheDocument();
+    expect(screen.getByText((_, element) =>
+      element?.textContent?.replace(/\s+/g, ' ') === `↑${formatElevation(track.elevationGain, 'metric')} ↓${formatElevation(track.elevationLoss, 'metric')}`,
+    )).toBeInTheDocument();
   });
 
   it('FE-PLANNER-INSPECTOR-037b: malformed GPX geometry hides Track Stats without crashing', () => {

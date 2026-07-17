@@ -50,7 +50,13 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
-  Polyline: ({ positions }: any) => <div data-testid="polyline" data-points={JSON.stringify(positions)} />,
+  Polyline: ({ positions, pathOptions }: any) => (
+    <div
+      data-testid="polyline"
+      data-kind={pathOptions ? 'routed' : 'gpx'}
+      data-points={JSON.stringify(positions)}
+    />
+  ),
   CircleMarker: () => <div data-testid="circle-marker" />,
   Circle: () => <div data-testid="circle" />,
   useMap: () => mapMock,
@@ -222,6 +228,30 @@ describe('MapView', () => {
     ]
     render(<MapView places={places} />)
     expect(screen.getByTestId('polyline')).toBeTruthy()
+  })
+
+  it('FE-COMP-MAPVIEW-009b: stored GPX renders once while routed polylines contain connectors only', () => {
+    const track = [[48.0, 2.0], [48.1, 2.1], [48.2, 2.2]] as [number, number][]
+    const route = [
+      [[47.9, 1.9], track[0]],
+      [track[track.length - 1], [48.3, 2.3]],
+    ] as [number, number][][]
+
+    render(<MapView
+      places={[buildMapPlace({ id: 91, lat: 48.0, lng: 2.0, route_geometry: JSON.stringify(track) })]}
+      route={route}
+    />)
+
+    const polylines = screen.getAllByTestId('polyline')
+    const gpxPolylines = polylines.filter(line => line.dataset.kind === 'gpx')
+    const routedPolylines = polylines.filter(line => line.dataset.kind === 'routed')
+    expect(gpxPolylines).toHaveLength(1)
+    expect(gpxPolylines[0]).toHaveAttribute('data-points', JSON.stringify(track))
+    expect(routedPolylines).toHaveLength(route.length * 2)
+    expect(routedPolylines.map(line => line.dataset.points)).not.toContain(JSON.stringify(track))
+    expect(new Set(routedPolylines.map(line => line.dataset.points))).toEqual(
+      new Set(route.map(segment => JSON.stringify(segment))),
+    )
   })
 
   it('FE-COMP-MAPVIEW-010: MarkerClusterGroup is rendered', () => {

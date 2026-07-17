@@ -175,6 +175,51 @@ afterEach(() => {
 })
 
 describe('MapViewGL', () => {
+  it.each([
+    ['mapbox-gl', 'mapbox-gl'],
+    ['maplibre-gl', 'maplibre-gl'],
+  ] as const)('FE-COMP-MAPVIEWGL-017: %s keeps stored GPX geometry separate from connector routes', async (_label, provider) => {
+    const routeSource = { setData: vi.fn() }
+    const gpxSource = { setData: vi.fn() }
+    glMap.getSource.mockImplementation((id: string) => {
+      if (id === 'trip-route') return routeSource
+      if (id === 'trip-gpx') return gpxSource
+      return null
+    })
+    glMap.on.mockImplementation((event: string, handlerOrLayer: unknown) => {
+      if (event === 'load' && typeof handlerOrLayer === 'function') (handlerOrLayer as () => void)()
+      return glMap
+    })
+
+    const track = [[48.0, 2.0], [48.1, 2.1], [48.2, 2.2]] as [number, number][]
+    const connectors = [
+      [[47.9, 1.9], track[0]],
+      [track[track.length - 1], [48.3, 2.3]],
+    ] as [number, number][][]
+
+    render(
+      <MapViewGL
+        places={[buildMapPlace({ id: 91, route_geometry: JSON.stringify(track) })]}
+        route={connectors}
+        glProvider={provider}
+      />,
+    )
+    await act(async () => {})
+
+    const routeData = routeSource.setData.mock.lastCall?.[0]
+    const gpxData = gpxSource.setData.mock.lastCall?.[0]
+    expect(routeData.features.map((feature: any) => feature.geometry.coordinates)).toEqual(
+      connectors.map(segment => segment.map(([lat, lng]) => [lng, lat])),
+    )
+    expect(routeData.features.map((feature: any) => feature.geometry.coordinates)).not.toContainEqual(
+      track.map(([lat, lng]) => [lng, lat]),
+    )
+    expect(gpxData.features).toHaveLength(1)
+    expect(gpxData.features[0].geometry.coordinates).toEqual(
+      track.map(([lat, lng]) => [lng, lat]),
+    )
+  })
+
   it('FE-COMP-MAPVIEWGL-001: opening place inspector does not refit bounds (issue #921)', async () => {
     const places = [
       buildMapPlace({ id: 1, lat: 48.8584, lng: 2.2945 }),
