@@ -41,8 +41,15 @@ import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transit
 import type { TransitSearchPrefill } from './transitSearchTypes'
 import { getConnectorTransitPrefill, getNextConnectorTarget, isTransitMergedItem } from './transitConnector'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
+import DayMovementTotalRow, { type RouteMetricStatus } from './DayMovementTotalRow'
+import { calculateDayMovementStats, type MovementTotal } from '../../utils/movementStats'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
+
+interface DayRouteMetricState {
+  status: RouteMetricStatus
+  expected: boolean
+}
 
 interface DayPlanSidebarProps {
   tripId: number
@@ -177,6 +184,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // Hotel bookend legs keyed by day id. Desktop keys only the selected day; mobile
   // keys every day whose Route toggle is on, so each shows its own bookends (#1374).
   const [hotelLegs, setHotelLegs] = useState<Record<number, { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } }>>({})
+  const [routeMetricStates, setRouteMetricStates] = useState<Record<number, DayRouteMetricState>>({})
   // Mobile only: days the user tapped "Route" on. Their leg distances show inline in
   // the expanded day, so seeing distances doesn't require selecting the day (which
   // closes the mobile sheet) — #1374.
@@ -427,7 +435,12 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // selected day on desktop, each Route-toggled day on mobile (#1374).
   useEffect(() => {
     if (legsAbortRef.current) legsAbortRef.current.abort()
-    if (routeDayIds.length === 0) { setRouteLegs({}); setHotelLegs({}); return }
+    if (routeDayIds.length === 0) {
+      setRouteLegs({})
+      setHotelLegs({})
+      setRouteMetricStates({})
+      return
+    }
 
     const hotelName = (a: Accommodation) => (a as any).place_name || (a as any).reservation_title || ''
 
@@ -499,46 +512,93 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       return { runs, startHotel, endHotel, firstWay, lastWay, wantTop, wantBottom }
     }
 
+    const plans = routeDayIds.map(dayId => [dayId, planDay(dayId)] as const)
+    setRouteMetricStates(Object.fromEntries(plans.map(([dayId, plan]) => [
+      dayId,
+      {
+        status: 'loading' as const,
+        expected: plan.runs.length > 0 || plan.wantTop || plan.wantBottom,
+      },
+    ])))
+
     const controller = new AbortController()
     legsAbortRef.current = controller
     ;(async () => {
       const legsByDay: Record<number, Record<number, RouteSegment>> = {}
       const hotelByDay: Record<number, { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } }> = {}
+      const metricStates: Record<number, DayRouteMetricState> = {}
+      const aborted = (error: unknown) => error instanceof Error && error.name === 'AbortError'
 
-      // One cached OSRM call per waypoint pair; shares RouteCalculator's cache.
-      const legBetween = async (a: { lat: number; lng: number }, b: { lat: number; lng: number }): Promise<RouteSegment | undefined> => {
-        try {
-          const r = await calculateRouteWithLegs([a, b], { signal: controller.signal, profile: routeProfile })
-          return r.legs[0]
-        } catch { return undefined }
-      }
-
-      for (const dayId of routeDayIds) {
-        const { runs, startHotel, endHotel, firstWay, lastWay, wantTop, wantBottom } = planDay(dayId)
+      for (const [dayId, plan] of plans) {
+        const { runs, startHotel, endHotel, firstWay, lastWay, wantTop, wantBottom } = plan
+        const expected = runs.length > 0 || wantTop || wantBottom
         const dayLegs: Record<number, RouteSegment> = {}
+        let partial = false
+
         for (const run of runs) {
           try {
-            const r = await calculateRouteWithLegs(run.map(p => ({ lat: p.lat, lng: p.lng })), { signal: controller.signal, profile: routeProfile })
-            r.legs.forEach((leg, i) => { dayLegs[run[i].id] = leg })
-          } catch (err) {
-            if (err instanceof Error && err.name === 'AbortError') return
+            const result = await calculateRouteWithLegs(
+              run.map(point => ({ lat: point.lat, lng: point.lng })),
+              { signal: controller.signal, profile: routeProfile },
+            )
+            if (result.legs.length !== run.length - 1) partial = true
+            result.legs.forEach((leg, index) => {
+              const start = run[index]
+              if (start) dayLegs[start.id] = leg
+            })
+          } catch (error) {
+            if (aborted(error)) return
+            partial = true
           }
         }
-        if (Object.keys(dayLegs).length) legsByDay[dayId] = dayLegs
+        if (Object.keys(dayLegs).length > 0) legsByDay[dayId] = dayLegs
+
         const hotel: { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } } = {}
         if (wantTop) {
-          const seg = await legBetween({ lat: startHotel!.place_lat as number, lng: startHotel!.place_lng as number }, { lat: firstWay!.lat, lng: firstWay!.lng })
-          if (seg) hotel.top = { seg, name: hotelName(startHotel!) }
+          try {
+            const result = await calculateRouteWithLegs(
+              [
+                { lat: startHotel!.place_lat as number, lng: startHotel!.place_lng as number },
+                { lat: firstWay!.lat, lng: firstWay!.lng },
+              ],
+              { signal: controller.signal, profile: routeProfile },
+            )
+            const segment = result.legs[0]
+            if (segment) hotel.top = { seg: segment, name: hotelName(startHotel!) }
+            else partial = true
+          } catch (error) {
+            if (aborted(error)) return
+            partial = true
+          }
         }
         if (wantBottom) {
-          const seg = await legBetween({ lat: lastWay!.lat, lng: lastWay!.lng }, { lat: endHotel!.place_lat as number, lng: endHotel!.place_lng as number })
-          if (seg) hotel.bottom = { seg, name: hotelName(endHotel!) }
+          try {
+            const result = await calculateRouteWithLegs(
+              [
+                { lat: lastWay!.lat, lng: lastWay!.lng },
+                { lat: endHotel!.place_lat as number, lng: endHotel!.place_lng as number },
+              ],
+              { signal: controller.signal, profile: routeProfile },
+            )
+            const segment = result.legs[0]
+            if (segment) hotel.bottom = { seg: segment, name: hotelName(endHotel!) }
+            else partial = true
+          } catch (error) {
+            if (aborted(error)) return
+            partial = true
+          }
         }
+
         if (controller.signal.aborted) return
         if (hotel.top || hotel.bottom) hotelByDay[dayId] = hotel
+        metricStates[dayId] = { status: partial ? 'partial' : 'complete', expected }
       }
 
-      if (!controller.signal.aborted) { setRouteLegs(legsByDay); setHotelLegs(hotelByDay) }
+      if (!controller.signal.aborted) {
+        setRouteLegs(legsByDay)
+        setHotelLegs(hotelByDay)
+        setRouteMetricStates(metricStates)
+      }
     })()
     // routeDayIds is memoized from the same inputs as routeDayKey below, so keying the
     // effect on the string is equivalent while staying stable across unrelated renders.
@@ -1064,6 +1124,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     setRouteLegs,
     hotelLegs,
     setHotelLegs,
+    routeMetricStates,
     legsAbortRef,
     draggingId,
     setDraggingId,
@@ -1230,6 +1291,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     setRouteLegs,
     hotelLegs,
     setHotelLegs,
+    routeMetricStates,
     legsAbortRef,
     draggingId,
     setDraggingId,
@@ -1293,6 +1355,31 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     expandedRouteDayIds,
     setExpandedRouteDayIds,
   } = S
+
+  const movementDistanceUnit = useSettingsStore(state => state.settings.distance_unit) === 'imperial' ? 'imperial' : 'metric'
+
+  const movementTotalsByDay = useMemo<Record<number, MovementTotal>>(() => {
+    const totals: Record<number, MovementTotal> = {}
+    for (const day of days) {
+      const metricState = routeMetricStates[day.id] ?? { status: 'idle' as const, expected: false }
+      totals[day.id] = calculateDayMovementStats({
+        dayId: day.id,
+        activeProfile: routeProfile,
+        routeLegs: routeLegs[day.id] ?? {},
+        hotelLegs: {
+          top: hotelLegs[day.id]?.top?.seg,
+          bottom: hotelLegs[day.id]?.bottom?.seg,
+        },
+        assignments: assignments[String(day.id)] ?? [],
+        places,
+        reservations,
+        routeMetricsComplete: metricState.status === 'complete',
+        routeMetricsExpected: metricState.expected,
+      })
+    }
+    return totals
+  }, [days, assignments, places, reservations, routeLegs, hotelLegs, routeMetricStates, routeProfile])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', fontFamily: "var(--font-system)" }}>
       {/* Toolbar */}
@@ -2441,12 +2528,18 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                           })}
                         </div>
                       </div>
-                      {isSelected && routeInfo && (
-                        <div className="text-content-secondary bg-surface-hover" style={{ display: 'flex', justifyContent: 'center', gap: 12, fontSize: 'calc(12px * var(--fs-scale-body, 1))', borderRadius: 8, padding: '5px 10px' }}>
-                          <span>{routeInfo.distance}</span>
-                          <span className="text-content-faint">·</span>
-                          <span>{routeInfo.duration}</span>
-                        </div>
+                      {routeActive && (
+                        <DayMovementTotalRow
+                          status={routeMetricStates[day.id]?.status ?? 'loading'}
+                          profile={routeProfile}
+                          total={movementTotalsByDay[day.id]}
+                          distanceUnit={movementDistanceUnit}
+                          calculatingLabel={t('dayplan.calculating')}
+                          totalLabel={t('dayplan.movement.total', {
+                            mode: t(routeProfile === 'driving' ? 'dayplan.movement.driving' : 'dayplan.movement.walking'),
+                          })}
+                          incompleteLabel={t('dayplan.movement.incomplete')}
+                        />
                       )}
                     </div>
                   )}

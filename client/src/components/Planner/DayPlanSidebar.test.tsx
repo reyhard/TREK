@@ -1,5 +1,5 @@
 // FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-042
-import { render, screen, waitFor, fireEvent } from '../../../tests/helpers/render'
+import { render, screen, waitFor, fireEvent, act } from '../../../tests/helpers/render'
 import userEvent from '@testing-library/user-event'
 import { useAuthStore } from '../../store/authStore'
 import { useTripStore } from '../../store/tripStore'
@@ -22,6 +22,10 @@ const mockDayNotesState = vi.hoisted(() => ({
   saveNote: vi.fn(),
   deleteNote: vi.fn(),
   moveNote: vi.fn(),
+}))
+
+const routeCalculatorMocks = vi.hoisted(() => ({
+  calculateRouteWithLegs: vi.fn(),
 }))
 
 // ── Module mocks ────────────────────────────────────────────────────────────
@@ -48,14 +52,34 @@ vi.mock('../Map/RouteCalculator', () => ({
   calculateRoute: vi.fn().mockResolvedValue({ distanceText: '5 km', durationText: '1h', coordinates: [] }),
   generateGoogleMapsUrl: vi.fn().mockReturnValue('https://maps.google.com/...'),
   optimizeRoute: vi.fn().mockImplementation((places) => places),
-  // One leg per waypoint gap; the connector between two stops reads distanceText.
-  calculateRouteWithLegs: vi.fn().mockImplementation((waypoints) => Promise.resolve({
-    distanceText: '2 km', durationText: '10 min',
-    legs: Array.from({ length: Math.max(0, (waypoints?.length ?? 0) - 1) }, () => ({
-      distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
-    })),
-  })),
+  calculateRouteWithLegs: routeCalculatorMocks.calculateRouteWithLegs,
 }))
+
+function defaultRouteWithLegsImplementation(waypoints: any[], options: { profile?: string } = {}) {
+  const duration = options.profile === 'walking' ? 1500 : 600
+  const distance = 2000
+  const legs = Array.from({ length: Math.max(0, (waypoints?.length ?? 0) - 1) }, (_, index) => {
+    const from = waypoints[index]
+    const to = waypoints[index + 1]
+    return {
+      from: [from.lat, from.lng],
+      to: [to.lat, to.lng],
+      mid: [(from.lat + to.lat) / 2, (from.lng + to.lng) / 2],
+      distance,
+      duration,
+      distanceText: '2 km',
+      durationText: options.profile === 'walking' ? '25 min' : '10 min',
+      drivingText: '10 min',
+      walkingText: '25 min',
+    }
+  })
+  return Promise.resolve({
+    coordinates: [],
+    distance: legs.length * distance,
+    duration: legs.length * duration,
+    legs,
+  })
+}
 
 // PlaceAvatar needs IntersectionObserver
 class MockIO { observe = vi.fn(); disconnect = vi.fn(); unobserve = vi.fn() }
@@ -128,6 +152,7 @@ function makeDefaultProps(overrides = {}) {
 beforeEach(() => {
   resetAllStores()
   vi.clearAllMocks()
+  routeCalculatorMocks.calculateRouteWithLegs.mockImplementation(defaultRouteWithLegsImplementation)
   sessionStorage.clear()
   localStorage.clear()
   // Reset mutable day-notes state
@@ -1960,6 +1985,155 @@ describe('DayPlanSidebar', () => {
     // Only day 2 has places, so it renders the sole Route toggle.
     await user.click(screen.getByRole('button', { name: 'Route' }))
     expect(await screen.findByText('2 km')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-107: movement total is hidden when desktop Route is off', () => {
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: false })} />)
+    expect(screen.queryByTestId('day-movement-total')).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-108: desktop Route shows the active driving total', async () => {
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places, assignments, selectedDayId: 10, routeShown: true, routeProfile: 'driving',
+    })} />)
+    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-109: rerendering with Walking recalculates and switches the total', async () => {
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    const base = makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })
+    const { rerender } = render(<DayPlanSidebar {...base} routeProfile="driving" />)
+    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
+    rerender(<DayPlanSidebar {...base} routeProfile="walking" />)
+    expect(await screen.findByText('25 min · 2 km')).toBeInTheDocument()
+    expect(screen.getByLabelText('Walking movement total')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-110: Walking total includes transit walking and track activity', async () => {
+    const routePlace = buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 })
+    const trackPlace = buildPlace({
+      id: 2,
+      name: 'Trail',
+      lat: 48.86,
+      lng: 2.36,
+      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
+      transport_mode: 'walking',
+    } as any)
+    const day = buildDay({ id: 10 })
+    const assignments = {
+      '10': [
+        buildAssignment({ id: 1, day_id: 10, order_index: 0, place: routePlace }),
+        buildAssignment({ id: 2, day_id: 10, order_index: 1, place: { ...trackPlace, place_time: '09:00', end_time: '10:00' } }),
+      ],
+    }
+    const transit = buildReservation({
+      id: 50,
+      type: 'transit',
+      day_id: 10,
+      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 240, distance: 300 }] } }),
+    })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [routePlace, trackPlace], assignments, reservations: [transit],
+      selectedDayId: 10, routeShown: true, routeProfile: 'walking',
+    })} />)
+    expect(await screen.findByText('1 h 29 min · 3.4 km')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-111: movement row shows Calculating while current route metrics are unresolved', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    let resolveRoute: (value: any) => void = () => {}
+    vi.mocked(calculateRouteWithLegs as any).mockImplementationOnce(() => new Promise(resolve => { resolveRoute = resolve }))
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
+    expect(await screen.findByText('Calculating...')).toBeInTheDocument()
+    await act(async () => {
+      resolveRoute({
+        coordinates: [], distance: 2000, duration: 600,
+        legs: [{
+          from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
+          distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
+        }],
+      })
+    })
+    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-112: too few returned legs marks the total as a known minimum', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValueOnce({
+      coordinates: [], distance: 2000, duration: 600,
+      legs: [{
+        from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
+        distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
+      }],
+    })
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+      buildPlace({ id: 3, name: 'C', lat: 48.87, lng: 2.37 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
+    const row = await screen.findByLabelText('Driving movement total')
+    expect(screen.getByText('≥10 min · ≥2 km')).toBeInTheDocument()
+    expect(row.title).toContain('incomplete movement statistics')
+  })
+
+  it('FE-PLANNER-DAYPLAN-113: mobile Route toggle shows the movement total without selecting the day', async () => {
+    const user = userEvent.setup()
+    const onSelectDay = vi.fn()
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places, assignments, selectedDayId: null, showRouteToolsWhenExpanded: true, onSelectDay,
+    })} />)
+    await user.click(screen.getByRole('button', { name: 'Route' }))
+    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
+    expect(onSelectDay).not.toHaveBeenCalled()
+  })
+
+  it('FE-PLANNER-DAYPLAN-114: changing the distance unit reformats the total', async () => {
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
+    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
+    act(() => {
+      useSettingsStore.setState(state => ({
+        settings: { ...state.settings, distance_unit: 'imperial' },
+      }))
+    })
+    expect(await screen.findByText('10 min · 1.2 mi')).toBeInTheDocument()
   })
 
   it('opens connector transit planning with adjacent POI prefill', async () => {
