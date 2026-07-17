@@ -23,9 +23,9 @@ const reservation = (id: number, extra = {}) => ({
   reservation_time: '10:00', day_positions: { '1': 1 }, endpoints: [], ...extra,
 })
 const endpoint = (role: 'from' | 'to', lat: number, lng: number) => ({ role, lat, lng })
-const build = (opts: Record<string, unknown> = {}) => buildDayMovementPlan({
+const build = (opts: Partial<BuildDayMovementPlanOptions> = {}) => buildDayMovementPlan({
   day, days, assignments: [], places: [], reservations: [], accommodations: [], ...opts,
-} as BuildDayMovementPlanOptions)
+})
 
 describe('buildDayMovementPlan', () => {
   it('ordinary A → B produces one routed part', () => {
@@ -152,7 +152,7 @@ describe('buildDayMovementPlan', () => {
     const a = place(1, 52, 5)
     const b = place(2, 53, 6)
     const plan = build({ assignments: [assignment(11, a, 0), assignment(12, b, 2)], places: [a, b], reservations: [reservation(20)] })
-    expect((plan.parts.at(-1) as PlannedRoutedPart).placement).toEqual({ kind: 'after-reservation', reservationId: 20 })
+    expect((plan.parts[plan.parts.length - 1] as PlannedRoutedPart).placement).toEqual({ kind: 'after-reservation', reservationId: 20 })
   })
 
   it('does not rekey a car-rental middle-day connector to a hidden row', () => {
@@ -161,7 +161,7 @@ describe('buildDayMovementPlan', () => {
     const a = { ...place(1, 52, 5), id: 1 }
     const b = { ...place(2, 53, 6), id: 2 }
     const car = reservation(20, { type: 'car', day_id: 1, end_day_id: 3 })
-    const plan = buildDayMovementPlan({ day: middle, days: allDays, assignments: [assignment(11, a, 0), assignment(12, b, 2)].map(x => ({ ...x, day_id: 2 })), places: [a, b], reservations: [car], accommodations: [] } as BuildDayMovementPlanOptions)
+    const plan = buildDayMovementPlan({ day: middle, days: allDays, assignments: [assignment(11, a, 0), assignment(12, b, 2)].map(x => ({ ...x, day_id: 2 })), places: [a, b], reservations: [car], accommodations: [] })
     expect((plan.parts[0] as PlannedRoutedPart).placement).toEqual({ kind: 'after-assignment', assignmentId: 11 })
   })
 
@@ -180,9 +180,9 @@ describe('buildDayMovementPlan', () => {
     const t = track(1, [[52, 5], [52.2, 5.2]], { place_time: '18:00', end_time: '09:00' })
     const hotel = { id: 30, start_day_id: 1, end_day_id: 2, check_out: '10:00', place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
     const a = { ...assignment(11, t, 0), day_id: 2 }
-    const plan = buildDayMovementPlan({ day: checkoutDay, days: allDays, assignments: [a], places: [t], reservations: [], accommodations: [hotel] } as BuildDayMovementPlanOptions)
+    const plan = buildDayMovementPlan({ day: checkoutDay, days: allDays, assignments: [a], places: [t], reservations: [], accommodations: [hotel] })
     expect(plan.parts.map(p => p.kind)).toEqual(['routed', 'track', 'routed'])
-    expect((plan.parts.at(-1) as PlannedRoutedPart).from).toMatchObject({ source: 'track-end' })
+    expect((plan.parts[plan.parts.length - 1] as PlannedRoutedPart).from).toMatchObject({ source: 'track-end' })
   })
 
   it('creates a connector on a distinct-hotel transfer day without activities', () => {
@@ -192,7 +192,7 @@ describe('buildDayMovementPlan', () => {
       { id: 30, start_day_id: 1, end_day_id: 2, place_name: 'Old', place_lat: 52, place_lng: 5 },
       { id: 31, start_day_id: 2, end_day_id: 3, place_name: 'New', place_lat: 53, place_lng: 6 },
     ]
-    const plan = buildDayMovementPlan({ day: transfer, days: allDays, assignments: [], places: [], reservations: [], accommodations: hotels } as BuildDayMovementPlanOptions)
+    const plan = buildDayMovementPlan({ day: transfer, days: allDays, assignments: [], places: [], reservations: [], accommodations: hotels })
     expect(plan.parts.map(p => p.kind)).toEqual(['routed'])
   })
 

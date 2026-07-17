@@ -133,9 +133,9 @@ describe('resolveDayMovementPlan', () => {
   })
 
   it.each([
-    ['empty', []],
-    ['single-point', [[1, 1]]],
-    ['non-finite', [[1, 1], [Number.NaN, 2]]],
+    ['empty', [] as [number, number][]],
+    ['single-point', [[1, 1]] as [number, number][]],
+    ['non-finite', [[1, 1], [Number.NaN, 2]] as [number, number][]],
   ])('falls back when OSRM returns %s coordinates', async (_label, coordinates) => {
     vi.mocked(calculateRouteWithLegs).mockResolvedValue({
       coordinates,

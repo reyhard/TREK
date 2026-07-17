@@ -162,15 +162,16 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
     if (!selectedDayId) return ''
     const placesById = new Map(placesForSignature.map(place => [place.id, place]))
     return (tripStore.assignments?.[String(selectedDayId)] || []).map(assignment => {
-      const place = placesById.get(assignment.place.id) ?? assignment.place
+      const embeddedPlace = assignment.place
+      const fullPlace = placesById.get(embeddedPlace.id)
       return [
         assignment.id,
-        place.lat ?? '',
-        place.lng ?? '',
-        place.route_geometry ?? '',
-        place.place_time ?? '',
-        place.end_time ?? '',
-        place.transport_mode ?? '',
+        fullPlace?.lat ?? embeddedPlace.lat ?? '',
+        fullPlace?.lng ?? embeddedPlace.lng ?? '',
+        fullPlace?.route_geometry ?? '',
+        fullPlace?.place_time ?? embeddedPlace.place_time ?? '',
+        fullPlace?.end_time ?? embeddedPlace.end_time ?? '',
+        fullPlace?.transport_mode ?? embeddedPlace.transport_mode ?? '',
       ].join(':')
     }).join('|')
   }, [placesForSignature, selectedDayId, tripStore.assignments])

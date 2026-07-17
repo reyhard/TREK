@@ -2260,8 +2260,9 @@ describe('DayPlanSidebar', () => {
 
     const trackName = screen.getByText('Dune trail')
     expect(trackName.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    const departureConnector = screen.getAllByText('10 min').at(-1)
-    expect(summary.compareDocumentPosition(departureConnector!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const departureConnectors = screen.getAllByText('10 min')
+    const departureConnector = departureConnectors[departureConnectors.length - 1]
+    expect(summary.compareDocumentPosition(departureConnector) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('keeps the track summary fixed while switching connector profile', async () => {
