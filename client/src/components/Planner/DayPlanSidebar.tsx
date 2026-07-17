@@ -51,6 +51,16 @@ interface DayRouteMetricState {
   expected: boolean
 }
 
+function hasValidRouteMetrics(segment: RouteSegment | undefined): segment is RouteSegment {
+  return !!segment
+    && typeof segment.distance === 'number'
+    && Number.isFinite(segment.distance)
+    && segment.distance >= 0
+    && typeof segment.duration === 'number'
+    && Number.isFinite(segment.duration)
+    && segment.duration >= 0
+}
+
 interface DayPlanSidebarProps {
   tripId: number
   trip: Trip
@@ -541,7 +551,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
               run.map(point => ({ lat: point.lat, lng: point.lng })),
               { signal: controller.signal, profile: routeProfile },
             )
-            if (result.legs.length !== run.length - 1) partial = true
+            if (result.legs.length !== run.length - 1 || result.legs.some(leg => !hasValidRouteMetrics(leg))) partial = true
             result.legs.forEach((leg, index) => {
               const start = run[index]
               if (start) dayLegs[start.id] = leg
@@ -565,7 +575,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
             )
             const segment = result.legs[0]
             if (segment) hotel.top = { seg: segment, name: hotelName(startHotel!) }
-            else partial = true
+            if (!hasValidRouteMetrics(segment)) partial = true
           } catch (error) {
             if (aborted(error)) return
             partial = true
@@ -582,7 +592,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
             )
             const segment = result.legs[0]
             if (segment) hotel.bottom = { seg: segment, name: hotelName(endHotel!) }
-            else partial = true
+            if (!hasValidRouteMetrics(segment)) partial = true
           } catch (error) {
             if (aborted(error)) return
             partial = true

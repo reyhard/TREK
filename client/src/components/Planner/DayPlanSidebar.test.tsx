@@ -2102,6 +2102,27 @@ describe('DayPlanSidebar', () => {
     expect(row.title).toContain('incomplete movement statistics')
   })
 
+  it('FE-PLANNER-DAYPLAN-112b: a correct-count leg with an invalid metric remains partial', async () => {
+    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
+    vi.mocked(calculateRouteWithLegs as any).mockResolvedValueOnce({
+      coordinates: [], distance: 0, duration: 600,
+      legs: [{
+        from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
+        duration: 600, distanceText: '', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
+      }],
+    })
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
+    const row = await screen.findByLabelText('Driving movement total')
+    expect(screen.getByText('≥10 min · ≥0 m')).toBeInTheDocument()
+    expect(row.title).toContain('incomplete movement statistics')
+  })
+
   it('FE-PLANNER-DAYPLAN-113: mobile Route toggle shows the movement total without selecting the day', async () => {
     const user = userEvent.setup()
     const onSelectDay = vi.fn()
