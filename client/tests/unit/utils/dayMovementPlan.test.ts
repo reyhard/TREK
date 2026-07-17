@@ -48,6 +48,7 @@ describe('buildDayMovementPlan', () => {
     const [approach, trackPart, departure] = plan.parts as [PlannedRoutedPart, TrackMovementPart, PlannedRoutedPart]
     expect(approach.to).toMatchObject({ lat: 52.01, lng: 5.01 })
     expect(trackPart.to).toMatchObject({ lat: 52.03, lng: 5.03 })
+    expect(trackPart.geometry).toEqual([[52.01, 5.01], [52.03, 5.03]])
     expect(departure.from).toMatchObject({ lat: 52.03, lng: 5.03 })
     expect(departure.placement).toEqual({ kind: 'after-assignment', assignmentId: ta.id })
   })
@@ -143,6 +144,24 @@ describe('buildDayMovementPlan', () => {
     const plan = build({ reservations: [reservation(20)] })
     expect(plan.hasTransit).toBe(true)
     expect(hasDayRouteTools(plan)).toBe(true)
+  })
+
+  it('makes a lone track eligible for day route tools', () => {
+    const t = track(1, [[52, 5], [52.2, 5.2]])
+    const plan = build({ assignments: [assignment(11, t, 0)], places: [t] })
+    expect(plan.hasTracks).toBe(true)
+    expect(hasDayRouteTools(plan)).toBe(true)
+  })
+
+  it('keeps a routed-part key stable when an unrelated earlier part is inserted', () => {
+    const a = place(1, 52, 5)
+    const b = place(2, 53, 6)
+    const earlier = track(3, [[50, 3], [51, 4]])
+    const original = build({ assignments: [assignment(11, a, 1), assignment(12, b, 2)], places: [a, b] })
+    const expanded = build({ assignments: [assignment(13, earlier, 0), assignment(11, a, 1), assignment(12, b, 2)], places: [a, b, earlier] })
+    const originalPart = original.parts.find(part => part.kind === 'routed') as PlannedRoutedPart
+    const expandedPart = expanded.parts.find(part => part.kind === 'routed' && part.from.placeId === a.id) as PlannedRoutedPart
+    expect(expandedPart.key).toBe(originalPart.key)
   })
 
   it('exports both track endpoints and deduplicates adjacent equal waypoints', () => {

@@ -28,13 +28,14 @@ export interface PlannedRoutedPart {
   placement: ConnectorPlacement
 }
 
-export interface TrackMovementPart extends Omit<TrackMovementMetrics, 'start' | 'end'> {
+export interface TrackMovementPart extends Omit<TrackMovementMetrics, 'start' | 'end' | 'coordinates'> {
   kind: 'track'
   key: string
   assignmentId: number
   placeId: number
   from: MovementAnchor
   to: MovementAnchor
+  geometry: [number, number][]
 }
 
 export interface TransitMovementPart {
@@ -72,16 +73,28 @@ interface Cursor {
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const samePoint = (a: Pick<Waypoint, 'lat' | 'lng'>, b: Pick<Waypoint, 'lat' | 'lng'>) =>
   a.lat === b.lat && a.lng === b.lng
+const anchorKey = (anchor: MovementAnchor) => `${anchor.lat},${anchor.lng}`
+const placementKey = (placement: ConnectorPlacement) => {
+  switch (placement.kind) {
+    case 'after-assignment': return `assignment-${placement.assignmentId}`
+    case 'after-reservation': return `reservation-${placement.reservationId}`
+    case 'hotel-top': return `hotel-top-${placement.dayId}`
+    case 'hotel-bottom': return `hotel-bottom-${placement.dayId}`
+  }
+}
+const routedKey = (placement: ConnectorPlacement, from: MovementAnchor, to: MovementAnchor) =>
+  `routed:${placementKey(placement)}:${anchorKey(from)}>${anchorKey(to)}`
+const trackKey = (assignmentId: number, from: MovementAnchor, to: MovementAnchor) =>
+  `track:assignment-${assignmentId}:${anchorKey(from)}>${anchorKey(to)}`
+const transitKey = (reservationId: number) => `transit:reservation-${reservationId}`
 
 export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayMovementPlan {
   const { day, days, assignments, places, reservations, accommodations } = options
   const parts: PlannedMovementPart[] = []
   let cursor: Cursor | null = null
-  let sequence = 0
-  const key = (kind: string) => `${day.id}:${kind}:${sequence++}`
   const addConnector = (from: Cursor, to: MovementAnchor, placement = from.placement) => {
     if (samePoint(from.anchor, to)) return
-    parts.push({ kind: 'routed', key: key('routed'), from: from.anchor, to, placement })
+    parts.push({ kind: 'routed', key: routedKey(placement, from.anchor, to), from: from.anchor, to, placement })
   }
   const fullPlace = (assignment: Assignment): Place | Assignment['place'] =>
     places.find(place => place.id === assignment.place.id) ?? assignment.place
@@ -133,19 +146,20 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
       const place = fullPlace(assignment)
       const movement = getTrackMovement(place)
       if (movement) {
+        const { start, end, coordinates, ...metrics } = movement
         const from: MovementAnchor = {
-          lat: movement.start[0], lng: movement.start[1], source: 'track-start',
+          lat: start[0], lng: start[1], source: 'track-start',
           assignmentId: assignment.id, placeId: place.id,
         }
         const to: MovementAnchor = {
-          lat: movement.end[0], lng: movement.end[1], source: 'track-end',
+          lat: end[0], lng: end[1], source: 'track-end',
           assignmentId: assignment.id, placeId: place.id,
         }
         if (cursor) addConnector(cursor, from)
         parts.push({
-          ...movement,
-          kind: 'track', key: key('track'), assignmentId: assignment.id, placeId: place.id,
-          from, to,
+          ...metrics,
+          kind: 'track', key: trackKey(assignment.id, from, to), assignmentId: assignment.id,
+          placeId: place.id, from, to, geometry: coordinates,
         })
         cursor = { anchor: to, placement: { kind: 'after-assignment', assignmentId: assignment.id }, hasPlace: true }
       } else if (finite(place.lat) && finite(place.lng)) {
@@ -169,14 +183,14 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
     if (from || to) {
       if (from && cursor?.hasPlace) addConnector(cursor, from)
       if (reservation.type === 'transit') {
-        parts.push({ kind: 'transit', key: key('transit'), reservationId: reservation.id })
+        parts.push({ kind: 'transit', key: transitKey(reservation.id), reservationId: reservation.id })
       }
       cursor = to
         ? { anchor: to, placement: { kind: 'after-reservation', reservationId: reservation.id }, hasPlace: false }
         : null
     } else {
       if (reservation.type === 'transit') {
-        parts.push({ kind: 'transit', key: key('transit'), reservationId: reservation.id })
+        parts.push({ kind: 'transit', key: transitKey(reservation.id), reservationId: reservation.id })
       }
       if (cursor && getSpanPhase(reservation, day.id) !== 'middle') {
         cursor = { ...cursor, placement: { kind: 'after-reservation', reservationId: reservation.id } }
@@ -191,8 +205,13 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
       })
     } else if (drawMorning && morning && !samePoint(morning, evening)) {
       parts.push({
-        kind: 'routed', key: key('routed'), from: morning, to: evening,
+        kind: 'routed', from: morning, to: evening,
         placement: { kind: 'hotel-bottom', dayId: day.id, name: bookends.evening?.place_name ?? '' },
+        key: routedKey(
+          { kind: 'hotel-bottom', dayId: day.id, name: bookends.evening?.place_name ?? '' },
+          morning,
+          evening,
+        ),
       })
     }
   }
