@@ -1,6 +1,7 @@
 // FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-042
 import { render, screen, waitFor, fireEvent, act } from '../../../tests/helpers/render'
 import userEvent from '@testing-library/user-event'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { useTripStore } from '../../store/tripStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -2155,6 +2156,75 @@ describe('DayPlanSidebar', () => {
       }))
     })
     expect(await screen.findByText('10 min · 1.2 mi')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-115: profile changes synchronously replace stale totals with Calculating', async () => {
+    const user = userEvent.setup()
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+    ]
+    const day = buildDay({ id: 10 })
+    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
+    const walkingLayout = vi.fn()
+
+    function ProfileHarness() {
+      const [profile, setProfile] = useState<'driving' | 'walking'>('driving')
+      const containerRef = useRef<HTMLDivElement>(null)
+      useLayoutEffect(() => {
+        if (profile === 'walking') walkingLayout(containerRef.current?.textContent ?? '')
+      }, [profile])
+      return (
+        <div ref={containerRef}>
+          <DayPlanSidebar {...makeDefaultProps({
+            days: [day], places, assignments, selectedDayId: 10, routeShown: true,
+            routeProfile: profile, onSetRouteProfile: setProfile,
+          })} />
+        </div>
+      )
+    }
+
+    render(<ProfileHarness />)
+    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Walking' }))
+    expect(walkingLayout).toHaveBeenCalled()
+    const committedText = walkingLayout.mock.calls[walkingLayout.mock.calls.length - 1]?.[0] as string
+    expect(committedText).toContain('Calculating...')
+    expect(committedText).not.toContain('10 min · 2 km')
+  })
+
+  it('FE-PLANNER-DAYPLAN-116: a desktop track-only day can activate Route and show movement', async () => {
+    const track = buildPlace({
+      id: 1, name: 'Trail', lat: 48.85, lng: 2.35,
+      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]), transport_mode: 'walking',
+    } as any)
+    const day = buildDay({ id: 10 })
+    const assignments = {
+      '10': [buildAssignment({
+        id: 1, day_id: 10, order_index: 0,
+        place: { ...track, place_time: '09:00', end_time: '10:00' },
+      })],
+    }
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [track], assignments, selectedDayId: 10,
+      routeShown: true, routeProfile: 'walking',
+    })} />)
+    expect(await screen.findByText('1 h 0 min · 1.1 km')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-117: a mobile transit-only day can toggle Route and show walking movement', async () => {
+    const user = userEvent.setup()
+    const day = buildDay({ id: 10 })
+    const transit = buildReservation({
+      id: 50, type: 'transit', day_id: 10,
+      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 240, distance: 300 }] } }),
+    })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [], assignments: {}, reservations: [transit], selectedDayId: null,
+      showRouteToolsWhenExpanded: true, routeProfile: 'walking',
+    })} />)
+    await user.click(screen.getByRole('button', { name: 'Route' }))
+    expect(await screen.findByText('4 min · 300 m')).toBeInTheDocument()
   })
 
   it('opens connector transit planning with adjacent POI prefill', async () => {

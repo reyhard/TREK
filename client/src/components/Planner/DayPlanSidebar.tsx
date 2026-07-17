@@ -42,7 +42,12 @@ import type { TransitSearchPrefill } from './transitSearchTypes'
 import { getConnectorTransitPrefill, getNextConnectorTarget, isTransitMergedItem } from './transitConnector'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import DayMovementTotalRow, { type RouteMetricStatus } from './DayMovementTotalRow'
-import { calculateDayMovementStats, type MovementTotal } from '../../utils/movementStats'
+import {
+  calculateDayMovementStats,
+  createTrackContributions,
+  createTransitWalkContributions,
+  type MovementTotal,
+} from '../../utils/movementStats'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 
@@ -437,6 +442,16 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       : (routeShown && selectedDayId ? [selectedDayId] : [])
   ), [showRouteToolsWhenExpanded, expandedRouteDayIds, expandedDays, days, routeShown, selectedDayId])
   const routeDayKey = routeDayIds.join(',')
+  const routeMetricsGeneration = useMemo(() => ({}), [
+    routeDayKey,
+    routeProfile,
+    mergedItemsMap,
+    accommodations,
+    days,
+    optimizeFromAccommodation,
+    distanceUnit,
+  ])
+  const [resolvedRouteMetricsGeneration, setResolvedRouteMetricsGeneration] = useState<object | null>(null)
 
   // Per-segment travel times shown as connectors between a day's located stops.
   // Groups located places into runs (split at transports), one cached OSRM call per
@@ -449,6 +464,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       setRouteLegs({})
       setHotelLegs({})
       setRouteMetricStates({})
+      setResolvedRouteMetricsGeneration(routeMetricsGeneration)
       return
     }
 
@@ -608,12 +624,13 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
         setRouteLegs(legsByDay)
         setHotelLegs(hotelByDay)
         setRouteMetricStates(metricStates)
+        setResolvedRouteMetricsGeneration(routeMetricsGeneration)
       }
     })()
     // routeDayIds is memoized from the same inputs as routeDayKey below, so keying the
     // effect on the string is equivalent while staying stable across unrelated renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeDayKey, routeProfile, mergedItemsMap, accommodations, days, optimizeFromAccommodation, distanceUnit])
+  }, [routeDayKey, routeProfile, mergedItemsMap, accommodations, days, optimizeFromAccommodation, distanceUnit, routeMetricsGeneration])
 
   const openAddNote = (dayId, e) => {
     e?.stopPropagation()
@@ -1045,6 +1062,11 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   const anyGeoAssignment = Object.values(assignments).flatMap(da => da).find(a => a.place?.lat && a.place?.lng)
   const anyGeoPlace = anyGeoAssignment || (places || []).find(p => p.lat && p.lng)
 
+  const routeMetricsAreCurrent = resolvedRouteMetricsGeneration === routeMetricsGeneration
+  const displayedRouteMetricStates: Record<number, DayRouteMetricState> = routeMetricsAreCurrent
+    ? routeMetricStates
+    : Object.fromEntries(routeDayIds.map(dayId => [dayId, { status: 'loading' as const, expected: true }]))
+
   return {
     tripId,
     trip,
@@ -1130,11 +1152,11 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     setIsCalculating,
     routeInfo,
     setRouteInfo,
-    routeLegs,
+    routeLegs: routeMetricsAreCurrent ? routeLegs : {},
     setRouteLegs,
-    hotelLegs,
+    hotelLegs: routeMetricsAreCurrent ? hotelLegs : {},
     setHotelLegs,
-    routeMetricStates,
+    routeMetricStates: displayedRouteMetricStates,
     legsAbortRef,
     draggingId,
     setDraggingId,
@@ -1390,6 +1412,18 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     return totals
   }, [days, assignments, places, reservations, routeLegs, hotelLegs, routeMetricStates, routeProfile])
 
+  const movementBearingDayIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const day of days) {
+      const contributions = [
+        ...createTrackContributions(day.id, assignments[String(day.id)] ?? [], places),
+        ...createTransitWalkContributions(day.id, reservations),
+      ]
+      if (contributions.some(item => (item.durationSeconds ?? 0) > 0 || (item.distanceMeters ?? 0) > 0)) ids.add(day.id)
+    }
+    return ids
+  }, [days, assignments, places, reservations])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', fontFamily: "var(--font-system)" }}>
       {/* Toolbar */}
@@ -1439,7 +1473,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             (routeBookends?.morning?.place_lat != null && routeBookends?.morning?.place_lng != null) ||
             (routeBookends?.evening?.place_lat != null && routeBookends?.evening?.place_lng != null)
           )
-          const routeToolsRoutable = da.length >= 2 || (loc != null && hasRouteBookend)
+          const routeToolsRoutable = da.length >= 2 || (loc != null && hasRouteBookend) || movementBearingDayIds.has(day.id)
           // Is this day's inline route currently on? Mobile toggles it per day (its
           // own expandedRouteDayIds entry); desktop uses the global Route toggle on
           // the selected day (#1374).
