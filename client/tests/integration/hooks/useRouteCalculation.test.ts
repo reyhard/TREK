@@ -820,4 +820,44 @@ describe('useRouteCalculation', () => {
     expect(result.current.route).toEqual([[[30, 30], [40, 40]]]);
     expect(result.current.routeSegments).toEqual(MOCK_SEGMENTS);
   });
+
+  it('rebuilds end-day route order and ownership when an unpositioned spanning transport end time changes', async () => {
+    const a = buildPlace({ lat: 10, lng: 10, place_time: '10:00' });
+    const b = buildPlace({ lat: 20, lng: 20, place_time: '12:00' });
+    const assignments = [
+      buildAssignment({ day_id: 2, order_index: 0, place: a }),
+      buildAssignment({ day_id: 2, order_index: 1, place: b }),
+    ];
+    const store = { assignments: { '2': assignments } } as unknown as TripStoreState;
+    const transport = {
+      id: 9,
+      type: 'train',
+      day_id: 1,
+      end_day_id: 2,
+      reservation_time: '08:00',
+      reservation_end_time: '09:00',
+      endpoints: [{ role: 'to', lat: 30, lng: 30 }],
+    };
+    useTripStore.setState({
+      assignments: store.assignments,
+      places: [a, b],
+      reservations: [transport],
+      days: [{ id: 1, day_number: 1 }, { id: 2, day_number: 2 }],
+    } as any);
+    const { result } = renderHook(() => useRouteCalculation(store, 2));
+    await act(async () => {});
+    expect(result.current.route).toEqual([[[30, 30], [10, 10], [20, 20]]]);
+    expect(result.current.movementParts.find(part => part.kind === 'routed')?.placement)
+      .toEqual({ kind: 'after-reservation', reservationId: 9 });
+
+    await act(async () => useTripStore.setState({
+      reservations: [{ ...transport, reservation_end_time: '11:00' }],
+    } as any));
+    await act(async () => {});
+
+    expect(result.current.route).toEqual([[[30, 30], [20, 20]]]);
+    expect(result.current.movementParts.filter(part => part.kind === 'routed')).toEqual([
+      expect.objectContaining({ placement: { kind: 'after-reservation', reservationId: 9 } }),
+    ]);
+  });
 });

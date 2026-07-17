@@ -150,7 +150,9 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
         const pos = r.day_positions?.[selectedDayId] ?? r.day_positions?.[String(selectedDayId)] ?? r.day_plan_position
         // Include endpoints so adding/moving a departure/arrival location re-routes.
         const eps = (r.endpoints || []).map(e => `${e.role}@${e.lat ?? ''},${e.lng ?? ''}`).join(';')
-        return `${r.id}:${r.type}:${r.assignment_id ?? ''}:${r.day_id ?? ''}:${r.end_day_id ?? ''}:${r.reservation_time ?? ''}:${pos ?? ''}:${eps}`
+        // Multi-leg expansion derives times and per-day positions from metadata.
+        const metadata = typeof r.metadata === 'string' ? r.metadata : JSON.stringify(r.metadata ?? null)
+        return `${r.id}:${r.type}:${r.assignment_id ?? ''}:${r.day_id ?? ''}:${r.end_day_id ?? ''}:${r.reservation_time ?? ''}:${r.reservation_end_time ?? ''}:${pos ?? ''}:${eps}:${metadata}`
       })
       .sort()
       .join('|')
