@@ -460,6 +460,7 @@ export default function TransitSearchPanel({ day, days, places, accommodations =
               headsign: l.headsign,
               agency: l.agency,
               duration: l.duration,
+              distance: l.distance,
               stops: l.intermediateStops,
               from: { name: l.from.name, time: l.from.time ? timeHHmmInTz(l.from.time, tzAt(l.from.lat, l.from.lng)) : null, track: l.from.track },
               to: { name: l.to.name, time: l.to.time ? timeHHmmInTz(l.to.time, tzAt(l.to.lat, l.to.lng)) : null, track: l.to.track },

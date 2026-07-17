@@ -147,6 +147,16 @@ describe('TransitSearchPanel', () => {
     // compact itinerary stored for the detail modal
     expect(payload.metadata.transit.provider).toBe('transitous')
     expect(payload.metadata.transit.legs).toHaveLength(2)
+    expect(payload.metadata.transit.legs[0]).toMatchObject({
+      mode: 'WALK',
+      duration: 240,
+      distance: 300,
+    })
+    expect(payload.metadata.transit.legs[1]).toMatchObject({
+      mode: 'SUBWAY',
+      line: 'U2',
+      distance: null,
+    })
     expect(payload.metadata.transit.legs[1]).toMatchObject({ mode: 'SUBWAY', line: 'U2', line_color: '#FF3300', headsign: 'Ruhleben' })
   })
 
