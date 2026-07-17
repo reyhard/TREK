@@ -2349,8 +2349,40 @@ describe('DayPlanSidebar', () => {
       selectedDayId: 10, routeShown: false, onToggleRoute,
     })} />)
 
+    expect(screen.queryByRole('button', { name: 'Open in Google Maps' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Route' }))
     expect(onToggleRoute).toHaveBeenCalledOnce()
+  })
+
+  it('exports an external connector to transit without exporting transit-internal endpoints', async () => {
+    const user = userEvent.setup()
+    const { generateGoogleMapsUrl } = await import('../Map/RouteCalculator')
+    const day = buildDay({ id: 10 })
+    const origin = buildPlace({ id: 1, name: 'Origin', lat: 52, lng: 5 })
+    const transit = buildReservation({
+      id: 52,
+      type: 'transit',
+      day_id: 10,
+      day_plan_position: 1,
+      endpoints: [
+        { role: 'from', lat: 52.1, lng: 5.1 },
+        { role: 'to', lat: 52.2, lng: 5.2 },
+      ],
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [origin],
+      assignments: { '10': [buildAssignment({ id: 1, day_id: 10, order_index: 0, place: origin })] },
+      reservations: [transit],
+      selectedDayId: 10,
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open in Google Maps' }))
+    expect(generateGoogleMapsUrl).toHaveBeenCalledWith([
+      { lat: 52, lng: 5 },
+      { lat: 52.1, lng: 5.1 },
+    ])
   })
 
   it('exports ordered movement anchors with both track endpoints and adjacent deduplication', async () => {
@@ -2420,7 +2452,8 @@ describe('DayPlanSidebar', () => {
       ]),
       expect.any(Object),
     )
-    expect(vi.mocked(optimizeRoute).mock.calls.at(-1)?.[0]).toHaveLength(2)
+    const optimizeCalls = vi.mocked(optimizeRoute).mock.calls
+    expect(optimizeCalls[optimizeCalls.length - 1]?.[0]).toHaveLength(2)
     expect(onReorder).toHaveBeenCalledWith(10, [3, 2, 1])
   })
 

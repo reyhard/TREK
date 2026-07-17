@@ -1401,8 +1401,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
           const da = getDayAssignments(day.id)
           const cost = dayTotalCost(day.id, assignments, currency)
           const formattedDate = formatDate(day.date, locale)
-          const loc = da.find(a => a.place?.lat && a.place?.lng)
-          const routeToolsRoutable = hasDayRouteTools(movementPlansByDay[day.id])
+          const movementPlan = movementPlansByDay[day.id]
+          const exportWaypoints = movementPlanWaypoints(movementPlan)
+          const routeToolsRoutable = hasDayRouteTools(movementPlan)
           // Is this day's inline route currently on? Mobile toggles it per day (its
           // own expandedRouteDayIds entry); desktop uses the global Route toggle on
           // the selected day (#1374).
@@ -1442,8 +1443,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                   // anyGeoPlace is an assignment (has .place) or a bare place — read coords from either.
                   const geoLat = anyGeoPlace ? ('place' in anyGeoPlace ? anyGeoPlace.place?.lat : anyGeoPlace.lat) : undefined
                   const geoLng = anyGeoPlace ? ('place' in anyGeoPlace ? anyGeoPlace.place?.lng : anyGeoPlace.lng) : undefined
-                  const wLat = loc?.place?.lat ?? geoLat
-                  const wLng = loc?.place?.lng ?? geoLng
+                  const dayGeoPlace = da.find(a => a.place?.lat && a.place?.lng)?.place
+                  const wLat = dayGeoPlace?.lat ?? geoLat
+                  const wLng = dayGeoPlace?.lng ?? geoLng
                   const hasWeather = !!(day.date && anyGeoPlace && wLat != null && wLng != null)
                   return (
                     <div style={{
@@ -2435,10 +2437,11 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                           <RouteIcon size={12} strokeWidth={2} />
                           {t('dayplan.route')}
                         </button>
-                        {/* Open the day's stops as a route in Google Maps (planned order). #1255 */}
-                        <button
+                        {/* Open exportable external movement anchors in Google Maps. Transit
+                            internals are deliberately absent from movementPlanWaypoints. */}
+                        {exportWaypoints.length >= 2 && <button
                           onClick={() => {
-                            const url = generateGoogleMapsUrl(movementPlanWaypoints(movementPlansByDay[day.id]))
+                            const url = generateGoogleMapsUrl(exportWaypoints)
                             if (url) window.open(url, '_blank', 'noopener,noreferrer')
                           }}
                           aria-label={t('planner.openGoogleMaps')}
@@ -2456,7 +2459,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                             <path d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
                             <path d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                           </svg>
-                        </button>
+                        </button>}
                         <button onClick={() => handleOptimize(day.id)} className="bg-surface-hover text-content-secondary" style={{
                           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                           padding: '6px 0', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 500, borderRadius: 8, border: 'none',

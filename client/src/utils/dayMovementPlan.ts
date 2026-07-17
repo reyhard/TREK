@@ -247,9 +247,14 @@ export function movementPlanWaypoints(plan: DayMovementPlan): Waypoint[] {
     if (!points.length || !samePoint(points[points.length - 1], point)) points.push(point)
   }
   for (const part of plan.parts) {
-    if (part.kind === 'routed' || part.kind === 'track') {
+    if (part.kind === 'routed') {
       add(part.from)
       add(part.to)
+    } else if (part.kind === 'track') {
+      // Deduplicate the boundary shared with an approach connector, but retain
+      // both semantic track endpoints even for a loop whose start equals end.
+      add(part.from)
+      points.push({ lat: part.to.lat, lng: part.to.lng })
     }
   }
   return points

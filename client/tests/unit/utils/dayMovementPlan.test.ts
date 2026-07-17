@@ -226,4 +226,15 @@ describe('buildDayMovementPlan', () => {
     const plan = build({ assignments: [assignment(11, a, 0), assignment(12, t, 1)], places: [a, t] })
     expect(movementPlanWaypoints(plan)).toEqual([{ lat: 52, lng: 5 }, { lat: 52.2, lng: 5.2 }])
   })
+
+  it('retains both semantic endpoints of a loop track while deduplicating its routed boundary', () => {
+    const a = place(1, 52, 5)
+    const loop = track(2, [[52, 5], [52.1, 5.1], [52, 5]])
+    const plan = build({ assignments: [assignment(11, a, 0), assignment(12, loop, 1)], places: [a, loop] })
+
+    expect(movementPlanWaypoints(plan)).toEqual([
+      { lat: 52, lng: 5 },
+      { lat: 52, lng: 5 },
+    ])
+  })
 })
