@@ -2329,6 +2329,101 @@ describe('DayPlanSidebar', () => {
     expect(await screen.findByText('4 min · 300 m')).toBeInTheDocument()
   })
 
+  it('shows Route for a transit-only day from the pure movement plan', async () => {
+    const user = userEvent.setup()
+    const day = buildDay({ id: 10 })
+    const onToggleRoute = vi.fn()
+    const transit = buildReservation({
+      id: 51,
+      type: 'transit',
+      day_id: 10,
+      day_plan_position: 0,
+      endpoints: [
+        { role: 'from', lat: 52.1, lng: 5.1 },
+        { role: 'to', lat: 52.2, lng: 5.2 },
+      ],
+    } as any)
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [], assignments: {}, reservations: [transit],
+      selectedDayId: 10, routeShown: false, onToggleRoute,
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Route' }))
+    expect(onToggleRoute).toHaveBeenCalledOnce()
+  })
+
+  it('exports ordered movement anchors with both track endpoints and adjacent deduplication', async () => {
+    const user = userEvent.setup()
+    const { generateGoogleMapsUrl } = await import('../Map/RouteCalculator')
+    const previous = buildPlace({ id: 1, name: 'Previous', lat: 52, lng: 5 })
+    const track = buildPlace({
+      id: 2,
+      name: 'Trail',
+      lat: 99,
+      lng: 99,
+      route_geometry: JSON.stringify([[52, 5], [52.2, 5.2]]),
+    } as any)
+    const next = buildPlace({ id: 3, name: 'Next', lat: 52.3, lng: 5.3 })
+    const day = buildDay({ id: 10 })
+    const dayAssignments = [previous, track, next].map((place, index) => buildAssignment({
+      id: index + 1, day_id: 10, order_index: index, place,
+    }))
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [previous, track, next], assignments: { '10': dayAssignments },
+      selectedDayId: 10,
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open in Google Maps' }))
+    expect(generateGoogleMapsUrl).toHaveBeenCalledWith([
+      { lat: 52, lng: 5 },
+      { lat: 52.2, lng: 5.2 },
+      { lat: 52.3, lng: 5.3 },
+    ])
+  })
+
+  it('keeps a valid full-place track fixed and excludes it from optimizer input', async () => {
+    const user = userEvent.setup()
+    const { optimizeRoute } = await import('../Map/RouteCalculator')
+    vi.mocked(optimizeRoute).mockImplementationOnce((movable: any[]) => [...movable].reverse())
+    const a = buildPlace({ id: 1, name: 'A', lat: 52, lng: 5 })
+    const fullTrack = buildPlace({
+      id: 2,
+      name: 'Trail',
+      lat: 52.1,
+      lng: 5.1,
+      route_geometry: JSON.stringify([[52.1, 5.1], [52.2, 5.2]]),
+    } as any)
+    const b = buildPlace({ id: 3, name: 'B', lat: 52.3, lng: 5.3 })
+    const assignmentsForDay = [a, fullTrack, b].map((place, index) => buildAssignment({
+      id: index + 1,
+      day_id: 10,
+      order_index: index,
+      place: place.id === fullTrack.id ? { ...place, route_geometry: null } : place,
+    }))
+    const onReorder = vi.fn()
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [buildDay({ id: 10 })],
+      places: [a, fullTrack, b],
+      assignments: { '10': assignmentsForDay },
+      selectedDayId: 10,
+      onReorder,
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: /optimize/i }))
+    expect(optimizeRoute).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 1 }),
+        expect.objectContaining({ id: 3 }),
+      ]),
+      expect.any(Object),
+    )
+    expect(vi.mocked(optimizeRoute).mock.calls.at(-1)?.[0]).toHaveLength(2)
+    expect(onReorder).toHaveBeenCalledWith(10, [3, 2, 1])
+  })
+
   it('opens connector transit planning with adjacent POI prefill', async () => {
     const user = userEvent.setup()
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
