@@ -54,6 +54,8 @@ vi.mock('../Map/RouteCalculator', () => ({
   generateGoogleMapsUrl: vi.fn().mockReturnValue('https://maps.google.com/...'),
   optimizeRoute: vi.fn().mockImplementation((places) => places),
   calculateRouteWithLegs: routeCalculatorMocks.calculateRouteWithLegs,
+  formatRouteDistance: (meters: number) => meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`,
+  formatDuration: (seconds: number) => `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`,
 }))
 
 function defaultRouteWithLegsImplementation(waypoints: any[], options: { profile?: string } = {}) {
@@ -75,7 +77,7 @@ function defaultRouteWithLegsImplementation(waypoints: any[], options: { profile
     }
   })
   return Promise.resolve({
-    coordinates: [],
+    coordinates: waypoints.map(point => [point.lat, point.lng]),
     distance: legs.length * distance,
     duration: legs.length * duration,
     legs,
@@ -1919,6 +1921,7 @@ describe('DayPlanSidebar', () => {
       const lat = wp?.[0]?.lat ?? 0
       const txt = `${Math.round(lat * 100)} m`
       return Promise.resolve({
+        coordinates: wp.map((point: any) => [point.lat, point.lng]),
         distanceText: txt, durationText: '1 min',
         legs: Array.from({ length: Math.max(0, (wp?.length ?? 0) - 1) }, () => ({
           distanceText: txt, durationText: '1 min', drivingText: '1 min', walkingText: '1 min',
@@ -1955,6 +1958,7 @@ describe('DayPlanSidebar', () => {
     const user = userEvent.setup()
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockImplementation((wp: any) => Promise.resolve({
+      coordinates: wp.map((point: any) => [point.lat, point.lng]),
       distanceText: '2 km', durationText: '10 min',
       legs: Array.from({ length: Math.max(0, (wp?.length ?? 0) - 1) }, () => ({
         distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
@@ -2071,7 +2075,7 @@ describe('DayPlanSidebar', () => {
     expect(await screen.findByText('Calculating...')).toBeInTheDocument()
     await act(async () => {
       resolveRoute({
-        coordinates: [], distance: 2000, duration: 600,
+        coordinates: [[48.85, 2.35], [48.86, 2.36]], distance: 2000, duration: 600,
         legs: [{
           from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
           distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
@@ -2084,7 +2088,7 @@ describe('DayPlanSidebar', () => {
   it('FE-PLANNER-DAYPLAN-112: too few returned legs marks the total as a known minimum', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValueOnce({
-      coordinates: [], distance: 2000, duration: 600,
+      coordinates: [[48.85, 2.35], [48.86, 2.36]], distance: 2000, duration: 600,
       legs: [{
         from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
         distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
@@ -2106,7 +2110,7 @@ describe('DayPlanSidebar', () => {
   it('FE-PLANNER-DAYPLAN-112b: a correct-count leg with an invalid metric remains partial', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValueOnce({
-      coordinates: [], distance: 0, duration: 600,
+      coordinates: [[48.85, 2.35], [48.86, 2.36]], distance: 0, duration: 600,
       legs: [{
         from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
         duration: 600, distanceText: '', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
@@ -2212,6 +2216,71 @@ describe('DayPlanSidebar', () => {
     expect(await screen.findByText('1 h 0 min · 1.1 km')).toBeInTheDocument()
   })
 
+  it('renders scheduled track movement independently from the driving connector profile', async () => {
+    const before = buildPlace({ id: 1, name: 'Trailhead bus stop', lat: 52, lng: 4.99 })
+    const track = buildPlace({
+      id: 2, name: 'Dune trail', lat: 52, lng: 5,
+      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
+      place_time: '09:15', end_time: '11:45', transport_mode: 'walking',
+    } as any)
+    const after = buildPlace({ id: 3, name: 'Beach cafe', lat: 52, lng: 5.02 })
+    const day = buildDay({ id: 10 })
+    const dayAssignments = [before, track, after].map((place, index) => buildAssignment({
+      id: index + 1, day_id: 10, order_index: index, place,
+    }))
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [before, track, after], assignments: { '10': dayAssignments },
+      selectedDayId: 10, routeShown: true, routeProfile: 'driving',
+    })} />)
+
+    const summary = await screen.findByTestId('track-summary-2')
+    expect(summary).toHaveAttribute('title', 'Scheduled trail time')
+    expect(summary).toHaveTextContent('2 h 30 min')
+    expect(summary).toHaveTextContent('685 m')
+    expect(summary).toHaveAttribute('data-track-mode', 'walking')
+    expect(routeCalculatorMocks.calculateRouteWithLegs).toHaveBeenCalledWith(
+      [{ lat: 52, lng: 4.99 }, { lat: 52, lng: 5 }],
+      expect.objectContaining({ profile: 'driving' }),
+    )
+    expect(routeCalculatorMocks.calculateRouteWithLegs).toHaveBeenCalledWith(
+      [{ lat: 52, lng: 5.01 }, { lat: 52, lng: 5.02 }],
+      expect.objectContaining({ profile: 'driving' }),
+    )
+
+    const trackName = screen.getByText('Dune trail')
+    expect(trackName.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const departureConnector = screen.getAllByText('10 min').at(-1)
+    expect(summary.compareDocumentPosition(departureConnector!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps the track summary fixed while switching connector profile', async () => {
+    const track = buildPlace({
+      id: 2, name: 'Dune trail', lat: 52, lng: 5,
+      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
+      place_time: '09:00', end_time: '10:00', transport_mode: 'walking',
+    } as any)
+    const after = buildPlace({ id: 3, name: 'Beach cafe', lat: 52, lng: 5.02 })
+    const day = buildDay({ id: 10 })
+    const dayAssignments = [track, after].map((place, index) => buildAssignment({
+      id: index + 2, day_id: 10, order_index: index, place,
+    }))
+
+    const base = makeDefaultProps({
+      days: [day], places: [track, after], assignments: { '10': dayAssignments },
+      selectedDayId: 10, routeShown: true,
+    })
+    const { rerender } = render(<DayPlanSidebar {...base} routeProfile="driving" />)
+    expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
+    expect(screen.getByTestId('track-summary-2')).toHaveTextContent('685 m')
+    expect(await screen.findByText('10 min')).toBeInTheDocument()
+
+    rerender(<DayPlanSidebar {...base} routeProfile="walking" />)
+    expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
+    expect(screen.getByTestId('track-summary-2')).toHaveTextContent('685 m')
+    expect(await screen.findByText('25 min')).toBeInTheDocument()
+  })
+
   it('FE-PLANNER-DAYPLAN-117: a mobile transit-only day can toggle Route and show walking movement', async () => {
     const user = userEvent.setup()
     const day = buildDay({ id: 10 })
@@ -2231,6 +2300,7 @@ describe('DayPlanSidebar', () => {
     const user = userEvent.setup()
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2282,6 +2352,7 @@ describe('DayPlanSidebar', () => {
     const user = userEvent.setup()
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2322,6 +2393,7 @@ describe('DayPlanSidebar', () => {
   it('keeps the connector display-only when transit planning is unavailable', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2347,6 +2419,7 @@ describe('DayPlanSidebar', () => {
   it('suppresses route connectors immediately around a transit journey', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2418,6 +2491,7 @@ describe('DayPlanSidebar', () => {
   it('suppresses both adjacent connectors for a transit row without rich metadata', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2468,6 +2542,7 @@ describe('DayPlanSidebar', () => {
   it('ignores notes when suppressing the connector before a transit journey', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2510,6 +2585,7 @@ describe('DayPlanSidebar', () => {
   it('keeps route connectors around a non-transit train reservation', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2]],
       distanceText: '2 km', durationText: '25 min',
       legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
     })
@@ -2531,12 +2607,12 @@ describe('DayPlanSidebar', () => {
       endpoints: [
         {
           role: 'from', sequence: 0, name: 'Origin station', code: null,
-          lat: 1, lng: 1, timezone: null,
+          lat: 1.1, lng: 1.1, timezone: null,
           local_date: '2026-07-16', local_time: '09:30',
         },
         {
           role: 'to', sequence: 1, name: 'Destination station', code: null,
-          lat: 2, lng: 2, timezone: null,
+          lat: 1.9, lng: 1.9, timezone: null,
           local_date: '2026-07-16', local_time: '09:50',
         },
       ],
@@ -2560,6 +2636,7 @@ describe('DayPlanSidebar', () => {
   it('keeps the later connector after a transit journey', async () => {
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
+      coordinates: [[1, 1], [2, 2], [3, 3]],
       distanceText: '2 km', durationText: '25 min',
       legs: [
         { distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' },
