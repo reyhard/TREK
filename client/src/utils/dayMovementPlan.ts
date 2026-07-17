@@ -1,5 +1,5 @@
 import type { Accommodation, Assignment, Day, Place, Reservation, Waypoint } from '../types'
-import { getMergedItems, getSpanPhase, getTransportForDay, getTransportRouteEndpoints } from './dayMerge'
+import { getMergedItems, getSpanPhase, getTransportForDay, getTransportRouteEndpoints, TRANSPORT_TYPES } from './dayMerge'
 import { getDayBookendHotels, shouldDrawEveningLeg, shouldDrawMorningLeg } from './dayOrder'
 import { getTrackMovement, type TrackMovementMetrics } from './trackGeometry'
 
@@ -102,11 +102,17 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
     .filter(assignment => assignment.day_id === day.id)
     .slice()
     .sort((a, b) => a.order_index - b.order_index)
-  const positionedReservations = reservations.map(reservation =>
-    reservation.day_plan_position != null && !reservation.day_positions
-      ? { ...reservation, day_positions: { [day.id]: reservation.day_plan_position } }
-      : reservation,
-  )
+  const positionedReservations = reservations
+    .filter(reservation => TRANSPORT_TYPES.has(reservation.type))
+    .map(reservation => {
+      const currentPosition = reservation.day_positions?.[day.id] ?? reservation.day_positions?.[String(day.id)]
+      return currentPosition == null && reservation.day_plan_position != null
+        ? {
+            ...reservation,
+            day_positions: { ...reservation.day_positions, [day.id]: reservation.day_plan_position },
+          }
+        : reservation
+    })
   const transports = getTransportForDay({
     reservations: positionedReservations,
     dayId: day.id,

@@ -52,7 +52,7 @@ describe('useRouteCalculation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset trip store assignments so each test starts clean
-    useTripStore.setState({ assignments: {} } as any);
+    useTripStore.setState({ assignments: {}, places: [], reservations: [], days: [] } as any);
     (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockImplementation(
       (waypoints: Array<{ lat: number; lng: number }>) => Promise.resolve({
         ...MOCK_ROUTE_WITH_LEGS,
@@ -693,5 +693,131 @@ describe('useRouteCalculation', () => {
       hasTracks: false,
       hasTransit: true,
     });
+  });
+
+  it('does not let a pending request repopulate route state after deselection', async () => {
+    let resolveRoute!: (value: typeof MOCK_ROUTE_WITH_LEGS) => void;
+    vi.mocked(calculateRouteWithLegs).mockImplementationOnce(() =>
+      new Promise(resolve => { resolveRoute = resolve; }),
+    );
+    const a = buildPlace({ lat: 10, lng: 10 });
+    const b = buildPlace({ lat: 20, lng: 20 });
+    const assignments = [buildAssignment({ day_id: 5, order_index: 0, place: a }), buildAssignment({ day_id: 5, order_index: 1, place: b })];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, b], days: [{ id: 5 }] } as any);
+    const { result, rerender } = renderHook(
+      ({ dayId }: { dayId: number | null }) => useRouteCalculation(store, dayId),
+      { initialProps: { dayId: 5 as number | null } },
+    );
+
+    await act(async () => rerender({ dayId: null }));
+    await act(async () => resolveRoute({ ...MOCK_ROUTE_WITH_LEGS, coordinates: [[10, 10], [20, 20]] }));
+
+    expect(result.current.route).toBeNull();
+    expect(result.current.routeSegments).toEqual([]);
+    expect(result.current.movementParts).toEqual([]);
+  });
+
+  it('aborts the active route request when the hook unmounts', async () => {
+    let requestSignal: AbortSignal | undefined;
+    vi.mocked(calculateRouteWithLegs).mockImplementationOnce((_waypoints, options) => {
+      requestSignal = options?.signal;
+      return new Promise(() => {});
+    });
+    const a = buildPlace({ lat: 10, lng: 10 });
+    const b = buildPlace({ lat: 20, lng: 20 });
+    const assignments = [buildAssignment({ day_id: 5, order_index: 0, place: a }), buildAssignment({ day_id: 5, order_index: 1, place: b })];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, b], days: [{ id: 5 }] } as any);
+
+    const { unmount } = renderHook(() => useRouteCalculation(store, 5));
+    await act(async () => {});
+    unmount();
+
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it('keeps track and transit eligibility when road routing is disabled', async () => {
+    const track = buildPlace({ route_geometry: JSON.stringify([[52, 5], [52.2, 5.2]]) });
+    const assignment = buildAssignment({ day_id: 5, order_index: 0, place: track });
+    const store = { assignments: { '5': [assignment] } } as unknown as TripStoreState;
+    useTripStore.setState({
+      assignments: store.assignments,
+      places: [track],
+      reservations: [{ id: 9, type: 'transit', day_id: 5, day_positions: { 5: 1 }, endpoints: [] }],
+      days: [{ id: 5 }],
+    } as any);
+
+    const { result } = renderHook(() => useRouteCalculation(store, 5, false));
+    await act(async () => {});
+
+    expect(result.current.route).toBeNull();
+    expect(result.current.routeSegments).toEqual([]);
+    expect(result.current.movementParts.map(part => part.kind)).toEqual(['track', 'transit']);
+    expect(result.current.routeEligibility).toEqual({ hasRoutedConnectors: false, hasTracks: true, hasTransit: true });
+    expect(calculateRouteWithLegs).not.toHaveBeenCalled();
+  });
+
+  it('recalculates when a reservation changes between non-transport and transport', async () => {
+    const a = buildPlace({ lat: 10, lng: 10 });
+    const b = buildPlace({ lat: 20, lng: 20 });
+    const assignments = [buildAssignment({ day_id: 5, order_index: 0, place: a }), buildAssignment({ day_id: 5, order_index: 2, place: b })];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    const base = { id: 9, type: 'restaurant', day_id: 5, day_positions: { 5: 1 }, endpoints: [] };
+    useTripStore.setState({ assignments: store.assignments, places: [a, b], reservations: [base], days: [{ id: 5 }] } as any);
+    const { result } = renderHook(() => useRouteCalculation(store, 5));
+    await act(async () => {});
+    expect(result.current.routeEligibility.hasTransit).toBe(false);
+
+    await act(async () => useTripStore.setState({ reservations: [{ ...base, type: 'transit' }] } as any));
+    await act(async () => {});
+
+    expect(result.current.routeEligibility.hasTransit).toBe(true);
+    expect(result.current.movementParts.some(part => part.kind === 'transit')).toBe(true);
+  });
+
+  it('exposes resolved-shaped straight connector parts while OSRM is pending', async () => {
+    vi.mocked(calculateRouteWithLegs).mockImplementationOnce(() => new Promise(() => {}));
+    const a = buildPlace({ lat: 10, lng: 11 });
+    const b = buildPlace({ lat: 20, lng: 21 });
+    const assignments = [buildAssignment({ day_id: 5, order_index: 0, place: a }), buildAssignment({ day_id: 5, order_index: 1, place: b })];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, b], days: [{ id: 5 }] } as any);
+
+    const { result } = renderHook(() => useRouteCalculation(store, 5, true, 'walking'));
+    await act(async () => {});
+
+    expect(result.current.movementParts).toEqual([
+      expect.objectContaining({
+        kind: 'routed', profile: 'walking', geometry: [[10, 11], [20, 21]],
+        distance: null, duration: null, routeSegment: null,
+      }),
+    ]);
+  });
+
+  it('does not let a structurally shaped abort from an old request clobber a newer result', async () => {
+    let rejectOld!: (reason: unknown) => void;
+    vi.mocked(calculateRouteWithLegs)
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }))
+      .mockResolvedValueOnce({ ...MOCK_ROUTE_WITH_LEGS, coordinates: [[30, 30], [40, 40]] });
+    const a = buildPlace({ lat: 10, lng: 10 });
+    const b = buildPlace({ lat: 20, lng: 20 });
+    const c = buildPlace({ lat: 30, lng: 30 });
+    const d = buildPlace({ lat: 40, lng: 40 });
+    const assignments = {
+      '5': [buildAssignment({ day_id: 5, order_index: 0, place: a }), buildAssignment({ day_id: 5, order_index: 1, place: b })],
+      '6': [buildAssignment({ day_id: 6, order_index: 0, place: c }), buildAssignment({ day_id: 6, order_index: 1, place: d })],
+    };
+    const store = { assignments } as unknown as TripStoreState;
+    useTripStore.setState({ assignments, places: [a, b, c, d], days: [{ id: 5 }, { id: 6 }] } as any);
+    const { result, rerender } = renderHook(
+      ({ dayId }: { dayId: number }) => useRouteCalculation(store, dayId),
+      { initialProps: { dayId: 5 } },
+    );
+    await act(async () => rerender({ dayId: 6 }));
+    await act(async () => rejectOld({ name: 'AbortError' }));
+
+    expect(result.current.route).toEqual([[[30, 30], [40, 40]]]);
+    expect(result.current.routeSegments).toEqual(MOCK_SEGMENTS);
   });
 });

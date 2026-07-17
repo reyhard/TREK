@@ -3,6 +3,7 @@ import { useTripStore } from '../store/tripStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { buildDayMovementPlan } from '../utils/dayMovementPlan'
 import { resolveDayMovementPlan } from '../utils/resolveDayMovementPlan'
+import { TRANSPORT_TYPES } from '../utils/dayMerge'
 import type { TripStoreState } from '../store/tripStore'
 import type { DayMovementPlan, PlannedRoutedPart } from '../utils/dayMovementPlan'
 import type { ResolvedMovementPart } from '../utils/resolveDayMovementPlan'
@@ -42,6 +43,25 @@ function straightConnectorPolylines(plan: DayMovementPlan): [number, number][][]
   return polylines
 }
 
+function pendingMovementParts(
+  plan: DayMovementPlan,
+  profile: 'driving' | 'walking' | 'cycling',
+): ResolvedMovementPart[] {
+  return plan.parts.map(part => part.kind === 'routed'
+    ? {
+        ...part,
+        profile,
+        geometry: [[part.from.lat, part.from.lng], [part.to.lat, part.to.lng]],
+        distance: null,
+        duration: null,
+        routeSegment: null,
+      }
+    : part)
+}
+
+const isAbortError = (error: unknown) =>
+  typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'
+
 /**
  * Manages route calculation state for a selected day. Extracts geo-coded waypoints from
  * day assignments, draws a straight-line route immediately, then upgrades it to real OSRM
@@ -65,8 +85,7 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
 
   const updateRouteForDay = useCallback(async (dayId: number | null) => {
     if (routeAbortRef.current) routeAbortRef.current.abort()
-    // Route is manual: only compute when explicitly enabled (the "show route" toggle).
-    if (!dayId || !enabled) {
+    if (!dayId) {
       setRoute(null)
       setRouteSegments([])
       setMovementParts([])
@@ -93,8 +112,10 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
       hasTransit: plan.hasTransit,
     }
     setRouteEligibility(eligibility)
-    setMovementParts(plan.parts)
-    if (!plan.hasRoutedConnectors) {
+    setMovementParts(pendingMovementParts(plan, profile))
+    // Route drawing is manual, but intrinsic tracks/transit remain eligible and visible
+    // to consumers even while the road-route toggle is off.
+    if (!enabled || !plan.hasRoutedConnectors) {
       setRoute(null)
       setRouteSegments([])
       return
@@ -115,20 +136,21 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
       }
     } catch (err: unknown) {
       // Aborted (day changed) — newer call owns the state. Anything else: keep straight lines.
-      if (!(err instanceof Error) || err.name !== 'AbortError') setRouteSegments([])
+      if (!controller.signal.aborted && !isAbortError(err)) setRouteSegments([])
     }
-  }, [enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
+  }, [enabled, profile, accommodations, optimizeFromAccommodation])
 
   // Stable signature for transport reservations on the selected day — changes when a transport
   // is added, removed, or repositioned, ensuring route recalc fires even on transport-only reorders.
   const transportSignature = useMemo(() => {
     if (!selectedDayId) return ''
     return reservationsForSignature
+      .filter(r => TRANSPORT_TYPES.has(r.type))
       .map(r => {
         const pos = r.day_positions?.[selectedDayId] ?? r.day_positions?.[String(selectedDayId)] ?? r.day_plan_position
         // Include endpoints so adding/moving a departure/arrival location re-routes.
         const eps = (r.endpoints || []).map(e => `${e.role}@${e.lat ?? ''},${e.lng ?? ''}`).join(';')
-        return `${r.id}:${r.day_id ?? ''}:${r.end_day_id ?? ''}:${r.reservation_time ?? ''}:${pos ?? ''}:${eps}`
+        return `${r.id}:${r.type}:${r.assignment_id ?? ''}:${r.day_id ?? ''}:${r.end_day_id ?? ''}:${r.reservation_time ?? ''}:${pos ?? ''}:${eps}`
       })
       .sort()
       .join('|')
@@ -155,6 +177,8 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   const selectedDayAssignments = selectedDayId ? tripStore.assignments?.[String(selectedDayId)] : null
   useEffect(() => {
     if (!selectedDayId) {
+      routeAbortRef.current?.abort()
+      routeAbortRef.current = null
       setRoute(null)
       setRouteSegments([])
       setMovementParts([])
@@ -164,6 +188,11 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
     updateRouteForDay(selectedDayId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDayId, selectedDayAssignments, transportSignature, fullPlaceSignature, enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
+
+  useEffect(() => () => {
+    routeAbortRef.current?.abort()
+    routeAbortRef.current = null
+  }, [])
 
   return {
     route,

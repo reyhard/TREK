@@ -101,6 +101,44 @@ describe('buildDayMovementPlan', () => {
     expect((plan.parts[1] as PlannedRoutedPart).to).toMatchObject({ lat: 52, lng: 5, source: 'place' })
   })
 
+  it.each([
+    ['an empty day_positions object', {}],
+    ['positions for another day', { '2': 9 }],
+  ])('falls back to day_plan_position with %s', (_label, day_positions) => {
+    const a = place(1, 52, 5)
+    const r = reservation(20, {
+      day_positions,
+      day_plan_position: 0,
+      endpoints: [endpoint('from', 50, 3), endpoint('to', 51, 4)],
+    })
+    const plan = build({ assignments: [assignment(11, a, 1)], places: [a], reservations: [r] })
+    expect(plan.parts.map(part => part.kind)).toEqual(['transit', 'routed'])
+    expect((plan.parts[1] as PlannedRoutedPart).from).toMatchObject({ lat: 51, lng: 4 })
+  })
+
+  it('ignores non-transport reservations in movement, placement, and hotel edge logic', () => {
+    const a = place(1, 52, 5, { place_time: '10:00' })
+    const b = place(2, 53, 6, { place_time: '12:00' })
+    const dining = reservation(20, {
+      type: 'restaurant',
+      day_positions: { '1': 1 },
+      endpoints: [endpoint('from', 40, 3), endpoint('to', 41, 4)],
+    })
+    const hotel = {
+      id: 30, start_day_id: 1, end_day_id: 2, check_in: '15:00',
+      place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9,
+    }
+    const plan = build({
+      assignments: [assignment(11, a, 0), assignment(12, b, 2)],
+      places: [a, b], reservations: [dining], accommodations: [hotel],
+    })
+    expect(plan.parts.map(part => part.kind)).toEqual(['routed', 'routed'])
+    expect((plan.parts[0] as PlannedRoutedPart).from).toMatchObject({ placeId: a.id })
+    expect((plan.parts[0] as PlannedRoutedPart).to).toMatchObject({ placeId: b.id })
+    expect((plan.parts[0] as PlannedRoutedPart).placement).toEqual({ kind: 'after-assignment', assignmentId: 11 })
+    expect((plan.parts[1] as PlannedRoutedPart).placement.kind).toBe('hotel-bottom')
+  })
+
   it('does not route between consecutive located transports', () => {
     const a = place(1, 52, 5)
     const b = place(2, 54, 7)
