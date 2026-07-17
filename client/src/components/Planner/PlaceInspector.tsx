@@ -21,8 +21,8 @@ import PluginFrame from '../Plugins/PluginFrame'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
 import type { CollectionStatus } from '@trek/shared'
 import { splitReservationDateTime, formatTime } from '../../utils/formatters'
+import { getTrackMovement } from '../../utils/trackGeometry'
 import { formatDistance, formatElevation } from '../../utils/units'
-import { calculateTrackStats } from '../../utils/trackStats'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 import { getOpenStreetMapUrlForPlace } from './placeOpenStreetMap'
 
@@ -913,16 +913,16 @@ function PlaceExtras({ openingHours, weekdayIndex, hoursExpanded, setHoursExpand
 
           {/* GPX Track stats */}
           {place.route_geometry && (() => {
-            const stats = calculateTrackStats(place.route_geometry)
-            if (!stats) return null
+            const track = getTrackMovement(place)
+            if (!track) return null
 
-            const distKm = stats.distanceMeters / 1000
-            const hasEle = stats.hasElevation
-            const minEle = stats.minElevationMeters
-            const maxEle = stats.maxElevationMeters
-            const totalUp = stats.elevationGainMeters
-            const totalDown = stats.elevationLossMeters
-            const elevations = stats.elevations
+            const distKm = track.distance / 1000
+            const hasEle = track.minElevation != null
+            const minEle = track.minElevation
+            const maxEle = track.maxElevation
+            const totalUp = track.elevationGain
+            const totalDown = track.elevationLoss
+            const elevations = track.elevations.flatMap(value => value == null ? [] : [value])
 
             const chartW = 280
             const chartH = 60

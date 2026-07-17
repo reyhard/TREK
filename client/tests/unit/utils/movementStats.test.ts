@@ -11,6 +11,7 @@ import {
   normalizeMovementMode,
   type MovementContribution,
 } from '../../../src/utils/movementStats'
+import { getTrackMovement } from '../../../src/utils/trackGeometry'
 
 function segment(distance: number, duration: number): RouteSegment {
   return {
@@ -192,11 +193,13 @@ describe('transit walking contributions', () => {
 })
 
 describe('track contributions', () => {
-  it('uses full-place geometry and assignment-specific times', () => {
+  it('uses the authoritative full place for geometry, timing, and mode', () => {
     const fullPlace = buildPlace({
       id: 20,
       route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
-      transport_mode: 'walking',
+      place_time: '10:00',
+      end_time: '12:00',
+      transport_mode: 'cycling',
     })
     const assignment = buildAssignment({
       id: 200,
@@ -204,14 +207,33 @@ describe('track contributions', () => {
       place_id: 20,
       place: { ...fullPlace, route_geometry: undefined, place_time: '09:00', end_time: '10:30' } as any,
     })
+    const movement = getTrackMovement(fullPlace)!
     expect(createTrackContributions(10, [assignment], [fullPlace])).toEqual([
       expect.objectContaining({
         key: 'track:10:200',
-        mode: 'walking',
-        durationSeconds: 5400,
-        distanceMeters: expect.any(Number),
+        mode: movement.mode,
+        durationSeconds: movement.duration,
+        distanceMeters: movement.distance,
       }),
     ])
+  })
+
+  it.each([
+    { place_time: null, end_time: null },
+    { place_time: '12:00', end_time: '09:00' },
+  ])('uses the shared estimated duration for an untimed or reversed track: %o', (times) => {
+    const embedded = buildPlace({
+      id: 24,
+      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
+      transport_mode: 'walking',
+      ...times,
+    } as any)
+    const assignment = buildAssignment({ id: 204, day_id: 10, place_id: 24, place: embedded })
+    const contribution = createTrackContributions(10, [assignment], [])[0]
+    const movement = getTrackMovement(embedded)!
+
+    expect(contribution.durationSeconds).toBe(movement.duration)
+    expect(contribution.durationSeconds).toBeGreaterThan(0)
   })
 
   it('defaults an unsupported track mode to walking', () => {
@@ -223,7 +245,7 @@ describe('track contributions', () => {
     const assignment = buildAssignment({ id: 201, day_id: 10, place_id: 21, place: { ...fullPlace, place_time: null, end_time: null } as any })
     expect(createTrackContributions(10, [assignment], [fullPlace])[0]).toMatchObject({
       mode: 'walking',
-      durationSeconds: null,
+      durationSeconds: expect.any(Number),
     })
   })
 
@@ -234,7 +256,9 @@ describe('track contributions', () => {
       duration_minutes: 120,
     })
     const assignment = buildAssignment({ id: 202, day_id: 10, place_id: 22, place: { ...fullPlace, place_time: '09:00', end_time: null } as any })
-    expect(createTrackContributions(10, [assignment], [fullPlace])[0].durationSeconds).toBeNull()
+    const contribution = createTrackContributions(10, [assignment], [fullPlace])[0]
+    expect(contribution.durationSeconds).toBe(getTrackMovement(fullPlace)?.duration)
+    expect(contribution.durationSeconds).toBeGreaterThan(0)
   })
 
   it('excludes a walking track from driving aggregation', () => {
@@ -275,7 +299,8 @@ describe('calculateDayMovementStats', () => {
       routeMetricsComplete: true,
       routeMetricsExpected: true,
     })
-    expect(total.durationSeconds).toBe(5100)
+    const trackMovement = getTrackMovement(fullPlace)!
+    expect(total.durationSeconds).toBe(600 + 300 + 300 + 300 + trackMovement.duration)
     expect(total.distanceMeters).toBeGreaterThan(3400)
     expect(total).toMatchObject({ durationComplete: true, distanceComplete: true, contributionCount: 5 })
   })

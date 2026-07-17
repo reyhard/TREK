@@ -6,7 +6,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 're
 import { avatarSrc } from '../../utils/avatarSrc'
 import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, Pencil, GripVertical, Ticket, Plus, FileText, Trash2, Car, Lock, Hotel, Footprints, Route as RouteIcon, Bookmark, TramFront } from 'lucide-react'
 import { assignmentsApi, reservationsApi } from '../../api/client'
-import { calculateRoute, calculateRouteWithLegs, optimizeRoute, generateGoogleMapsUrl } from '../Map/RouteCalculator'
+import { calculateRoute, optimizeRoute, generateGoogleMapsUrl } from '../Map/RouteCalculator'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import ConfirmDialog from '../shared/ConfirmDialog'
 import { useContextMenu, ContextMenu } from '../shared/ContextMenu'
@@ -22,7 +22,7 @@ import { useAddonStore } from '../../store/addonStore'
 import { useSaveToCollectionStore } from '../../store/saveToCollectionStore'
 import { placeToSaveTarget } from '../Collections/saveTarget'
 import { useTranslation } from '../../i18n'
-import { isDayInAccommodationRange, getAccommodationAnchors, getDayBookendHotels, shouldDrawMorningLeg, shouldDrawEveningLeg } from '../../utils/dayOrder'
+import { isDayInAccommodationRange, getAccommodationAnchors } from '../../utils/dayOrder'
 import {
   TRANSPORT_TYPES, parseTimeToMinutes, getSpanPhase, getDisplayTimeForDay, getTransportRouteEndpoints,
   getTransportForDay as _getTransportForDay, getMergedItems as _getMergedItems,
@@ -41,11 +41,13 @@ import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transit
 import type { TransitSearchPrefill } from './transitSearchTypes'
 import { getConnectorTransitPrefill, getNextConnectorTarget, isTransitMergedItem } from './transitConnector'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
+import { DayPlanSidebarTrackSummary } from './DayPlanSidebarTrackSummary'
 import DayMovementTotalRow, { type RouteMetricStatus } from './DayMovementTotalRow'
+import { buildDayMovementPlan, hasDayRouteTools, movementPlanWaypoints, type DayMovementPlan, type TrackMovementPart } from '../../utils/dayMovementPlan'
+import { resolveDayMovementPlan } from '../../utils/resolveDayMovementPlan'
+import { getTrackMovement } from '../../utils/trackGeometry'
 import {
   calculateDayMovementStats,
-  createTrackContributions,
-  createTransitWalkContributions,
   type MovementTotal,
 } from '../../utils/movementStats'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
@@ -54,6 +56,26 @@ import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 interface DayRouteMetricState {
   status: RouteMetricStatus
   expected: boolean
+}
+
+interface DayMovementUi {
+  assignmentConnectors: Record<number, RouteSegment>
+  reservationConnectors: Record<number, RouteSegment>
+  tracks: Record<number, TrackMovementPart>
+  hotelTop?: { seg: RouteSegment; name: string }
+  hotelBottom?: { seg: RouteSegment; name: string }
+}
+
+function indexPureTrackParts(plan: DayMovementPlan): DayMovementUi {
+  const ui: DayMovementUi = {
+    assignmentConnectors: {},
+    reservationConnectors: {},
+    tracks: {},
+  }
+  for (const part of plan.parts) {
+    if (part.kind === 'track') ui.tracks[part.assignmentId] = part
+  }
+  return ui
 }
 
 function hasValidRouteMetrics(segment: RouteSegment | undefined): segment is RouteSegment {
@@ -195,10 +217,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // transport's reservation id). Nested per day so several Route-toggled mobile days
   // can't collide in one flat map — assignment ids and reservation ids come from
   // independent sequences and would overwrite each other across days (#1374).
-  const [routeLegs, setRouteLegs] = useState<Record<number, Record<number, RouteSegment>>>({})
-  // Hotel bookend legs keyed by day id. Desktop keys only the selected day; mobile
-  // keys every day whose Route toggle is on, so each shows its own bookends (#1374).
-  const [hotelLegs, setHotelLegs] = useState<Record<number, { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } }>>({})
+  const [movementUiByDay, setMovementUiByDay] = useState<Record<number, DayMovementUi>>({})
   const [routeMetricStates, setRouteMetricStates] = useState<Record<number, DayRouteMetricState>>({})
   // Mobile only: days the user tapped "Route" on. Their leg distances show inline in
   // the expanded day, so seeing distances doesn't require selecting the day (which
@@ -446,6 +465,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     routeDayKey,
     routeProfile,
     mergedItemsMap,
+    places,
     accommodations,
     days,
     optimizeFromAccommodation,
@@ -453,176 +473,79 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   ])
   const [resolvedRouteMetricsGeneration, setResolvedRouteMetricsGeneration] = useState<object | null>(null)
 
-  // Per-segment travel times shown as connectors between a day's located stops.
-  // Groups located places into runs (split at transports), one cached OSRM call per
-  // run keyed by the start place's assignment id, plus the hotel bookend legs. Shares
-  // RouteCalculator's cache with the map. Runs for every day in routeDayIds — one
-  // selected day on desktop, each Route-toggled day on mobile (#1374).
+  // Build the same pure movement plan used by the map, then index its resolved
+  // connector and track parts by their sidebar placement owner. Keeping the day id
+  // as the outer key preserves independent mobile route toggles (#1374).
   useEffect(() => {
     if (legsAbortRef.current) legsAbortRef.current.abort()
     if (routeDayIds.length === 0) {
-      setRouteLegs({})
-      setHotelLegs({})
+      setMovementUiByDay({})
       setRouteMetricStates({})
       setResolvedRouteMetricsGeneration(routeMetricsGeneration)
       return
     }
-
-    const hotelName = (a: Accommodation) => (a as any).place_name || (a as any).reservation_title || ''
-
-    // Pure per-day plan: the drive runs (each ≥2 waypoints) and which hotel bookend
-    // legs to draw. Side-effect free, so the async loop below only does OSRM I/O.
-    const planDay = (dayId: number) => {
-      const merged = mergedItemsMap[dayId] || []
-      const runs: { id: number; lat: number; lng: number }[][] = []
-      let cur: { id: number; lat: number; lng: number }[] = []
-      // A run is only a real drive when it holds an actual place. Two back-to-back
-      // transports (e.g. two flights on one day) would otherwise pair the first's
-      // arrival with the second's departure into a phantom airport→airport leg — the
-      // flight, not a drive — and surface it as a bogus connector distance (#1394).
-      let curHasPlace = false
-      for (const it of merged) {
-        if (it.type === 'place' && it.data.place?.lat && it.data.place?.lng) {
-          cur.push({ id: it.data.id, lat: it.data.place.lat, lng: it.data.place.lng })
-          curHasPlace = true
-        } else if (it.type === 'transport') {
-          const r = it.data
-          const { from, to } = getTransportRouteEndpoints(r, dayId)
-          if (from || to) {
-            // Located transport: route to its departure point, break the run (the
-            // flight/train itself isn't driven), and let its arrival start the next.
-            if (from) cur.push({ id: r.id, lat: from.lat, lng: from.lng })
-            if (cur.length >= 2 && curHasPlace) runs.push(cur)
-            cur = []
-            curHasPlace = false
-            if (to) cur.push({ id: r.id, lat: to.lat, lng: to.lng })
-          } else if (cur.length > 0 && !(r.type === 'car' && getSpanPhase(r, dayId) === 'middle')) {
-            // No location: ignore for routing, but attribute the through-leg to the
-            // booking so its distance/duration shows under it (purely cosmetic).
-            // Not for a car rental's middle days though — that row isn't rendered
-            // in the timeline, so re-keying would drop the leg entirely (#1504).
-            cur[cur.length - 1] = { ...cur[cur.length - 1], id: r.id }
-          }
-        }
-      }
-      if (cur.length >= 2 && curHasPlace) runs.push(cur)
-
-      // Hotel bookend legs: the drive from the day's accommodation to the first located
-      // waypoint of the day (morning) and from the last one back to it (evening). Only when
-      // the "optimize from accommodation" setting is on and the day has a hotel.
-      const day = days.find(d => d.id === dayId)
-      const bookends = day && optimizeFromAccommodation !== false
-        ? getDayBookendHotels(day, days, accommodations)
-        : null
-      const startHotel = bookends?.morning
-      const endHotel = bookends?.evening
-      // Waypoints include transport endpoints (a car return, a taxi/train arrival), so the hotel
-      // legs connect even when the day starts or ends with a booking rather than a place. Track
-      // whether each is a place and its time so the bookend decision can drop a leg that isn't
-      // real: a check-in hotel never drove to a departure airport (#1321), and a place timed before
-      // check-in / after check-out means you weren't at the hotel then (#1465).
-      const wayPts: { lat: number; lng: number; isPlace: boolean; time: string | null }[] = []
-      for (const it of merged) {
-        if (it.type === 'place' && it.data.place?.lat && it.data.place?.lng) {
-          wayPts.push({ lat: it.data.place.lat, lng: it.data.place.lng, isPlace: true, time: it.data.place?.place_time ?? null })
-        } else if (it.type === 'transport') {
-          const { from, to } = getTransportRouteEndpoints(it.data, dayId)
-          if (from) wayPts.push({ lat: from.lat, lng: from.lng, isPlace: false, time: null })
-          if (to) wayPts.push({ lat: to.lat, lng: to.lng, isPlace: false, time: null })
-        }
-      }
-      const firstWay = wayPts[0]
-      const lastWay = wayPts[wayPts.length - 1]
-      const wantTop = !!(startHotel && firstWay && bookends && day && shouldDrawMorningLeg(bookends, day, firstWay))
-      const wantBottom = !!(endHotel && lastWay && bookends && day && shouldDrawEveningLeg(bookends, day, lastWay))
-      return { runs, startHotel, endHotel, firstWay, lastWay, wantTop, wantBottom }
-    }
-
-    const plans = routeDayIds.map(dayId => [dayId, planDay(dayId)] as const)
+    const allAssignments = Object.values(assignments).flat()
+    const plans = routeDayIds.flatMap(dayId => {
+      const day = days.find(candidate => candidate.id === dayId)
+      return day ? [[dayId, buildDayMovementPlan({
+        day,
+        days,
+        assignments: allAssignments,
+        places,
+        reservations,
+        accommodations,
+        optimizeFromAccommodation,
+      })] as const] : []
+    })
     setRouteMetricStates(Object.fromEntries(plans.map(([dayId, plan]) => [
-      dayId,
-      {
-        status: 'loading' as const,
-        expected: plan.runs.length > 0 || plan.wantTop || plan.wantBottom,
-      },
+      dayId, { status: 'loading' as const, expected: plan.hasRoutedConnectors },
     ])))
 
     const controller = new AbortController()
     legsAbortRef.current = controller
     ;(async () => {
-      const legsByDay: Record<number, Record<number, RouteSegment>> = {}
-      const hotelByDay: Record<number, { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } }> = {}
+      const movementByDay: Record<number, DayMovementUi> = {}
       const metricStates: Record<number, DayRouteMetricState> = {}
-      const aborted = (error: unknown) => error instanceof Error && error.name === 'AbortError'
-
       for (const [dayId, plan] of plans) {
-        const { runs, startHotel, endHotel, firstWay, lastWay, wantTop, wantBottom } = plan
-        const expected = runs.length > 0 || wantTop || wantBottom
-        const dayLegs: Record<number, RouteSegment> = {}
+        let resolved
+        try {
+          resolved = await resolveDayMovementPlan(plan, routeProfile, controller.signal)
+        } catch (error) {
+          if (controller.signal.aborted) return
+          movementByDay[dayId] = indexPureTrackParts(plan)
+          metricStates[dayId] = {
+            status: plan.hasRoutedConnectors ? 'partial' : 'complete',
+            expected: plan.hasRoutedConnectors,
+          }
+          continue
+        }
+        const ui = indexPureTrackParts(plan)
         let partial = false
-
-        for (const run of runs) {
-          try {
-            const result = await calculateRouteWithLegs(
-              run.map(point => ({ lat: point.lat, lng: point.lng })),
-              { signal: controller.signal, profile: routeProfile },
-            )
-            if (result.legs.length !== run.length - 1 || result.legs.some(leg => !hasValidRouteMetrics(leg))) partial = true
-            result.legs.forEach((leg, index) => {
-              const start = run[index]
-              if (start) dayLegs[start.id] = leg
-            })
-          } catch (error) {
-            if (aborted(error)) return
+        for (const part of resolved.parts) {
+          if (part.kind === 'track') continue
+          if (part.kind !== 'routed') continue
+          if (!part.routeSegment) {
             partial = true
+            continue
+          }
+          if (!hasValidRouteMetrics(part.routeSegment)) partial = true
+          const segment = part.routeSegment
+          switch (part.placement.kind) {
+            case 'after-assignment': ui.assignmentConnectors[part.placement.assignmentId] = segment; break
+            case 'after-reservation': ui.reservationConnectors[part.placement.reservationId] = segment; break
+            case 'hotel-top': ui.hotelTop = { seg: segment, name: part.placement.name }; break
+            case 'hotel-bottom': ui.hotelBottom = { seg: segment, name: part.placement.name }; break
           }
         }
-        if (Object.keys(dayLegs).length > 0) legsByDay[dayId] = dayLegs
-
-        const hotel: { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } } = {}
-        if (wantTop) {
-          try {
-            const result = await calculateRouteWithLegs(
-              [
-                { lat: startHotel!.place_lat as number, lng: startHotel!.place_lng as number },
-                { lat: firstWay!.lat, lng: firstWay!.lng },
-              ],
-              { signal: controller.signal, profile: routeProfile },
-            )
-            const segment = result.legs[0]
-            if (segment) hotel.top = { seg: segment, name: hotelName(startHotel!) }
-            if (!hasValidRouteMetrics(segment)) partial = true
-          } catch (error) {
-            if (aborted(error)) return
-            partial = true
-          }
+        movementByDay[dayId] = ui
+        metricStates[dayId] = {
+          status: partial ? 'partial' : 'complete',
+          expected: plan.hasRoutedConnectors,
         }
-        if (wantBottom) {
-          try {
-            const result = await calculateRouteWithLegs(
-              [
-                { lat: lastWay!.lat, lng: lastWay!.lng },
-                { lat: endHotel!.place_lat as number, lng: endHotel!.place_lng as number },
-              ],
-              { signal: controller.signal, profile: routeProfile },
-            )
-            const segment = result.legs[0]
-            if (segment) hotel.bottom = { seg: segment, name: hotelName(endHotel!) }
-            if (!hasValidRouteMetrics(segment)) partial = true
-          } catch (error) {
-            if (aborted(error)) return
-            partial = true
-          }
-        }
-
-        if (controller.signal.aborted) return
-        if (hotel.top || hotel.bottom) hotelByDay[dayId] = hotel
-        metricStates[dayId] = { status: partial ? 'partial' : 'complete', expected }
       }
 
       if (!controller.signal.aborted) {
-        setRouteLegs(legsByDay)
-        setHotelLegs(hotelByDay)
+        setMovementUiByDay(movementByDay)
         setRouteMetricStates(metricStates)
         setResolvedRouteMetricsGeneration(routeMetricsGeneration)
       }
@@ -630,7 +553,21 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     // routeDayIds is memoized from the same inputs as routeDayKey below, so keying the
     // effect on the string is equivalent while staying stable across unrelated renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeDayKey, routeProfile, mergedItemsMap, accommodations, days, optimizeFromAccommodation, distanceUnit, routeMetricsGeneration])
+  }, [routeDayKey, routeProfile, mergedItemsMap, assignments, places, reservations, accommodations, days, optimizeFromAccommodation, distanceUnit, routeMetricsGeneration])
+
+  const routeLegs = useMemo<Record<number, Record<number, RouteSegment>>>(() =>
+    Object.fromEntries(Object.entries(movementUiByDay).map(([dayId, ui]) => [dayId, {
+      ...ui.assignmentConnectors,
+      // Assignment and reservation ids come from independent sequences. Keep the
+      // legacy movement-total adapter collision-free without creating a second
+      // source of connector metrics.
+      ...Object.fromEntries(Object.entries(ui.reservationConnectors).map(([id, segment]) => [-Number(id), segment])),
+    }])), [movementUiByDay])
+  const hotelLegs = useMemo<Record<number, { top?: { seg: RouteSegment; name: string }; bottom?: { seg: RouteSegment; name: string } }>>(() =>
+    Object.fromEntries(Object.entries(movementUiByDay).map(([dayId, ui]) => [dayId, {
+      top: ui.hotelTop,
+      bottom: ui.hotelBottom,
+    }])), [movementUiByDay])
 
   const openAddNote = (dayId, e) => {
     e?.stopPropagation()
@@ -964,7 +901,9 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     const locked = new Map() // index -> assignment
     const unlocked = []
     da.forEach((a, i) => {
-      if (lockedIds.has(a.id) || a.place?.place_time) locked.set(i, a)
+      const place = places.find(candidate => candidate.id === a.place?.id) ?? a.place
+      const isTrack = place ? getTrackMovement(place) != null : false
+      if (lockedIds.has(a.id) || place?.place_time || isTrack) locked.set(i, a)
       else unlocked.push(a)
     })
 
@@ -1153,9 +1092,8 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     routeInfo,
     setRouteInfo,
     routeLegs: routeMetricsAreCurrent ? routeLegs : {},
-    setRouteLegs,
     hotelLegs: routeMetricsAreCurrent ? hotelLegs : {},
-    setHotelLegs,
+    movementUiByDay: routeMetricsAreCurrent ? movementUiByDay : {},
     routeMetricStates: displayedRouteMetricStates,
     legsAbortRef,
     draggingId,
@@ -1320,9 +1258,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     routeInfo,
     setRouteInfo,
     routeLegs,
-    setRouteLegs,
     hotelLegs,
-    setHotelLegs,
+    movementUiByDay,
     routeMetricStates,
     legsAbortRef,
     draggingId,
@@ -1390,6 +1327,19 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
 
   const movementDistanceUnit = useSettingsStore(state => state.settings.distance_unit) === 'imperial' ? 'imperial' : 'metric'
 
+  const movementPlansByDay = useMemo<Record<number, DayMovementPlan>>(() => {
+    const allAssignments = Object.values(assignments).flat()
+    return Object.fromEntries(days.map(day => [day.id, buildDayMovementPlan({
+      day,
+      days,
+      assignments: allAssignments,
+      places,
+      reservations,
+      accommodations,
+      optimizeFromAccommodation,
+    })]))
+  }, [days, assignments, places, reservations, accommodations, optimizeFromAccommodation])
+
   const movementTotalsByDay = useMemo<Record<number, MovementTotal>>(() => {
     const totals: Record<number, MovementTotal> = {}
     for (const day of days) {
@@ -1411,18 +1361,6 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     }
     return totals
   }, [days, assignments, places, reservations, routeLegs, hotelLegs, routeMetricStates, routeProfile])
-
-  const movementBearingDayIds = useMemo(() => {
-    const ids = new Set<number>()
-    for (const day of days) {
-      const contributions = [
-        ...createTrackContributions(day.id, assignments[String(day.id)] ?? [], places),
-        ...createTransitWalkContributions(day.id, reservations),
-      ]
-      if (contributions.some(item => (item.durationSeconds ?? 0) > 0 || (item.distanceMeters ?? 0) > 0)) ids.add(day.id)
-    }
-    return ids
-  }, [days, assignments, places, reservations])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', fontFamily: "var(--font-system)" }}>
@@ -1463,17 +1401,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
           const da = getDayAssignments(day.id)
           const cost = dayTotalCost(day.id, assignments, currency)
           const formattedDate = formatDate(day.date, locale)
-          const loc = da.find(a => a.place?.lat && a.place?.lng)
-          // Route tools normally need 2+ stops, but a single located place is still
-          // routable when accommodation optimization can bookend it with a hotel
-          // (hotel → place → hotel, the same line the map draws) — otherwise the tools
-          // vanish on such a day (#1330). Purely additive to the 2+ case.
-          const routeBookends = optimizeFromAccommodation !== false ? getDayBookendHotels(day, days, accommodations) : null
-          const hasRouteBookend = !!(
-            (routeBookends?.morning?.place_lat != null && routeBookends?.morning?.place_lng != null) ||
-            (routeBookends?.evening?.place_lat != null && routeBookends?.evening?.place_lng != null)
-          )
-          const routeToolsRoutable = da.length >= 2 || (loc != null && hasRouteBookend) || movementBearingDayIds.has(day.id)
+          const movementPlan = movementPlansByDay[day.id]
+          const exportWaypoints = movementPlanWaypoints(movementPlan)
+          const routeToolsRoutable = hasDayRouteTools(movementPlan)
           // Is this day's inline route currently on? Mobile toggles it per day (its
           // own expandedRouteDayIds entry); desktop uses the global Route toggle on
           // the selected day (#1374).
@@ -1513,8 +1443,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                   // anyGeoPlace is an assignment (has .place) or a bare place — read coords from either.
                   const geoLat = anyGeoPlace ? ('place' in anyGeoPlace ? anyGeoPlace.place?.lat : anyGeoPlace.lat) : undefined
                   const geoLng = anyGeoPlace ? ('place' in anyGeoPlace ? anyGeoPlace.place?.lng : anyGeoPlace.lng) : undefined
-                  const wLat = loc?.place?.lat ?? geoLat
-                  const wLng = loc?.place?.lng ?? geoLng
+                  const dayGeoPlace = da.find(a => a.place?.lat && a.place?.lng)?.place
+                  const wLat = dayGeoPlace?.lat ?? geoLat
+                  const wLng = dayGeoPlace?.lng ?? geoLng
                   const hasWeather = !!(day.date && anyGeoPlace && wLat != null && wLng != null)
                   return (
                     <div style={{
@@ -1723,8 +1654,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                       handleMergedDrop(day.id, 'note', Number(noteId), lastItem.type, lastItem.data.id, true)
                   }}
                 >
-                  {hotelLegs[day.id]?.top && (
-                    <HotelRouteConnector seg={hotelLegs[day.id]!.top!.seg} name={hotelLegs[day.id]!.top!.name} profile={routeProfile} placement="top" />
+                  {movementUiByDay[day.id]?.hotelTop && (
+                    <HotelRouteConnector seg={movementUiByDay[day.id]!.hotelTop!.seg} name={movementUiByDay[day.id]!.hotelTop!.name} profile={routeProfile} placement="top" />
                   )}
                   {merged.length === 0 && !dayNoteUi ? (
                     <div
@@ -1755,7 +1686,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                         const nextConnectorTarget = getNextConnectorTarget(merged, idx)
                         const transitPrefill = getConnectorTransitPrefill(day.id, item, nextConnectorTarget)
                         const followedByTransit = isTransitMergedItem(nextConnectorTarget)
-                        const connectorSeg = routeLegs[day.id]?.[assignment.id]
+                        const connectorSeg = movementUiByDay[day.id]?.assignmentConnectors[assignment.id]
+                        const trackMovement = movementUiByDay[day.id]?.tracks[assignment.id]
 
                         const arrowMove = (direction: 'up' | 'down') => {
                           const m = getMergedItems(day.id)
@@ -2079,6 +2011,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                               </button>
                             )}
                           </div>
+                          {trackMovement && <DayPlanSidebarTrackSummary track={trackMovement} />}
                           {connectorSeg && !followedByTransit && (
                             <RouteConnector
                               seg={connectorSeg}
@@ -2317,8 +2250,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                               <TransitItineraryInline legs={transitMeta.legs} t={t} />
                             </div>
                           )}
-                          {!isTransitMergedItem(item) && routeLegs[day.id]?.[res.id] && (
-                            <RouteConnector seg={routeLegs[day.id]![res.id]} profile={routeProfile} />
+                          {!isTransitMergedItem(item) && movementUiByDay[day.id]?.reservationConnectors[res.id] && (
+                            <RouteConnector seg={movementUiByDay[day.id]!.reservationConnectors[res.id]} profile={routeProfile} />
                           )}
                           </React.Fragment>
                         )
@@ -2427,8 +2360,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                       )
                     })
                   )}
-                  {hotelLegs[day.id]?.bottom && (
-                    <HotelRouteConnector seg={hotelLegs[day.id]!.bottom!.seg} name={hotelLegs[day.id]!.bottom!.name} profile={routeProfile} placement="bottom" />
+                  {movementUiByDay[day.id]?.hotelBottom && (
+                    <HotelRouteConnector seg={movementUiByDay[day.id]!.hotelBottom!.seg} name={movementUiByDay[day.id]!.hotelBottom!.name} profile={routeProfile} placement="bottom" />
                   )}
                   {/* Drop-Zone am Listenende — immer vorhanden als Drop-Target */}
                   <div
@@ -2504,27 +2437,11 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                           <RouteIcon size={12} strokeWidth={2} />
                           {t('dayplan.route')}
                         </button>
-                        {/* Open the day's stops as a route in Google Maps (planned order). #1255 */}
-                        <button
+                        {/* Open exportable external movement anchors in Google Maps. Transit
+                            internals are deliberately absent from movementPlanWaypoints. */}
+                        {exportWaypoints.length >= 2 && <button
                           onClick={() => {
-                            // Bookend the Google Maps route with the day's accommodation the
-                            // same way the drawn map route does (routeBookends is null when
-                            // "optimize from accommodation" is off), so hotels aren't dropped
-                            // from the exported route (#1372) — but only when the leg is real:
-                            // no hotel prepended before an early check-in-day stop, none appended
-                            // after a post-check-out stop (#1465).
-                            const dayStops = getDayAssignments(day.id).filter(a => a.place?.lat != null && a.place?.lng != null)
-                            const stops = dayStops.map(a => ({ lat: a.place!.lat!, lng: a.place!.lng! }))
-                            const firstStop = dayStops[0] ? { isPlace: true, time: dayStops[0].place?.place_time ?? null } : undefined
-                            const lastAssignment = dayStops[dayStops.length - 1]
-                            const lastStop = lastAssignment ? { isPlace: true, time: lastAssignment.place?.place_time ?? null } : undefined
-                            const drawMorning = !!routeBookends && shouldDrawMorningLeg(routeBookends, day, firstStop)
-                            const drawEvening = !!routeBookends && shouldDrawEveningLeg(routeBookends, day, lastStop)
-                            const morning = drawMorning && routeBookends?.morning?.place_lat != null && routeBookends?.morning?.place_lng != null
-                              ? { lat: routeBookends.morning.place_lat, lng: routeBookends.morning.place_lng } : null
-                            const evening = drawEvening && routeBookends?.evening?.place_lat != null && routeBookends?.evening?.place_lng != null
-                              ? { lat: routeBookends.evening.place_lat, lng: routeBookends.evening.place_lng } : null
-                            const url = generateGoogleMapsUrl([...(morning ? [morning] : []), ...stops, ...(evening ? [evening] : [])])
+                            const url = generateGoogleMapsUrl(exportWaypoints)
                             if (url) window.open(url, '_blank', 'noopener,noreferrer')
                           }}
                           aria-label={t('planner.openGoogleMaps')}
@@ -2542,7 +2459,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                             <path d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
                             <path d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                           </svg>
-                        </button>
+                        </button>}
                         <button onClick={() => handleOptimize(day.id)} className="bg-surface-hover text-content-secondary" style={{
                           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                           padding: '6px 0', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 500, borderRadius: 8, border: 'none',

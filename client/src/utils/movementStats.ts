@@ -1,6 +1,6 @@
 import type { Assignment, Place, Reservation, RouteSegment } from '../types'
 import { calculatePolylineDistanceMeters, decodePolyline } from './polyline'
-import { calculateTrackStats } from './trackStats'
+import { getTrackMovement } from './trackGeometry'
 
 export type MovementMode = 'walking' | 'driving' | 'cycling'
 export type MovementSource = 'route' | 'hotel-bookend' | 'transit-walk' | 'track'
@@ -188,23 +188,6 @@ export function createTransitWalkContributions(
   return out
 }
 
-function parseTimeOfDayMinutes(value: unknown): number | null {
-  if (typeof value !== 'string') return null
-  const match = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
-  if (!match) return null
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
-  return hours * 60 + minutes
-}
-
-function assignmentDurationSeconds(assignment: Assignment): number | null {
-  const start = parseTimeOfDayMinutes(assignment.place?.place_time)
-  const end = parseTimeOfDayMinutes(assignment.place?.end_time)
-  if (start == null || end == null || end <= start) return null
-  return (end - start) * 60
-}
-
 export function createTrackContributions(
   dayId: number,
   assignments: Assignment[],
@@ -216,17 +199,16 @@ export function createTrackContributions(
     if (assignment.day_id !== dayId) continue
     const placeId = assignment.place_id ?? assignment.place?.id
     if (placeId == null) continue
-    const fullPlace = fullPlaces.get(placeId)
-    if (!fullPlace?.route_geometry) continue
-    const stats = calculateTrackStats(fullPlace.route_geometry)
-    if (!stats) continue
+    const place = fullPlaces.get(placeId) ?? assignment.place
+    const movement = getTrackMovement(place)
+    if (!movement) continue
     out.push({
       key: `track:${dayId}:${assignment.id}`,
-      mode: normalizeMovementMode(fullPlace.transport_mode ?? assignment.place?.transport_mode),
+      mode: movement.mode,
       source: 'track',
       sourceId: assignment.id,
-      durationSeconds: assignmentDurationSeconds(assignment),
-      distanceMeters: stats.distanceMeters,
+      durationSeconds: movement.duration,
+      distanceMeters: movement.distance,
     })
   }
   return out

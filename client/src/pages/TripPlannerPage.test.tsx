@@ -1213,6 +1213,23 @@ describe('TripPlannerPage', () => {
     });
   });
 
+  describe('track-aware transit route visibility', () => {
+    it('enables transit map routes when the sidebar Route control is toggled', async () => {
+      vi.useFakeTimers();
+      seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument());
+      expect(capturedMapViewProps.current.showTransitRoutes).toBe(false);
+
+      await act(async () => capturedDayPlanSidebarProps.current.onToggleRoute?.());
+
+      expect(capturedMapViewProps.current.showTransitRoutes).toBe(true);
+    });
+  });
+
   describe('FE-PAGE-PLANNER-035: onAddReservation covers reservation modal open', () => {
     it('calls onAddReservation to open the ReservationModal', async () => {
       vi.useFakeTimers();

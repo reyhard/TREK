@@ -288,7 +288,7 @@ function getDistanceUnit(): DistanceUnit {
   return useSettingsStore.getState().settings.distance_unit === 'imperial' ? 'imperial' : 'metric'
 }
 
-function formatRouteDistance(meters: number): string {
+export function formatRouteDistance(meters: number): string {
   const unit = getDistanceUnit()
   if (unit === 'metric' && meters < 1000) {
     return `${Math.round(meters)} m`
@@ -296,7 +296,7 @@ function formatRouteDistance(meters: number): string {
   return formatDistance(meters / 1000, unit)
 }
 
-function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   if (h > 0) {
