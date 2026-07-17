@@ -35,6 +35,31 @@ const endpointGeometry = (part: PlannedRoutedPart): [number, number][] => [
 const isAbortError = (error: unknown) =>
   typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'
 
+const isValidPolyline = (coordinates: unknown): coordinates is [number, number][] =>
+  Array.isArray(coordinates) &&
+  coordinates.length >= 2 &&
+  coordinates.every(point =>
+    Array.isArray(point) &&
+    point.length === 2 &&
+    point.every(coordinate => typeof coordinate === 'number' && Number.isFinite(coordinate)),
+  )
+
+const straightLineFallback = (
+  group: PlannedRoutedPart[],
+  profile: ConnectorProfile,
+  waypoints: Array<{ lat: number; lng: number }>,
+): { parts: ResolvedRoutedPart[]; polyline: [number, number][] } => ({
+  polyline: waypoints.map(point => [point.lat, point.lng]),
+  parts: group.map(part => ({
+    ...part,
+    profile,
+    geometry: endpointGeometry(part),
+    routeSegment: null,
+    distance: null,
+    duration: null,
+  })),
+})
+
 async function resolveRoutedGroup(
   group: PlannedRoutedPart[],
   profile: ConnectorProfile,
@@ -47,6 +72,7 @@ async function resolveRoutedGroup(
 
   try {
     const result = await calculateRouteWithLegs(waypoints, { signal, profile })
+    if (!isValidPolyline(result.coordinates)) return straightLineFallback(group, profile, waypoints)
     return {
       polyline: result.coordinates,
       parts: group.map((part, index) => {
@@ -62,18 +88,9 @@ async function resolveRoutedGroup(
       }),
     }
   } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error
     if (isAbortError(error)) throw error
-    return {
-      polyline: waypoints.map(point => [point.lat, point.lng]),
-      parts: group.map(part => ({
-        ...part,
-        profile,
-        geometry: endpointGeometry(part),
-        routeSegment: null,
-        distance: null,
-        duration: null,
-      })),
-    }
+    return straightLineFallback(group, profile, waypoints)
   }
 }
 

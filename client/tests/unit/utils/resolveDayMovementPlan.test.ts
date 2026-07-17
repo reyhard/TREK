@@ -132,11 +132,56 @@ describe('resolveDayMovementPlan', () => {
     ])
   })
 
+  it.each([
+    ['empty', []],
+    ['single-point', [[1, 1]]],
+    ['non-finite', [[1, 1], [Number.NaN, 2]]],
+  ])('falls back when OSRM returns %s coordinates', async (_label, coordinates) => {
+    vi.mocked(calculateRouteWithLegs).mockResolvedValue({
+      coordinates,
+      distance: 3000,
+      duration: 600,
+      legs: [segment(a, b, 1000, 200), segment(b, c, 2000, 400)],
+    })
+
+    const resolved = await resolveDayMovementPlan(plan([first, second]), 'driving')
+
+    expect(resolved.routedPolylines).toEqual([[[1, 1], [2, 2], [3, 3]]])
+    expect(resolved.parts.slice(0, 2)).toEqual([
+      expect.objectContaining({ routeSegment: null, distance: null, duration: null }),
+      expect.objectContaining({ routeSegment: null, distance: null, duration: null }),
+    ])
+  })
+
   it('rethrows abort errors', async () => {
     const error = new DOMException('cancelled', 'AbortError')
     vi.mocked(calculateRouteWithLegs).mockRejectedValue(error)
 
     await expect(resolveDayMovementPlan(plan([first]), 'driving')).rejects.toBe(error)
+  })
+
+  it('rethrows a custom abort reason when the supplied signal is aborted', async () => {
+    const controller = new AbortController()
+    const reason = { code: 'superseded' }
+    controller.abort(reason)
+    vi.mocked(calculateRouteWithLegs).mockRejectedValue(reason)
+
+    await expect(resolveDayMovementPlan(plan([first]), 'driving', controller.signal)).rejects.toBe(reason)
+  })
+
+  it('keeps a valid group polyline when fewer route legs are returned', async () => {
+    vi.mocked(calculateRouteWithLegs).mockResolvedValue({
+      coordinates: [[1, 1], [1.5, 1.5], [3, 3]],
+      distance: 1000,
+      duration: 200,
+      legs: [segment(a, b, 1000, 200)],
+    })
+
+    const resolved = await resolveDayMovementPlan(plan([first, second]), 'driving')
+
+    expect(resolved.routedPolylines).toEqual([[[1, 1], [1.5, 1.5], [3, 3]]])
+    expect(resolved.parts[0]).toMatchObject({ routeSegment: expect.any(Object), distance: 1000, duration: 200 })
+    expect(resolved.parts[1]).toMatchObject({ routeSegment: null, distance: null, duration: null })
   })
 
   it('exposes kind, owner, profile, endpoints, distance and duration on a routed metric part', async () => {
