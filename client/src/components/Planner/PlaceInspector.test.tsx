@@ -546,12 +546,11 @@ describe('PlaceInspector', () => {
   // ── GPX track stats ────────────────────────────────────────────────────────
 
   it('FE-PLANNER-INSPECTOR-036: GPX track stats shown when route_geometry has 2D points', () => {
-    const pts = [[48.8584, 2.2945], [48.8600, 2.3000], [48.8620, 2.3050]];
+    const pts = [[48.8584, 2.2945], [48.86, 2.3], [48.862, 2.305]]
     const p = buildPlace({ id: 302, route_geometry: JSON.stringify(pts) } as any);
-    render(<PlaceInspector {...defaultProps} place={p} />);
-    // Track distance should be visible (e.g. "x.x km" or "xxx m")
-    const { container } = render(<PlaceInspector {...defaultProps} place={p} />);
-    expect(container.querySelector('svg')).toBeTruthy();
+    render(<PlaceInspector {...defaultProps} place={p} />)
+    expect(screen.getByText('Track Stats')).toBeInTheDocument()
+    expect(screen.getByText(/\d+(?:\.\d+)? (?:m|km)/)).toBeInTheDocument()
   });
 
   it('FE-PLANNER-INSPECTOR-037: GPX track stats shown with 3D points (elevation data)', () => {
@@ -566,6 +565,12 @@ describe('PlaceInspector', () => {
     // Elevation stats should show max elevation 130m
     expect(screen.getByText(/130 m/)).toBeTruthy();
   });
+
+  it('FE-PLANNER-INSPECTOR-037b: malformed GPX geometry hides Track Stats without crashing', () => {
+    const p = buildPlace({ id: 304, route_geometry: '{bad json' } as any)
+    render(<PlaceInspector {...defaultProps} place={p} />)
+    expect(screen.queryByText('Track Stats')).not.toBeInTheDocument()
+  })
 
   // ── ParticipantsBox interactions ───────────────────────────────────────────
 
