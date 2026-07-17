@@ -102,8 +102,13 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
     .filter(assignment => assignment.day_id === day.id)
     .slice()
     .sort((a, b) => a.order_index - b.order_index)
+  const positionedReservations = reservations.map(reservation =>
+    reservation.day_plan_position != null && !reservation.day_positions
+      ? { ...reservation, day_positions: { [day.id]: reservation.day_plan_position } }
+      : reservation,
+  )
   const transports = getTransportForDay({
-    reservations,
+    reservations: positionedReservations,
     dayId: day.id,
     dayAssignmentIds: locatedAssignments.map(assignment => assignment.id),
     days,

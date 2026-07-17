@@ -1,15 +1,46 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTripStore } from '../store/tripStore'
 import { useSettingsStore } from '../store/settingsStore'
-import { calculateRouteWithLegs, withHotelBookends } from '../components/Map/RouteCalculator'
-import { getTransportRouteEndpoints } from '../utils/dayMerge'
-import { getDayBookendHotels, shouldDrawMorningLeg, shouldDrawEveningLeg } from '../utils/dayOrder'
+import { buildDayMovementPlan } from '../utils/dayMovementPlan'
+import { resolveDayMovementPlan } from '../utils/resolveDayMovementPlan'
 import type { TripStoreState } from '../store/tripStore'
-import type { RouteSegment, RouteResult, Accommodation } from '../types'
-
-const TRANSPORT_TYPES = ['flight', 'train', 'bus', 'car', 'taxi', 'bicycle', 'cruise', 'ferry', 'transit', 'transport_other']
+import type { DayMovementPlan, PlannedRoutedPart } from '../utils/dayMovementPlan'
+import type { ResolvedMovementPart } from '../utils/resolveDayMovementPlan'
+import type { RouteSegment, RouteResult, Accommodation, Day } from '../types'
 
 const NO_ACCOMMODATIONS: Accommodation[] = []
+const EMPTY_ELIGIBILITY = {
+  hasRoutedConnectors: false,
+  hasTracks: false,
+  hasTransit: false,
+}
+
+type RouteEligibility = Pick<DayMovementPlan, 'hasRoutedConnectors' | 'hasTracks' | 'hasTransit'>
+
+function straightConnectorPolylines(plan: DayMovementPlan): [number, number][][] {
+  const polylines: [number, number][][] = []
+  let current: [number, number][] = []
+  let previous: PlannedRoutedPart | null = null
+  const flush = () => {
+    if (current.length >= 2) polylines.push(current)
+    current = []
+    previous = null
+  }
+  for (const part of plan.parts) {
+    if (part.kind !== 'routed') {
+      flush()
+      continue
+    }
+    if (!previous || previous.to.lat !== part.from.lat || previous.to.lng !== part.from.lng) {
+      flush()
+      current.push([part.from.lat, part.from.lng])
+    }
+    current.push([part.to.lat, part.to.lng])
+    previous = part
+  }
+  flush()
+  return polylines
+}
 
 /**
  * Manages route calculation state for a selected day. Extracts geo-coded waypoints from
@@ -20,8 +51,11 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   const [route, setRoute] = useState<[number, number][][] | null>(null)
   const [routeInfo, setRouteInfo] = useState<RouteResult | null>(null)
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([])
+  const [movementParts, setMovementParts] = useState<ResolvedMovementPart[]>([])
+  const [routeEligibility, setRouteEligibility] = useState<RouteEligibility>(EMPTY_ELIGIBILITY)
   const routeAbortRef = useRef<AbortController | null>(null)
   const reservationsForSignature = useTripStore((s) => s.reservations)
+  const placesForSignature = useTripStore((s) => s.places)
   // Draw the day's accommodation bookend legs (hotel → first stop, last stop →
   // hotel) unless the user turned the setting off — same gate as the sidebar.
   const optimizeFromAccommodation = useSettingsStore((s) => s.settings.optimize_from_accommodation)
@@ -32,157 +66,53 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   const updateRouteForDay = useCallback(async (dayId: number | null) => {
     if (routeAbortRef.current) routeAbortRef.current.abort()
     // Route is manual: only compute when explicitly enabled (the "show route" toggle).
-    if (!dayId || !enabled) { setRoute(null); setRouteSegments([]); return }
+    if (!dayId || !enabled) {
+      setRoute(null)
+      setRouteSegments([])
+      setMovementParts([])
+      setRouteEligibility(EMPTY_ELIGIBILITY)
+      return
+    }
     // Read directly from store (not a render-phase ref) so callers after optimistic
     // updates or non-optimistic deletes always see the latest assignments.
-    const currentAssignments = useTripStore.getState().assignments || {}
-    const da = (currentAssignments[String(dayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
-    const allReservations = useTripStore.getState().reservations || []
-    const allDays = useTripStore.getState().days || []
-    const dayOrder = (id: number | null | undefined): number | null => {
-      if (id == null) return null
-      const d = allDays.find(x => x.id === id)
-      return d ? ((d as any).day_number ?? allDays.indexOf(d)) : null
-    }
-    const thisOrder = dayOrder(dayId)
-
-    // Transport reservations for this day with a known position — mirrors getTransportForDay semantics
-    const dayTransports = thisOrder == null ? [] : allReservations.filter(r => {
-      if (!TRANSPORT_TYPES.includes(r.type)) return false
-      const startId = r.day_id
-      if (startId == null) return false
-      const endId = r.end_day_id ?? startId
-      if (startId === endId) {
-        if (startId !== dayId) return false
-      } else {
-        const startOrder = dayOrder(startId)
-        const endOrder = dayOrder(endId)
-        if (startOrder == null || endOrder == null) return false
-        if (thisOrder < startOrder || thisOrder > endOrder) return false
-      }
-      const pos = r.day_positions?.[dayId] ?? r.day_positions?.[String(dayId)] ?? r.day_plan_position
-      return pos != null
+    const state = useTripStore.getState()
+    const allDays = state.days || []
+    const day = allDays.find(candidate => candidate.id === dayId) ?? ({ id: dayId } as Day)
+    const plan = buildDayMovementPlan({
+      day,
+      days: allDays.length ? allDays : [day],
+      assignments: state.assignments?.[String(dayId)] || [],
+      places: state.places || [],
+      reservations: state.reservations || [],
+      accommodations,
+      optimizeFromAccommodation,
     })
-
-    // Build a unified list of places + transports sorted by effective position.
-    type Entry =
-      | { kind: 'place'; lat: number; lng: number; pos: number; time: string | null }
-      | { kind: 'transport'; from: { lat: number; lng: number } | null; to: { lat: number; lng: number } | null; pos: number }
-    const entries: Entry[] = [
-      ...da.filter(a => a.place?.lat != null && a.place?.lng != null && Number.isFinite(Number(a.place.lat)) && Number.isFinite(Number(a.place.lng))).map(a => ({
-        kind: 'place' as const, lat: a.place.lat!, lng: a.place.lng!, pos: a.order_index, time: a.place?.place_time ?? null,
-      })),
-      ...dayTransports.map(r => {
-        const { from, to } = getTransportRouteEndpoints(r, dayId)
-        return {
-          kind: 'transport' as const,
-          from,
-          to,
-          pos: (r.day_positions?.[dayId] ?? r.day_positions?.[String(dayId)] ?? r.day_plan_position) as number,
-        }
-      }),
-    ].sort((a, b) => a.pos - b.pos)
-
-    // Group located places into driving runs.
-    // - A transport WITH a location anchors the route to its departure point (you
-    //   travel there), then breaks the run (you don't drive the flight/train); its
-    //   arrival point starts the next run.
-    // - A transport WITHOUT a location is ignored entirely — the places around it
-    //   connect directly, as if the booking weren't there.
-    // A run is only a real drive when it contains at least one actual place. Two
-    // back-to-back transports (e.g. two flights on one day) would otherwise pair the
-    // first's arrival point with the second's departure point into a phantom
-    // [airport → airport] road route — that is the flight itself, not a drive (#1394).
-    const runs: { lat: number; lng: number }[][] = []
-    let currentRun: { lat: number; lng: number }[] = []
-    let runHasPlace = false
-    for (const entry of entries) {
-      if (entry.kind === 'place') {
-        currentRun.push({ lat: entry.lat, lng: entry.lng })
-        runHasPlace = true
-      } else if (entry.from || entry.to) {
-        if (entry.from) currentRun.push(entry.from)
-        if (currentRun.length >= 2 && runHasPlace) runs.push(currentRun)
-        currentRun = []
-        runHasPlace = false
-        if (entry.to) currentRun.push(entry.to)
-      }
+    const eligibility: RouteEligibility = {
+      hasRoutedConnectors: plan.hasRoutedConnectors,
+      hasTracks: plan.hasTracks,
+      hasTransit: plan.hasTransit,
     }
-    if (currentRun.length >= 2 && runHasPlace) runs.push(currentRun)
-
-    // Bookend the route with the day's accommodation: a hotel → first-stop run and
-    // a last-stop → hotel run, so the drawn line matches the sidebar's hotel legs.
-    // getDayBookendHotels returns the morning/evening hotel (they differ only on a
-    // transfer day) and already filters to accommodations that have coordinates.
-    const day = allDays.find(d => d.id === dayId)
-    const bookends = day && optimizeFromAccommodation !== false
-      ? getDayBookendHotels(day, allDays, accommodations)
-      : null
-    const flatPts: { lat: number; lng: number }[] = []
-    for (const e of entries) {
-      if (e.kind === 'place') flatPts.push({ lat: e.lat, lng: e.lng })
-      else { if (e.from) flatPts.push(e.from); if (e.to) flatPts.push(e.to) }
+    setRouteEligibility(eligibility)
+    setMovementParts(plan.parts)
+    if (!plan.hasRoutedConnectors) {
+      setRoute(null)
+      setRouteSegments([])
+      return
     }
-    const hotelPt = (a?: Accommodation) =>
-      a && a.place_lat != null && a.place_lng != null ? { lat: a.place_lat, lng: a.place_lng } : null
-    // Only draw a hotel bookend when the leg is a real drive. You start/end the day at a hotel
-    // when you slept there / sleep there tonight; on the hotel's own check-in or check-out day
-    // the leg holds only when the edge stop is a PLACE timed after check-in / before check-out
-    // (you dropped bags first, or swung back before checking out). A place before check-in (an
-    // airport you reach first, #1465), a later "home" stop on the checkout day (#1465), or a
-    // transport endpoint on an arrival/departure day (#1321, S7) all draw no bookend.
-    const contributes = (e: Entry) => e.kind === 'place' || !!e.from || !!e.to
-    const firstStop = entries.find(contributes)
-    const lastStop = [...entries].reverse().find(contributes)
-    const edgeInfo = (e?: Entry) =>
-      e ? { isPlace: e.kind === 'place', time: e.kind === 'place' ? e.time : null } : undefined
-    const drawMorning = !!bookends && !!day && shouldDrawMorningLeg(bookends, day, edgeInfo(firstStop))
-    const drawEvening = !!bookends && !!day && shouldDrawEveningLeg(bookends, day, edgeInfo(lastStop))
-    const runsWithHotel = withHotelBookends(
-      runs,
-      flatPts[0],
-      flatPts[flatPts.length - 1],
-      drawMorning ? hotelPt(bookends?.morning) : null,
-      drawEvening ? hotelPt(bookends?.evening) : null,
-    )
-
-    // Transfer day with no activities: you check out of one accommodation and into
-    // another, so there are no waypoints for withHotelBookends to attach a leg to.
-    // Draw the hotel → hotel transfer directly. Gated on both bookends being real
-    // (drawMorning/drawEvening already exclude the #1321 arrival fallback) and the two
-    // hotels being distinct, so an ordinary same-hotel rest day still draws nothing.
-    if (runsWithHotel.length === 0 && drawMorning && drawEvening) {
-      const m = hotelPt(bookends?.morning)
-      const e = hotelPt(bookends?.evening)
-      if (m && e && (m.lat !== e.lat || m.lng !== e.lng)) runsWithHotel.push([m, e])
-    }
-
-    const straightLines = (): [number, number][][] =>
-      runsWithHotel.map(r => r.map(p => [p.lat, p.lng] as [number, number]))
-
-    if (runsWithHotel.length === 0) { setRoute(null); setRouteSegments([]); return }
-
-    // Draw straight lines immediately for snappiness, then upgrade to the real
-    // OSRM road geometry.
-    setRoute(straightLines())
+    setRoute(straightConnectorPolylines(plan))
+    setRouteSegments([])
 
     const controller = new AbortController()
     routeAbortRef.current = controller
     try {
-      const polylines: [number, number][][] = []
-      const allLegs: RouteSegment[] = []
-      for (const run of runsWithHotel) {
-        try {
-          const r = await calculateRouteWithLegs(run, { signal: controller.signal, profile })
-          polylines.push(r.coordinates.length >= 2 ? r.coordinates : run.map(p => [p.lat, p.lng] as [number, number]))
-          allLegs.push(...r.legs)
-        } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') throw err
-          // OSRM failed for this run — fall back to a straight line, no times.
-          polylines.push(run.map(p => [p.lat, p.lng] as [number, number]))
-        }
+      const resolved = await resolveDayMovementPlan(plan, profile, controller.signal)
+      if (!controller.signal.aborted) {
+        setRoute(resolved.routedPolylines.length ? resolved.routedPolylines : null)
+        setRouteSegments(resolved.parts.flatMap(part =>
+          part.kind === 'routed' && part.routeSegment ? [part.routeSegment] : [],
+        ))
+        setMovementParts(resolved.parts)
       }
-      if (!controller.signal.aborted) { setRoute(polylines); setRouteSegments(allLegs) }
     } catch (err: unknown) {
       // Aborted (day changed) — newer call owns the state. Anything else: keep straight lines.
       if (!(err instanceof Error) || err.name !== 'AbortError') setRouteSegments([])
@@ -194,7 +124,6 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   const transportSignature = useMemo(() => {
     if (!selectedDayId) return ''
     return reservationsForSignature
-      .filter(r => TRANSPORT_TYPES.includes(r.type))
       .map(r => {
         const pos = r.day_positions?.[selectedDayId] ?? r.day_positions?.[String(selectedDayId)] ?? r.day_plan_position
         // Include endpoints so adding/moving a departure/arrival location re-routes.
@@ -205,13 +134,45 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
       .join('|')
   }, [reservationsForSignature, selectedDayId])
 
+  const fullPlaceSignature = useMemo(() => {
+    if (!selectedDayId) return ''
+    const placesById = new Map(placesForSignature.map(place => [place.id, place]))
+    return (tripStore.assignments?.[String(selectedDayId)] || []).map(assignment => {
+      const place = placesById.get(assignment.place.id) ?? assignment.place
+      return [
+        assignment.id,
+        place.lat ?? '',
+        place.lng ?? '',
+        place.route_geometry ?? '',
+        place.place_time ?? '',
+        place.end_time ?? '',
+        place.transport_mode ?? '',
+      ].join(':')
+    }).join('|')
+  }, [placesForSignature, selectedDayId, tripStore.assignments])
+
   // Recalculate when assignments or transport positions for the SELECTED day change
   const selectedDayAssignments = selectedDayId ? tripStore.assignments?.[String(selectedDayId)] : null
   useEffect(() => {
-    if (!selectedDayId) { setRoute(null); setRouteSegments([]); return }
+    if (!selectedDayId) {
+      setRoute(null)
+      setRouteSegments([])
+      setMovementParts([])
+      setRouteEligibility(EMPTY_ELIGIBILITY)
+      return
+    }
     updateRouteForDay(selectedDayId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDayId, selectedDayAssignments, transportSignature, enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
+  }, [selectedDayId, selectedDayAssignments, transportSignature, fullPlaceSignature, enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
 
-  return { route, routeSegments, routeInfo, setRoute, setRouteInfo, updateRouteForDay }
+  return {
+    route,
+    routeSegments,
+    movementParts,
+    routeEligibility,
+    routeInfo,
+    setRoute,
+    setRouteInfo,
+    updateRouteForDay,
+  }
 }

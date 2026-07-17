@@ -83,6 +83,24 @@ describe('buildDayMovementPlan', () => {
     expect((plan.parts[2] as PlannedRoutedPart).placement).toEqual({ kind: 'after-reservation', reservationId: 20 })
   })
 
+  it('uses legacy day_plan_position as the effective timeline position', () => {
+    const a = place(1, 52, 5)
+    const b = place(2, 53, 6)
+    const r = reservation(20, {
+      day_positions: undefined,
+      day_plan_position: 0,
+      endpoints: [endpoint('from', 50, 3), endpoint('to', 51, 4)],
+    })
+    const plan = build({
+      assignments: [assignment(11, a, 1), assignment(12, b, 2)],
+      places: [a, b],
+      reservations: [r],
+    })
+    expect(plan.parts.map(part => part.kind)).toEqual(['transit', 'routed', 'routed'])
+    expect((plan.parts[1] as PlannedRoutedPart).from).toMatchObject({ lat: 51, lng: 4, source: 'transport-to' })
+    expect((plan.parts[1] as PlannedRoutedPart).to).toMatchObject({ lat: 52, lng: 5, source: 'place' })
+  })
+
   it('does not route between consecutive located transports', () => {
     const a = place(1, 52, 5)
     const b = place(2, 54, 7)

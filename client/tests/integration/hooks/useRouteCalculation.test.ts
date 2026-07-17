@@ -41,9 +41,6 @@ const MOCK_SEGMENTS: RouteSegment[] = [
   },
 ];
 
-// Empty coordinates make the hook fall back to the straight-line geometry,
-// so the `route` assertions keep checking the raw waypoints while the legs
-// still flow through to `routeSegments`.
 const MOCK_ROUTE_WITH_LEGS = {
   coordinates: [] as [number, number][],
   distance: 343000,
@@ -56,7 +53,12 @@ describe('useRouteCalculation', () => {
     vi.clearAllMocks();
     // Reset trip store assignments so each test starts clean
     useTripStore.setState({ assignments: {} } as any);
-    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_ROUTE_WITH_LEGS);
+    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockImplementation(
+      (waypoints: Array<{ lat: number; lng: number }>) => Promise.resolve({
+        ...MOCK_ROUTE_WITH_LEGS,
+        coordinates: waypoints.map(({ lat, lng }) => [lat, lng] as [number, number]),
+      }),
+    );
   });
 
   it('FE-HOOK-ROUTE-001: with no selectedDayId, route is null', () => {
@@ -301,13 +303,14 @@ describe('useRouteCalculation', () => {
 
     await act(async () => {});
 
-    const legs = (result.current.route ?? []).map(run => run.map(p => `${p[0]},${p[1]}`));
+    const points = (result.current.route ?? []).flat();
     // The spurious morning bookend [hotel → departure airport] must be gone.
-    expect(legs).not.toContainEqual([`${hotel.lat},${hotel.lng}`, `${dep.lat},${dep.lng}`]);
+    expect(points.findIndex(point => point[0] === hotel.lat && point[1] === hotel.lng))
+      .not.toBeLessThan(points.findIndex(point => point[0] === dep.lat && point[1] === dep.lng));
     // The route starts the day's run at the arrival airport, not the hotel.
     expect(result.current.route?.[0]?.[0]).toEqual([arr.lat, arr.lng]);
     // The evening leg [last activity → hotel] is still drawn.
-    expect(legs).toContainEqual([`${actB.lat},${actB.lng}`, `${hotel.lat},${hotel.lng}`]);
+    expect(points.slice(-2)).toEqual([[actB.lat, actB.lng], [hotel.lat, hotel.lng]]);
   });
 
   it('FE-HOOK-ROUTE-015: day-1 with no transport keeps the hotel → first-activity leg', async () => {
@@ -332,9 +335,9 @@ describe('useRouteCalculation', () => {
 
     await act(async () => {});
 
-    const legs = (result.current.route ?? []).map(run => run.map(p => `${p[0]},${p[1]}`));
-    expect(legs).toContainEqual([`${hotel.lat},${hotel.lng}`, `${actA.lat},${actA.lng}`]);
-    expect(legs).toContainEqual([`${actB.lat},${actB.lng}`, `${hotel.lat},${hotel.lng}`]);
+    const points = (result.current.route ?? []).flat();
+    expect(points.slice(0, 2)).toEqual([[hotel.lat, hotel.lng], [actA.lat, actA.lng]]);
+    expect(points.slice(-2)).toEqual([[actB.lat, actB.lng], [hotel.lat, hotel.lng]]);
   });
 
   it('FE-HOOK-ROUTE-016: #1297 transfer day with no activities draws the hotel → hotel leg', async () => {
@@ -408,12 +411,12 @@ describe('useRouteCalculation', () => {
     );
     await act(async () => {});
 
-    const legs = (result.current.route ?? []).map(run => run.map(p => `${p[0]},${p[1]}`));
+    const points = (result.current.route ?? []).flat();
     // No spurious morning bookend [hotel → airport].
-    expect(legs).not.toContainEqual([`${hotel.lat},${hotel.lng}`, `${airport.lat},${airport.lng}`]);
+    expect(points.slice(0, 2)).not.toEqual([[hotel.lat, hotel.lng], [airport.lat, airport.lng]]);
     // The day starts at the airport, and still ends at the hotel for the night.
     expect(result.current.route?.[0]?.[0]).toEqual([airport.lat, airport.lng]);
-    expect(legs).toContainEqual([`${museum.lat},${museum.lng}`, `${hotel.lat},${hotel.lng}`]);
+    expect(points.slice(-2)).toEqual([[museum.lat, museum.lng], [hotel.lat, hotel.lng]]);
   });
 
   it('FE-HOOK-ROUTE-021: #1465 check-out day with a place after check-out draws no last-stop → hotel leg', async () => {
@@ -438,11 +441,11 @@ describe('useRouteCalculation', () => {
     );
     await act(async () => {});
 
-    const legs = (result.current.route ?? []).map(run => run.map(p => `${p[0]},${p[1]}`));
+    const points = (result.current.route ?? []).flat();
     // No spurious evening bookend [home → hotel].
-    expect(legs).not.toContainEqual([`${home.lat},${home.lng}`, `${hotel.lat},${hotel.lng}`]);
+    expect(points.slice(-2)).not.toEqual([[home.lat, home.lng], [hotel.lat, hotel.lng]]);
     // The morning leg from the slept-in hotel is still drawn, and the day ends at home.
-    expect(legs).toContainEqual([`${hotel.lat},${hotel.lng}`, `${museum.lat},${museum.lng}`]);
+    expect(points.slice(0, 2)).toEqual([[hotel.lat, hotel.lng], [museum.lat, museum.lng]]);
     const flat = result.current.route ?? [];
     expect(flat[flat.length - 1]?.[flat[flat.length - 1].length - 1]).toEqual([home.lat, home.lng]);
   });
@@ -515,5 +518,180 @@ describe('useRouteCalculation', () => {
     // Before the fix this produced a bogus [flight1.arrival → flight2.departure] leg.
     expect(result.current.route).toBeNull();
     expect(result.current.routeSegments).toEqual([]);
+  });
+
+  it('routes only the connectors around a timed track and exposes the track movement', async () => {
+    const a = buildPlace({ lat: 52, lng: 5 });
+    const track = buildPlace({
+      lat: 52.1,
+      lng: 5.1,
+      route_geometry: JSON.stringify([[52.2, 5.2], [52.25, 5.25], [52.3, 5.3]]),
+      place_time: '09:00',
+      end_time: '11:00',
+      transport_mode: 'walking',
+    });
+    const b = buildPlace({ lat: 52.4, lng: 5.4 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: a }),
+      buildAssignment({ day_id: 5, order_index: 1, place: track }),
+      buildAssignment({ day_id: 5, order_index: 2, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({
+      assignments: store.assignments,
+      places: [a, track, b],
+      reservations: [],
+      days: [{ id: 5, day_number: 1 }],
+    } as any);
+
+    const firstSegment = { ...MOCK_SEGMENTS[0], distance: 1000, duration: 100 };
+    const secondSegment = { ...MOCK_SEGMENTS[0], distance: 2000, duration: 200 };
+    (calculateRouteWithLegs as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ ...MOCK_ROUTE_WITH_LEGS, coordinates: [[52, 5], [52.2, 5.2]], legs: [firstSegment] })
+      .mockResolvedValueOnce({ ...MOCK_ROUTE_WITH_LEGS, coordinates: [[52.3, 5.3], [52.4, 5.4]], legs: [secondSegment] });
+
+    const { result } = renderHook(() =>
+      useRouteCalculation(store, 5, true, 'driving')
+    );
+    await act(async () => {});
+
+    expect(calculateRouteWithLegs).toHaveBeenCalledTimes(2);
+    expect(calculateRouteWithLegs).toHaveBeenNthCalledWith(
+      1,
+      [{ lat: a.lat, lng: a.lng }, { lat: 52.2, lng: 5.2 }],
+      expect.objectContaining({ profile: 'driving' }),
+    );
+    expect(calculateRouteWithLegs).toHaveBeenNthCalledWith(
+      2,
+      [{ lat: 52.3, lng: 5.3 }, { lat: b.lat, lng: b.lng }],
+      expect.objectContaining({ profile: 'driving' }),
+    );
+    expect(result.current.route).toEqual([
+      [[52, 5], [52.2, 5.2]],
+      [[52.3, 5.3], [52.4, 5.4]],
+    ]);
+    expect(result.current.route?.flat()).not.toContainEqual([52.25, 5.25]);
+    expect(result.current.routeSegments).toEqual([firstSegment, secondSegment]);
+    expect(result.current.movementParts.filter(part => part.kind === 'track')).toHaveLength(1);
+    expect(result.current.movementParts.find(part => part.kind === 'track')).toMatchObject({
+      assignmentId: assignments[1].id,
+      duration: 7200,
+      durationSource: 'poi-times',
+      mode: 'walking',
+    });
+    expect(result.current.routeEligibility).toEqual({
+      hasRoutedConnectors: true,
+      hasTracks: true,
+      hasTransit: false,
+    });
+  });
+
+  it('changes connector profile without changing intrinsic track metrics', async () => {
+    const a = buildPlace({ lat: 52, lng: 5 });
+    const track = buildPlace({
+      route_geometry: JSON.stringify([[52.2, 5.2], [52.3, 5.3]]),
+      place_time: null,
+      end_time: null,
+      transport_mode: 'cycling',
+    });
+    const b = buildPlace({ lat: 52.4, lng: 5.4 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: a }),
+      buildAssignment({ day_id: 5, order_index: 1, place: track }),
+      buildAssignment({ day_id: 5, order_index: 2, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, track, b], reservations: [], days: [{ id: 5 }] } as any);
+
+    const { result, rerender } = renderHook(
+      ({ profile }: { profile: 'driving' | 'walking' }) => useRouteCalculation(store, 5, true, profile),
+      { initialProps: { profile: 'driving' as const } },
+    );
+    await act(async () => {});
+    const drivingTrack = result.current.movementParts.find(part => part.kind === 'track');
+
+    await act(async () => rerender({ profile: 'walking' }));
+    await act(async () => {});
+    const walkingTrack = result.current.movementParts.find(part => part.kind === 'track');
+
+    expect(calculateRouteWithLegs).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ profile: 'driving' }));
+    expect(calculateRouteWithLegs).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ profile: 'walking' }));
+    expect(walkingTrack).toMatchObject({
+      distance: drivingTrack?.distance,
+      duration: drivingTrack?.duration,
+      durationSource: drivingTrack?.durationSource,
+      mode: 'cycling',
+    });
+  });
+
+  it('recalculates connector origins when subscribed full-place geometry changes', async () => {
+    const a = buildPlace({ lat: 52, lng: 5 });
+    const embeddedTrack = buildPlace({ lat: 52.1, lng: 5.1, route_geometry: null });
+    const fullTrack = { ...embeddedTrack, route_geometry: JSON.stringify([[52.2, 5.2], [52.3, 5.3]]) };
+    const b = buildPlace({ lat: 52.4, lng: 5.4 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: a }),
+      buildAssignment({ day_id: 5, order_index: 1, place: embeddedTrack }),
+      buildAssignment({ day_id: 5, order_index: 2, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, fullTrack, b], reservations: [], days: [{ id: 5 }] } as any);
+    renderHook(() => useRouteCalculation(store, 5));
+    await act(async () => {});
+    vi.mocked(calculateRouteWithLegs).mockClear();
+
+    await act(async () => {
+      useTripStore.setState({
+        places: [a, { ...fullTrack, route_geometry: JSON.stringify([[52.2, 5.2], [52.35, 5.35]]) }, b],
+      } as any);
+    });
+    await act(async () => {});
+
+    expect(calculateRouteWithLegs).toHaveBeenCalledWith(
+      [{ lat: 52.35, lng: 5.35 }, { lat: b.lat, lng: b.lng }],
+      expect.objectContaining({ profile: 'driving' }),
+    );
+  });
+
+  it('treats malformed track geometry as an ordinary point', async () => {
+    const malformed = buildPlace({ lat: 10, lng: 11, route_geometry: JSON.stringify([[1, 2], ['bad', 3]]) });
+    const b = buildPlace({ lat: 20, lng: 21 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: malformed }),
+      buildAssignment({ day_id: 5, order_index: 1, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [malformed, b], reservations: [], days: [{ id: 5 }] } as any);
+
+    const { result } = renderHook(() => useRouteCalculation(store, 5));
+    await act(async () => {});
+
+    expect(calculateRouteWithLegs).toHaveBeenCalledWith(
+      [{ lat: 10, lng: 11 }, { lat: 20, lng: 21 }],
+      expect.objectContaining({ profile: 'driving' }),
+    );
+    expect(result.current.movementParts.some(part => part.kind === 'track')).toBe(false);
+  });
+
+  it('marks a transit-only day eligible without drawing connector geometry', async () => {
+    const store = { assignments: { '5': [] } } as unknown as TripStoreState;
+    useTripStore.setState({
+      assignments: store.assignments,
+      places: [],
+      reservations: [{ id: 9, type: 'transit', day_id: 5, day_positions: { 5: 0 }, endpoints: [] }],
+      days: [{ id: 5, day_number: 1 }],
+    } as any);
+
+    const { result } = renderHook(() => useRouteCalculation(store, 5));
+    await act(async () => {});
+
+    expect(result.current.route).toBeNull();
+    expect(result.current.routeSegments).toEqual([]);
+    expect(result.current.movementParts).toEqual([expect.objectContaining({ kind: 'transit', reservationId: 9 })]);
+    expect(result.current.routeEligibility).toEqual({
+      hasRoutedConnectors: false,
+      hasTracks: false,
+      hasTransit: true,
+    });
   });
 });
