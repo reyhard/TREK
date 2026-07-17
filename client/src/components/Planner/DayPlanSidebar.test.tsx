@@ -29,6 +29,10 @@ const routeCalculatorMocks = vi.hoisted(() => ({
   calculateRouteWithLegs: vi.fn(),
 }))
 
+const resolverMocks = vi.hoisted(() => ({
+  resolveDayMovementPlan: vi.fn(),
+}))
+
 // ── Module mocks ────────────────────────────────────────────────────────────
 
 vi.mock('../../api/client', async (importOriginal) => {
@@ -57,6 +61,12 @@ vi.mock('../Map/RouteCalculator', () => ({
   formatRouteDistance: (meters: number) => meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`,
   formatDuration: (seconds: number) => `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`,
 }))
+
+vi.mock('../../utils/resolveDayMovementPlan', async (importOriginal) => {
+  const actual = await importOriginal() as any
+  resolverMocks.resolveDayMovementPlan.mockImplementation(actual.resolveDayMovementPlan)
+  return { ...actual, resolveDayMovementPlan: resolverMocks.resolveDayMovementPlan }
+})
 
 function defaultRouteWithLegsImplementation(waypoints: any[], options: { profile?: string } = {}) {
   const duration = options.profile === 'walking' ? 1500 : 600
@@ -2058,7 +2068,7 @@ describe('DayPlanSidebar', () => {
       days: [day], places: [routePlace, trackPlace], assignments, reservations: [transit],
       selectedDayId: 10, routeShown: true, routeProfile: 'walking',
     })} />)
-    expect(await screen.findByText('1 h 29 min · 3.4 km')).toBeInTheDocument()
+    expect(await screen.findByText('42 min · 3.4 km')).toBeInTheDocument()
   })
 
   it('FE-PLANNER-DAYPLAN-111: movement row shows Calculating while current route metrics are unresolved', async () => {
@@ -2213,7 +2223,7 @@ describe('DayPlanSidebar', () => {
       days: [day], places: [track], assignments, selectedDayId: 10,
       routeShown: true, routeProfile: 'walking',
     })} />)
-    expect(await screen.findByText('1 h 0 min · 1.1 km')).toBeInTheDocument()
+    expect(await screen.findByText('13 min · 1.1 km')).toBeInTheDocument()
   })
 
   it('renders scheduled track movement independently from the driving connector profile', async () => {
@@ -2279,6 +2289,29 @@ describe('DayPlanSidebar', () => {
     expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
     expect(screen.getByTestId('track-summary-2')).toHaveTextContent('685 m')
     expect(await screen.findByText('25 min')).toBeInTheDocument()
+  })
+
+  it('retains intrinsic track UI and marks connector metrics partial after an unexpected resolver rejection', async () => {
+    resolverMocks.resolveDayMovementPlan.mockRejectedValueOnce(new Error('resolver failed unexpectedly'))
+    const track = buildPlace({
+      id: 2, name: 'Dune trail', lat: 52, lng: 5,
+      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
+      place_time: '09:00', end_time: '10:00', transport_mode: 'walking',
+    } as any)
+    const after = buildPlace({ id: 3, name: 'Beach cafe', lat: 52, lng: 5.02 })
+    const day = buildDay({ id: 10 })
+    const dayAssignments = [track, after].map((place, index) => buildAssignment({
+      id: index + 2, day_id: 10, order_index: index, place,
+    }))
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [track, after], assignments: { '10': dayAssignments },
+      selectedDayId: 10, routeShown: true, routeProfile: 'walking',
+    })} />)
+
+    expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
+    const total = await screen.findByLabelText('Walking movement total')
+    expect(total).toHaveAttribute('title', expect.stringContaining('incomplete movement statistics'))
   })
 
   it('FE-PLANNER-DAYPLAN-117: a mobile transit-only day can toggle Route and show walking movement', async () => {

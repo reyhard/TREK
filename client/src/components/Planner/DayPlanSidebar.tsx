@@ -43,7 +43,7 @@ import { getConnectorTransitPrefill, getNextConnectorTarget, isTransitMergedItem
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import { DayPlanSidebarTrackSummary } from './DayPlanSidebarTrackSummary'
 import DayMovementTotalRow, { type RouteMetricStatus } from './DayMovementTotalRow'
-import { buildDayMovementPlan, type TrackMovementPart } from '../../utils/dayMovementPlan'
+import { buildDayMovementPlan, type DayMovementPlan, type TrackMovementPart } from '../../utils/dayMovementPlan'
 import { resolveDayMovementPlan } from '../../utils/resolveDayMovementPlan'
 import {
   calculateDayMovementStats,
@@ -65,6 +65,18 @@ interface DayMovementUi {
   tracks: Record<number, TrackMovementPart>
   hotelTop?: { seg: RouteSegment; name: string }
   hotelBottom?: { seg: RouteSegment; name: string }
+}
+
+function indexPureTrackParts(plan: DayMovementPlan): DayMovementUi {
+  const ui: DayMovementUi = {
+    assignmentConnectors: {},
+    reservationConnectors: {},
+    tracks: {},
+  }
+  for (const part of plan.parts) {
+    if (part.kind === 'track') ui.tracks[part.assignmentId] = part
+  }
+  return ui
 }
 
 function hasValidRouteMetrics(segment: RouteSegment | undefined): segment is RouteSegment {
@@ -500,20 +512,18 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
         try {
           resolved = await resolveDayMovementPlan(plan, routeProfile, controller.signal)
         } catch (error) {
-          if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) return
+          if (controller.signal.aborted) return
+          movementByDay[dayId] = indexPureTrackParts(plan)
+          metricStates[dayId] = {
+            status: plan.hasRoutedConnectors ? 'partial' : 'complete',
+            expected: plan.hasRoutedConnectors,
+          }
           continue
         }
-        const ui: DayMovementUi = {
-          assignmentConnectors: {},
-          reservationConnectors: {},
-          tracks: {},
-        }
+        const ui = indexPureTrackParts(plan)
         let partial = false
         for (const part of resolved.parts) {
-          if (part.kind === 'track') {
-            ui.tracks[part.assignmentId] = part
-            continue
-          }
+          if (part.kind === 'track') continue
           if (part.kind !== 'routed') continue
           if (!part.routeSegment) {
             partial = true
