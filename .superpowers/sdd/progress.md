@@ -106,3 +106,9 @@
 - Manual application matrix: not exercised because no local application server was listening on ports 5173 or 4173 and no authenticated fixture trip/browser session was available. Automated tests cover every requested movement arrangement and both GL providers.
 - Scope check: branch diff contains only client and requested documentation paths; no server, shared schema, database, or migration changes.
 - `git diff --check` reports only three intentional two-space Markdown hard breaks in the supplied design document lines 3-5. They are preserved because the execution prompt requires exact supplied content; all other changed files pass the whitespace check.
+
+## Final whole-branch review
+
+- Specification review: APPROVED. Loop tracks retain both semantic endpoints per execution-prompt non-negotiable #14; equal coordinates are deduplicated only across movement-part boundaries.
+- Code-quality review: no Critical or Important findings. The only Minor is the exact supplied design's intentional Markdown hard-break whitespace, retained to satisfy the byte-for-byte preservation requirement.
+- No push, pull request, merge, server/schema change, migration, or persistence redesign was performed.
