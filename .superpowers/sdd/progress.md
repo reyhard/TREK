@@ -675,8 +675,9 @@ Task 10 movement statistics and live reservation-event reconciliation is complet
 
 **Status:** DONE
 **Completed:** 2026-07-20
+**Review remediation:** 2026-07-20 (commit `3bce7b5f` + follow-up)
 
-### Changes
+### Changes (initial commit `3bce7b5f`)
 
 1. **Deployment surface env vars — docker-compose.yml**
    - Added WebAuthn (`WEBAUTHN_ORIGINS`, `WEBAUTHN_RP_ID`)
@@ -705,6 +706,19 @@ Task 10 movement statistics and live reservation-event reconciliation is complet
    - `server/src/mcp/scopes.ts:51`: removed "or transit stops" from `places:read` description — transit-stop and route search require `geo:read`
    - `wiki/MCP-Scopes.md:17`: removed "and transit-stop" from `places:read` description — same correction
 
+### Review remediation (follow-up)
+
+6. **Helm SMTP_PASS secret creation/injection**
+   - `charts/trek/templates/secret.yaml`: added `SMTP_PASS` rendering in both conditional Secret blocks
+   - `charts/trek/templates/deployment.yaml`: added `SMTP_PASS` env var injection from `secretKeyRef`
+
+7. **Wiki environment variable documentation**
+   - `wiki/Environment-Variables.md` MCP section: added `OAUTH_HTTP_REDIRECT_HOSTS` entry
+   - `wiki/Environment-Variables.md` Plugins section: added `TREK_PLUGIN_LOG_BURST` and `TREK_PLUGIN_LOG_PER_SEC` entries
+
+8. **Progress ledger fixture distinction**
+   - Corrected fixture policy statement: Task 12 generates no fixtures; the pre-upstream-3.4-fork fixtures (Task 01) remain local-only and uncommitted
+
 ### Verification
 
 - docker-compose.yml syntax: PASS (`docker compose config --quiet`)
@@ -713,9 +727,11 @@ Task 10 movement statistics and live reservation-event reconciliation is complet
 - All environment variables from active source code documented in .env.example
 - Deployment surfaces (Compose + Helm) expose all runtime configuration
 - Wiki scope documentation matches source code descriptions
-- Fixture policy: fixtures remain local-only; none staged or committed
+- Wiki environment-variable reference covers all active env vars (`OAUTH_HTTP_REDIRECT_HOSTS`, `TREK_PLUGIN_LOG_BURST`, `TREK_PLUGIN_LOG_PER_SEC`)
+- Helm Secret template renders `SMTP_PASS` and deployment injects it as container env var
+- Fixture policy: No Task 12 fixtures were generated; the pre-upstream-3.4-fork.sqlite and pre-upstream-3.4-fork-fixture.json (Task 01) remain local-only (`.gitignore:18` + `.git/info/exclude:10`) and are not staged or committed
 
 ### Handoff
 
-- **Task 13** consumes: complete Task 12 state with reconciled deployment configuration, environment inventory, and corrected scope documentation.
+- **Task 13** consumes: complete Task 12 state with reconciled deployment configuration (Compose + Helm including SMTP_PASS Secret), full environment inventory (`.env.example` + wiki), corrected scope documentation, and comprehensive wiki environment-variable reference.
 - **Concerns:** None.
