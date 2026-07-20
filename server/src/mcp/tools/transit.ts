@@ -1,15 +1,15 @@
 import { canAccessTrip } from '../../db/database';
 import { RateLimitService } from '../../nest/auth/rate-limit.service';
 import { isDemoUser } from '../../services/authService';
-import { getDay, listDays } from '../../services/dayService';
-import { createReservation, notifyBookingChange } from '../../services/reservationService';
+import { createReservation, getReservation, notifyBookingChange, updateReservation } from '../../services/reservationService';
 import {
-  buildTransitReservationParts,
+  buildTransitJourneyPatch,
   cleanTransitItineraryNames,
   transitCoordinatesMatch,
   transitCoordinatesSchema,
   transitItinerarySchema,
   transitPlaceSchema,
+  type TransitJourneyPatch,
 } from '../../services/transitItineraryService';
 import { geocode, plan, SCHEDULED_TRANSIT_MODES } from '../../services/transitService';
 import { canRead, canWrite } from '../scopes';
@@ -115,9 +115,6 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
               ? [parsed.data]
               : [];
           });
-          // A rejected itinerary is provider data we could not vouch for, but dropping it
-          // silently is indistinguishable from "no routes exist" — report the count so the
-          // caller knows the difference.
           return ok({ itineraries, dropped: result.itineraries.length - itineraries.length });
         } catch (err) {
           return errorResult(err, 'Transit route search failed.');
@@ -147,9 +144,74 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
       if (!hasTripPermission('reservation_edit', tripId, userId)) return permissionDenied();
-      const day = getDay(dayId, tripId);
-      if (!day) {
-        return { content: [{ type: 'text' as const, text: 'dayId does not belong to this trip.' }], isError: true };
+
+      const cleaned = cleanTransitItineraryNames(itinerary, from.name, to.name);
+      const firstStop = cleaned.legs[0].from;
+      const lastStop = cleaned.legs[cleaned.legs.length - 1].to;
+      if (!transitCoordinatesMatch(from, firstStop) || !transitCoordinatesMatch(to, lastStop)) {
+        return {
+          content: [
+            { type: 'text' as const, text: 'The itinerary does not match the requested origin and destination.' },
+          ],
+          isError: true,
+        };
+      }
+
+      let patch: TransitJourneyPatch;
+      try {
+        patch = buildTransitJourneyPatch(tripId, dayId, from, to, cleaned);
+      } catch (err) {
+        return errorResult(err, 'Unable to resolve the transit journey timezones.');
+      }
+
+      const { reservation } = createReservation(tripId, {
+        title: `${from.name} → ${to.name}`,
+        type: 'transit',
+        status: 'confirmed',
+        day_id: patch.day_id,
+        end_day_id: patch.end_day_id,
+        reservation_time: patch.reservation_time,
+        reservation_end_time: patch.reservation_end_time,
+        notes,
+        metadata: patch.metadata,
+        endpoints: patch.endpoints,
+        needs_review: false,
+      });
+      safeBroadcast(tripId, 'reservation:created', { reservation });
+      notifyBookingChange(tripId, userId, reservation.title, reservation.type || '');
+      return ok({ reservation });
+    },
+  );
+
+  server.registerTool(
+    'update_transit_journey',
+    {
+      description:
+        'Replace the route data of an existing automated transit journey while preserving title and notes unless explicitly overridden. Does not call Transitous.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        reservationId: z.number().int().positive(),
+        dayId: z.number().int().positive().describe('Trip day on which the journey departs'),
+        from: transitPlaceSchema,
+        to: transitPlaceSchema,
+        itinerary: transitItinerarySchema,
+      },
+      annotations: TOOL_ANNOTATIONS_OPEN_WORLD_NON_IDEMPOTENT,
+    },
+    async ({ tripId, reservationId, dayId, from, to, itinerary }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      if (!hasTripPermission('reservation_edit', tripId, userId)) return permissionDenied();
+
+      const current = getReservation(reservationId, tripId);
+      if (!current) {
+        return { content: [{ type: 'text' as const, text: 'Reservation not found.' }], isError: true };
+      }
+      if (current.type !== 'transit') {
+        return {
+          content: [{ type: 'text' as const, text: 'Reservation is not a transit journey.' }],
+          isError: true,
+        };
       }
 
       const cleaned = cleanTransitItineraryNames(itinerary, from.name, to.name);
@@ -163,55 +225,31 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
           isError: true,
         };
       }
-      let reservationParts: ReturnType<typeof buildTransitReservationParts>;
+
+      let patch: TransitJourneyPatch;
       try {
-        reservationParts = buildTransitReservationParts(from, to, cleaned);
+        patch = buildTransitJourneyPatch(tripId, dayId, from, to, cleaned, current.metadata);
       } catch (err) {
         return errorResult(err, 'Unable to resolve the transit journey timezones.');
       }
-      const { endpoints, metadata } = reservationParts;
-      const departure = endpoints[0];
-      const arrival = endpoints[endpoints.length - 1];
-      if (!day.date) {
-        return {
-          content: [{ type: 'text' as const, text: 'Automated transit requires a dated trip day.' }],
-          isError: true,
-        };
+
+      try {
+        const { reservation } = updateReservation(reservationId, tripId, {
+          title: `${from.name} → ${to.name}`,
+          day_id: patch.day_id,
+          end_day_id: patch.end_day_id,
+          reservation_time: patch.reservation_time,
+          reservation_end_time: patch.reservation_end_time,
+          metadata: patch.metadata,
+          endpoints: patch.endpoints,
+          needs_review: false,
+        }, current);
+        safeBroadcast(tripId, 'reservation:updated', { reservation });
+        notifyBookingChange(tripId, userId, reservation.title, reservation.type || '');
+        return ok({ reservation });
+      } catch {
+        return { content: [{ type: 'text' as const, text: 'Failed to update transit journey.' }], isError: true };
       }
-      if (departure.local_date !== day.date) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `The journey departs on ${departure.local_date}, but dayId is ${day.date}.`,
-            },
-          ],
-          isError: true,
-        };
-      }
-      const endDay = listDays(tripId).days.find((day) => day.date === arrival.local_date);
-      if (!endDay) {
-        return {
-          content: [{ type: 'text' as const, text: `No trip day exists for the arrival date ${arrival.local_date}.` }],
-          isError: true,
-        };
-      }
-      const { reservation } = createReservation(tripId, {
-        title: `${from.name} → ${to.name}`,
-        type: 'transit',
-        status: 'confirmed',
-        day_id: dayId,
-        end_day_id: endDay.id,
-        reservation_time: `${departure.local_date}T${departure.local_time}`,
-        reservation_end_time: `${arrival.local_date}T${arrival.local_time}`,
-        notes,
-        metadata,
-        endpoints,
-        needs_review: false,
-      });
-      safeBroadcast(tripId, 'reservation:created', { reservation });
-      notifyBookingChange(tripId, userId, reservation.title, reservation.type || '');
-      return ok({ reservation });
     },
   );
 }

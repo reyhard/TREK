@@ -135,18 +135,20 @@ async function withHarness(userId: number, scopes: string[] | null, fn: (harness
 }
 
 describe('MCP transit tools', () => {
-  it('registers search tools for geo scope and create tool for reservations scope', async () => {
+  it('registers search tools for geo scope and create/update for reservations scope', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, ['geo:read'], async (harness) => {
       const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
       expect(names).toContain('search_transit_stops');
       expect(names).toContain('search_transit_routes');
       expect(names).not.toContain('create_transit_journey');
+      expect(names).not.toContain('update_transit_journey');
     });
     await withHarness(user.id, ['reservations:write'], async (harness) => {
       const tools = (await harness.client.listTools()).tools;
       const names = tools.map((tool) => tool.name);
       expect(names).toContain('create_transit_journey');
+      expect(names).toContain('update_transit_journey');
       expect(names).not.toContain('search_transit_routes');
       expect(tools.find((tool) => tool.name === 'create_transit_journey')?.annotations?.openWorldHint).toBe(true);
     });
@@ -241,7 +243,7 @@ describe('MCP transit tools', () => {
         arguments: { tripId: datelessTrip.id, dayId: datelessDay.id, from, to, itinerary },
       });
       expect(dateless.isError).toBe(true);
-      expect((dateless.content[0] as any).text).toContain('dated trip day');
+      expect((dateless.content[0] as any).text).toContain('no date');
 
       const mismatch = await harness.client.callTool({
         name: 'create_transit_journey',
@@ -517,5 +519,160 @@ describe('MCP transit tools', () => {
       expect(routes.itineraries).toHaveLength(1);
       expect(routes.dropped).toBe(1);
     });
+  });
+
+  it('registers update_transit_journey with reservations scope and creates preserve leg distance', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
+      expect(names).toContain('update_transit_journey');
+    });
+    // Create path stores leg distance
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const metadata = JSON.parse(createResult.reservation.metadata);
+      expect(metadata.transit.legs[1].distance).toBe(5000);
+    });
+  });
+
+  it('update_transit_journey replaces route data and emits correct events', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const reservationId = createResult.reservation.id;
+
+      const updatedItinerary = {
+        ...itinerary,
+        startTime: '2026-12-03T01:00:00Z',
+        endTime: '2026-12-03T02:00:00Z',
+        duration: 3600,
+        legs: itinerary.legs.map((leg, i) =>
+          i === 0
+            ? { ...leg, duration: 600, distance: 600, from: { ...leg.from, time: '2026-12-03T01:00:00Z' }, to: { ...leg.to, time: '2026-12-03T01:10:00Z' } }
+            : { ...leg, duration: 3000, distance: 8000, from: { ...leg.from, time: '2026-12-03T01:10:00Z' }, to: { ...leg.to, time: '2026-12-03T02:00:00Z' } },
+        ),
+      };
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from: { ...from, name: 'Namba Upd' }, to: { ...to, name: 'Umeda Upd' }, itinerary: updatedItinerary },
+      });
+      expect(raw.isError).toBeFalsy();
+      const updateResult = parseToolResult(raw) as any;
+      expect(updateResult.reservation.id).toBe(reservationId);
+      expect(updateResult.reservation.type).toBe('transit');
+      expect(updateResult.reservation.title).toBe('Namba Upd → Umeda Upd');
+      const meta = JSON.parse(updateResult.reservation.metadata);
+      expect(meta.transit.legs[1].distance).toBe(8000);
+      expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'reservation:updated', expect.anything());
+      expect(notifyBookingChangeMock).toHaveBeenCalledWith(trip.id, user.id, expect.any(String), 'transit');
+    });
+  });
+
+  it('update_transit_journey preserves unrelated metadata', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const reservationId = createResult.reservation.id;
+
+      const current = testDb.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId) as any;
+      const currentMeta = JSON.parse(current.metadata);
+      currentMeta.plugin_extension = { custom_ref: 'abc-123' };
+      testDb.prepare('UPDATE reservations SET metadata = ? WHERE id = ?').run(JSON.stringify(currentMeta), reservationId);
+
+      const updatedItinerary = {
+        ...itinerary,
+        startTime: '2026-12-03T02:00:00Z',
+        endTime: '2026-12-03T02:30:00Z',
+        duration: 1800,
+        legs: itinerary.legs.map((leg, i) =>
+          i === 0
+            ? { ...leg, duration: 600, distance: 600, from: { ...leg.from, time: '2026-12-03T02:00:00Z' }, to: { ...leg.to, time: '2026-12-03T02:10:00Z' } }
+            : { ...leg, duration: 1200, distance: 5000, from: { ...leg.from, time: '2026-12-03T02:10:00Z' }, to: { ...leg.to, time: '2026-12-03T02:30:00Z' } },
+        ),
+      };
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from, to, itinerary: updatedItinerary },
+      });
+      expect(raw.isError).toBeFalsy();
+      const updateResult = parseToolResult(raw) as any;
+      const meta = JSON.parse(updateResult.reservation.metadata);
+      expect(meta.plugin_extension).toEqual({ custom_ref: 'abc-123' });
+      expect(meta.transit.legs[1].distance).toBe(5000);
+    });
+  });
+
+  it('update_transit_journey enforces permissions and transit type', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: stranger } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id, { start_date: '2026-12-03', end_date: '2026-12-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+
+    await withHarness(stranger.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId: 999, dayId: day.id, from, to, itinerary },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('access denied');
+    });
+
+    const { reservation } = await import('../../../src/services/reservationService').then(m => m.createReservation(trip.id, {
+      title: 'Not transit',
+      type: 'flight',
+      status: 'confirmed',
+      day_id: day.id,
+    }));
+
+    await withHarness(owner.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId: reservation.id, dayId: day.id, from, to, itinerary },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('not a transit');
+    });
+
+    const { reservation: transitRes } = await import('../../../src/services/reservationService').then(m => m.createReservation(trip.id, {
+      title: 'Transit',
+      type: 'transit',
+      status: 'confirmed',
+      day_id: day.id,
+    }));
+
+    savePermissions({ reservation_edit: 'trip_owner' });
+    await withHarness(member.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId: transitRes.id, dayId: day.id, from, to, itinerary },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('access denied');
+    });
+
+    expect(broadcastMock).not.toHaveBeenCalledWith(trip.id, 'reservation:updated', expect.anything());
+    expect(notifyBookingChangeMock).not.toHaveBeenCalled();
   });
 });
