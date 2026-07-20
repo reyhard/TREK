@@ -53,7 +53,9 @@ function hasLocalMultiLegShape(reservationId: number, metadataJson: string | nul
   } catch {
     /* malformed metadata — fall through to the endpoint count */
   }
-  const row = db.prepare('SELECT COUNT(*) AS n FROM reservation_endpoints WHERE reservation_id = ?').get(reservationId) as {
+  const row = db
+    .prepare('SELECT COUNT(*) AS n FROM reservation_endpoints WHERE reservation_id = ?')
+    .get(reservationId) as {
     n: number;
   };
   return row.n > 2;

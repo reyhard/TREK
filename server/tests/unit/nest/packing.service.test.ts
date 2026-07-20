@@ -1,3 +1,5 @@
+import { PackingService } from '../../../src/nest/packing/packing.service';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { dbMock } = vi.hoisted(() => {
@@ -14,19 +16,33 @@ vi.mock('../../../src/services/permissions', () => ({ checkPermission }));
 
 const { pk } = vi.hoisted(() => ({
   pk: {
-    verifyTripAccess: vi.fn(), listItems: vi.fn(), createItem: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn(),
-    bulkImport: vi.fn(), listBags: vi.fn(), createBag: vi.fn(), updateBag: vi.fn(), deleteBag: vi.fn(),
-    listTemplates: vi.fn(), applyTemplate: vi.fn(), saveAsTemplate: vi.fn(), setBagMembers: vi.fn(), getCategoryAssignees: vi.fn(),
-    updateCategoryAssignees: vi.fn(), reorderItems: vi.fn(),
-    setItemSharing: vi.fn(), addContributor: vi.fn(), removeContributor: vi.fn(), cloneItem: vi.fn(),
+    verifyTripAccess: vi.fn(),
+    listItems: vi.fn(),
+    createItem: vi.fn(),
+    updateItem: vi.fn(),
+    deleteItem: vi.fn(),
+    bulkImport: vi.fn(),
+    listBags: vi.fn(),
+    createBag: vi.fn(),
+    updateBag: vi.fn(),
+    deleteBag: vi.fn(),
+    listTemplates: vi.fn(),
+    applyTemplate: vi.fn(),
+    saveAsTemplate: vi.fn(),
+    setBagMembers: vi.fn(),
+    getCategoryAssignees: vi.fn(),
+    updateCategoryAssignees: vi.fn(),
+    reorderItems: vi.fn(),
+    setItemSharing: vi.fn(),
+    addContributor: vi.fn(),
+    removeContributor: vi.fn(),
+    cloneItem: vi.fn(),
   },
 }));
 vi.mock('../../../src/services/packingService', () => pk);
 
 const { send } = vi.hoisted(() => ({ send: vi.fn(() => Promise.resolve()) }));
 vi.mock('../../../src/services/notificationService', () => ({ send }));
-
-import { PackingService } from '../../../src/nest/packing/packing.service';
 
 function svc() {
   return new PackingService();
@@ -70,34 +86,57 @@ describe('PackingService (wrapper delegation + helpers)', () => {
 
   it('forwards every item/bag/template/assignee call to the legacy service', () => {
     const s = svc();
-    s.verifyTripAccess('5', 1); expect(pk.verifyTripAccess).toHaveBeenCalledWith('5', 1);
-    s.listItems('5'); expect(pk.listItems).toHaveBeenCalledWith('5', undefined);
-    s.createItem('5', { name: 'a' }); expect(pk.createItem).toHaveBeenCalledWith('5', { name: 'a' }, undefined);
-    s.updateItem('5', '2', { name: 'b' } as never, ['name']); expect(pk.updateItem).toHaveBeenCalledWith('5', '2', { name: 'b' }, ['name'], undefined, undefined);
-    s.deleteItem('5', '2'); expect(pk.deleteItem).toHaveBeenCalledWith('5', '2');
-    s.bulkImport('5', [{ name: 'x' }] as never); expect(pk.bulkImport).toHaveBeenCalledWith('5', [{ name: 'x' }], undefined);
-    s.reorderItems('5', [3, 1] as never); expect(pk.reorderItems).toHaveBeenCalledWith('5', [3, 1]);
-    s.listBags('5'); expect(pk.listBags).toHaveBeenCalledWith('5');
-    s.createBag('5', { name: 'Bag' }); expect(pk.createBag).toHaveBeenCalledWith('5', { name: 'Bag' });
-    s.updateBag('5', '2', { name: 'B' } as never, ['name']); expect(pk.updateBag).toHaveBeenCalledWith('5', '2', { name: 'B' }, ['name']);
-    s.deleteBag('5', '2'); expect(pk.deleteBag).toHaveBeenCalledWith('5', '2');
-    s.setBagMembers('5', '2', [1, 2]); expect(pk.setBagMembers).toHaveBeenCalledWith('5', '2', [1, 2]);
-    s.listTemplates(); expect(pk.listTemplates).toHaveBeenCalled();
-    s.applyTemplate('5', 't1', 'personal', 1); expect(pk.applyTemplate).toHaveBeenCalledWith('5', 't1', 'personal', 1);
-    s.saveAsTemplate('5', 1, 'Tpl'); expect(pk.saveAsTemplate).toHaveBeenCalledWith('5', 1, 'Tpl');
-    s.getCategoryAssignees('5'); expect(pk.getCategoryAssignees).toHaveBeenCalledWith('5');
-    s.updateCategoryAssignees('5', 'Clothes', [2]); expect(pk.updateCategoryAssignees).toHaveBeenCalledWith('5', 'Clothes', [2]);
-    s.setItemSharing('5', '2', 1, 'shared', [3]); expect(pk.setItemSharing).toHaveBeenCalledWith('5', '2', 1, 'shared', [3]);
-    s.addContributor('5', '2', 3); expect(pk.addContributor).toHaveBeenCalledWith('5', '2', 3);
-    s.removeContributor('5', '2', 3); expect(pk.removeContributor).toHaveBeenCalledWith('5', '2', 3);
-    s.cloneItem('5', '2', 7); expect(pk.cloneItem).toHaveBeenCalledWith('5', '2', 7);
+    s.verifyTripAccess('5', 1);
+    expect(pk.verifyTripAccess).toHaveBeenCalledWith('5', 1);
+    s.listItems('5');
+    expect(pk.listItems).toHaveBeenCalledWith('5', undefined);
+    s.createItem('5', { name: 'a' });
+    expect(pk.createItem).toHaveBeenCalledWith('5', { name: 'a' }, undefined);
+    s.updateItem('5', '2', { name: 'b' } as never, ['name']);
+    expect(pk.updateItem).toHaveBeenCalledWith('5', '2', { name: 'b' }, ['name'], undefined, undefined);
+    s.deleteItem('5', '2');
+    expect(pk.deleteItem).toHaveBeenCalledWith('5', '2');
+    s.bulkImport('5', [{ name: 'x' }] as never);
+    expect(pk.bulkImport).toHaveBeenCalledWith('5', [{ name: 'x' }], undefined);
+    s.reorderItems('5', [3, 1] as never);
+    expect(pk.reorderItems).toHaveBeenCalledWith('5', [3, 1]);
+    s.listBags('5');
+    expect(pk.listBags).toHaveBeenCalledWith('5');
+    s.createBag('5', { name: 'Bag' });
+    expect(pk.createBag).toHaveBeenCalledWith('5', { name: 'Bag' });
+    s.updateBag('5', '2', { name: 'B' } as never, ['name']);
+    expect(pk.updateBag).toHaveBeenCalledWith('5', '2', { name: 'B' }, ['name']);
+    s.deleteBag('5', '2');
+    expect(pk.deleteBag).toHaveBeenCalledWith('5', '2');
+    s.setBagMembers('5', '2', [1, 2]);
+    expect(pk.setBagMembers).toHaveBeenCalledWith('5', '2', [1, 2]);
+    s.listTemplates();
+    expect(pk.listTemplates).toHaveBeenCalled();
+    s.applyTemplate('5', 't1', 'personal', 1);
+    expect(pk.applyTemplate).toHaveBeenCalledWith('5', 't1', 'personal', 1);
+    s.saveAsTemplate('5', 1, 'Tpl');
+    expect(pk.saveAsTemplate).toHaveBeenCalledWith('5', 1, 'Tpl');
+    s.getCategoryAssignees('5');
+    expect(pk.getCategoryAssignees).toHaveBeenCalledWith('5');
+    s.updateCategoryAssignees('5', 'Clothes', [2]);
+    expect(pk.updateCategoryAssignees).toHaveBeenCalledWith('5', 'Clothes', [2]);
+    s.setItemSharing('5', '2', 1, 'shared', [3]);
+    expect(pk.setItemSharing).toHaveBeenCalledWith('5', '2', 1, 'shared', [3]);
+    s.addContributor('5', '2', 3);
+    expect(pk.addContributor).toHaveBeenCalledWith('5', '2', 3);
+    s.removeContributor('5', '2', 3);
+    expect(pk.removeContributor).toHaveBeenCalledWith('5', '2', 3);
+    s.cloneItem('5', '2', 7);
+    expect(pk.cloneItem).toHaveBeenCalledWith('5', '2', 7);
   });
 
   describe('viewersOf + broadcastToViewers (#858 three-tier)', () => {
     it('viewersOf: Common → null (whole room); restricted → owner + recipients', () => {
       expect(svc().viewersOf({ is_private: 0, owner_id: 1 })).toBeNull();
       expect(svc().viewersOf(null)).toBeNull();
-      expect(svc().viewersOf({ is_private: 1, owner_id: 1, recipients: [{ user_id: 2 }, { user_id: 3 }] })).toEqual([1, 2, 3]);
+      expect(svc().viewersOf({ is_private: 1, owner_id: 1, recipients: [{ user_id: 2 }, { user_id: 3 }] })).toEqual([
+        1, 2, 3,
+      ]);
     });
 
     it('broadcastToViewers delivers to each viewer (deduped) via onlyUserId', () => {

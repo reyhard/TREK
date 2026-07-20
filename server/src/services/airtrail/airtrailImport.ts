@@ -1,11 +1,16 @@
-import type { AirtrailImportResult } from '@trek/shared';
 import { db } from '../../db/database';
 import { broadcast } from '../../websocket';
 import { createReservation } from '../reservationService';
-import { getAirtrailCredentials } from './airtrailService';
 import { AirtrailRequestError, listFlights } from './airtrailClient';
 import type { AirtrailFlightRaw } from './airtrailClient';
-import { canonicalHash, mapFlightToReservation, mapFlightsToMultiLegReservation, normalizeFlight } from './airtrailMapper';
+import {
+  canonicalHash,
+  mapFlightToReservation,
+  mapFlightsToMultiLegReservation,
+  normalizeFlight,
+} from './airtrailMapper';
+import { getAirtrailCredentials } from './airtrailService';
+import type { AirtrailImportResult } from '@trek/shared';
 
 interface ExistingFlightRow {
   id: number;
@@ -43,8 +48,8 @@ function flightSignature(flight: AirtrailFlightRaw): string | null {
   return softSignature(
     depDate(mapped.reservation_time),
     (mapped.metadata.flight_number as string) ?? null,
-    mapped.endpoints.find(e => e.role === 'from')?.code ?? null,
-    mapped.endpoints.find(e => e.role === 'to')?.code ?? null,
+    mapped.endpoints.find((e) => e.role === 'from')?.code ?? null,
+    mapped.endpoints.find((e) => e.role === 'to')?.code ?? null,
   );
 }
 
@@ -60,9 +65,9 @@ function flightSignature(flight: AirtrailFlightRaw): string | null {
  */
 function orderConnectionChain(group: AirtrailFlightRaw[]): AirtrailFlightRaw[] | null {
   if (group.length < 2) return null;
-  const norm = group.map(raw => ({ raw, n: normalizeFlight(raw) }));
+  const norm = group.map((raw) => ({ raw, n: normalizeFlight(raw) }));
   const depMs = (n: (typeof norm)[number]['n']): number => (n.departure ? Date.parse(n.departure) : NaN);
-  if (norm.some(x => Number.isNaN(depMs(x.n)))) return null;
+  if (norm.some((x) => Number.isNaN(depMs(x.n)))) return null;
   norm.sort((a, b) => depMs(a.n) - depMs(b.n));
   const origin = norm[0].n.fromCode;
   for (let i = 1; i < norm.length; i++) {
@@ -75,7 +80,7 @@ function orderConnectionChain(group: AirtrailFlightRaw[]): AirtrailFlightRaw[] |
     const gap = depMs(next) - arrMs;
     if (gap < 0 || gap > 24 * 3600 * 1000) return null;
   }
-  return norm.map(x => x.raw);
+  return norm.map((x) => x.raw);
 }
 
 /**
@@ -106,8 +111,8 @@ export async function importAirtrailFlights(
   if (!creds) throw new AirtrailRequestError('AirTrail is not connected', 400);
 
   const wanted = new Set(flightIds.map(String));
-  const selected = (await listFlights(creds)).filter(f => wanted.has(String(f.id)));
-  const byId = new Map(selected.map(f => [String(f.id), f]));
+  const selected = (await listFlights(creds)).filter((f) => wanted.has(String(f.id)));
+  const byId = new Map(selected.map((f) => [String(f.id), f]));
 
   const result: AirtrailImportResult = { imported: [], skipped: [] };
 
@@ -128,7 +133,9 @@ export async function importAirtrailFlights(
   }
 
   const existing = db
-    .prepare("SELECT r.id, r.reservation_time, r.metadata FROM reservations r WHERE r.trip_id = ? AND r.type = 'flight'")
+    .prepare(
+      "SELECT r.id, r.reservation_time, r.metadata FROM reservations r WHERE r.trip_id = ? AND r.type = 'flight'",
+    )
     .all(tripId) as ExistingFlightRow[];
   const endpointsByReservation = new Map<number, EndpointRow[]>();
   const endpointRows = db
@@ -144,7 +151,10 @@ export async function importAirtrailFlights(
     else endpointsByReservation.set(ep.reservation_id, [ep]);
   }
 
-  const days = db.prepare('SELECT id, date FROM days WHERE trip_id = ?').all(tripId) as { id: number; date: string | null }[];
+  const days = db.prepare('SELECT id, date FROM days WHERE trip_id = ?').all(tripId) as {
+    id: number;
+    date: string | null;
+  }[];
   const dayIdByDate = new Map<string, number>();
   const dayDateById = new Map<number, string>();
   for (const day of days) {
@@ -171,9 +181,10 @@ export async function importAirtrailFlights(
       // misaligned date would produce a WRONG signature, worse than none.
       const aligned = eps.length === legs.length + 1;
       legs.forEach((leg, i) => {
-        const legDate = (typeof leg?.dep_day_id === 'number' ? dayDateById.get(leg.dep_day_id) : null)
-          ?? (aligned ? eps[i]?.local_date : null)
-          ?? null;
+        const legDate =
+          (typeof leg?.dep_day_id === 'number' ? dayDateById.get(leg.dep_day_id) : null) ??
+          (aligned ? eps[i]?.local_date : null) ??
+          null;
         const sig = softSignature(legDate, leg?.flight_number ?? null, leg?.from ?? null, leg?.to ?? null);
         if (sig) existingSigs.add(sig);
       });
@@ -192,18 +203,22 @@ export async function importAirtrailFlights(
   const chains: AirtrailFlightRaw[][] = [];
   for (const ids of connections) {
     const unique = [...new Set(ids.map(String))];
-    const members = unique.map(id => byId.get(id)).filter((f): f is AirtrailFlightRaw => !!f);
-    const chain = members.length === unique.length && !unique.some(id => groupedIds.has(id))
-      ? orderConnectionChain(members)
-      : null;
+    const members = unique.map((id) => byId.get(id)).filter((f): f is AirtrailFlightRaw => !!f);
+    const chain =
+      members.length === unique.length && !unique.some((id) => groupedIds.has(id))
+        ? orderConnectionChain(members)
+        : null;
     if (!chain) {
       console.warn('[airtrail-import] join group is not a connection chain — importing flights individually');
       continue;
     }
-    if (unique.some(id => linkedIds.has(id)) || chain.some(f => {
-      const sig = flightSignature(f);
-      return !!sig && existingSigs.has(sig);
-    })) {
+    if (
+      unique.some((id) => linkedIds.has(id)) ||
+      chain.some((f) => {
+        const sig = flightSignature(f);
+        return !!sig && existingSigs.has(sig);
+      })
+    ) {
       continue; // a member already exists in the trip — let the single path sort it out
     }
     chains.push(chain);
@@ -211,7 +226,7 @@ export async function importAirtrailFlights(
   }
 
   for (const chain of chains) {
-    const ids = chain.map(f => String(f.id));
+    const ids = chain.map((f) => String(f.id));
     try {
       const mapped = mapFlightsToMultiLegReservation(chain, resolveDayId);
       const { reservation } = createReservation(tripId, mapped as any);
@@ -232,12 +247,20 @@ export async function importAirtrailFlights(
         const sig = flightSignature(f);
         if (sig) existingSigs.add(sig);
       }
-      ids.forEach(id => linkedIds.add(id));
+      ids.forEach((id) => linkedIds.add(id));
       result.imported.push(...ids);
     } catch (err) {
-      console.error('[airtrail-import] failed to import connection', ids.join('+'), err instanceof Error ? err.message : err);
+      console.error(
+        '[airtrail-import] failed to import connection',
+        ids.join('+'),
+        err instanceof Error ? err.message : err,
+      );
       for (const id of ids) {
-        result.skipped.push({ flightId: id, reason: 'invalid', detail: err instanceof Error ? err.message : undefined });
+        result.skipped.push({
+          flightId: id,
+          reason: 'invalid',
+          detail: err instanceof Error ? err.message : undefined,
+        });
       }
     }
   }

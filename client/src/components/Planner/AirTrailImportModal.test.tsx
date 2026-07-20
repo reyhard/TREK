@@ -1,13 +1,13 @@
 // FE-PLANNER-AIRTRAIL-001 to FE-PLANNER-AIRTRAIL-008
-import { render, screen, waitFor } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
+import type { AirtrailFlight } from '@trek/shared';
 import { http, HttpResponse } from 'msw';
+import { buildReservation, buildTrip, buildUser } from '../../../tests/helpers/factories';
 import { server } from '../../../tests/helpers/msw/server';
+import { render, screen, waitFor } from '../../../tests/helpers/render';
+import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useAuthStore } from '../../store/authStore';
 import { useTripStore } from '../../store/tripStore';
-import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser, buildTrip, buildReservation } from '../../../tests/helpers/factories';
-import type { AirtrailFlight } from '@trek/shared';
 import AirTrailImportModal, { detectConnections } from './AirTrailImportModal';
 
 const flight = (over: Partial<AirtrailFlight> = {}): AirtrailFlight => ({
@@ -55,11 +55,16 @@ describe('detectConnections (#1535)', () => {
   it('FE-PLANNER-AIRTRAIL-001: chains flights that connect at the same airport within 24h', () => {
     const chains = detectConnections([legHelJfk(), flight(), unrelatedFlight()]);
     expect(chains).toHaveLength(1);
-    expect(chains[0].map(f => f.id)).toEqual(['101', '102']);
+    expect(chains[0].map((f) => f.id)).toEqual(['101', '102']);
   });
 
   it('FE-PLANNER-AIRTRAIL-002: does not chain when the layover exceeds 24h', () => {
-    const late = { ...legHelJfk(), date: '2026-08-03', departure: '2026-08-03T11:00:00.000+00:00', arrival: '2026-08-03T19:00:00.000+00:00' };
+    const late = {
+      ...legHelJfk(),
+      date: '2026-08-03',
+      departure: '2026-08-03T11:00:00.000+00:00',
+      arrival: '2026-08-03T19:00:00.000+00:00',
+    };
     expect(detectConnections([flight(), late])).toHaveLength(0);
   });
 
@@ -94,9 +99,9 @@ describe('AirTrailImportModal', () => {
     });
     server.use(
       http.get('/api/integrations/airtrail/flights', () =>
-        HttpResponse.json({ flights: [flight(), legHelJfk(), unrelatedFlight()] }),
+        HttpResponse.json({ flights: [flight(), legHelJfk(), unrelatedFlight()] })
       ),
-      http.get('/api/trips/1/reservations', () => HttpResponse.json({ reservations: [] })),
+      http.get('/api/trips/1/reservations', () => HttpResponse.json({ reservations: [] }))
     );
   });
 
@@ -115,7 +120,7 @@ describe('AirTrailImportModal', () => {
       http.post('/api/trips/1/reservations/import/airtrail', async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ imported: body.flightIds, skipped: [] });
-      }),
+      })
     );
     render(<AirTrailImportModal {...defaultProps} />);
     await screen.findByText(/one flight with a layover in HEL/i);
@@ -132,7 +137,7 @@ describe('AirTrailImportModal', () => {
       http.post('/api/trips/1/reservations/import/airtrail', async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ imported: body.flightIds, skipped: [] });
-      }),
+      })
     );
     render(<AirTrailImportModal {...defaultProps} />);
     await user.click(await screen.findByText(/one flight with a layover in HEL/i));
@@ -165,14 +170,12 @@ describe('AirTrailImportModal', () => {
     });
     seedStore(useTripStore, {
       trip: buildTrip({ id: 1, start_date: '2026-08-01', end_date: '2026-08-10' }),
-      reservations: [
-        buildReservation({ type: 'flight', external_source: 'airtrail', external_id: '106' }) as any,
-      ],
+      reservations: [buildReservation({ type: 'flight', external_source: 'airtrail', external_id: '106' }) as any],
     });
     server.use(
       http.get('/api/integrations/airtrail/flights', () =>
-        HttpResponse.json({ flights: [flight(), legHelJfk(), legJfkLax] }),
-      ),
+        HttpResponse.json({ flights: [flight(), legHelJfk(), legJfkLax] })
+      )
     );
     render(<AirTrailImportModal {...defaultProps} />);
     // BRU→HEL→JFK still connects even though JFK→LAX is gone from the pool.

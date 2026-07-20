@@ -1,9 +1,9 @@
 /**
  * Registrar safety: verify no duplicate registerTransitTools imports, invocations, or definitions.
  */
-import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { describe, it, expect } from 'vitest';
 
 const projectRoot = resolve(import.meta.dirname, '../../../');
 

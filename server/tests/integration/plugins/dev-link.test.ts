@@ -5,10 +5,12 @@
  * built artifact, native binaries, don't-clobber-a-real-plugin, reload only a link),
  * and a full link -> activate -> reload loop through a real isolated child.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { testDb } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -29,8 +31,6 @@ const { testDb } = vi.hoisted(() => {
 vi.mock('../../../src/db/database', () => ({ db: testDb, canAccessTrip: () => undefined }));
 vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
-import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-
 let codeRoot: string;
 let dataRoot: string;
 let srcRoot: string; // the "developer's" source lives OUTSIDE the plugins volume
@@ -39,12 +39,25 @@ let runtime: PluginRuntimeService;
 const ROUTE = (v: string) =>
   `module.exports = { routes: [{ method: 'GET', path: '/v', auth: false, async handler() { return { status: 200, body: JSON.stringify({ v: ${v} }) }; } }] };`;
 
-function writeSource(id: string, opts: { index?: string; native?: boolean; noBuild?: boolean; trek?: string } = {}): string {
+function writeSource(
+  id: string,
+  opts: { index?: string; native?: boolean; noBuild?: boolean; trek?: string } = {},
+): string {
   const dir = path.join(srcRoot, id);
   fs.mkdirSync(path.join(dir, 'server'), { recursive: true });
   // dev-link requires a `trek` range like any other install front door; `opts.trek`
   // overrides it to exercise the gate.
-  fs.writeFileSync(path.join(dir, 'trek-plugin.json'), JSON.stringify({ id, name: id, version: '1.0.0', type: 'integration', permissions: [], trek: opts.trek ?? '>=3.0.0 <4.0.0' }));
+  fs.writeFileSync(
+    path.join(dir, 'trek-plugin.json'),
+    JSON.stringify({
+      id,
+      name: id,
+      version: '1.0.0',
+      type: 'integration',
+      permissions: [],
+      trek: opts.trek ?? '>=3.0.0 <4.0.0',
+    }),
+  );
   if (!opts.noBuild) fs.writeFileSync(path.join(dir, 'server', 'index.js'), opts.index ?? 'module.exports = {};');
   if (opts.native) fs.writeFileSync(path.join(dir, 'server', 'addon.node'), '\0');
   return dir;
@@ -82,7 +95,9 @@ describe('PluginRuntimeService dev-link', () => {
     expect(fs.realpathSync(dest)).toBe(fs.realpathSync(dir));
 
     const row = testDb.prepare("SELECT source_repo, status, enabled FROM plugins WHERE id = 'linkplug'").get() as {
-      source_repo: string; status: string; enabled: number;
+      source_repo: string;
+      status: string;
+      enabled: number;
     };
     expect(row).toMatchObject({ source_repo: 'local:link', status: 'inactive', enabled: 0 });
   });
@@ -116,7 +131,11 @@ describe('PluginRuntimeService dev-link', () => {
   });
 
   it('refuses to clobber a real (non-linked) installed plugin of the same id', async () => {
-    testDb.prepare("INSERT INTO plugins (id, name, type, version, status, source_repo) VALUES ('installed','X','integration','1.0.0','inactive','local:upload')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, type, version, status, source_repo) VALUES ('installed','X','integration','1.0.0','inactive','local:upload')",
+      )
+      .run();
     await expect(runtime.link(writeSource('installed'))).rejects.toThrow(/already installed/);
   });
 

@@ -1,6 +1,7 @@
+import { embeddedTransitionIpv4 } from './ipv6';
+
 import dns from 'node:dns/promises';
 import { Agent } from 'undici';
-import { embeddedTransitionIpv4 } from './ipv6';
 
 const ALLOW_INTERNAL_NETWORK = process.env.ALLOW_INTERNAL_NETWORK?.toLowerCase() === 'true';
 

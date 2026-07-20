@@ -1,21 +1,21 @@
 // FE-PLANNER-TRANSMODAL-001 to FE-PLANNER-TRANSMODAL-021
-import { render, screen, waitFor, fireEvent } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { server } from '../../../tests/helpers/msw/server';
-import { useAuthStore } from '../../store/authStore';
-import { useTripStore } from '../../store/tripStore';
-import { useAddonStore } from '../../store/addonStore';
-import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import {
-  buildUser,
-  buildTrip,
+  buildAssignment,
   buildDay,
   buildPlace,
-  buildAssignment,
   buildReservation,
+  buildTrip,
   buildTripFile,
+  buildUser,
 } from '../../../tests/helpers/factories';
+import { server } from '../../../tests/helpers/msw/server';
+import { fireEvent, render, screen, waitFor } from '../../../tests/helpers/render';
+import { resetAllStores, seedStore } from '../../../tests/helpers/store';
+import { useAddonStore } from '../../store/addonStore';
+import { useAuthStore } from '../../store/authStore';
+import { useTripStore } from '../../store/tripStore';
 import { connectorPlacementForDay, TransportModal } from './TransportModal';
 
 vi.mock('react-router-dom', async (importActual) => {
@@ -25,19 +25,38 @@ vi.mock('react-router-dom', async (importActual) => {
 
 vi.mock('../shared/CustomTimePicker', () => ({
   default: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <input data-testid="time-picker" type="text" value={value} onChange={e => onChange(e.target.value)} />
+    <input data-testid="time-picker" type="text" value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
 vi.mock('./AirportSelect', () => ({
   default: ({ onChange }: { onChange: (a: any) => void }) => (
-    <input data-testid="airport-select" type="text" onChange={e => onChange({ iata: e.target.value, name: e.target.value, city: '', country: '', lat: 0, lng: 0, tz: 'UTC', icao: null })} />
+    <input
+      data-testid="airport-select"
+      type="text"
+      onChange={(e) =>
+        onChange({
+          iata: e.target.value,
+          name: e.target.value,
+          city: '',
+          country: '',
+          lat: 0,
+          lng: 0,
+          tz: 'UTC',
+          icao: null,
+        })
+      }
+    />
   ),
 }));
 
 vi.mock('./LocationSelect', () => ({
   default: ({ onChange }: { onChange: (l: any) => void }) => (
-    <input data-testid="location-select" type="text" onChange={e => onChange({ name: e.target.value, lat: 0, lng: 0, address: null })} />
+    <input
+      data-testid="location-select"
+      type="text"
+      onChange={(e) => onChange({ name: e.target.value, lat: 0, lng: 0, address: null })}
+    />
   ),
 }));
 
@@ -241,7 +260,7 @@ describe('TransportModal', () => {
   it('FE-PLANNER-TRANSMODAL-021: clicking file in picker links it and closes picker', async () => {
     server.use(
       http.post('/api/trips/1/files/99/link', () => HttpResponse.json({ success: true })),
-      http.get('/api/trips/1/files', () => HttpResponse.json({ files: [] })),
+      http.get('/api/trips/1/files', () => HttpResponse.json({ files: [] }))
     );
 
     const res = buildReservation({ id: 5, type: 'flight' });
@@ -287,7 +306,7 @@ describe('TransportModal', () => {
       http.post('/api/trips/1/files/42/link', () => HttpResponse.json({ success: true })),
       http.get('/api/trips/1/files/42/links', () => HttpResponse.json({ links: [{ id: 1, reservation_id: 7 }] })),
       http.delete('/api/trips/1/files/42/link/1', () => HttpResponse.json({ success: true })),
-      http.get('/api/trips/1/files', () => HttpResponse.json({ files: [] })),
+      http.get('/api/trips/1/files', () => HttpResponse.json({ files: [] }))
     );
 
     const res = buildReservation({ id: 7, type: 'car' });
@@ -299,9 +318,7 @@ describe('TransportModal', () => {
     await waitFor(() => expect(screen.getByText('rental-agreement.pdf')).toBeInTheDocument());
     await userEvent.click(screen.getByText('rental-agreement.pdf'));
 
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /Link existing file/i })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Link existing file/i })).not.toBeInTheDocument());
 
     const fileRow = screen.getByText('rental-agreement.pdf').closest('div')!;
     const unlinkBtn = fileRow.querySelector('button[type="button"]')!;
@@ -340,9 +357,39 @@ describe('TransportModal', () => {
     const res = buildReservation({ title: 'Fernsehturm → Zoo', type: 'bus' }) as any;
     res.metadata = { transit: { provider: 'transitous', transfers: 1, legs: [{ mode: 'BUS', line: '100' }] } };
     res.endpoints = [
-      { role: 'from', sequence: 0, name: 'Fernsehturm', code: null, lat: 52.5208, lng: 13.4094, timezone: 'Europe/Berlin', local_date: '2025-06-01', local_time: '08:30' },
-      { role: 'stop', sequence: 1, name: 'Alexanderplatz', code: null, lat: 52.521, lng: 13.41, timezone: 'Europe/Berlin', local_date: '2025-06-01', local_time: '08:40' },
-      { role: 'to', sequence: 2, name: 'Zoologischer Garten', code: null, lat: 52.507, lng: 13.332, timezone: 'Europe/Berlin', local_date: '2025-06-01', local_time: '09:00' },
+      {
+        role: 'from',
+        sequence: 0,
+        name: 'Fernsehturm',
+        code: null,
+        lat: 52.5208,
+        lng: 13.4094,
+        timezone: 'Europe/Berlin',
+        local_date: '2025-06-01',
+        local_time: '08:30',
+      },
+      {
+        role: 'stop',
+        sequence: 1,
+        name: 'Alexanderplatz',
+        code: null,
+        lat: 52.521,
+        lng: 13.41,
+        timezone: 'Europe/Berlin',
+        local_date: '2025-06-01',
+        local_time: '08:40',
+      },
+      {
+        role: 'to',
+        sequence: 2,
+        name: 'Zoologischer Garten',
+        code: null,
+        lat: 52.507,
+        lng: 13.332,
+        timezone: 'Europe/Berlin',
+        local_date: '2025-06-01',
+        local_time: '09:00',
+      },
     ];
     render(<TransportModal {...defaultProps} reservation={res} onSave={onSave} />);
     // Save without touching the route — the itinerary must survive.
@@ -360,9 +407,39 @@ describe('TransportModal', () => {
     const res = buildReservation({ title: 'Fernsehturm → Zoo', type: 'bus' }) as any;
     res.metadata = { transit: { provider: 'transitous', legs: [{ mode: 'BUS' }] } };
     res.endpoints = [
-      { role: 'from', sequence: 0, name: 'Fernsehturm', code: null, lat: 52.5208, lng: 13.4094, timezone: 'Europe/Berlin', local_date: null, local_time: null },
-      { role: 'stop', sequence: 1, name: 'Alexanderplatz', code: null, lat: 52.521, lng: 13.41, timezone: 'Europe/Berlin', local_date: null, local_time: null },
-      { role: 'to', sequence: 2, name: 'Zoologischer Garten', code: null, lat: 52.507, lng: 13.332, timezone: 'Europe/Berlin', local_date: null, local_time: null },
+      {
+        role: 'from',
+        sequence: 0,
+        name: 'Fernsehturm',
+        code: null,
+        lat: 52.5208,
+        lng: 13.4094,
+        timezone: 'Europe/Berlin',
+        local_date: null,
+        local_time: null,
+      },
+      {
+        role: 'stop',
+        sequence: 1,
+        name: 'Alexanderplatz',
+        code: null,
+        lat: 52.521,
+        lng: 13.41,
+        timezone: 'Europe/Berlin',
+        local_date: null,
+        local_time: null,
+      },
+      {
+        role: 'to',
+        sequence: 2,
+        name: 'Zoologischer Garten',
+        code: null,
+        lat: 52.507,
+        lng: 13.332,
+        timezone: 'Europe/Berlin',
+        local_date: null,
+        local_time: null,
+      },
     ];
     render(<TransportModal {...defaultProps} reservation={res} onSave={onSave} />);
     // Pick a different destination (mocked LocationSelect emits lat/lng 0,0).
@@ -388,9 +465,39 @@ describe('TransportModal', () => {
       ],
     };
     res.endpoints = [
-      { role: 'from', sequence: 0, name: 'Brussels', code: 'BRU', lat: 50.9, lng: 4.48, timezone: 'Europe/Brussels', local_date: '2025-06-01', local_time: '08:00' },
-      { role: 'stop', sequence: 1, name: 'Helsinki-Vantaa', code: 'HEL', lat: 60.32, lng: 24.96, timezone: 'Europe/Helsinki', local_date: '2025-06-01', local_time: '14:00' },
-      { role: 'to', sequence: 2, name: 'JFK', code: 'JFK', lat: 40.64, lng: -73.78, timezone: 'America/New_York', local_date: '2025-06-01', local_time: '15:00' },
+      {
+        role: 'from',
+        sequence: 0,
+        name: 'Brussels',
+        code: 'BRU',
+        lat: 50.9,
+        lng: 4.48,
+        timezone: 'Europe/Brussels',
+        local_date: '2025-06-01',
+        local_time: '08:00',
+      },
+      {
+        role: 'stop',
+        sequence: 1,
+        name: 'Helsinki-Vantaa',
+        code: 'HEL',
+        lat: 60.32,
+        lng: 24.96,
+        timezone: 'Europe/Helsinki',
+        local_date: '2025-06-01',
+        local_time: '14:00',
+      },
+      {
+        role: 'to',
+        sequence: 2,
+        name: 'JFK',
+        code: 'JFK',
+        lat: 40.64,
+        lng: -73.78,
+        timezone: 'America/New_York',
+        local_date: '2025-06-01',
+        local_time: '15:00',
+      },
     ];
     render(<TransportModal {...defaultProps} reservation={res} onSave={onSave} />);
     // A routine edit (retitle + save) must not cost the booking its AirTrail
@@ -421,22 +528,38 @@ describe('TransportModal', () => {
 
   it('FE-PLANNER-TRANSMODAL-023: initialAutomated opens straight in the transit search with the day preset', () => {
     const days = [{ id: 10, trip_id: 1, day_number: 1, date: '2025-06-01', title: 'Day 1' }] as any;
-    render(<TransportModal {...defaultProps} days={days} selectedDayId={10} initialAutomated places={[]} accommodations={[]} />);
+    render(
+      <TransportModal
+        {...defaultProps}
+        days={days}
+        selectedDayId={10}
+        initialAutomated
+        places={[]}
+        accommodations={[]}
+      />
+    );
     expect(screen.getAllByPlaceholderText('Search stop or station…')).toHaveLength(2);
   });
 
-  it('FE-PLANNER-TRANSMODAL-028: automated quick picks only offer the chosen day\'s places (#1460)', async () => {
-    const days = [
-      buildDay({ id: 10, date: '2025-06-01' }),
-      buildDay({ id: 11, date: '2025-06-02' }),
-    ];
+  it("FE-PLANNER-TRANSMODAL-028: automated quick picks only offer the chosen day's places (#1460)", async () => {
+    const days = [buildDay({ id: 10, date: '2025-06-01' }), buildDay({ id: 11, date: '2025-06-02' })];
     const louvre = buildPlace({ id: 1, name: 'Louvre' });
     const eiffel = buildPlace({ id: 2, name: 'Eiffel Tower' });
     const assignments = {
       '10': [buildAssignment({ day_id: 10, place_id: louvre.id, place: louvre })],
       '11': [buildAssignment({ day_id: 11, place_id: eiffel.id, place: eiffel })],
     };
-    render(<TransportModal {...defaultProps} days={days} selectedDayId={10} initialAutomated places={[louvre, eiffel]} assignments={assignments} accommodations={[]} />);
+    render(
+      <TransportModal
+        {...defaultProps}
+        days={days}
+        selectedDayId={10}
+        initialAutomated
+        places={[louvre, eiffel]}
+        assignments={assignments}
+        accommodations={[]}
+      />
+    );
     // Focusing the "from" field opens the quick picks — day 1's place only.
     const [fromInput] = screen.getAllByPlaceholderText('Search stop or station…');
     await userEvent.click(fromInput);
@@ -481,9 +604,17 @@ describe('TransportModal', () => {
     const payload = onSave.mock.calls[0][0];
     expect(payload.type).toBe('train');
     expect(payload.endpoints.map((e: { role: string }) => e.role)).toEqual(['from', 'stop', 'to']);
-    expect(payload.endpoints.map((e: { name: string }) => e.name)).toEqual(['Berlin Hbf', 'Frankfurt Hbf', 'München Hbf']);
+    expect(payload.endpoints.map((e: { name: string }) => e.name)).toEqual([
+      'Berlin Hbf',
+      'Frankfurt Hbf',
+      'München Hbf',
+    ]);
     expect(payload.metadata.legs).toHaveLength(2);
-    expect(payload.metadata.legs[0]).toMatchObject({ from: 'Berlin Hbf', to: 'Frankfurt Hbf', train_number: 'ICE 100' });
+    expect(payload.metadata.legs[0]).toMatchObject({
+      from: 'Berlin Hbf',
+      to: 'Frankfurt Hbf',
+      train_number: 'ICE 100',
+    });
     expect(payload.metadata.train_number).toBe('ICE 100'); // flat mirror of leg 0
   });
 

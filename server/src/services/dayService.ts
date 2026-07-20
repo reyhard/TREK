@@ -302,13 +302,10 @@ function assertNoInvertedAccommodation(tripId: string | number): void {
  * whole trip still shifts everything together. The linked hotel reservation follows
  * its accommodation's start day in both branches.
  */
-export function resyncAccommodationDays(
-  tripId: string | number,
-  prevDateByDayId: Map<number, string | null>,
-): void {
-  const stays = db.prepare(
-    'SELECT id, start_day_id, end_day_id FROM day_accommodations WHERE trip_id = ?'
-  ).all(tripId) as { id: number; start_day_id: number; end_day_id: number }[];
+export function resyncAccommodationDays(tripId: string | number, prevDateByDayId: Map<number, string | null>): void {
+  const stays = db
+    .prepare('SELECT id, start_day_id, end_day_id FROM day_accommodations WHERE trip_id = ?')
+    .all(tripId) as { id: number; start_day_id: number; end_day_id: number }[];
   if (stays.length === 0) return;
 
   const dayByDate = db.prepare('SELECT id, day_number FROM days WHERE trip_id = ? AND date = ? LIMIT 1');
@@ -326,16 +323,21 @@ export function resyncAccommodationDays(
     if (oldStartDate && oldEndDate) {
       const newStart = dayByDate.get(tripId, oldStartDate) as { id: number; day_number: number } | undefined;
       const newEnd = dayByDate.get(tripId, oldEndDate) as { id: number; day_number: number } | undefined;
-      if (newStart && newEnd && newStart.day_number <= newEnd.day_number
-        && (newStart.id !== stay.start_day_id || newEnd.id !== stay.end_day_id)) {
+      if (
+        newStart &&
+        newEnd &&
+        newStart.day_number <= newEnd.day_number &&
+        (newStart.id !== stay.start_day_id || newEnd.id !== stay.end_day_id)
+      ) {
         updateStay.run(newStart.id, newEnd.id, stay.id);
         stay.start_day_id = newStart.id;
       }
     }
     // Keep the linked reservation on the stay's (possibly re-dated) start day — its
     // reservation_time is a snapshot of that day's date, stale after any range change.
-    const startDayDate = (db.prepare('SELECT date FROM days WHERE id = ?')
-      .get(stay.start_day_id) as { date: string | null } | undefined)?.date;
+    const startDayDate = (
+      db.prepare('SELECT date FROM days WHERE id = ?').get(stay.start_day_id) as { date: string | null } | undefined
+    )?.date;
     if (startDayDate) {
       restampLinkedRes.run({ dayId: stay.start_day_id, date: startDayDate, accId: stay.id });
     }

@@ -326,7 +326,7 @@ describe('calculateSettlement', () => {
       [makePayer(1, 1, 45, 'alice'), makePayer(1, 2, 45, 'bob')],
     );
     const result = calculateSettlement(1);
-    const balance = (uid: number) => result.balances.find(b => b.user_id === uid)!.balance;
+    const balance = (uid: number) => result.balances.find((b) => b.user_id === uid)!.balance;
 
     expect(balance(1)).toBeCloseTo(15, 2);
     expect(balance(2)).toBeCloseTo(15, 2);
@@ -342,7 +342,7 @@ describe('calculateSettlement', () => {
       [makePayer(1, 1, 70, 'alice'), makePayer(1, 2, 30, 'bob')],
     );
     const result = calculateSettlement(1);
-    const balance = (uid: number) => result.balances.find(b => b.user_id === uid)!.balance;
+    const balance = (uid: number) => result.balances.find((b) => b.user_id === uid)!.balance;
 
     expect(balance(1)).toBeCloseTo(20, 2);
     expect(balance(2)).toBeCloseTo(-20, 2);
@@ -357,12 +357,17 @@ describe('calculateSettlement', () => {
     setupDb(
       [makeItem(1, 90), makeItem(2, 55)],
       [
-        makeMember(1, 1, 'alice'), makeMember(1, 2, 'bob'), makeMember(1, 3, 'carol'),
-        makeMember(2, 1, 'alice'), makeMember(2, 3, 'carol'),
+        makeMember(1, 1, 'alice'),
+        makeMember(1, 2, 'bob'),
+        makeMember(1, 3, 'carol'),
+        makeMember(2, 1, 'alice'),
+        makeMember(2, 3, 'carol'),
       ],
       [
-        makePayer(1, 1, 45, 'alice'), makePayer(1, 2, 45, 'bob'),
-        makePayer(2, 2, 25, 'bob'), makePayer(2, 3, 30, 'carol'),
+        makePayer(1, 1, 45, 'alice'),
+        makePayer(1, 2, 45, 'bob'),
+        makePayer(2, 2, 25, 'bob'),
+        makePayer(2, 3, 30, 'carol'),
       ],
     );
     const result = calculateSettlement(1);

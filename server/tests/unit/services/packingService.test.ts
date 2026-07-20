@@ -137,10 +137,16 @@ describe('listTemplates', () => {
 
 /** A one-category template with the given item names. Returns its id. */
 function seedTemplate(userId: number, itemNames: string[]): number {
-  const templateId = testDb.prepare('INSERT INTO packing_templates (name, created_by) VALUES (?, ?)').run('Camping', userId).lastInsertRowid as number;
-  const catId = testDb.prepare('INSERT INTO packing_template_categories (template_id, name, sort_order) VALUES (?, ?, ?)').run(templateId, 'Gear', 0).lastInsertRowid as number;
+  const templateId = testDb
+    .prepare('INSERT INTO packing_templates (name, created_by) VALUES (?, ?)')
+    .run('Camping', userId).lastInsertRowid as number;
+  const catId = testDb
+    .prepare('INSERT INTO packing_template_categories (template_id, name, sort_order) VALUES (?, ?, ?)')
+    .run(templateId, 'Gear', 0).lastInsertRowid as number;
   itemNames.forEach((name, i) => {
-    testDb.prepare('INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, ?, ?)').run(catId, name, i);
+    testDb
+      .prepare('INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, ?, ?)')
+      .run(catId, name, i);
   });
   return templateId;
 }

@@ -2,6 +2,34 @@
  * Unit tests for tripService — exportICS function (TRIP-SVC-001 through TRIP-SVC-009).
  * Uses a real in-memory SQLite DB so SQL logic is exercised faithfully.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { createAccommodation } from '../../../src/services/dayService';
+import {
+  exportICS,
+  generateDays,
+  deleteOldCover,
+  updateTrip,
+  transferOwnership,
+  createGuest,
+  renameGuest,
+  deleteGuest,
+  listMembers,
+  addMember,
+} from '../../../src/services/tripService';
+import {
+  createUser,
+  createTrip,
+  createReservation,
+  createPlace,
+  createDay,
+  createDayAssignment,
+  createDayNote,
+  addTripMember,
+} from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
+import fs from 'fs';
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
@@ -30,14 +58,6 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createReservation, createPlace, createDay, createDayAssignment, createDayNote, addTripMember } from '../../helpers/factories';
-import { exportICS, generateDays, deleteOldCover, updateTrip, transferOwnership, createGuest, renameGuest, deleteGuest, listMembers, addMember } from '../../../src/services/tripService';
-import { createAccommodation } from '../../../src/services/dayService';
-import fs from 'fs';
-
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -55,12 +75,18 @@ afterAll(() => {
 
 function getDays(tripId: number) {
   return testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').all(tripId) as {
-    id: number; trip_id: number; day_number: number; date: string | null;
+    id: number;
+    trip_id: number;
+    day_number: number;
+    date: string | null;
   }[];
 }
 
 function getAssignments(dayId: number) {
-  return testDb.prepare('SELECT * FROM day_assignments WHERE day_id = ?').all(dayId) as { id: number; day_id: number }[];
+  return testDb.prepare('SELECT * FROM day_assignments WHERE day_id = ?').all(dayId) as {
+    id: number;
+    day_id: number;
+  }[];
 }
 
 function getNotes(dayId: number) {
@@ -85,8 +111,12 @@ describe('generateDays', () => {
 
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(5);
-    expect(daysAfter.map(d => d.date)).toEqual([
-      '2025-06-10', '2025-06-11', '2025-06-12', '2025-06-13', '2025-06-14',
+    expect(daysAfter.map((d) => d.date)).toEqual([
+      '2025-06-10',
+      '2025-06-11',
+      '2025-06-12',
+      '2025-06-13',
+      '2025-06-14',
     ]);
 
     // day_number 1 (formerly June 1) now has date June 10 — assignment still attached
@@ -113,7 +143,7 @@ describe('generateDays', () => {
 
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(3);
-    expect(daysAfter.map(d => d.date)).toEqual(['2025-07-01', '2025-07-02', '2025-07-03']);
+    expect(daysAfter.map((d) => d.date)).toEqual(['2025-07-01', '2025-07-02', '2025-07-03']);
   });
 
   it('TRIP-SVC-016: shrinking range deletes empty overflow days (issue #909)', () => {
@@ -126,8 +156,12 @@ describe('generateDays', () => {
 
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(5);
-    expect(daysAfter.map(d => d.date)).toEqual([
-      '2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04', '2025-07-05',
+    expect(daysAfter.map((d) => d.date)).toEqual([
+      '2025-07-01',
+      '2025-07-02',
+      '2025-07-03',
+      '2025-07-04',
+      '2025-07-05',
     ]);
   });
 
@@ -145,8 +179,12 @@ describe('generateDays', () => {
 
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(5);
-    expect(daysAfter.map(d => d.date)).toEqual([
-      '2025-08-01', '2025-08-02', '2025-08-03', '2025-08-04', '2025-08-05',
+    expect(daysAfter.map((d) => d.date)).toEqual([
+      '2025-08-01',
+      '2025-08-02',
+      '2025-08-03',
+      '2025-08-04',
+      '2025-08-05',
     ]);
 
     // Existing day 1 retains its assignment
@@ -172,10 +210,10 @@ describe('generateDays', () => {
 
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(4);
-    expect(daysAfter.every(d => d.date === null)).toBe(true);
+    expect(daysAfter.every((d) => d.date === null)).toBe(true);
 
     // The assignment on the former day 2 still exists
-    const formerDay2 = daysAfter.find(d => d.id === daysBefore[1].id);
+    const formerDay2 = daysAfter.find((d) => d.id === daysBefore[1].id);
     expect(formerDay2).toBeDefined();
     expect(getAssignments(formerDay2!.id)).toHaveLength(1);
     expect(getAssignments(formerDay2!.id)[0].id).toBe(assignment.id);
@@ -195,8 +233,12 @@ describe('generateDays', () => {
 
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(5);
-    expect(daysAfter.map(d => d.date)).toEqual([
-      '2025-10-03', '2025-10-04', '2025-10-05', '2025-10-06', '2025-10-07',
+    expect(daysAfter.map((d) => d.date)).toEqual([
+      '2025-10-03',
+      '2025-10-04',
+      '2025-10-05',
+      '2025-10-06',
+      '2025-10-07',
     ]);
 
     // All 5 assignments survive
@@ -231,8 +273,8 @@ describe('generateDays', () => {
     const daysAfter = getDays(trip.id);
     expect(daysAfter).toHaveLength(5);
 
-    const dated = daysAfter.filter(d => d.date !== null);
-    const dateless = daysAfter.filter(d => d.date === null);
+    const dated = daysAfter.filter((d) => d.date !== null);
+    const dateless = daysAfter.filter((d) => d.date === null);
     expect(dated).toHaveLength(4);
     expect(dateless).toHaveLength(1);
 
@@ -241,7 +283,7 @@ describe('generateDays', () => {
     expect(getAssignments(dateless[0].id)[0].id).toBe(assignment.id);
 
     // All day_numbers are unique 1..5
-    const nums = daysAfter.map(d => d.day_number).sort((a, b) => a - b);
+    const nums = daysAfter.map((d) => d.day_number).sort((a, b) => a - b);
     expect(nums).toEqual([1, 2, 3, 4, 5]);
   });
 
@@ -252,7 +294,7 @@ describe('generateDays', () => {
     generateDays(trip.id, null, null);
     const dateless = getDays(trip.id);
     expect(dateless).toHaveLength(7);
-    expect(dateless.every(d => d.date === null)).toBe(true);
+    expect(dateless.every((d) => d.date === null)).toBe(true);
 
     // Give the LAST dateless day real content so it must be preserved.
     const place = createPlace(testDb, trip.id);
@@ -263,9 +305,9 @@ describe('generateDays', () => {
     generateDays(trip.id, '2026-01-10', '2026-01-11');
 
     const daysAfter = getDays(trip.id);
-    const dated = daysAfter.filter(d => d.date !== null);
-    const stillDateless = daysAfter.filter(d => d.date === null);
-    expect(dated.map(d => d.date)).toEqual(['2026-01-10', '2026-01-11']);
+    const dated = daysAfter.filter((d) => d.date !== null);
+    const stillDateless = daysAfter.filter((d) => d.date === null);
+    expect(dated.map((d) => d.date)).toEqual(['2026-01-10', '2026-01-11']);
     // day_count is COUNT(*) FROM days: 2 dated + 1 content-bearing dateless = 3 (not the stale 7)
     expect(daysAfter).toHaveLength(3);
     expect(stillDateless).toHaveLength(1);
@@ -353,9 +395,7 @@ describe('exportICS', () => {
       title: 'Morning Flight',
       type: 'flight',
     });
-    testDb
-      .prepare('UPDATE reservations SET reservation_time=? WHERE id=?')
-      .run('2025-06-02T09:00', reservation.id);
+    testDb.prepare('UPDATE reservations SET reservation_time=? WHERE id=?').run('2025-06-02T09:00', reservation.id);
 
     const { ics } = exportICS(trip.id);
 
@@ -370,9 +410,7 @@ describe('exportICS', () => {
       title: 'Hotel Check-in',
       type: 'hotel',
     });
-    testDb
-      .prepare('UPDATE reservations SET reservation_time=? WHERE id=?')
-      .run('2025-06-02', reservation.id);
+    testDb.prepare('UPDATE reservations SET reservation_time=? WHERE id=?').run('2025-06-02', reservation.id);
 
     const { ics } = exportICS(trip.id);
 
@@ -386,18 +424,16 @@ describe('exportICS', () => {
       title: 'CDG to JFK',
       type: 'flight',
     });
-    testDb
-      .prepare('UPDATE reservations SET reservation_time=?, metadata=? WHERE id=?')
-      .run(
-        '2025-06-02T09:00',
-        JSON.stringify({
-          airline: 'Air Test',
-          flight_number: 'AT100',
-          departure_airport: 'CDG',
-          arrival_airport: 'JFK',
-        }),
-        reservation.id
-      );
+    testDb.prepare('UPDATE reservations SET reservation_time=?, metadata=? WHERE id=?').run(
+      '2025-06-02T09:00',
+      JSON.stringify({
+        airline: 'Air Test',
+        flight_number: 'AT100',
+        departure_airport: 'CDG',
+        arrival_airport: 'JFK',
+      }),
+      reservation.id,
+    );
 
     const { ics } = exportICS(trip.id);
 
@@ -451,12 +487,25 @@ describe('exportICS', () => {
       type: 'flight',
     });
     // Confirmed flights store times per endpoint, never as reservation_time.
-    testDb.prepare('UPDATE reservations SET reservation_time=NULL, reservation_end_time=NULL WHERE id=?').run(reservation.id);
+    testDb
+      .prepare('UPDATE reservations SET reservation_time=NULL, reservation_end_time=NULL WHERE id=?')
+      .run(reservation.id);
     const insertEp = testDb.prepare(
-      'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_time, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_time, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     insertEp.run(reservation.id, 'from', 0, 'Paris CDG', 'CDG', 49.0, 2.5, 'Europe/Paris', '09:00', '2025-06-02');
-    insertEp.run(reservation.id, 'to', 1, 'New York JFK', 'JFK', 40.6, -73.8, 'America/New_York', '12:00', '2025-06-02');
+    insertEp.run(
+      reservation.id,
+      'to',
+      1,
+      'New York JFK',
+      'JFK',
+      40.6,
+      -73.8,
+      'America/New_York',
+      '12:00',
+      '2025-06-02',
+    );
 
     const { ics } = exportICS(trip.id);
 
@@ -476,9 +525,11 @@ describe('exportICS', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Bad TZ Trip' });
     const reservation = createReservation(testDb, trip.id, { title: 'CDG → JFK', type: 'flight' });
-    testDb.prepare('UPDATE reservations SET reservation_time=NULL, reservation_end_time=NULL WHERE id=?').run(reservation.id);
+    testDb
+      .prepare('UPDATE reservations SET reservation_time=NULL, reservation_end_time=NULL WHERE id=?')
+      .run(reservation.id);
     const insertEp = testDb.prepare(
-      'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_time, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_time, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     // A stored/plugin-written timezone can be any string; it must never reach Intl.
     // The bogus zone takes precedence over the coordinates (first.timezone || resolveZone).
@@ -486,7 +537,9 @@ describe('exportICS', () => {
     insertEp.run(reservation.id, 'to', 1, 'New York JFK', 'JFK', 40.6, -73.8, 'garbage', '12:00', '2025-06-02');
 
     let ics = '';
-    expect(() => { ics = exportICS(trip.id).ics; }).not.toThrow();
+    expect(() => {
+      ics = exportICS(trip.id).ics;
+    }).not.toThrow();
     // Falls back to a floating local time (no TZID) and never emits a bogus VTIMEZONE.
     expect(ics).toContain('DTSTART:20250602T090000');
     expect(ics).not.toContain('TZID=Not/AZone');
@@ -501,9 +554,11 @@ describe('exportICS', () => {
       type: 'flight',
     });
     testDb.prepare('UPDATE reservations SET reservation_time=NULL WHERE id=?').run(reservation.id);
-    testDb.prepare(
-      'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_time, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(reservation.id, 'from', 0, 'Origin', 'AAA', 1.0, 1.0, null, '09:00', null);
+    testDb
+      .prepare(
+        'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_time, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(reservation.id, 'from', 0, 'Origin', 'AAA', 1.0, 1.0, null, '09:00', null);
 
     const { ics } = exportICS(trip.id);
 
@@ -517,9 +572,7 @@ describe('exportICS', () => {
     // Tokyo coordinates → Asia/Tokyo via tz-lookup.
     const place = createPlace(testDb, trip.id, { name: 'Senso-ji', lat: 35.7148, lng: 139.7967 });
     const assignment = createDayAssignment(testDb, day.id, place.id);
-    testDb
-      .prepare('UPDATE day_assignments SET assignment_time=? WHERE id=?')
-      .run('09:00', assignment.id);
+    testDb.prepare('UPDATE day_assignments SET assignment_time=? WHERE id=?').run('09:00', assignment.id);
 
     const { ics } = exportICS(trip.id);
 
@@ -571,9 +624,13 @@ describe('resyncReservationDays (#1288)', () => {
   const dayFor = (tripId: number, date: string) =>
     (testDb.prepare('SELECT id FROM days WHERE trip_id = ? AND date = ?').get(tripId, date) as { id: number }).id;
   const insertDatedReservation = (tripId: number, dayId: number, time: string) =>
-    Number(testDb.prepare(
-      "INSERT INTO reservations (trip_id, day_id, title, reservation_time, type, status) VALUES (?, ?, 'Dinner', ?, 'restaurant', 'pending')",
-    ).run(tripId, dayId, time).lastInsertRowid);
+    Number(
+      testDb
+        .prepare(
+          "INSERT INTO reservations (trip_id, day_id, title, reservation_time, type, status) VALUES (?, ?, 'Dinner', ?, 'restaurant', 'pending')",
+        )
+        .run(tripId, dayId, time).lastInsertRowid,
+    );
 
   it('TRIP-SVC-018: changing the start date re-anchors a dated reservation to the day matching its time', () => {
     const { user } = createUser(testDb);
@@ -605,25 +662,35 @@ describe('resyncAccommodationDays (#1288)', () => {
   const insertAccommodation = (tripId: number, startDayId: number, endDayId: number) => {
     const place = createPlace(testDb, tripId, { name: 'Grand Hotel' });
     const acc = createAccommodation(tripId, {
-      place_id: place.id, start_day_id: startDayId, end_day_id: endDayId,
+      place_id: place.id,
+      start_day_id: startDayId,
+      end_day_id: endDayId,
     }) as { id: number };
-    const linkedRes = testDb.prepare(
-      'SELECT id FROM reservations WHERE accommodation_id = ?',
-    ).get(acc.id) as { id: number };
+    const linkedRes = testDb.prepare('SELECT id FROM reservations WHERE accommodation_id = ?').get(acc.id) as {
+      id: number;
+    };
     return { accId: acc.id, linkedResId: linkedRes.id };
   };
 
   const getAcc = (id: number) =>
-    testDb.prepare('SELECT start_day_id, end_day_id FROM day_accommodations WHERE id = ?').get(id) as
-      { start_day_id: number; end_day_id: number };
+    testDb.prepare('SELECT start_day_id, end_day_id FROM day_accommodations WHERE id = ?').get(id) as {
+      start_day_id: number;
+      end_day_id: number;
+    };
   const getRes = (id: number) =>
-    testDb.prepare('SELECT day_id, reservation_time FROM reservations WHERE id = ?').get(id) as
-      { day_id: number | null; reservation_time: string | null };
+    testDb.prepare('SELECT day_id, reservation_time FROM reservations WHERE id = ?').get(id) as {
+      day_id: number | null;
+      reservation_time: string | null;
+    };
 
   it('TRIP-SVC-035: extending the start keeps an accommodation on its absolute dates', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2025-06-10', end_date: '2025-06-14' });
-    const { accId, linkedResId } = insertAccommodation(trip.id, dayFor(trip.id, '2025-06-11'), dayFor(trip.id, '2025-06-13'));
+    const { accId, linkedResId } = insertAccommodation(
+      trip.id,
+      dayFor(trip.id, '2025-06-11'),
+      dayFor(trip.id, '2025-06-13'),
+    );
     // Add a day at the start: days re-date positionally (old 06-11 row becomes 06-10, …).
     updateTrip(trip.id, user.id, { start_date: '2025-06-09', end_date: '2025-06-14' }, 'user');
     const acc = getAcc(accId);
@@ -654,14 +721,25 @@ describe('resyncAccommodationDays (#1288)', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2025-06-01', end_date: '2025-06-05' });
     const origDayId = dayFor(trip.id, '2025-06-02');
-    const resId = Number(testDb.prepare(
-      "INSERT INTO reservations (trip_id, day_id, title, reservation_time, type, status) VALUES (?, ?, 'Dinner', '2025-06-02T19:00:00', 'restaurant', 'pending')",
-    ).run(trip.id, origDayId).lastInsertRowid);
+    const resId = Number(
+      testDb
+        .prepare(
+          "INSERT INTO reservations (trip_id, day_id, title, reservation_time, type, status) VALUES (?, ?, 'Dinner', '2025-06-02T19:00:00', 'restaurant', 'pending')",
+        )
+        .run(trip.id, origDayId).lastInsertRowid,
+    );
     const { accId } = insertAccommodation(trip.id, origDayId, dayFor(trip.id, '2025-06-03'));
-    updateTrip(trip.id, user.id, { start_date: '2025-06-03', end_date: '2025-06-07', date_shift_mode: 'shift_all' }, 'user');
+    updateTrip(
+      trip.id,
+      user.id,
+      { start_date: '2025-06-03', end_date: '2025-06-07', date_shift_mode: 'shift_all' },
+      'user',
+    );
     // The booking stays on its day row (now 2025-06-04) and its time follows.
-    const res = testDb.prepare('SELECT day_id, reservation_time FROM reservations WHERE id = ?').get(resId) as
-      { day_id: number; reservation_time: string };
+    const res = testDb.prepare('SELECT day_id, reservation_time FROM reservations WHERE id = ?').get(resId) as {
+      day_id: number;
+      reservation_time: string;
+    };
     expect(res.day_id).toBe(origDayId);
     expect(res.reservation_time).toBe('2025-06-04T19:00:00');
     // The accommodation stays glued to its (re-dated) day rows too.
@@ -672,9 +750,13 @@ describe('resyncAccommodationDays (#1288)', () => {
   it('TRIP-SVC-037: a dated hotel reservation without a linked accommodation is re-anchored like other bookings', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2025-06-01', end_date: '2025-06-05' });
-    const resId = Number(testDb.prepare(
-      "INSERT INTO reservations (trip_id, day_id, title, reservation_time, type, status) VALUES (?, ?, 'Imported hotel', ?, 'hotel', 'pending')",
-    ).run(trip.id, dayFor(trip.id, '2025-06-02'), '2025-06-02T15:00:00').lastInsertRowid);
+    const resId = Number(
+      testDb
+        .prepare(
+          "INSERT INTO reservations (trip_id, day_id, title, reservation_time, type, status) VALUES (?, ?, 'Imported hotel', ?, 'hotel', 'pending')",
+        )
+        .run(trip.id, dayFor(trip.id, '2025-06-02'), '2025-06-02T15:00:00').lastInsertRowid,
+    );
     updateTrip(trip.id, user.id, { start_date: '2025-06-02', end_date: '2025-06-06' }, 'user');
     const res = testDb.prepare('SELECT day_id FROM reservations WHERE id = ?').get(resId) as { day_id: number };
     expect(res.day_id).toBe(dayFor(trip.id, '2025-06-02'));
@@ -695,7 +777,9 @@ describe('transferOwnership (#973)', () => {
     expect(updated.user_id).toBe(member.id);
 
     // New owner no longer sits in trip_members, former owner now does.
-    const memberIds = (testDb.prepare('SELECT user_id FROM trip_members WHERE trip_id = ?').all(trip.id) as { user_id: number }[]).map(r => r.user_id);
+    const memberIds = (
+      testDb.prepare('SELECT user_id FROM trip_members WHERE trip_id = ?').all(trip.id) as { user_id: number }[]
+    ).map((r) => r.user_id);
     expect(memberIds).toContain(owner.id);
     expect(memberIds).not.toContain(member.id);
   });
@@ -732,7 +816,9 @@ describe('guest members (#1362)', () => {
     expect(member.username).toBe('Anna');
     expect(member.is_guest).toBe(true);
 
-    const row = testDb.prepare('SELECT username, email, password_hash, is_guest, role FROM users WHERE id = ?').get(member.id) as any;
+    const row = testDb
+      .prepare('SELECT username, email, password_hash, is_guest, role FROM users WHERE id = ?')
+      .get(member.id) as any;
     expect(row.is_guest).toBe(1);
     expect(row.password_hash).toBe('');
     expect(row.email).toMatch(/@guests\.invalid$/);
@@ -758,7 +844,9 @@ describe('guest members (#1362)', () => {
     expect(a.member.username).toBe('Sam');
     expect(b.member.username).toBe('Sam');
     expect(b.member.id).not.toBe(a.member.id);
-    const usernames = testDb.prepare('SELECT username FROM users WHERE id IN (?, ?)').all(a.member.id, b.member.id) as { username: string }[];
+    const usernames = testDb.prepare('SELECT username FROM users WHERE id IN (?, ?)').all(a.member.id, b.member.id) as {
+      username: string;
+    }[];
     expect(usernames[0].username).not.toBe(usernames[1].username);
   });
 
@@ -770,7 +858,9 @@ describe('guest members (#1362)', () => {
     const { member } = createGuest(trip.id, 'Bob', owner.id);
 
     expect(renameGuest(trip.id, member.id, 'Robert')).toBe(true);
-    expect((testDb.prepare('SELECT display_name FROM users WHERE id = ?').get(member.id) as any).display_name).toBe('Robert');
+    expect((testDb.prepare('SELECT display_name FROM users WHERE id = ?').get(member.id) as any).display_name).toBe(
+      'Robert',
+    );
 
     // A real user cannot be renamed through the guest path…
     expect(renameGuest(trip.id, owner.id, 'Hacked')).toBe(false);

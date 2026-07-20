@@ -2,6 +2,20 @@
  * DB-backed unit tests for budgetService trip-scoping (BUDGET-SVC-DB-001+).
  * Uses a real in-memory SQLite DB so the SQL WHERE clauses are exercised.
  */
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import {
+  createBudgetItem,
+  updateBudgetItem,
+  updateMembers,
+  toggleMemberPaid,
+  calculateSettlement,
+  rebaseTripCurrency,
+} from '../../../src/services/budgetService';
+import { createGuest, deleteGuest } from '../../../src/services/tripService';
+import { createUser, createTrip } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -37,13 +51,6 @@ vi.mock('../../../src/services/exchangeRateService', () => ({
   getRates: vi.fn(async (base: string) => RATES[base.toUpperCase()] ?? null),
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { createBudgetItem, updateBudgetItem, updateMembers, toggleMemberPaid, calculateSettlement, rebaseTripCurrency } from '../../../src/services/budgetService';
-import { createGuest, deleteGuest } from '../../../src/services/tripService';
-
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -66,20 +73,25 @@ function paidFlag(itemId: number, memberId: number): number | undefined {
 
 describe('deleting a member re-splits their expenses (#1553)', () => {
   function personsOf(itemId: number): number | null {
-    return (testDb.prepare('SELECT persons FROM budget_items WHERE id = ?').get(itemId) as { persons: number | null }).persons;
+    return (testDb.prepare('SELECT persons FROM budget_items WHERE id = ?').get(itemId) as { persons: number | null })
+      .persons;
   }
   function memberCount(itemId: number): number {
-    return (testDb.prepare('SELECT COUNT(*) AS count FROM budget_item_members WHERE budget_item_id = ?')
-      .get(itemId) as { count: number }).count;
+    return (
+      testDb.prepare('SELECT COUNT(*) AS count FROM budget_item_members WHERE budget_item_id = ?').get(itemId) as {
+        count: number;
+      }
+    ).count;
   }
 
   it('BUDGET-SVC-DB-010: re-derives the persons divisor when a guest in the split is deleted', () => {
     const { user: owner } = createUser(testDb);
     const trip = createTrip(testDb, owner.id);
-    const guests = ['G1', 'G2', 'G3'].map(n => createGuest(trip.id, n, owner.id).member);
+    const guests = ['G1', 'G2', 'G3'].map((n) => createGuest(trip.id, n, owner.id).member);
     const item = createBudgetItem(trip.id, {
-      name: 'Dinner', total_price: 400,
-      member_ids: [owner.id, ...guests.map(g => g.id)],
+      name: 'Dinner',
+      total_price: 400,
+      member_ids: [owner.id, ...guests.map((g) => g.id)],
     });
     expect(personsOf(item.id)).toBe(4);
 
@@ -127,7 +139,7 @@ describe('deleting a member re-splits their expenses (#1553)', () => {
     // A client that loaded before the deletion still sends the guest back (#1553).
     const updated = updateBudgetItem(item.id, trip.id, { member_ids: [owner.id, guest.id] });
 
-    expect(updated!.members.map(m => m.user_id)).toEqual([owner.id]);
+    expect(updated!.members.map((m) => m.user_id)).toEqual([owner.id]);
     expect(personsOf(item.id)).toBe(1);
   });
 
@@ -140,7 +152,7 @@ describe('deleting a member re-splits their expenses (#1553)', () => {
     deleteGuest(trip.id, guest.id);
     const result = updateMembers(item.id, trip.id, [owner.id, guest.id]);
 
-    expect(result!.members.map(m => m.user_id)).toEqual([owner.id]);
+    expect(result!.members.map((m) => m.user_id)).toEqual([owner.id]);
     expect(personsOf(item.id)).toBe(1);
   });
 });
@@ -215,10 +227,18 @@ function seedIssue1543Trip(tripCurrency: string) {
   // 9 000 ₽ nobody has paid yet, 9 000 ₽ paid by me, and $100 paid by me. The USD row
   // carries the rate frozen at entry time: units of USD per 1 RUB.
   createBudgetItem(trip.id, { name: 'Проезд обратно', total_price: 9000, currency: 'RUB', members });
-  createBudgetItem(trip.id, { name: 'Проезд туда', currency: 'RUB', payers: [{ user_id: me.id, amount: 9000 }], members });
   createBudgetItem(trip.id, {
-    name: 'test', currency: 'USD', exchange_rate: 0.013042,
-    payers: [{ user_id: me.id, amount: 100 }], members,
+    name: 'Проезд туда',
+    currency: 'RUB',
+    payers: [{ user_id: me.id, amount: 9000 }],
+    members,
+  });
+  createBudgetItem(trip.id, {
+    name: 'test',
+    currency: 'USD',
+    exchange_rate: 0.013042,
+    payers: [{ user_id: me.id, amount: 100 }],
+    members,
   });
   return { trip, me, danil, serega };
 }
@@ -228,7 +248,7 @@ describe('calculateSettlement with a foreign-currency expense (#1543)', () => {
     const { trip, me, danil, serega } = seedIssue1543Trip('RUB');
 
     const result = calculateSettlement(trip.id, { base: 'RUB', tripCurrency: 'RUB', rates: RATES.RUB });
-    const balanceOf = (id: number) => result.balances.find(b => b.user_id === id)!.balance;
+    const balanceOf = (id: number) => result.balances.find((b) => b.user_id === id)!.balance;
 
     // Total spend is 9 000 + 9 000 + $100 (≈7 668 ₽), so each of the three owes a third
     // of it and I am owed back everything I fronted beyond my own share. The bug divided
@@ -249,7 +269,7 @@ describe('calculateSettlement with a foreign-currency expense (#1543)', () => {
 
     // Same trip, viewed in EUR: every balance is the RUB one converted once, at the end.
     const inEur = calculateSettlement(trip.id, { base: 'EUR', tripCurrency: 'RUB', rates: RATES.EUR });
-    const danilEur = inEur.balances.find(b => b.user_id === danil.id)!.balance;
+    const danilEur = inEur.balances.find((b) => b.user_id === danil.id)!.balance;
 
     const shareRub = (18000 + 100 / RATES.RUB.USD) / 3;
     expect(danilEur).toBeCloseTo(-shareRub / RATES.EUR.RUB, 0);
@@ -258,8 +278,10 @@ describe('calculateSettlement with a foreign-currency expense (#1543)', () => {
 
 describe('rebaseTripCurrency', () => {
   const itemRow = (id: number) =>
-    testDb.prepare('SELECT currency, exchange_rate FROM budget_items WHERE id = ?')
-      .get(id) as { currency: string | null; exchange_rate: number };
+    testDb.prepare('SELECT currency, exchange_rate FROM budget_items WHERE id = ?').get(id) as {
+      currency: string | null;
+      exchange_rate: number;
+    };
 
   it('BUDGET-SVC-DB-006: pins currency-less expenses to the outgoing currency and re-freezes the rest', async () => {
     const { user } = createUser(testDb);
@@ -270,8 +292,20 @@ describe('rebaseTripCurrency', () => {
     // An expense that inherits the trip's base (currency NULL), one booked in USD, and
     // one already in the incoming currency.
     const implicit = createBudgetItem(trip.id, { name: 'Implicit', total_price: 100, members }) as { id: number };
-    const usd = createBudgetItem(trip.id, { name: 'USD', total_price: 100, currency: 'USD', exchange_rate: 1.1429, members }) as { id: number };
-    const rub = createBudgetItem(trip.id, { name: 'RUB', total_price: 9000, currency: 'RUB', exchange_rate: 87.63, members }) as { id: number };
+    const usd = createBudgetItem(trip.id, {
+      name: 'USD',
+      total_price: 100,
+      currency: 'USD',
+      exchange_rate: 1.1429,
+      members,
+    }) as { id: number };
+    const rub = createBudgetItem(trip.id, {
+      name: 'RUB',
+      total_price: 9000,
+      currency: 'RUB',
+      exchange_rate: 87.63,
+      members,
+    }) as { id: number };
 
     await rebaseTripCurrency(trip.id, 'RUB');
 
@@ -291,7 +325,13 @@ describe('rebaseTripCurrency', () => {
     const members = [{ user_id: alice.id }, { user_id: bob.id }];
 
     createBudgetItem(trip.id, { name: 'Hotel', payers: [{ user_id: alice.id, amount: 100 }], members });
-    createBudgetItem(trip.id, { name: 'Dinner', currency: 'USD', exchange_rate: 1.1429, payers: [{ user_id: bob.id, amount: 60 }], members });
+    createBudgetItem(trip.id, {
+      name: 'Dinner',
+      currency: 'USD',
+      exchange_rate: 1.1429,
+      payers: [{ user_id: bob.id, amount: 60 }],
+      members,
+    });
 
     const before = calculateSettlement(trip.id, { base: 'EUR', tripCurrency: 'EUR', rates: RATES.EUR });
 
@@ -301,7 +341,7 @@ describe('rebaseTripCurrency', () => {
     const after = calculateSettlement(trip.id, { base: 'RUB', tripCurrency: 'RUB', rates: RATES.RUB });
 
     for (const b of before.balances) {
-      const rub = after.balances.find(x => x.user_id === b.user_id)!.balance;
+      const rub = after.balances.find((x) => x.user_id === b.user_id)!.balance;
       expect(rub).toBeCloseTo(b.balance * 87.63, 0); // same money, different unit
     }
   });
@@ -312,7 +352,8 @@ describe('rebaseTripCurrency', () => {
     testDb.prepare("UPDATE trips SET currency = 'EUR' WHERE id = ?").run(trip.id);
 
     const priced = (price: number | null, currency: string | null) => {
-      const r = testDb.prepare('INSERT INTO places (trip_id, name, price, currency) VALUES (?, ?, ?, ?)')
+      const r = testDb
+        .prepare('INSERT INTO places (trip_id, name, price, currency) VALUES (?, ?, ?, ?)')
         .run(trip.id, 'Place', price, currency);
       return Number(r.lastInsertRowid);
     };
@@ -325,8 +366,10 @@ describe('rebaseTripCurrency', () => {
     await rebaseTripCurrency(trip.id, 'JPY');
 
     const placeRow = (id: number) =>
-      testDb.prepare('SELECT price, currency FROM places WHERE id = ?')
-        .get(id) as { price: number | null; currency: string | null };
+      testDb.prepare('SELECT price, currency FROM places WHERE id = ?').get(id) as {
+        price: number | null;
+        currency: string | null;
+      };
 
     // The implicit place really held euros, so it is stamped EUR rather than silently
     // becoming ¥15 — the amount the user typed is never rewritten.
@@ -340,7 +383,9 @@ describe('rebaseTripCurrency', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Trip' });
     testDb.prepare("UPDATE trips SET currency = 'EUR' WHERE id = ?").run(trip.id);
-    const item = createBudgetItem(trip.id, { name: 'Implicit', total_price: 100, members: [{ user_id: user.id }] }) as { id: number };
+    const item = createBudgetItem(trip.id, { name: 'Implicit', total_price: 100, members: [{ user_id: user.id }] }) as {
+      id: number;
+    };
 
     await rebaseTripCurrency(trip.id, 'EUR');
 

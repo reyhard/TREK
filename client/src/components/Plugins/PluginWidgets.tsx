@@ -1,6 +1,6 @@
-import PluginIcon from '../shared/PluginIcon'
-import PluginFrame from './PluginFrame'
-import type { ActivePlugin } from '../../store/pluginStore'
+import type { ActivePlugin } from '../../store/pluginStore';
+import PluginIcon from '../shared/PluginIcon';
+import PluginFrame from './PluginFrame';
 
 /**
  * Renders active `widget` plugins as dashboard cards (#plugins, M8). Each is a
@@ -12,7 +12,7 @@ import type { ActivePlugin } from '../../store/pluginStore'
  * taller widget's controls.
  */
 export default function PluginWidgets({ plugins, tripId = null }: { plugins: ActivePlugin[]; tripId?: string | null }) {
-  if (plugins.length === 0) return null
+  if (plugins.length === 0) return null;
   return (
     <>
       {plugins.map((p) => (
@@ -30,8 +30,14 @@ export default function PluginWidgets({ plugins, tripId = null }: { plugins: Act
         >
           <div
             style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px 8px',
-              fontSize: 13, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.14em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '16px 20px 8px',
+              fontSize: 13,
+              fontWeight: 500,
+              textTransform: 'uppercase',
+              letterSpacing: '0.14em',
               color: 'var(--ink-3)',
             }}
           >
@@ -45,5 +51,5 @@ export default function PluginWidgets({ plugins, tripId = null }: { plugins: Act
         </div>
       ))}
     </>
-  )
+  );
 }

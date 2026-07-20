@@ -47,8 +47,22 @@ afterAll(() => {
 function validLeg(overrides: Partial<TransitLeg> = {}): TransitLeg {
   return {
     mode: 'BUS',
-    from: { name: 'Station A', lat: 52.52, lng: 13.405, time: '2026-10-02T08:00:00.000Z', scheduledTime: null, track: '1' },
-    to: { name: 'Station B', lat: 52.53, lng: 13.415, time: '2026-10-02T08:30:00.000Z', scheduledTime: null, track: null },
+    from: {
+      name: 'Station A',
+      lat: 52.52,
+      lng: 13.405,
+      time: '2026-10-02T08:00:00.000Z',
+      scheduledTime: null,
+      track: '1',
+    },
+    to: {
+      name: 'Station B',
+      lat: 52.53,
+      lng: 13.415,
+      time: '2026-10-02T08:30:00.000Z',
+      scheduledTime: null,
+      track: null,
+    },
     duration: 1800,
     distance: 5000,
     headsign: 'City Centre',
@@ -115,9 +129,7 @@ describe('transitItinerarySchema', () => {
   });
 
   it('ITI-VAL-006: requires at least one non-WALK leg', () => {
-    const result = transitItinerarySchema.safeParse(
-      validItinerary({ legs: [{ ...validLeg(), mode: 'WALK' }] }),
-    );
+    const result = transitItinerarySchema.safeParse(validItinerary({ legs: [{ ...validLeg(), mode: 'WALK' }] }));
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues.some((i) => i.message.includes('scheduled transit leg'))).toBe(true);
@@ -177,14 +189,42 @@ describe('transitItinerarySchema', () => {
         legs: [
           validLeg({
             mode: 'BUS',
-            from: { name: 'A', lat: 52.52, lng: 13.405, time: '2026-10-02T08:00:00.000Z', scheduledTime: null, track: null },
-            to: { name: 'B', lat: 52.53, lng: 13.415, time: '2026-10-02T08:30:00.000Z', scheduledTime: null, track: null },
+            from: {
+              name: 'A',
+              lat: 52.52,
+              lng: 13.405,
+              time: '2026-10-02T08:00:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
+            to: {
+              name: 'B',
+              lat: 52.53,
+              lng: 13.415,
+              time: '2026-10-02T08:30:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
             duration: 1800,
           }),
           validLeg({
             mode: 'TRAM',
-            from: { name: 'Far', lat: 53.0, lng: 14.0, time: '2026-10-02T08:35:00.000Z', scheduledTime: null, track: null },
-            to: { name: 'C', lat: 53.01, lng: 14.01, time: '2026-10-02T09:00:00.000Z', scheduledTime: null, track: null },
+            from: {
+              name: 'Far',
+              lat: 53.0,
+              lng: 14.0,
+              time: '2026-10-02T08:35:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
+            to: {
+              name: 'C',
+              lat: 53.01,
+              lng: 14.01,
+              time: '2026-10-02T09:00:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
             duration: 1500,
           }),
         ],
@@ -234,18 +274,8 @@ describe('transitItinerarySchema', () => {
 
   it('ITI-VAL-013: requested endpoint within 100m of first/last leg', () => {
     const itinerary = validItinerary();
-    expect(
-      transitCoordinatesMatch(
-        { name: 'A', lat: 52.52, lng: 13.405 },
-        itinerary.legs[0].from,
-      ),
-    ).toBe(true);
-    expect(
-      transitCoordinatesMatch(
-        { name: 'Far', lat: 53.0, lng: 14.0 },
-        itinerary.legs[0].from,
-      ),
-    ).toBe(false);
+    expect(transitCoordinatesMatch({ name: 'A', lat: 52.52, lng: 13.405 }, itinerary.legs[0].from)).toBe(true);
+    expect(transitCoordinatesMatch({ name: 'Far', lat: 53.0, lng: 14.0 }, itinerary.legs[0].from)).toBe(false);
   });
 
   it('ITI-VAL-014: rejects combined geometry over 60KB', () => {
@@ -319,8 +349,12 @@ describe('buildTransitJourneyPatch', () => {
   it('ITI-PATCH-002: builds an overnight patch with separate end_day_id', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-04' });
-    const depDay = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-10-02') as any;
-    const arrDay = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-10-03') as any;
+    const depDay = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(trip.id, '2026-10-02') as any;
+    const arrDay = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(trip.id, '2026-10-03') as any;
 
     const patch = buildTransitJourneyPatch(
       trip.id,
@@ -351,20 +385,62 @@ describe('buildTransitJourneyPatch', () => {
         legs: [
           validLeg({
             mode: 'BUS',
-            from: { name: 'A', lat: 52.52, lng: 13.405, time: '2026-10-02T08:00:00.000Z', scheduledTime: null, track: null },
-            to: { name: 'B', lat: 52.53, lng: 13.415, time: '2026-10-02T08:15:00.000Z', scheduledTime: null, track: null },
+            from: {
+              name: 'A',
+              lat: 52.52,
+              lng: 13.405,
+              time: '2026-10-02T08:00:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
+            to: {
+              name: 'B',
+              lat: 52.53,
+              lng: 13.415,
+              time: '2026-10-02T08:15:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
             duration: 900,
           }),
           validLeg({
             mode: 'BUS',
-            from: { name: 'B', lat: 52.53, lng: 13.415, time: '2026-10-02T08:20:00.000Z', scheduledTime: null, track: null },
-            to: { name: 'C', lat: 52.54, lng: 13.42, time: '2026-10-02T08:35:00.000Z', scheduledTime: null, track: null },
+            from: {
+              name: 'B',
+              lat: 52.53,
+              lng: 13.415,
+              time: '2026-10-02T08:20:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
+            to: {
+              name: 'C',
+              lat: 52.54,
+              lng: 13.42,
+              time: '2026-10-02T08:35:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
             duration: 900,
           }),
           validLeg({
             mode: 'BUS',
-            from: { name: 'C', lat: 52.54, lng: 13.42, time: '2026-10-02T08:40:00.000Z', scheduledTime: null, track: null },
-            to: { name: 'D', lat: 52.55, lng: 13.43, time: '2026-10-02T09:00:00.000Z', scheduledTime: null, track: null },
+            from: {
+              name: 'C',
+              lat: 52.54,
+              lng: 13.42,
+              time: '2026-10-02T08:40:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
+            to: {
+              name: 'D',
+              lat: 52.55,
+              lng: 13.43,
+              time: '2026-10-02T09:00:00.000Z',
+              scheduledTime: null,
+              track: null,
+            },
             duration: 1200,
           }),
         ],
@@ -454,7 +530,7 @@ describe('buildTransitJourneyPatch', () => {
   it('ITI-PATCH-008: rejects a day without a date', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
-    testDb.prepare("UPDATE days SET date = NULL WHERE trip_id = ?").run(trip.id);
+    testDb.prepare('UPDATE days SET date = NULL WHERE trip_id = ?').run(trip.id);
     const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
 
     expect(() =>
@@ -471,7 +547,9 @@ describe('buildTransitJourneyPatch', () => {
   it('ITI-PATCH-009: rejects departure date mismatch with selected day', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-05' });
-    const wrongDay = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-10-03') as any;
+    const wrongDay = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(trip.id, '2026-10-03') as any;
 
     expect(() =>
       buildTransitJourneyPatch(

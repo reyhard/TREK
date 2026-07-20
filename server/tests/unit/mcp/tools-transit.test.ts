@@ -535,7 +535,13 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const metadata = JSON.parse(createResult.reservation.metadata);
@@ -551,7 +557,13 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
@@ -563,13 +575,32 @@ describe('MCP transit tools', () => {
         duration: 3600,
         legs: itinerary.legs.map((leg, i) =>
           i === 0
-            ? { ...leg, duration: 600, distance: 600, from: { ...leg.from, time: '2026-12-03T01:00:00Z' }, to: { ...leg.to, time: '2026-12-03T01:10:00Z' } }
-            : { ...leg, duration: 3000, distance: 8000, from: { ...leg.from, time: '2026-12-03T01:10:00Z' }, to: { ...leg.to, time: '2026-12-03T02:00:00Z' } },
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T01:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T01:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 3000,
+                distance: 8000,
+                from: { ...leg.from, time: '2026-12-03T01:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:00:00Z' },
+              },
         ),
       };
       const raw = await harness.client.callTool({
         name: 'update_transit_journey',
-        arguments: { tripId: trip.id, reservationId, dayId: day.id, from: { ...from, name: 'Namba Upd' }, to: { ...to, name: 'Umeda Upd' }, itinerary: updatedItinerary },
+        arguments: {
+          tripId: trip.id,
+          reservationId,
+          dayId: day.id,
+          from: { ...from, name: 'Namba Upd' },
+          to: { ...to, name: 'Umeda Upd' },
+          itinerary: updatedItinerary,
+        },
       });
       expect(raw.isError).toBeFalsy();
       const updateResult = parseToolResult(raw) as any;
@@ -591,7 +622,13 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
@@ -599,7 +636,9 @@ describe('MCP transit tools', () => {
       const current = testDb.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId) as any;
       const currentMeta = JSON.parse(current.metadata);
       currentMeta.plugin_extension = { custom_ref: 'abc-123' };
-      testDb.prepare('UPDATE reservations SET metadata = ? WHERE id = ?').run(JSON.stringify(currentMeta), reservationId);
+      testDb
+        .prepare('UPDATE reservations SET metadata = ? WHERE id = ?')
+        .run(JSON.stringify(currentMeta), reservationId);
 
       const updatedItinerary = {
         ...itinerary,
@@ -608,8 +647,20 @@ describe('MCP transit tools', () => {
         duration: 1800,
         legs: itinerary.legs.map((leg, i) =>
           i === 0
-            ? { ...leg, duration: 600, distance: 600, from: { ...leg.from, time: '2026-12-03T02:00:00Z' }, to: { ...leg.to, time: '2026-12-03T02:10:00Z' } }
-            : { ...leg, duration: 1200, distance: 5000, from: { ...leg.from, time: '2026-12-03T02:10:00Z' }, to: { ...leg.to, time: '2026-12-03T02:30:00Z' } },
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T02:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 1200,
+                distance: 5000,
+                from: { ...leg.from, time: '2026-12-03T02:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:30:00Z' },
+              },
         ),
       };
       const raw = await harness.client.callTool({
@@ -640,12 +691,14 @@ describe('MCP transit tools', () => {
       expect((result.content[0] as any).text).toContain('access denied');
     });
 
-    const { reservation } = await import('../../../src/services/reservationService').then(m => m.createReservation(trip.id, {
-      title: 'Not transit',
-      type: 'flight',
-      status: 'confirmed',
-      day_id: day.id,
-    }));
+    const { reservation } = await import('../../../src/services/reservationService').then((m) =>
+      m.createReservation(trip.id, {
+        title: 'Not transit',
+        type: 'flight',
+        status: 'confirmed',
+        day_id: day.id,
+      }),
+    );
 
     await withHarness(owner.id, ['reservations:write'], async (harness) => {
       const result = await harness.client.callTool({
@@ -656,12 +709,14 @@ describe('MCP transit tools', () => {
       expect((result.content[0] as any).text).toContain('not a transit');
     });
 
-    const { reservation: transitRes } = await import('../../../src/services/reservationService').then(m => m.createReservation(trip.id, {
-      title: 'Transit',
-      type: 'transit',
-      status: 'confirmed',
-      day_id: day.id,
-    }));
+    const { reservation: transitRes } = await import('../../../src/services/reservationService').then((m) =>
+      m.createReservation(trip.id, {
+        title: 'Transit',
+        type: 'transit',
+        status: 'confirmed',
+        day_id: day.id,
+      }),
+    );
 
     savePermissions({ reservation_edit: 'trip_owner' });
     await withHarness(member.id, ['reservations:write'], async (harness) => {
@@ -685,11 +740,21 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 }, notes: 'custom notes' },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+            notes: 'custom notes',
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
-      testDb.prepare('UPDATE reservations SET status = ?, confirmation_number = ?, notes = ?, day_plan_position = ? WHERE id = ?')
+      testDb
+        .prepare(
+          'UPDATE reservations SET status = ?, confirmation_number = ?, notes = ?, day_plan_position = ? WHERE id = ?',
+        )
         .run('upcoming', 'ABC-123', 'preserved notes', 42.5, reservationId);
 
       const updatedItinerary = {
@@ -699,8 +764,20 @@ describe('MCP transit tools', () => {
         duration: 3600,
         legs: itinerary.legs.map((leg, i) =>
           i === 0
-            ? { ...leg, duration: 600, distance: 600, from: { ...leg.from, time: '2026-12-03T01:00:00Z' }, to: { ...leg.to, time: '2026-12-03T01:10:00Z' } }
-            : { ...leg, duration: 3000, distance: 8000, from: { ...leg.from, time: '2026-12-03T01:10:00Z' }, to: { ...leg.to, time: '2026-12-03T02:00:00Z' } },
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T01:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T01:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 3000,
+                distance: 8000,
+                from: { ...leg.from, time: '2026-12-03T01:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:00:00Z' },
+              },
         ),
       };
       const raw = await harness.client.callTool({
@@ -755,11 +832,18 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
-      testDb.prepare('UPDATE reservations SET metadata = ? WHERE id = ?')
+      testDb
+        .prepare('UPDATE reservations SET metadata = ? WHERE id = ?')
         .run(JSON.stringify({ transit: { provider: 'transitous' }, legacy_field: 'keep-me' }), reservationId);
 
       const updatedItinerary = {
@@ -769,8 +853,20 @@ describe('MCP transit tools', () => {
         duration: 3600,
         legs: itinerary.legs.map((leg, i) =>
           i === 0
-            ? { ...leg, duration: 600, distance: 600, from: { ...leg.from, time: '2026-12-03T01:00:00Z' }, to: { ...leg.to, time: '2026-12-03T01:10:00Z' } }
-            : { ...leg, duration: 3000, distance: 8000, from: { ...leg.from, time: '2026-12-03T01:10:00Z' }, to: { ...leg.to, time: '2026-12-03T02:00:00Z' } },
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T01:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T01:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 3000,
+                distance: 8000,
+                from: { ...leg.from, time: '2026-12-03T01:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:00:00Z' },
+              },
         ),
       };
       const raw = await harness.client.callTool({
@@ -791,12 +887,20 @@ describe('MCP transit tools', () => {
     const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
     const otherTrip = createTrip(testDb, otherUser.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
     const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
-    const otherDay = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(otherTrip.id, '2026-12-03') as any;
+    const otherDay = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(otherTrip.id, '2026-12-03') as any;
     await withHarness(user.id, ['reservations:write'], async (harness) => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
@@ -818,7 +922,13 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
@@ -852,7 +962,13 @@ describe('MCP transit tools', () => {
       const createResult = parseToolResult(
         await harness.client.callTool({
           name: 'create_transit_journey',
-          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
       const reservationId = createResult.reservation.id;

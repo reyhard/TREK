@@ -1,13 +1,13 @@
 // FE-COMP-APPEARANCE-001+ — color mode moved here from DisplaySettingsTab,
 // plus the new scheme / readability / dashboard-widget controls.
-import { render, screen, waitFor } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { buildSettings, buildUser } from '../../../tests/helpers/factories';
 import { server } from '../../../tests/helpers/msw/server';
+import { render, screen, waitFor } from '../../../tests/helpers/render';
+import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser, buildSettings } from '../../../tests/helpers/factories';
 import AppearanceSettingsTab from './AppearanceSettingsTab';
 
 beforeEach(() => {
@@ -79,7 +79,7 @@ describe('AppearanceSettingsTab', () => {
     await user.click(screen.getByText('Indigo'));
     await waitFor(
       () => expect(updateSetting).toHaveBeenCalledWith('appearance', expect.objectContaining({ schemeId: 'indigo' })),
-      { timeout: 1500 },
+      { timeout: 1500 }
     );
   });
 
@@ -91,7 +91,7 @@ describe('AppearanceSettingsTab', () => {
     await user.click(screen.getByRole('button', { name: 'Transparency' }));
     await waitFor(
       () => expect(updateSetting).toHaveBeenCalledWith('appearance', expect.objectContaining({ transparency: false })),
-      { timeout: 1500 },
+      { timeout: 1500 }
     );
   });
 });

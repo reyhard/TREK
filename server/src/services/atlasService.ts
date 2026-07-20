@@ -589,7 +589,10 @@ type Box = [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
 // archipelago-style region — Illes Balears, Canarias, … — gets one tight box per island
 // group rather than one box spanning the whole span between them). Used to resolve admin1
 // regions against the bundle, which are parsed per country on demand rather than held whole.
-function compactGeomFromGeometry(geometry: { type: string; coordinates: unknown }): { geom: CompactGeom; boxes: Box[] } {
+function compactGeomFromGeometry(geometry: { type: string; coordinates: unknown }): {
+  geom: CompactGeom;
+  boxes: Box[];
+} {
   const parts = (geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates) as number[][][][];
   const rings: Float64Array[] = [];
   const polyRingCounts: number[] = [];
@@ -604,7 +607,10 @@ function compactGeomFromGeometry(geometry: { type: string; coordinates: unknown 
       }
       rings.push(flat);
     }
-    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    let minLng = Infinity,
+      minLat = Infinity,
+      maxLng = -Infinity,
+      maxLat = -Infinity;
     for (const [lng, lat] of part[0]) {
       if (lng < minLng) minLng = lng;
       if (lng > maxLng) maxLng = lng;
@@ -713,7 +719,9 @@ function getCountryBoxIndex(): Map<string, Box[]> {
 export function isPointInCountryBox(countryCode: string, lat: number, lng: number): boolean {
   const boxes = getCountryBoxIndex().get(countryCode.toUpperCase());
   if (!boxes) return false;
-  return boxes.some(([minLng, minLat, maxLng, maxLat]) => lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng);
+  return boxes.some(
+    ([minLng, minLat, maxLng, maxLat]) => lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng,
+  );
 }
 
 export function getCountryFromCoords(lat: number, lng: number): string | null {
@@ -1192,8 +1200,10 @@ export function listManuallyVisitedRegions(
 
 /** Regions the user explicitly removed, which getVisitedRegions must not re-derive. */
 export function getHiddenRegions(userId: number): Set<string> {
-  const rows = db.prepare('SELECT region_code FROM hidden_regions WHERE user_id = ?').all(userId) as { region_code: string }[];
-  return new Set(rows.map(r => r.region_code));
+  const rows = db.prepare('SELECT region_code FROM hidden_regions WHERE user_id = ?').all(userId) as {
+    region_code: string;
+  }[];
+  return new Set(rows.map((r) => r.region_code));
 }
 
 // Bundled/geocoded region codes are always "<countryCode>-<rest>" (ISO 3166-2 format, and
@@ -1205,7 +1215,9 @@ function countryCodeFromRegionCode(regionCode: string): string {
 }
 
 export function markRegionVisited(userId: number, regionCode: string, regionName: string, countryCode: string): void {
-  db.prepare('INSERT OR IGNORE INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)').run(userId, regionCode, regionName, countryCode);
+  db.prepare(
+    'INSERT OR IGNORE INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)',
+  ).run(userId, regionCode, regionName, countryCode);
   // Re-marking lifts a previous removal of the region itself...
   db.prepare('DELETE FROM hidden_regions WHERE user_id = ? AND region_code = ?').run(userId, regionCode);
   // ...and of the parent country, which the "last region removed" cascade in
@@ -1219,21 +1231,32 @@ export function markRegionVisited(userId: number, regionCode: string, regionName
 // derived from place_regions or manually marked — after excluding the given user's hidden
 // regions. Used to decide whether removing a region should cascade into hiding the country.
 function hasVisibleRegionForCountry(userId: number, countryCode: string, hidden: Set<string>): boolean {
-  const tripIds = getUserTrips(userId).map(t => t.id);
-  const placeIds = getPlacesForTrips(tripIds).filter(p => p.lat && p.lng).map(p => p.id);
-  const placeRegionCodes = placeIds.length > 0
-    ? (db.prepare(
-        `SELECT DISTINCT region_code FROM place_regions WHERE country_code = ? AND place_id IN (${placeIds.map(() => '?').join(',')})`
-      ).all(countryCode, ...placeIds) as { region_code: string }[]).map(r => r.region_code)
-    : [];
-  const manualRegionCodes = (db.prepare(
-    'SELECT region_code FROM visited_regions WHERE user_id = ? AND country_code = ?'
-  ).all(userId, countryCode) as { region_code: string }[]).map(r => r.region_code);
-  return [...placeRegionCodes, ...manualRegionCodes].some(code => !hidden.has(code));
+  const tripIds = getUserTrips(userId).map((t) => t.id);
+  const placeIds = getPlacesForTrips(tripIds)
+    .filter((p) => p.lat && p.lng)
+    .map((p) => p.id);
+  const placeRegionCodes =
+    placeIds.length > 0
+      ? (
+          db
+            .prepare(
+              `SELECT DISTINCT region_code FROM place_regions WHERE country_code = ? AND place_id IN (${placeIds.map(() => '?').join(',')})`,
+            )
+            .all(countryCode, ...placeIds) as { region_code: string }[]
+        ).map((r) => r.region_code)
+      : [];
+  const manualRegionCodes = (
+    db
+      .prepare('SELECT region_code FROM visited_regions WHERE user_id = ? AND country_code = ?')
+      .all(userId, countryCode) as { region_code: string }[]
+  ).map((r) => r.region_code);
+  return [...placeRegionCodes, ...manualRegionCodes].some((code) => !hidden.has(code));
 }
 
 export function unmarkRegionVisited(userId: number, regionCode: string): void {
-  const region = db.prepare('SELECT country_code FROM visited_regions WHERE user_id = ? AND region_code = ?').get(userId, regionCode) as { country_code: string } | undefined;
+  const region = db
+    .prepare('SELECT country_code FROM visited_regions WHERE user_id = ? AND region_code = ?')
+    .get(userId, regionCode) as { country_code: string } | undefined;
   const countryCode = region?.country_code || countryCodeFromRegionCode(regionCode);
 
   db.prepare('DELETE FROM visited_regions WHERE user_id = ? AND region_code = ?').run(userId, regionCode);
@@ -1242,7 +1265,11 @@ export function unmarkRegionVisited(userId: number, regionCode: string): void {
   // from real place data (the common case) needs to be dismissable too, mirroring
   // unmarkCountryVisited's tombstone for a place-derived country (#1490).
   if (countryCode) {
-    db.prepare('INSERT OR IGNORE INTO hidden_regions (user_id, region_code, country_code) VALUES (?, ?, ?)').run(userId, regionCode, countryCode);
+    db.prepare('INSERT OR IGNORE INTO hidden_regions (user_id, region_code, country_code) VALUES (?, ?, ?)').run(
+      userId,
+      regionCode,
+      countryCode,
+    );
 
     // If that was the country's last visible region, hide the country too — otherwise it
     // keeps showing "visited" on the world map with nothing left to drill into.
@@ -1397,7 +1424,11 @@ function buildRegionInfo(address: Record<string, string>, preferFinest: boolean)
   };
 }
 
-async function reverseGeocodeRegion(lat: number, lng: number, placeAddress?: string | null): Promise<RegionInfo | null> {
+async function reverseGeocodeRegion(
+  lat: number,
+  lng: number,
+  placeAddress?: string | null,
+): Promise<RegionInfo | null> {
   const key = roundKey(lat, lng);
   if (regionCache.has(key)) return regionCache.get(key)!;
 
@@ -1523,7 +1554,7 @@ export async function getVisitedRegions(
   const hidden = getHiddenRegions(userId);
   if (hidden.size > 0) {
     for (const country of Object.keys(result)) {
-      result[country] = result[country].filter(r => !hidden.has(r.code));
+      result[country] = result[country].filter((r) => !hidden.has(r.code));
       if (result[country].length === 0) delete result[country];
     }
   }

@@ -1,7 +1,8 @@
-import semver from 'semver';
+import type { NotifEventType } from '../../../services/notificationPreferencesService';
 import { isKnownPermission } from '../protocol/envelope';
 import { isValidTrekRange, minTrekOf } from './host-compat';
-import type { NotifEventType } from '../../../services/notificationPreferencesService';
+
+import semver from 'semver';
 
 /**
  * Parse + validate a plugin's trek-plugin.json (#plugins, M4). Kept deliberately
@@ -195,7 +196,9 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
     egress.length === 0 &&
     m.operatorEgress !== true
   ) {
-    throw new ManifestError('http:outbound declared but egress[] is empty (set operatorEgress: true if the hosts are admin-supplied)');
+    throw new ManifestError(
+      'http:outbound declared but egress[] is empty (set operatorEgress: true if the hosts are admin-supplied)',
+    );
   }
   if (egress.includes('*')) throw new ManifestError('egress[] must not contain a bare "*"');
   const badEgress = egress.find((h) => !HOST_RE.test(h));
@@ -242,7 +245,8 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
 function parseRequiredAddons(raw: unknown): string[] {
   const out: string[] = [];
   for (const v of arr(raw)) {
-    if (typeof v !== 'string' || !ADDON_ID_RE.test(v)) throw new ManifestError(`invalid requiredAddons entry "${String(v)}"`);
+    if (typeof v !== 'string' || !ADDON_ID_RE.test(v))
+      throw new ManifestError(`invalid requiredAddons entry "${String(v)}"`);
     if (!out.includes(v)) out.push(v);
   }
   return out;
@@ -264,7 +268,8 @@ function parsePluginDependencies(raw: unknown, selfId: string): PluginDependency
     if (id === selfId) throw new ManifestError(`plugin "${selfId}" cannot depend on itself`);
     if (out.some((e) => e.id === id)) throw new ManifestError(`duplicate pluginDependencies id "${id}"`);
     const version = str(d.version, 'pluginDependencies.version');
-    if (semver.validRange(version) === null) throw new ManifestError(`invalid pluginDependencies version range "${version}" for "${id}"`);
+    if (semver.validRange(version) === null)
+      throw new ManifestError(`invalid pluginDependencies version range "${version}" for "${id}"`);
     out.push({ id, version });
   }
   return out;
@@ -281,7 +286,15 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
   if (c.widget && typeof c.widget === 'object') {
     const w = c.widget as Record<string, unknown>;
     const slot = optStr(w.slot);
-    if (slot && slot !== 'sidebar' && slot !== 'hero' && slot !== 'place-detail' && slot !== 'day-detail' && slot !== 'reservation-detail') throw new ManifestError(`invalid widget slot "${slot}"`);
+    if (
+      slot &&
+      slot !== 'sidebar' &&
+      slot !== 'hero' &&
+      slot !== 'place-detail' &&
+      slot !== 'day-detail' &&
+      slot !== 'reservation-detail'
+    )
+      throw new ManifestError(`invalid widget slot "${slot}"`);
     out.widget = {
       title: optStr(w.title),
       defaultSize: optStr(w.defaultSize),
@@ -296,7 +309,9 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
       const replaces: string[] = [];
       for (const v of tp.replaces) {
         if (typeof v !== 'string' || !REPLACEABLE_TABS.includes(v)) {
-          throw new ManifestError(`capabilities.tripPage.replaces: "${String(v)}" is not a replaceable tab (${REPLACEABLE_TABS.join(', ')})`);
+          throw new ManifestError(
+            `capabilities.tripPage.replaces: "${String(v)}" is not a replaceable tab (${REPLACEABLE_TABS.join(', ')})`,
+          );
         }
         if (!replaces.includes(v)) replaces.push(v);
       }
@@ -320,7 +335,8 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
     const title = optStr(nc.title);
     if (title) channel.title = title;
     if (nc.events !== undefined) {
-      if (!Array.isArray(nc.events)) throw new ManifestError('capabilities.notificationChannel.events must be an array');
+      if (!Array.isArray(nc.events))
+        throw new ManifestError('capabilities.notificationChannel.events must be an array');
       const events: string[] = [];
       for (const v of nc.events) {
         if (typeof v !== 'string' || !(PLUGIN_CHANNEL_EVENTS as readonly string[]).includes(v)) {
@@ -381,7 +397,8 @@ function parseCapabilityNames(raw: unknown, field: string): string[] {
   if (!Array.isArray(raw)) throw new ManifestError(`capabilities.${field} must be an array of names`);
   const out: string[] = [];
   for (const v of raw) {
-    if (typeof v !== 'string' || !CAPABILITY_NAME_RE.test(v)) throw new ManifestError(`invalid capabilities.${field} entry "${String(v)}"`);
+    if (typeof v !== 'string' || !CAPABILITY_NAME_RE.test(v))
+      throw new ManifestError(`invalid capabilities.${field} entry "${String(v)}"`);
     if (!out.includes(v)) out.push(v);
   }
   return out;
@@ -403,18 +420,23 @@ function parseSettings(raw: unknown): ManifestSettingField[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
-    .map((s): ManifestSettingField => ({
-      key: assertSettingKey(String(s.key ?? '')),
-      label: optStr(s.label),
-      input_type: optStr(s.input_type) ?? 'text',
-      placeholder: optStr(s.placeholder),
-      hint: optStr(s.hint),
-      required: !!s.required,
-      secret: !!s.secret,
-      scope: s.scope === 'user' ? 'user' : 'instance',
-      options: parseSettingOptions(s.options),
-      oauth: s.oauth && typeof s.oauth === 'object' ? (s.oauth as { initPath?: string; callbackPath?: string }) : undefined,
-    }))
+    .map(
+      (s): ManifestSettingField => ({
+        key: assertSettingKey(String(s.key ?? '')),
+        label: optStr(s.label),
+        input_type: optStr(s.input_type) ?? 'text',
+        placeholder: optStr(s.placeholder),
+        hint: optStr(s.hint),
+        required: !!s.required,
+        secret: !!s.secret,
+        scope: s.scope === 'user' ? 'user' : 'instance',
+        options: parseSettingOptions(s.options),
+        oauth:
+          s.oauth && typeof s.oauth === 'object'
+            ? (s.oauth as { initPath?: string; callbackPath?: string })
+            : undefined,
+      }),
+    )
     .filter((s) => s.key);
 }
 
@@ -468,7 +490,9 @@ function assertSettingKey(key: string): string {
   // would leave the plugin expecting a setting the host will never store.
   if (!key) return key;
   if (!SETTING_KEY_RE.test(key) || RESERVED_SETTING_KEYS.has(key)) {
-    throw new ManifestError(`invalid settings key "${key}" (letters, digits, . _ - ; must start with a letter; 1–64 chars)`);
+    throw new ManifestError(
+      `invalid settings key "${key}" (letters, digits, . _ - ; must start with a letter; 1–64 chars)`,
+    );
   }
   return key;
 }

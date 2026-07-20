@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react'
-import Plyr from 'plyr'
-import 'plyr/dist/plyr.css'
+import Plyr from 'plyr';
+import 'plyr/dist/plyr.css';
+import React, { useEffect, useRef } from 'react';
 
 /**
  * Video player for gallery/lightbox playback (#823), built on Plyr over a native
@@ -15,24 +15,30 @@ export default function VideoPlayer({
   autoPlay = true,
   style,
 }: {
-  src: string
-  poster?: string
-  autoPlay?: boolean
-  style?: React.CSSProperties
+  src: string;
+  poster?: string;
+  autoPlay?: boolean;
+  style?: React.CSSProperties;
 }): React.ReactElement {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    const el = videoRef.current
-    if (!el) return
+    const el = videoRef.current;
+    if (!el) return;
     const player = new Plyr(el, {
       controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
       autoplay: autoPlay,
       // Keep playback inline so the lightbox stays in control on mobile.
       clickToPlay: true,
-    })
-    return () => { try { player.destroy() } catch { /* already torn down */ } }
-  }, [src, autoPlay])
+    });
+    return () => {
+      try {
+        player.destroy();
+      } catch {
+        /* already torn down */
+      }
+    };
+  }, [src, autoPlay]);
 
   return (
     <div
@@ -47,5 +53,5 @@ export default function VideoPlayer({
     >
       <video ref={videoRef} src={src} poster={poster} playsInline controls preload="metadata" />
     </div>
-  )
+  );
 }

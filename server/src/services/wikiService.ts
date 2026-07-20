@@ -158,7 +158,10 @@ function processMarkdown(md: string): string {
     segment.replace(/(^|[^!])\[([^\]]+)\]\(([^)\s]+)\)/g, (m, prefix: string, text: string, url: string) => {
       if (/^(https?:|mailto:|tel:|#|\/)/i.test(url)) return m;
       const [pageRaw, anchor] = url.includes('#') ? url.split('#') : [url, ''];
-      const page = pageRaw.replace(/^\.?\//, '').replace(/\.md$/i, '').trim();
+      const page = pageRaw
+        .replace(/^\.?\//, '')
+        .replace(/\.md$/i, '')
+        .trim();
       if (!page || !SLUG_RE.test(page)) return m;
       return `${prefix}[${text}](/help/${page}${anchor ? `#${anchor}` : ''})`;
     }),

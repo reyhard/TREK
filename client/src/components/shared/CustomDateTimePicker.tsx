@@ -414,7 +414,15 @@ export function CustomDatePicker({
                   {headerLabel}
                 </button>
               ) : (
-                <span style={{ fontSize: 'calc(13px * var(--fs-scale-body, 1))', fontWeight: 600, color: 'var(--text-primary)' }}>{headerLabel}</span>
+                <span
+                  style={{
+                    fontSize: 'calc(13px * var(--fs-scale-body, 1))',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {headerLabel}
+                </span>
               )}
 
               <button

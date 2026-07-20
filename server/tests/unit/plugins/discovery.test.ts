@@ -158,8 +158,10 @@ describe('discoverPlugins', () => {
     it('persists the range and its lower bound', () => {
       writePlugin('ranged', { trek: '>=3.2.0 <4.0.0' });
       discoverPlugins(db);
-      expect(db.prepare("SELECT trek_range, min_trek_version FROM plugins WHERE id='ranged'").get())
-        .toMatchObject({ trek_range: '>=3.2.0 <4.0.0', min_trek_version: '3.2.0' });
+      expect(db.prepare("SELECT trek_range, min_trek_version FROM plugins WHERE id='ranged'").get()).toMatchObject({
+        trek_range: '>=3.2.0 <4.0.0',
+        min_trek_version: '3.2.0',
+      });
     });
 
     it('still registers a plugin that declares NO range — it must not vanish', () => {
@@ -169,7 +171,9 @@ describe('discoverPlugins', () => {
       // registered with a null range and the activation gate refuses it (TREK_VERSION_UNKNOWN).
       writePlugin('rangeless', {});
       expect(discoverPlugins(db).discovered).toEqual(['rangeless']);
-      expect(db.prepare("SELECT trek_range FROM plugins WHERE id='rangeless'").get()).toMatchObject({ trek_range: null });
+      expect(db.prepare("SELECT trek_range FROM plugins WHERE id='rangeless'").get()).toMatchObject({
+        trek_range: null,
+      });
     });
 
     it('refreshes the range on re-discovery, so a plugin that narrowed its support is caught', () => {
@@ -177,7 +181,9 @@ describe('discoverPlugins', () => {
       discoverPlugins(db);
       writePlugin('shrink', { trek: '>=3.0.0 <3.1.0' });
       discoverPlugins(db);
-      expect(db.prepare("SELECT trek_range FROM plugins WHERE id='shrink'").get()).toMatchObject({ trek_range: '>=3.0.0 <3.1.0' });
+      expect(db.prepare("SELECT trek_range FROM plugins WHERE id='shrink'").get()).toMatchObject({
+        trek_range: '>=3.0.0 <3.1.0',
+      });
     });
   });
 });

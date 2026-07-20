@@ -69,7 +69,9 @@ describe('PluginsService.list', () => {
   describe('signature status', () => {
     const insert = (id: string, sourceRepo: string | null, pubkey: string | null) =>
       testDb
-        .prepare('INSERT INTO plugins (id, name, type, status, version, source_repo, author_pubkey) VALUES (?,?,?,?,?,?,?)')
+        .prepare(
+          'INSERT INTO plugins (id, name, type, status, version, source_repo, author_pubkey) VALUES (?,?,?,?,?,?,?)',
+        )
         .run(id, id, 'widget', 'inactive', '1.0.0', sourceRepo, pubkey);
 
     it('reports signed + a display fingerprint for a registry plugin with a pinned key', () => {
@@ -105,11 +107,17 @@ describe('PluginsService.list', () => {
       insert('blocked', 'acme/blocked', 'RWTvBn0aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd');
       insert('fine', 'acme/fine', null);
       testDb
-        .prepare('UPDATE plugins SET update_block_code = ?, update_block_detail = ?, update_block_version = ? WHERE id = ?')
+        .prepare(
+          'UPDATE plugins SET update_block_code = ?, update_block_detail = ?, update_block_version = ? WHERE id = ?',
+        )
         .run('SIGNATURE_KEY_CHANGED', 'the key changed', '2.0.0', 'blocked');
 
       const byId = Object.fromEntries(new PluginsService().list().plugins.map((p) => [p.id, p]));
-      expect(byId.blocked.updateBlock).toEqual({ code: 'SIGNATURE_KEY_CHANGED', detail: 'the key changed', version: '2.0.0' });
+      expect(byId.blocked.updateBlock).toEqual({
+        code: 'SIGNATURE_KEY_CHANGED',
+        detail: 'the key changed',
+        version: '2.0.0',
+      });
       expect(byId.fine.updateBlock).toBeNull();
     });
 
@@ -173,8 +181,16 @@ describe('PluginsFeedController (client feed)', () => {
   });
 
   it('exposes settingsUi only when the capability is exactly true', () => {
-    testDb.prepare("INSERT INTO plugins (id, name, type, icon, status, capabilities) VALUES ('su','S','widget','Box','active','{\"settingsUi\":true}')").run();
-    testDb.prepare("INSERT INTO plugins (id, name, type, icon, status, capabilities) VALUES ('no','N','widget','Box','active','{\"settingsUi\":\"yes\"}')").run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, type, icon, status, capabilities) VALUES ('su','S','widget','Box','active','{\"settingsUi\":true}')",
+      )
+      .run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, type, icon, status, capabilities) VALUES ('no','N','widget','Box','active','{\"settingsUi\":\"yes\"}')",
+      )
+      .run();
     process.env.TREK_PLUGINS_ENABLED = 'true';
     const out = new PluginsFeedController().list();
     expect(out.plugins.find((p) => p.id === 'su')?.settingsUi).toBe(true);
@@ -321,16 +337,38 @@ describe('PluginsService error log', () => {
 
 describe('PluginRuntimeService oauthResources', () => {
   function plugin(id: string, opts: { status?: string; enabled?: number; trekRange?: string }) {
-    testDb.prepare(
-      'INSERT OR REPLACE INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-    ).run(id, id, id, opts.status ?? 'inactive', opts.enabled ?? 0, opts.trekRange ?? null, '1.0.0', '[]', '{}', '{}', 'widget');
+    testDb
+      .prepare(
+        'INSERT OR REPLACE INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        id,
+        id,
+        id,
+        opts.status ?? 'inactive',
+        opts.enabled ?? 0,
+        opts.trekRange ?? null,
+        '1.0.0',
+        '[]',
+        '{}',
+        '{}',
+        'widget',
+      );
   }
 
-  function active(id: string, trekRange?: string) { plugin(id, { status: 'active', enabled: 1, trekRange }); }
-  function inactive(id: string) { plugin(id, { status: 'inactive', enabled: 0 }); }
+  function active(id: string, trekRange?: string) {
+    plugin(id, { status: 'active', enabled: 1, trekRange });
+  }
+  function inactive(id: string) {
+    plugin(id, { status: 'inactive', enabled: 0 });
+  }
 
-  beforeEach(() => { testDb.exec('DELETE FROM plugins'); });
-  afterAll(() => { delete process.env.APP_VERSION; });
+  beforeEach(() => {
+    testDb.exec('DELETE FROM plugins');
+  });
+  afterAll(() => {
+    delete process.env.APP_VERSION;
+  });
 
   it('returns only active, enabled plugins that are host-compatible', async () => {
     process.env.APP_VERSION = '3.4.0';
@@ -350,9 +388,11 @@ describe('PluginRuntimeService oauthResources', () => {
 
   it('excludes a plugin that is disabled even if status is active', async () => {
     process.env.APP_VERSION = '3.4.0';
-    testDb.prepare(
-      "INSERT INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES ('disabled-one','d','','active',0,'>=3.2.0 <4.0.0','1.0.0','[]','{}','{}','widget')",
-    ).run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES ('disabled-one','d','','active',0,'>=3.2.0 <4.0.0','1.0.0','[]','{}','{}','widget')",
+      )
+      .run();
 
     const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
     const rt = new mod.PluginRuntimeService();

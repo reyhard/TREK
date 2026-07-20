@@ -5,11 +5,12 @@
  * user, and bad params / unknown methods are rejected — without ever spawning a
  * child (the router runs in the host).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
 import { createTables } from '../../../src/db/schema';
 import { PluginRpcHost, type HostDeps } from '../../../src/nest/plugins/host/rpc-host';
 import type { RpcRequest, RpcResponse, RpcError } from '../../../src/nest/plugins/protocol/envelope';
+
+import Database from 'better-sqlite3';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 function makeDeps(): HostDeps {
   return {
@@ -39,11 +40,22 @@ function makeDeps(): HostDeps {
     canEditCosts: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     listPackingItems: vi.fn((tripId: number, _userId: number) => [{ id: 1, trip_id: tripId, name: 'Socks' }]),
     listTripFiles: vi.fn((tripId: number) => [{ id: 2, trip_id: tripId, filename: 'visa.pdf' }]),
-    getTripFileContent: vi.fn((tripId: number, fileId: number) => ({ name: 'visa.pdf', mimetype: 'application/pdf', size: 3, content_base64: 'aGk=', _t: tripId, _f: fileId })),
+    getTripFileContent: vi.fn((tripId: number, fileId: number) => ({
+      name: 'visa.pdf',
+      mimetype: 'application/pdf',
+      size: 3,
+      content_base64: 'aGk=',
+      _t: tripId,
+      _f: fileId,
+    })),
     listCollabNotes: vi.fn((tripId: number) => [{ id: 1, trip_id: tripId, title: 'Note' }]),
     listCollabPolls: vi.fn((tripId: number) => [{ id: 2, trip_id: tripId, question: 'Q?' }]),
-    listCollabMessages: vi.fn((tripId: number, before: number | undefined) => [{ id: 3, trip_id: tripId, text: 'hi', _before: before ?? null }]),
-    journalEntriesForUser: vi.fn((uid: number, journeyId: number) => [{ id: 10, journey_id: journeyId, author_id: uid }]),
+    listCollabMessages: vi.fn((tripId: number, before: number | undefined) => [
+      { id: 3, trip_id: tripId, text: 'hi', _before: before ?? null },
+    ]),
+    journalEntriesForUser: vi.fn((uid: number, journeyId: number) => [
+      { id: 10, journey_id: journeyId, author_id: uid },
+    ]),
     atlasBucketForUser: vi.fn((uid: number) => [{ id: 5, user_id: uid, name: 'Kyoto' }]),
     canCreateTrip: vi.fn((userId: number) => userId === 42),
     createTripForUser: vi.fn((userId: number, input: unknown) => ({ id: 99, user_id: userId, ...(input as object) })),
@@ -54,34 +66,69 @@ function makeDeps(): HostDeps {
       { id: 6, trip_id: 2, name: 'Food' },
     ]),
     createCost: vi.fn((tripId: number, input: unknown) => ({ id: 9, trip_id: tripId, ...(input as object) })),
-    updateCost: vi.fn((tripId: number, itemId: number, input: unknown) => ({ id: itemId, trip_id: tripId, ...(input as object) })),
+    updateCost: vi.fn((tripId: number, itemId: number, input: unknown) => ({
+      id: itemId,
+      trip_id: tripId,
+      ...(input as object),
+    })),
     deleteCost: vi.fn(() => ({ deleted: true })),
     // Planner writes — user 42 may edit trip 1 only (mirrors canAccessTrip).
     canEditPlaces: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     createPlace: vi.fn((tripId: number, input: unknown) => ({ id: 10, trip_id: tripId, ...(input as object) })),
-    updatePlace: vi.fn((tripId: number, placeId: number, input: unknown) => ({ id: placeId, trip_id: tripId, ...(input as object) })),
+    updatePlace: vi.fn((tripId: number, placeId: number, input: unknown) => ({
+      id: placeId,
+      trip_id: tripId,
+      ...(input as object),
+    })),
     deletePlace: vi.fn(() => ({ deleted: true })),
     canEditDays: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     createDay: vi.fn((tripId: number, input: unknown) => ({ id: 20, trip_id: tripId, ...(input as object) })),
-    updateDay: vi.fn((tripId: number, dayId: number, input: unknown) => ({ id: dayId, trip_id: tripId, ...(input as object) })),
+    updateDay: vi.fn((tripId: number, dayId: number, input: unknown) => ({
+      id: dayId,
+      trip_id: tripId,
+      ...(input as object),
+    })),
     deleteDay: vi.fn(() => ({ deleted: true })),
-    assignPlaceToDay: vi.fn((tripId: number, dayId: number, placeId: number, notes: string | null) => ({ id: 30, day_id: dayId, place_id: placeId, notes })),
+    assignPlaceToDay: vi.fn((tripId: number, dayId: number, placeId: number, notes: string | null) => ({
+      id: 30,
+      day_id: dayId,
+      place_id: placeId,
+      notes,
+    })),
     unassignPlace: vi.fn(() => ({ deleted: true })),
     canEditTrip: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     updateTrip: vi.fn((tripId: number, _userId: number, input: unknown) => ({ id: tripId, ...(input as object) })),
     // Cross-trip reads + reservations (bookings) — user 42 may edit trip 1 only.
-    listTripsForUser: vi.fn(() => [{ id: 1, title: 'Japan' }, { id: 2, title: 'Peru' }]),
-    listReservationsForUser: vi.fn(() => [{ id: 5, trip_id: 1, title: 'Hotel' }, { id: 6, trip_id: 2, title: 'Flight' }]),
+    listTripsForUser: vi.fn(() => [
+      { id: 1, title: 'Japan' },
+      { id: 2, title: 'Peru' },
+    ]),
+    listReservationsForUser: vi.fn(() => [
+      { id: 5, trip_id: 1, title: 'Hotel' },
+      { id: 6, trip_id: 2, title: 'Flight' },
+    ]),
     canEditReservations: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     createReservation: vi.fn((tripId: number, input: unknown) => ({ id: 40, trip_id: tripId, ...(input as object) })),
-    updateReservation: vi.fn((tripId: number, reservationId: number, input: unknown) => ({ id: reservationId, trip_id: tripId, ...(input as object) })),
+    updateReservation: vi.fn((tripId: number, reservationId: number, input: unknown) => ({
+      id: reservationId,
+      trip_id: tripId,
+      ...(input as object),
+    })),
     deleteReservation: vi.fn(() => ({ deleted: true })),
     // Trip-scoped hydrated reads + accommodations (lodging blocks, day_edit-gated).
-    listTripDays: vi.fn((tripId: number) => [{ id: 3, trip_id: tripId, day_number: 1, assignments: [], notes_items: [] }]),
-    listTripReservations: vi.fn((tripId: number) => [{ id: 5, trip_id: tripId, title: 'Hotel', endpoints: [], day_positions: null }]),
+    listTripDays: vi.fn((tripId: number) => [
+      { id: 3, trip_id: tripId, day_number: 1, assignments: [], notes_items: [] },
+    ]),
+    listTripReservations: vi.fn((tripId: number) => [
+      { id: 5, trip_id: tripId, title: 'Hotel', endpoints: [], day_positions: null },
+    ]),
     listTripAccommodations: vi.fn((tripId: number) => [{ id: 11, trip_id: tripId, place_name: 'Ryokan' }]),
     createAccommodation: vi.fn((tripId: number, input: unknown) => ({ id: 60, trip_id: tripId, ...(input as object) })),
-    updateAccommodation: vi.fn((tripId: number, accommodationId: number, input: unknown) => ({ id: accommodationId, trip_id: tripId, ...(input as object) })),
+    updateAccommodation: vi.fn((tripId: number, accommodationId: number, input: unknown) => ({
+      id: accommodationId,
+      trip_id: tripId,
+      ...(input as object),
+    })),
     deleteAccommodation: vi.fn(() => ({ deleted: true })),
     // User-scoped addon reads + day notes.
     listJournalsForUser: vi.fn(() => [{ id: 1, title: 'Japan 2027' }]),
@@ -90,12 +137,24 @@ function makeDeps(): HostDeps {
     listCollectionsForUser: vi.fn(() => ({ collections: [{ id: 1, name: 'Tokyo eats' }] })),
     getCollectionForUser: vi.fn((_userId: number, id: number) => ({ id, name: 'Tokyo eats', places: [] })),
     listDayNotes: vi.fn((tripId: number, dayId: number) => [{ id: 1, day_id: dayId, trip_id: tripId, text: 'note' }]),
-    createDayNote: vi.fn((_tripId: number, dayId: number, input: unknown) => ({ id: 50, day_id: dayId, ...(input as object) })),
-    updateDayNote: vi.fn((_tripId: number, dayId: number, noteId: number, input: unknown) => ({ id: noteId, day_id: dayId, ...(input as object) })),
+    createDayNote: vi.fn((_tripId: number, dayId: number, input: unknown) => ({
+      id: 50,
+      day_id: dayId,
+      ...(input as object),
+    })),
+    updateDayNote: vi.fn((_tripId: number, dayId: number, noteId: number, input: unknown) => ({
+      id: noteId,
+      day_id: dayId,
+      ...(input as object),
+    })),
     deleteDayNote: vi.fn(() => ({ deleted: true })),
     canEditPacking: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     createPackingItem: vi.fn((tripId: number, input: unknown) => ({ id: 70, trip_id: tripId, ...(input as object) })),
-    updatePackingItem: vi.fn((tripId: number, itemId: number, input: unknown) => ({ id: itemId, trip_id: tripId, ...(input as object) })),
+    updatePackingItem: vi.fn((tripId: number, itemId: number, input: unknown) => ({
+      id: itemId,
+      trip_id: tripId,
+      ...(input as object),
+    })),
     deletePackingItem: vi.fn(() => ({ deleted: true })),
     listPackingBags: vi.fn(() => [{ id: 80, name: 'Backpack' }]),
     createPackingBag: vi.fn((tripId: number, input: unknown) => ({ id: 80, trip_id: tripId, ...(input as object) })),
@@ -104,7 +163,10 @@ function makeDeps(): HostDeps {
     setPackingBagMembers: vi.fn((_tripId: number, bagId: number, userIds: number[]) => ({ bagId, members: userIds })),
     getWeather: vi.fn(() => ({ temp: 20 })),
     listCategories: vi.fn(() => [{ id: 1, name: 'Food' }]),
-    tripMembers: vi.fn(() => [{ id: 5, username: 'ada' }, { id: 6, username: 'bob' }]),
+    tripMembers: vi.fn(() => [
+      { id: 5, username: 'ada' },
+      { id: 6, username: 'bob' },
+    ]),
     listTagsForUser: vi.fn((uid: number) => [{ id: 1, user_id: uid, name: 'work' }]),
     createTagForUser: vi.fn((uid: number, name: string) => ({ id: 9, user_id: uid, name })),
     updateTagForUser: vi.fn((_uid: number, tagId: number, name?: string) => ({ id: tagId, name })),
@@ -112,26 +174,52 @@ function makeDeps(): HostDeps {
     canUploadFiles: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     canEditFiles: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
     canDeleteFiles: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
-    createTripFile: vi.fn((tripId: number, input: unknown, uid: number) => ({ id: 130, trip_id: tripId, uploaded_by: uid, ...(input as object) })),
+    createTripFile: vi.fn((tripId: number, input: unknown, uid: number) => ({
+      id: 130,
+      trip_id: tripId,
+      uploaded_by: uid,
+      ...(input as object),
+    })),
     createTripFileLink: vi.fn(() => [{ file_id: 130 }]),
     updateTripFile: vi.fn((_tripId: number, fileId: number, input: unknown) => ({ id: fileId, ...(input as object) })),
     softDeleteTripFile: vi.fn(() => ({ deleted: true })),
     canEditCollab: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
-    createCollabNote: vi.fn((tripId: number, input: unknown, uid: number) => ({ id: 140, trip_id: tripId, created_by: uid, ...(input as object) })),
+    createCollabNote: vi.fn((tripId: number, input: unknown, uid: number) => ({
+      id: 140,
+      trip_id: tripId,
+      created_by: uid,
+      ...(input as object),
+    })),
     createCollabPoll: vi.fn((tripId: number, input: unknown) => ({ id: 141, trip_id: tripId, ...(input as object) })),
     voteCollabPoll: vi.fn((_tripId: number, pollId: number) => ({ id: pollId, votes: 1 })),
     createCollabMessage: vi.fn((tripId: number, text: string) => ({ id: 142, trip_id: tripId, text })),
     canManageMembers: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
-    addTripMember: vi.fn((tripId: number, targetUserId: number, invitedBy: number) => ({ joined: true, tripId, targetUserId, invitedBy })),
+    addTripMember: vi.fn((tripId: number, targetUserId: number, invitedBy: number) => ({
+      joined: true,
+      tripId,
+      targetUserId,
+      invitedBy,
+    })),
     removeTripMember: vi.fn((tripId: number, targetUserId: number) => ({ removed: true, tripId, targetUserId })),
     canAccessTripForNotify: vi.fn((tripId: number, userId: number) => tripId === 1 && userId === 42),
-    sendPluginNotification: vi.fn(async (pluginId: string, input: unknown) => ({ sent: true, pluginId, ...(input as object) })),
+    sendPluginNotification: vi.fn(async (pluginId: string, input: unknown) => ({
+      sent: true,
+      pluginId,
+      ...(input as object),
+    })),
     aiConfigured: vi.fn((userId: number) => userId === 42),
     aiComplete: vi.fn(async (_uid: number, prompt: string) => ({ text: `echo:${prompt}` })),
     aiExtract: vi.fn(async () => ({ results: [{ ok: true }] })),
-    getUserSetting: vi.fn((pluginId: string, userId: number, key: string) => (userId === 42 && key === 'apiKey' ? `secret-of-${pluginId}` : undefined)),
+    getUserSetting: vi.fn((pluginId: string, userId: number, key: string) =>
+      userId === 42 && key === 'apiKey' ? `secret-of-${pluginId}` : undefined,
+    ),
     getOAuthToken: vi.fn(async (_pluginId: string, userId: number) => (userId === 42 ? 'access-token-xyz' : null)),
-    schedulerSet: vi.fn((name: string, dueAt: number, everyMs: number | undefined) => ({ scheduled: true, name, dueAt, everyMs })),
+    schedulerSet: vi.fn((name: string, dueAt: number, everyMs: number | undefined) => ({
+      scheduled: true,
+      name,
+      dueAt,
+      everyMs,
+    })),
     schedulerCancel: vi.fn((name: string) => ({ cancelled: name !== 'ghost' })),
     createCollectionForUser: vi.fn((uid: number, input: unknown) => ({ id: 100, owner_id: uid, ...(input as object) })),
     updateCollectionForUser: vi.fn((_uid: number, id: number, input: unknown) => ({ id, ...(input as object) })),
@@ -146,8 +234,16 @@ function makeDeps(): HostDeps {
     deleteBucketItem: vi.fn(() => ({ deleted: true })),
     vacayToggleEntry: vi.fn(() => ({ action: 'added' })),
     vacayToggleCompanyHoliday: vi.fn(() => ({ action: 'added' })),
-    createJournalEntry: vi.fn((uid: number, journeyId: number, input: unknown) => ({ id: 120, journey_id: journeyId, created_by: uid, ...(input as object) })),
-    updateJournalEntry: vi.fn((_uid: number, entryId: number, input: unknown) => ({ id: entryId, ...(input as object) })),
+    createJournalEntry: vi.fn((uid: number, journeyId: number, input: unknown) => ({
+      id: 120,
+      journey_id: journeyId,
+      created_by: uid,
+      ...(input as object),
+    })),
+    updateJournalEntry: vi.fn((_uid: number, entryId: number, input: unknown) => ({
+      id: entryId,
+      ...(input as object),
+    })),
     deleteJournalEntry: vi.fn(() => ({ deleted: true })),
     createJournal: vi.fn((uid: number, input: unknown) => ({ id: 130, user_id: uid, ...(input as object) })),
     deleteJournal: vi.fn(() => ({ deleted: true })),
@@ -158,8 +254,14 @@ function makeDeps(): HostDeps {
     deleteTodo: vi.fn(() => ({ deleted: true })),
     // Metadata — trip 1 and place 7 resolve to trip 1 (accessible to 42); else undefined.
     metaEntityTrip: vi.fn((entityType: string, entityId: number) =>
-      (entityType === 'trip' && entityId === 1) || (entityType === 'place' && entityId === 7) || (entityType === 'day' && entityId === 3)
-        || (entityType === 'reservation' && entityId === 40) || (entityType === 'accommodation' && entityId === 11) ? 1 : undefined),
+      (entityType === 'trip' && entityId === 1) ||
+      (entityType === 'place' && entityId === 7) ||
+      (entityType === 'day' && entityId === 3) ||
+      (entityType === 'reservation' && entityId === 40) ||
+      (entityType === 'accommodation' && entityId === 11)
+        ? 1
+        : undefined,
+    ),
     metaGet: vi.fn(() => ({ hello: 'world' })),
     metaSet: vi.fn((_et: string, _eid: number, key: string, value: unknown) => ({ key, value })),
     metaList: vi.fn(() => ({ a: 1 })),
@@ -167,12 +269,19 @@ function makeDeps(): HostDeps {
   };
 }
 
-const req = (method: string, params: Record<string, unknown> = {}): RpcRequest => ({ k: 'req', id: 'x', method, params });
+const req = (method: string, params: Record<string, unknown> = {}): RpcRequest => ({
+  k: 'req',
+  id: 'x',
+  method,
+  params,
+});
 const ok = (r: RpcResponse | RpcError): r is RpcResponse => r.ok === true;
 
 describe('PluginRpcHost — capability enforcement', () => {
   let deps: HostDeps;
-  beforeEach(() => { deps = makeDeps(); });
+  beforeEach(() => {
+    deps = makeDeps();
+  });
 
   it('registers only granted methods; an ungranted method is PERMISSION_DENIED', async () => {
     const host = new PluginRpcHost('p', new Set(['db:own']), deps);
@@ -234,14 +343,18 @@ describe('PluginRpcHost — capability enforcement', () => {
   it('db:read:packing / db:read:files delegate to the service, membership-checked, and stay separate scopes', async () => {
     const packing = new PluginRpcHost('p', new Set(['db:read:packing']), deps);
     // no access to trip 2 → refused before the service is called
-    expect(((await packing.dispatch(req('packing.list', { tripId: 2 }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(((await packing.dispatch(req('packing.list', { tripId: 2 }), 42)) as RpcError).error.code).toBe(
+      'RESOURCE_FORBIDDEN',
+    );
     expect(deps.listPackingItems).not.toHaveBeenCalled();
     const okP = await packing.dispatch(req('packing.list', { tripId: 1 }), 42);
     expect(ok(okP)).toBe(true);
     // the acting user is threaded through so packing's #858 private-item filter applies
     expect(deps.listPackingItems).toHaveBeenCalledWith(1, 42);
     // the packing scope does NOT unlock files
-    expect(((await packing.dispatch(req('files.list', { tripId: 1 }), 42)) as RpcError).error.code).toBe('PERMISSION_DENIED');
+    expect(((await packing.dispatch(req('files.list', { tripId: 1 }), 42)) as RpcError).error.code).toBe(
+      'PERMISSION_DENIED',
+    );
 
     const files = new PluginRpcHost('p', new Set(['db:read:files']), deps);
     const okF = await files.dispatch(req('files.list', { tripId: 1 }), 42);
@@ -349,7 +462,7 @@ describe('PluginRpcHost — capability enforcement', () => {
     }
   });
 
-  it('trips.listMine returns the acting user\'s trips; a job (no user) is refused', async () => {
+  it("trips.listMine returns the acting user's trips; a job (no user) is refused", async () => {
     const host = new PluginRpcHost('p', new Set(['db:read:trips']), deps);
     const res = await host.dispatch(req('trips.listMine'), 42);
     expect(ok(res)).toBe(true);
@@ -397,19 +510,31 @@ describe('PluginRpcHost — capability enforcement', () => {
   it('reservations.create/update pin the endpoint STRUCTURE but stay permissive like the service', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:reservations']), deps);
     const goodEp = [{ role: 'from', name: 'HND', lat: 35.55, lng: 139.78, code: 'HND' }];
-    const good = await host.dispatch(req('reservations.create', { tripId: 1, input: { title: 'Flight', endpoints: goodEp } }), 42);
+    const good = await host.dispatch(
+      req('reservations.create', { tripId: 1, input: { title: 'Flight', endpoints: goodEp } }),
+      42,
+    );
     expect(ok(good)).toBe(true);
     // A structurally-wrong endpoint (bad role enum) or a non-array is refused up front.
     for (const endpoints of [[{ role: 'banana', name: 'x', lat: 1, lng: 2 }], 'nope']) {
-      const bad = await host.dispatch(req('reservations.update', { tripId: 1, reservationId: 40, input: { endpoints } }), 42);
+      const bad = await host.dispatch(
+        req('reservations.update', { tripId: 1, reservationId: 40, input: { endpoints } }),
+        42,
+      );
       expect((bad as RpcError).error.code).toBe('BAD_PARAMS');
     }
     // But a coord-less endpoint is NOT rejected — it's accepted and dropped downstream,
     // exactly like the REST/importer path (no breaking change vs 3.2.1).
-    const coordless = await host.dispatch(req('reservations.update', { tripId: 1, reservationId: 40, input: { endpoints: [{ role: 'to', name: 'x' }] } }), 42);
+    const coordless = await host.dispatch(
+      req('reservations.update', { tripId: 1, reservationId: 40, input: { endpoints: [{ role: 'to', name: 'x' }] } }),
+      42,
+    );
     expect(ok(coordless)).toBe(true);
     // [] is the documented delete-all and stays valid
-    const clear = await host.dispatch(req('reservations.update', { tripId: 1, reservationId: 40, input: { endpoints: [] } }), 42);
+    const clear = await host.dispatch(
+      req('reservations.update', { tripId: 1, reservationId: 40, input: { endpoints: [] } }),
+      42,
+    );
     expect(ok(clear)).toBe(true);
   });
 
@@ -423,7 +548,10 @@ describe('PluginRpcHost — capability enforcement', () => {
     (deps.canEditDays as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
     const noEdit = await host.dispatch(req('accommodations.create', { tripId: 1, input }), 42);
     expect((noEdit as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
-    const forbidden = await host.dispatch(req('accommodations.update', { tripId: 2, accommodationId: 11, input: {} }), 42);
+    const forbidden = await host.dispatch(
+      req('accommodations.update', { tripId: 2, accommodationId: 11, input: {} }),
+      42,
+    );
     expect((forbidden as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
     const noUser = await host.dispatch(req('accommodations.delete', { tripId: 1, accommodationId: 11 }), undefined);
     expect((noUser as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
@@ -468,16 +596,22 @@ describe('PluginRpcHost — capability enforcement', () => {
     expect((await files.dispatch(req('files.getContent', { tripId: 2, fileId: 2 }), 42)).ok).toBe(false);
     // reading content is NOT unlocked by plain db:read:files
     const filesList = new PluginRpcHost('p', new Set(['db:read:files']), deps);
-    expect((await filesList.dispatch(req('files.getContent', { tripId: 1, fileId: 2 }), 42) as RpcError).error.code).toBe('PERMISSION_DENIED');
+    expect(
+      ((await filesList.dispatch(req('files.getContent', { tripId: 1, fileId: 2 }), 42)) as RpcError).error.code,
+    ).toBe('PERMISSION_DENIED');
     // rates.get: tenant-free (works without a user), needs rates:read
     const rates = new PluginRpcHost('p', new Set(['rates:read']), deps);
     expect(ok(await rates.dispatch(req('rates.get', { base: 'EUR' }), undefined))).toBe(true);
     // trips.create: needs db:create:trips + the acting user's trip_create + a bound user
     const create = new PluginRpcHost('p', new Set(['db:create:trips']), deps);
     expect(ok(await create.dispatch(req('trips.create', { input: { title: 'Japan' } }), 42))).toBe(true);
-    expect((await create.dispatch(req('trips.create', { input: { title: 'x' } }), 7) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN'); // canCreateTrip false for 7
-    expect((await create.dispatch(req('trips.create', { input: { title: 'x' } }), undefined) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN'); // no user
-    expect((await create.dispatch(req('trips.create', { input: {} }), 42) as RpcError).error.code).toBe('BAD_PARAMS'); // title required
+    expect(((await create.dispatch(req('trips.create', { input: { title: 'x' } }), 7)) as RpcError).error.code).toBe(
+      'RESOURCE_FORBIDDEN',
+    ); // canCreateTrip false for 7
+    expect(
+      ((await create.dispatch(req('trips.create', { input: { title: 'x' } }), undefined)) as RpcError).error.code,
+    ).toBe('RESOURCE_FORBIDDEN'); // no user
+    expect(((await create.dispatch(req('trips.create', { input: {} }), 42)) as RpcError).error.code).toBe('BAD_PARAMS'); // title required
   });
 
   it('daynotes.list is membership-checked (trip-scoped)', async () => {
@@ -500,7 +634,10 @@ describe('PluginRpcHost — capability enforcement', () => {
 
   it('daynotes.create needs db:write:daynotes + day_edit, membership-checked, text required', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:daynotes']), deps);
-    const good = await host.dispatch(req('daynotes.create', { tripId: 1, dayId: 5, input: { text: 'Pack sunscreen' } }), 42);
+    const good = await host.dispatch(
+      req('daynotes.create', { tripId: 1, dayId: 5, input: { text: 'Pack sunscreen' } }),
+      42,
+    );
     expect(ok(good)).toBe(true);
     expect(deps.createDayNote).toHaveBeenCalledWith(1, 5, expect.objectContaining({ text: 'Pack sunscreen' }));
     const bad = await host.dispatch(req('daynotes.create', { tripId: 1, dayId: 5, input: { text: '  ' } }), 42);
@@ -524,13 +661,17 @@ describe('PluginRpcHost — capability enforcement', () => {
     expect(ok(good)).toBe(true);
     expect(deps.createPackingItem).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Socks' }), 42);
     expect((await host.dispatch(req('packing.create', { tripId: 1, input: { name: '' } }), 42)).ok).toBe(false); // schema: name min 1
-    expect(((await host.dispatch(req('packing.create', { tripId: 2, input: { name: 'x' } }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      ((await host.dispatch(req('packing.create', { tripId: 2, input: { name: 'x' } }), 42)) as RpcError).error.code,
+    ).toBe('RESOURCE_FORBIDDEN');
     expect((await host.dispatch(req('packing.create', { tripId: 1, input: { name: 'x' } }), undefined)).ok).toBe(false); // no acting user
   });
 
   it('packing.update/delete are gated the same way; nothing without the grant', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:packing']), deps);
-    expect(ok(await host.dispatch(req('packing.update', { tripId: 1, itemId: 70, input: { checked: true } }), 42))).toBe(true);
+    expect(
+      ok(await host.dispatch(req('packing.update', { tripId: 1, itemId: 70, input: { checked: true } }), 42)),
+    ).toBe(true);
     expect(deps.updatePackingItem).toHaveBeenCalledWith(1, 70, expect.objectContaining({ checked: true }), 42);
     expect(ok(await host.dispatch(req('packing.delete', { tripId: 1, itemId: 70 }), 42))).toBe(true);
     expect(deps.deletePackingItem).toHaveBeenCalledWith(1, 70);
@@ -545,7 +686,7 @@ describe('PluginRpcHost — capability enforcement', () => {
     expect(ok(await c.dispatch(req('categories.list', {}), undefined))).toBe(true);
   });
 
-  it('tags are the acting user\'s own; a userless context + empty name are refused', async () => {
+  it("tags are the acting user's own; a userless context + empty name are refused", async () => {
     const host = new PluginRpcHost('p', new Set(['db:read:tags', 'db:write:tags']), deps);
     expect(ok(await host.dispatch(req('tags.list'), 42))).toBe(true);
     expect(deps.listTagsForUser).toHaveBeenCalledWith(42);
@@ -558,18 +699,26 @@ describe('PluginRpcHost — capability enforcement', () => {
     const host = new PluginRpcHost('p', new Set(['db:read:trips', 'db:read:todos']), deps);
     expect(ok(await host.dispatch(req('trips.members', { tripId: 1 }), 42))).toBe(true);
     expect(ok(await host.dispatch(req('todos.list', { tripId: 1 }), 42))).toBe(true);
-    expect(((await host.dispatch(req('trips.members', { tripId: 2 }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(((await host.dispatch(req('trips.members', { tripId: 2 }), 42)) as RpcError).error.code).toBe(
+      'RESOURCE_FORBIDDEN',
+    );
   });
 
   it('todos + packing-bags writes need the grant + edit right + a bound user', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:todos', 'db:write:packing']), deps);
     expect(ok(await host.dispatch(req('todos.create', { tripId: 1, input: { name: 'Pack' } }), 42))).toBe(true);
     expect((await host.dispatch(req('todos.create', { tripId: 1, input: { name: ' ' } }), 42)).ok).toBe(false);
-    expect(((await host.dispatch(req('todos.create', { tripId: 2, input: { name: 'x' } }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      ((await host.dispatch(req('todos.create', { tripId: 2, input: { name: 'x' } }), 42)) as RpcError).error.code,
+    ).toBe('RESOURCE_FORBIDDEN');
     expect(ok(await host.dispatch(req('packing.createBag', { tripId: 1, input: { name: 'Bag' } }), 42))).toBe(true);
-    expect(ok(await host.dispatch(req('packing.setBagMembers', { tripId: 1, bagId: 80, userIds: [5, 6] }), 42))).toBe(true);
+    expect(ok(await host.dispatch(req('packing.setBagMembers', { tripId: 1, bagId: 80, userIds: [5, 6] }), 42))).toBe(
+      true,
+    );
     expect(deps.setPackingBagMembers).toHaveBeenCalledWith(1, 80, [5, 6]);
-    expect((await host.dispatch(req('packing.createBag', { tripId: 1, input: { name: 'Bag' } }), undefined)).ok).toBe(false);
+    expect((await host.dispatch(req('packing.createBag', { tripId: 1, input: { name: 'Bag' } }), undefined)).ok).toBe(
+      false,
+    );
   });
 
   it('atlas writes are uid-bound (code-validated, userless refused)', async () => {
@@ -587,16 +736,27 @@ describe('PluginRpcHost — capability enforcement', () => {
     const host = new PluginRpcHost('p', new Set(['db:write:vacay']), deps);
     expect(ok(await host.dispatch(req('vacay.toggleEntry', { date: '2026-08-01' }), 42))).toBe(true);
     expect(deps.vacayToggleEntry).toHaveBeenCalledWith(42, '2026-08-01');
-    expect(ok(await host.dispatch(req('vacay.toggleCompanyHoliday', { date: '2026-12-24', note: 'Xmas' }), 42))).toBe(true);
+    expect(ok(await host.dispatch(req('vacay.toggleCompanyHoliday', { date: '2026-12-24', note: 'Xmas' }), 42))).toBe(
+      true,
+    );
     expect((await host.dispatch(req('vacay.toggleEntry', { date: 'tomorrow' }), 42)).ok).toBe(false);
     expect((await host.dispatch(req('vacay.toggleEntry', { date: '2026-08-01' }), undefined)).ok).toBe(false);
   });
 
   it('journal writes require entry_date on create and a bound user', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:journal']), deps);
-    expect(ok(await host.dispatch(req('journal.createEntry', { journeyId: 3, input: { entry_date: '2026-08-01', story: 'x' } }), 42))).toBe(true);
+    expect(
+      ok(
+        await host.dispatch(
+          req('journal.createEntry', { journeyId: 3, input: { entry_date: '2026-08-01', story: 'x' } }),
+          42,
+        ),
+      ),
+    ).toBe(true);
     expect(deps.createJournalEntry).toHaveBeenCalledWith(42, 3, expect.objectContaining({ entry_date: '2026-08-01' }));
-    expect((await host.dispatch(req('journal.createEntry', { journeyId: 3, input: { story: 'no date' } }), 42)).ok).toBe(false);
+    expect(
+      (await host.dispatch(req('journal.createEntry', { journeyId: 3, input: { story: 'no date' } }), 42)).ok,
+    ).toBe(false);
     expect((await host.dispatch(req('journal.updateEntry', { entryId: 120, input: {} }), undefined)).ok).toBe(false);
     expect(ok(await host.dispatch(req('journal.deleteEntry', { entryId: 120 }), 42))).toBe(true);
   });
@@ -613,19 +773,42 @@ describe('PluginRpcHost — capability enforcement', () => {
 
   it('files.create validates name/content/size and is gated by file_upload', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:files']), deps);
-    const good = await host.dispatch(req('files.create', { tripId: 1, input: { name: 'itinerary.pdf', content_base64: 'aGk=' } }), 42);
+    const good = await host.dispatch(
+      req('files.create', { tripId: 1, input: { name: 'itinerary.pdf', content_base64: 'aGk=' } }),
+      42,
+    );
     expect(ok(good)).toBe(true);
     expect(deps.createTripFile).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'itinerary.pdf' }), 42);
-    expect((await host.dispatch(req('files.create', { tripId: 1, input: { name: '', content_base64: 'aGk=' } }), 42)).ok).toBe(false);
+    expect(
+      (await host.dispatch(req('files.create', { tripId: 1, input: { name: '', content_base64: 'aGk=' } }), 42)).ok,
+    ).toBe(false);
     expect((await host.dispatch(req('files.create', { tripId: 1, input: { name: 'a.pdf' } }), 42)).ok).toBe(false); // no content
-    expect(((await host.dispatch(req('files.create', { tripId: 2, input: { name: 'a.pdf', content_base64: 'aGk=' } }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
-    expect((await host.dispatch(req('files.create', { tripId: 1, input: { name: 'a.pdf', content_base64: 'aGk=' } }), undefined)).ok).toBe(false);
+    expect(
+      (
+        (await host.dispatch(
+          req('files.create', { tripId: 2, input: { name: 'a.pdf', content_base64: 'aGk=' } }),
+          42,
+        )) as RpcError
+      ).error.code,
+    ).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      (
+        await host.dispatch(
+          req('files.create', { tripId: 1, input: { name: 'a.pdf', content_base64: 'aGk=' } }),
+          undefined,
+        )
+      ).ok,
+    ).toBe(false);
   });
 
   it('files link/update/softDelete run under file_edit / file_delete', async () => {
     const host = new PluginRpcHost('p', new Set(['db:write:files']), deps);
-    expect(ok(await host.dispatch(req('files.createLink', { tripId: 1, fileId: 130, opts: { place_id: 7 } }), 42))).toBe(true);
-    expect(ok(await host.dispatch(req('files.update', { tripId: 1, fileId: 130, input: { description: 'x' } }), 42))).toBe(true);
+    expect(
+      ok(await host.dispatch(req('files.createLink', { tripId: 1, fileId: 130, opts: { place_id: 7 } }), 42)),
+    ).toBe(true);
+    expect(
+      ok(await host.dispatch(req('files.update', { tripId: 1, fileId: 130, input: { description: 'x' } }), 42)),
+    ).toBe(true);
     expect(ok(await host.dispatch(req('files.softDelete', { tripId: 1, fileId: 130 }), 42))).toBe(true);
     expect(deps.canDeleteFiles).toHaveBeenCalled();
   });
@@ -634,12 +817,25 @@ describe('PluginRpcHost — capability enforcement', () => {
     const host = new PluginRpcHost('p', new Set(['db:write:collab']), deps);
     expect(ok(await host.dispatch(req('collab.createNote', { tripId: 1, input: { title: 'Ideas' } }), 42))).toBe(true);
     expect((await host.dispatch(req('collab.createNote', { tripId: 1, input: { title: '' } }), 42)).ok).toBe(false);
-    expect(ok(await host.dispatch(req('collab.createPoll', { tripId: 1, input: { question: 'Where?', options: ['A', 'B'] } }), 42))).toBe(true);
-    expect((await host.dispatch(req('collab.createPoll', { tripId: 1, input: { question: 'Where?', options: ['A'] } }), 42)).ok).toBe(false);
+    expect(
+      ok(
+        await host.dispatch(
+          req('collab.createPoll', { tripId: 1, input: { question: 'Where?', options: ['A', 'B'] } }),
+          42,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      (await host.dispatch(req('collab.createPoll', { tripId: 1, input: { question: 'Where?', options: ['A'] } }), 42))
+        .ok,
+    ).toBe(false);
     expect(ok(await host.dispatch(req('collab.votePoll', { tripId: 1, pollId: 141, optionIndex: 0 }), 42))).toBe(true);
     expect(ok(await host.dispatch(req('collab.createMessage', { tripId: 1, text: 'hi' }), 42))).toBe(true);
     expect((await host.dispatch(req('collab.createMessage', { tripId: 1, text: '' }), 42)).ok).toBe(false);
-    expect(((await host.dispatch(req('collab.createNote', { tripId: 2, input: { title: 'x' } }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      ((await host.dispatch(req('collab.createNote', { tripId: 2, input: { title: 'x' } }), 42)) as RpcError).error
+        .code,
+    ).toBe('RESOURCE_FORBIDDEN');
   });
 
   it('trips.addMember is its own permission (member_manage), host-bound inviter', async () => {
@@ -647,7 +843,9 @@ describe('PluginRpcHost — capability enforcement', () => {
     const good = await host.dispatch(req('trips.addMember', { tripId: 1, userId: 6 }), 42);
     expect(ok(good)).toBe(true);
     expect(deps.addTripMember).toHaveBeenCalledWith(1, 6, 42); // inviter = HOST-bound acting user
-    expect(((await host.dispatch(req('trips.addMember', { tripId: 2, userId: 6 }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(((await host.dispatch(req('trips.addMember', { tripId: 2, userId: 6 }), 42)) as RpcError).error.code).toBe(
+      'RESOURCE_FORBIDDEN',
+    );
     expect((await host.dispatch(req('trips.addMember', { tripId: 1, userId: 6 }), undefined)).ok).toBe(false);
     // and NOT reachable via any other write grant
     const otherGrant = new PluginRpcHost('p', new Set(['db:write:trips', 'db:write:collab']), deps);
@@ -656,24 +854,70 @@ describe('PluginRpcHost — capability enforcement', () => {
 
   it('notify.send forces the recipient to the acting user or a member trip; admin scope refused', async () => {
     const host = new PluginRpcHost('p', new Set(['notify:send']), deps);
-    expect(ok(await host.dispatch(req('notify.send', { input: { title: 'Delay', body: 'AB123 is late', scope: 'user', targetId: 42 } }), 42))).toBe(true);
-    expect(deps.sendPluginNotification).toHaveBeenCalledWith('p', expect.objectContaining({ scope: 'user', targetId: 42 }));
-    expect(ok(await host.dispatch(req('notify.send', { input: { title: 'Trip', body: 'x', scope: 'trip', targetId: 1 } }), 42))).toBe(true);
+    expect(
+      ok(
+        await host.dispatch(
+          req('notify.send', { input: { title: 'Delay', body: 'AB123 is late', scope: 'user', targetId: 42 } }),
+          42,
+        ),
+      ),
+    ).toBe(true);
+    expect(deps.sendPluginNotification).toHaveBeenCalledWith(
+      'p',
+      expect.objectContaining({ scope: 'user', targetId: 42 }),
+    );
+    expect(
+      ok(
+        await host.dispatch(
+          req('notify.send', { input: { title: 'Trip', body: 'x', scope: 'trip', targetId: 1 } }),
+          42,
+        ),
+      ),
+    ).toBe(true);
     // another user (scope user, foreign targetId) → forbidden
-    expect(((await host.dispatch(req('notify.send', { input: { title: 't', body: 'b', scope: 'user', targetId: 99 } }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      (
+        (await host.dispatch(
+          req('notify.send', { input: { title: 't', body: 'b', scope: 'user', targetId: 99 } }),
+          42,
+        )) as RpcError
+      ).error.code,
+    ).toBe('RESOURCE_FORBIDDEN');
     // a trip the acting user isn't in → forbidden
-    expect(((await host.dispatch(req('notify.send', { input: { title: 't', body: 'b', scope: 'trip', targetId: 2 } }), 42)) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      (
+        (await host.dispatch(
+          req('notify.send', { input: { title: 't', body: 'b', scope: 'trip', targetId: 2 } }),
+          42,
+        )) as RpcError
+      ).error.code,
+    ).toBe('RESOURCE_FORBIDDEN');
     // admin scope → bad params (not an allowed scope)
-    expect((await host.dispatch(req('notify.send', { input: { title: 't', body: 'b', scope: 'admin', targetId: 0 } }), 42)).ok).toBe(false);
+    expect(
+      (await host.dispatch(req('notify.send', { input: { title: 't', body: 'b', scope: 'admin', targetId: 0 } }), 42))
+        .ok,
+    ).toBe(false);
     // a protocol-relative / absolute link → rejected
-    expect((await host.dispatch(req('notify.send', { input: { title: 't', body: 'b', scope: 'user', targetId: 42, link: '//evil.com' } }), 42)).ok).toBe(false);
-    expect((await host.dispatch(req('notify.send', { input: { title: '', body: 'b', scope: 'user', targetId: 42 } }), 42)).ok).toBe(false);
+    expect(
+      (
+        await host.dispatch(
+          req('notify.send', { input: { title: 't', body: 'b', scope: 'user', targetId: 42, link: '//evil.com' } }),
+          42,
+        )
+      ).ok,
+    ).toBe(false);
+    expect(
+      (await host.dispatch(req('notify.send', { input: { title: '', body: 'b', scope: 'user', targetId: 42 } }), 42))
+        .ok,
+    ).toBe(false);
   });
 
   it('ai.complete/extract require a configured provider + a bound user, with caps', async () => {
     const host = new PluginRpcHost('p', new Set(['ai:invoke']), deps);
     expect(ok(await host.dispatch(req('ai.complete', { prompt: 'Summarize my trip' }), 42))).toBe(true);
-    expect(ok(await host.dispatch(req('ai.extract', { text: 'AB123 JFK 10:00', jsonSchema: { type: 'object' } }), 42))).toBe(true);
+    expect(
+      ok(await host.dispatch(req('ai.extract', { text: 'AB123 JFK 10:00', jsonSchema: { type: 'object' } }), 42)),
+    ).toBe(true);
     expect((await host.dispatch(req('ai.complete', { prompt: '' }), 42)).ok).toBe(false);
     expect((await host.dispatch(req('ai.extract', { text: 'x', jsonSchema: 'not-an-object' }), 42)).ok).toBe(false);
     expect((await host.dispatch(req('ai.complete', { prompt: 'x'.repeat(20001) }), 42)).ok).toBe(false);
@@ -683,7 +927,7 @@ describe('PluginRpcHost — capability enforcement', () => {
     expect((await host.dispatch(req('ai.complete', { prompt: 'hi' }), undefined)).ok).toBe(false);
   });
 
-  it('settings.get returns the acting user\'s own value; a userless context yields undefined', async () => {
+  it("settings.get returns the acting user's own value; a userless context yields undefined", async () => {
     // No permission required — it only ever returns THIS plugin's config for the acting user.
     const host = new PluginRpcHost('p', new Set(), deps);
     const bound = await host.dispatch(req('settings.get', { key: 'apiKey' }), 42);
@@ -712,14 +956,19 @@ describe('PluginRpcHost — capability enforcement', () => {
   it('scheduler.set/cancel ride on jobs:run and are userless (no acting user needed)', async () => {
     const host = new PluginRpcHost('p', new Set(['jobs:run']), deps);
     // userless (no bound user) is fine — scheduled tasks are like jobs
-    const set = await host.dispatch(req('scheduler.set', { name: 'poll', dueAt: 123, everyMs: 60000, payload: { x: 1 } }), undefined);
+    const set = await host.dispatch(
+      req('scheduler.set', { name: 'poll', dueAt: 123, everyMs: 60000, payload: { x: 1 } }),
+      undefined,
+    );
     expect(ok(set)).toBe(true);
     expect(deps.schedulerSet).toHaveBeenCalledWith('poll', 123, 60000, { x: 1 });
     const cancel = await host.dispatch(req('scheduler.cancel', { name: 'poll' }), undefined);
     expect(ok(cancel)).toBe(true);
     // without jobs:run → not reachable
     const noGrant = new PluginRpcHost('p', new Set(), deps);
-    expect((await noGrant.dispatch(req('scheduler.set', { name: 'x', dueAt: 1 }), 42) as RpcError).error.code).toBe('PERMISSION_DENIED');
+    expect(((await noGrant.dispatch(req('scheduler.set', { name: 'x', dueAt: 1 }), 42)) as RpcError).error.code).toBe(
+      'PERMISSION_DENIED',
+    );
   });
 
   it('a read scope is denied without its own permission', async () => {
@@ -1017,16 +1266,32 @@ describe('PluginRpcHost — capability enforcement', () => {
 
   it('meta writes resolve the entity edit permission per type (place→place_edit, day→day_edit) and refuse no-user', async () => {
     const host = new PluginRpcHost('p', new Set(['db:meta']), deps);
-    expect(ok(await host.dispatch(req('meta.set', { entityType: 'place', entityId: 7, key: 'k', value: 1 }), 42))).toBe(true);
+    expect(ok(await host.dispatch(req('meta.set', { entityType: 'place', entityId: 7, key: 'k', value: 1 }), 42))).toBe(
+      true,
+    );
     expect(deps.canEditPlaces).toHaveBeenCalled();
-    expect(ok(await host.dispatch(req('meta.set', { entityType: 'day', entityId: 3, key: 'k', value: 1 }), 42))).toBe(true);
+    expect(ok(await host.dispatch(req('meta.set', { entityType: 'day', entityId: 3, key: 'k', value: 1 }), 42))).toBe(
+      true,
+    );
     expect(deps.canEditDays).toHaveBeenCalled();
     // reservation metadata uses reservation_edit; accommodation uses day_edit
-    expect(ok(await host.dispatch(req('meta.set', { entityType: 'reservation', entityId: 40, key: 'ext_id', value: 'AB1' }), 42))).toBe(true);
+    expect(
+      ok(
+        await host.dispatch(
+          req('meta.set', { entityType: 'reservation', entityId: 40, key: 'ext_id', value: 'AB1' }),
+          42,
+        ),
+      ),
+    ).toBe(true);
     expect(deps.canEditReservations).toHaveBeenCalled();
-    expect(ok(await host.dispatch(req('meta.set', { entityType: 'accommodation', entityId: 11, key: 'k', value: 1 }), 42))).toBe(true);
+    expect(
+      ok(await host.dispatch(req('meta.set', { entityType: 'accommodation', entityId: 11, key: 'k', value: 1 }), 42)),
+    ).toBe(true);
     // an entity of another trip is refused
-    expect((await host.dispatch(req('meta.get', { entityType: 'reservation', entityId: 999, key: 'k' }), 42) as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
+    expect(
+      ((await host.dispatch(req('meta.get', { entityType: 'reservation', entityId: 999, key: 'k' }), 42)) as RpcError)
+        .error.code,
+    ).toBe('RESOURCE_FORBIDDEN');
     // no host-bound acting user (a job / forged call) → refused
     const noUser = await host.dispatch(req('meta.get', { entityType: 'trip', entityId: 1, key: 'k' }), undefined);
     expect((noUser as RpcError).error.code).toBe('RESOURCE_FORBIDDEN');
@@ -1055,7 +1320,7 @@ describe('PluginRpcHost — capability enforcement', () => {
     expect(ok(res)).toBe(true);
     const rows = (res as RpcResponse).result as Array<{ id: number; name: string }>;
     // only trip 1's places, newest first (mirrors the REST list's created_at DESC)
-    expect(rows.map(r => r.name)).toEqual(['Newer', 'Older']);
+    expect(rows.map((r) => r.name)).toEqual(['Newer', 'Older']);
     realDb.close();
   });
 

@@ -1,7 +1,12 @@
 import { canAccessTrip } from '../../db/database';
 import { RateLimitService } from '../../nest/auth/rate-limit.service';
 import { isDemoUser } from '../../services/authService';
-import { createReservation, getReservation, notifyBookingChange, updateReservation } from '../../services/reservationService';
+import {
+  createReservation,
+  getReservation,
+  notifyBookingChange,
+  updateReservation,
+} from '../../services/reservationService';
 import {
   buildTransitJourneyPatch,
   cleanTransitItineraryNames,
@@ -234,14 +239,19 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
       }
 
       try {
-        const { reservation } = updateReservation(reservationId, tripId, {
-          day_id: patch.day_id,
-          end_day_id: patch.end_day_id,
-          reservation_time: patch.reservation_time,
-          reservation_end_time: patch.reservation_end_time,
-          metadata: patch.metadata,
-          endpoints: patch.endpoints,
-        }, current);
+        const { reservation } = updateReservation(
+          reservationId,
+          tripId,
+          {
+            day_id: patch.day_id,
+            end_day_id: patch.end_day_id,
+            reservation_time: patch.reservation_time,
+            reservation_end_time: patch.reservation_end_time,
+            metadata: patch.metadata,
+            endpoints: patch.endpoints,
+          },
+          current,
+        );
         safeBroadcast(tripId, 'reservation:updated', { reservation });
         notifyBookingChange(tripId, userId, reservation.title, reservation.type || '');
         return ok({ reservation });

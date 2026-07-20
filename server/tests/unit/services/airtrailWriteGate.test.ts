@@ -1,3 +1,9 @@
+import { db } from '../../../src/db/database';
+import { getFlight, listFlights, saveFlight } from '../../../src/services/airtrail/airtrailClient';
+import { isAirtrailWriteEnabled, getAirtrailCredentials } from '../../../src/services/airtrail/airtrailService';
+import { pushReservationToAirtrail, runAirtrailSyncForUser } from '../../../src/services/airtrail/airtrailSync';
+import { getReservation, getReservationWithJoins, updateReservation } from '../../../src/services/reservationService';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -31,12 +37,6 @@ vi.mock('../../../src/services/airtrail/airtrailService', () => ({
   getAirtrailCredentials: vi.fn(),
 }));
 
-import { pushReservationToAirtrail, runAirtrailSyncForUser } from '../../../src/services/airtrail/airtrailSync';
-import { db } from '../../../src/db/database';
-import { getReservation, getReservationWithJoins, updateReservation } from '../../../src/services/reservationService';
-import { getFlight, listFlights, saveFlight } from '../../../src/services/airtrail/airtrailClient';
-import { isAirtrailWriteEnabled, getAirtrailCredentials } from '../../../src/services/airtrail/airtrailService';
-
 const linkedRow = { id: 5, trip_id: 9, external_id: '42', external_owner_user_id: 7, sync_enabled: 1 };
 const runSpy = vi.fn();
 
@@ -57,9 +57,19 @@ beforeEach(() => {
     },
     all: () => [],
   }));
-  (getAirtrailCredentials as any).mockReturnValue({ baseUrl: 'https://at.example', apiKey: 'k', allowInsecureTls: false });
+  (getAirtrailCredentials as any).mockReturnValue({
+    baseUrl: 'https://at.example',
+    apiKey: 'k',
+    allowInsecureTls: false,
+  });
   // GET returns AirTrail-owned detail TREK doesn't model — must survive the writeback.
-  (getFlight as any).mockResolvedValue({ id: 42, from: { iata: 'JFK' }, to: { iata: 'LHR' }, seats: [], departureTerminal: '7' });
+  (getFlight as any).mockResolvedValue({
+    id: 42,
+    from: { iata: 'JFK' },
+    to: { iata: 'LHR' },
+    seats: [],
+    departureTerminal: '7',
+  });
   (saveFlight as any).mockResolvedValue({ id: 42 });
   (getReservationWithJoins as any).mockReturnValue({
     external_id: '42',
@@ -118,7 +128,12 @@ describe('pushReservationToAirtrail write gate (#1240)', () => {
     (getReservationWithJoins as any).mockReturnValue({
       external_id: '42',
       reservation_time: '2021-09-01T19:00',
-      metadata: JSON.stringify({ legs: [{ from: 'BRU', to: 'HEL' }, { from: 'HEL', to: 'JFK' }] }),
+      metadata: JSON.stringify({
+        legs: [
+          { from: 'BRU', to: 'HEL' },
+          { from: 'HEL', to: 'JFK' },
+        ],
+      }),
       endpoints: [],
     });
     await pushReservationToAirtrail(5, 9);
@@ -138,7 +153,8 @@ describe('inbound sync multi-leg guard (#1535)', () => {
         if (sql.includes('FROM reservation_endpoints')) return { n: 3 };
         return undefined;
       },
-      all: () => (sql.includes('sync_enabled = 1') ? [{ id: 5, trip_id: 9, external_id: '42', external_hash: 'stale' }] : []),
+      all: () =>
+        sql.includes('sync_enabled = 1') ? [{ id: 5, trip_id: 9, external_id: '42', external_hash: 'stale' }] : [],
       run: (...args: any[]) => {
         runSpy(sql, args);
         return {};
@@ -160,7 +176,8 @@ describe('inbound sync multi-leg guard (#1535)', () => {
         if (sql.includes('FROM reservation_endpoints')) return { n: 2 };
         return undefined;
       },
-      all: () => (sql.includes('sync_enabled = 1') ? [{ id: 5, trip_id: 9, external_id: '42', external_hash: 'stale' }] : []),
+      all: () =>
+        sql.includes('sync_enabled = 1') ? [{ id: 5, trip_id: 9, external_id: '42', external_hash: 'stale' }] : [],
       run: (...args: any[]) => {
         runSpy(sql, args);
         return {};

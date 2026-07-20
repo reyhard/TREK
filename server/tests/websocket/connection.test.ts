@@ -17,8 +17,8 @@ import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
 
 import http from 'http';
-import net from 'node:net';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import request from 'supertest';
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import WebSocket from 'ws';
@@ -621,7 +621,9 @@ describe('WS message processing edge cases', () => {
     // WS_ERR_INVALID_CLOSE_CODE, so capture uncaughtException for the duration and assert
     // none fired — then confirm the server is still serving.
     const uncaught: Error[] = [];
-    const onUncaught = (err: Error): void => { uncaught.push(err); };
+    const onUncaught = (err: Error): void => {
+      uncaught.push(err);
+    };
     process.on('uncaughtException', onUncaught);
 
     try {
@@ -632,7 +634,7 @@ describe('WS message processing edge cases', () => {
         sock.on('error', reject);
         sock.write(
           `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\n` +
-          `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`
+            `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
         );
         sock.once('data', (buf) => {
           if (!buf.toString('latin1').includes('101 Switching Protocols')) return reject(new Error('no upgrade'));
@@ -641,11 +643,14 @@ describe('WS message processing edge cases', () => {
           payload.writeUInt16BE(1006, 0); // reserved — MUST NOT appear in a close frame (RFC 6455)
           const masked = Buffer.from(payload.map((b, i) => b ^ mask[i % 4]));
           sock.write(Buffer.concat([Buffer.from([0x88, 0x82]), mask, masked])); // FIN|close, MASK|len2
-          setTimeout(() => { sock.destroy(); resolve(); }, 200);
+          setTimeout(() => {
+            sock.destroy();
+            resolve();
+          }, 200);
         });
       });
 
-      expect(uncaught.map(e => (e as { code?: string }).code)).not.toContain('WS_ERR_INVALID_CLOSE_CODE');
+      expect(uncaught.map((e) => (e as { code?: string }).code)).not.toContain('WS_ERR_INVALID_CLOSE_CODE');
 
       // And the server is still serving: a fresh connection still gets a welcome.
       const { user } = createUser(testDb);
