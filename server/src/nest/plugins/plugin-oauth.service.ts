@@ -158,11 +158,7 @@ export class PluginOAuthService {
     // If the admin changed the client credentials / endpoints while the flow was in
     // flight the token exchange would succeed with one config and be stored under
     // another — or worse, the callback URL could be pointing at a different service.
-    try {
-      this.validateProviderBinding(pluginId, state);
-    } catch (e) {
-      throw e;
-    }
+    this.validateProviderBinding(pluginId, state);
 
     const cfg = this.providerConfig(pluginId);
     if (!cfg) throw new Error('OAuth is not configured for this plugin');
