@@ -431,28 +431,6 @@ Caddy handles TLS and WebSockets automatically.
 | `UNSPLASH_ACCESS_KEY` | Optional Unsplash Access Key for trip-cover and place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from. Get a free key at [unsplash.com/developers](https://unsplash.com/developers). Overrides any per-admin key set in Admin > Settings (where it can also be configured instead). | — |
 | `MCP_RATE_LIMIT` | Max MCP API requests per user per minute | `300` |
 | `MCP_MAX_SESSION_PER_USER` | Max concurrent MCP sessions per user | `20` |
-| `MCP_SESSION_TTL` | MCP session idle timeout in seconds | `3600` |
-| `MCP_SSE_KEEPALIVE` | SSE keep-alive interval in seconds (0 = off). Keeps reverse proxies from killing idle SSE streams between tool calls. | `25` |
-| `TRANSIT_API_URL` | Base URL for a Transitous-compatible public-transit routing API. Overrides the default public Transitous endpoint. | — |
-| `KITINERARY_EXTRACTOR_PATH` | Full path to kitinerary-extractor binary. Auto-detected when unset. | auto |
-| `OAUTH_HTTP_REDIRECT_HOSTS` | Comma-separated LAN hostnames allowed for HTTP OAuth redirect URIs. Default: only localhost/127.0.0.1/[::1] for HTTP. HTTPS always allowed. | — |
-| `TREK_PLUGINS_ENABLED` | Kill switch for the entire plugin system. Set `false` to disable. | `true` |
-| `TREK_PLUGINS_DIR` | Override root directory for installed plugin code. | `data/plugins` |
-| `TREK_PLUGINS_DATA_DIR` | Override root directory for plugin-writable data. | `data/plugins-data` |
-| `TREK_PLUGINS_DEV_LINK` | Enable dev-link for loading plugins from local build dirs. Set to `1` (development only). | off |
-| `TREK_PLUGIN_PERMISSIONS` | OS permission jail for plugin child processes. Set to `off` to disable. | `on` |
-| `TREK_PLUGIN_ALLOW_PRIVATE_EGRESS` | When set to `on`, permits plugin egress to private/RFC1918 IPs (e.g. a sibling service on your LAN). | `off` |
-| `TREK_PLUGIN_REGISTRY_URL` | Override the plugin registry index URL. | GitHub TREK-Plugins main dist |
-| `TREK_PLUGIN_RPC_BURST` | Per-plugin RPC burst allowance. | `60` |
-| `TREK_PLUGIN_RPC_PER_SEC` | Per-plugin sustained RPC calls per second. | `20` |
-| `TREK_PLUGIN_RPC_INFLIGHT` | Max concurrent in-flight RPC calls per plugin. | `16` |
-| `TREK_PLUGIN_LOG_BURST` | Per-plugin log burst allowance. | `50` |
-| `TREK_PLUGIN_LOG_PER_SEC` | Per-plugin sustained log lines per second. | `10` |
-| `TREK_PLUGIN_MAX_RSS_MB` | Max RSS memory per plugin child in MB. | `300` |
-| `BACKUP_MAX_DECOMPRESSED_MB` | Upper bound on the total decompressed backup size when restoring. Raise it if your backup + plugin data exceeds 5 GB. | `5120` |
-| `TREK_API_DOCS_ENABLED` | When `true`, exposes Swagger UI/spec at `/api/docs*`. Off by default for security — the generated spec enumerates every route. | `false` |
-| `IDEMPOTENCY_TTL_SECONDS` | Idempotency key TTL in seconds. Must exceed any realistic offline window for replay safety. | `2592000` |
-| `TREK_PLACE_PHOTO_DIR` | Override directory for cached Google Place photos. | `uploads/photos/google` |
 
 </details>
 
