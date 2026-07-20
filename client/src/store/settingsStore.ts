@@ -1,9 +1,47 @@
 import { create } from 'zustand'
 import { settingsApi } from '../api/client'
-import type { Settings } from '../types'
+import type { Settings, DistanceUnit } from '../types'
 import { DEFAULT_APPEARANCE } from '@trek/shared'
 import { getApiErrorMessage } from '../types'
 import { SUPPORTED_LANGUAGE_CODES } from '../i18n/supportedLanguages'
+
+const VALID_TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const
+const VALID_DISTANCE_UNITS: DistanceUnit[] = ['metric', 'imperial']
+const VALID_TIME_FORMATS = ['24h', '12h'] as const
+
+export function normalizeSettings(raw: Partial<Settings>): Settings {
+  const out = { ...DEFAULT_SETTINGS, ...raw }
+
+  // Old string-based dark_mode ('light'/'dark'/'system') → boolean
+  if (typeof out.dark_mode === 'string') {
+    out.dark_mode = out.dark_mode === 'dark' || out.dark_mode === 'true'
+  }
+  if (out.dark_mode === null || out.dark_mode === undefined) {
+    out.dark_mode = false
+  }
+
+  // Validate temperature_unit
+  if (!VALID_TEMPERATURE_UNITS.includes(out.temperature_unit as typeof VALID_TEMPERATURE_UNITS[number])) {
+    out.temperature_unit = DEFAULT_SETTINGS.temperature_unit
+  }
+
+  // Validate distance_unit
+  if (!VALID_DISTANCE_UNITS.includes(out.distance_unit as DistanceUnit)) {
+    out.distance_unit = DEFAULT_SETTINGS.distance_unit
+  }
+
+  // Validate time_format
+  if (!VALID_TIME_FORMATS.includes(out.time_format as typeof VALID_TIME_FORMATS[number])) {
+    out.time_format = DEFAULT_SETTINGS.time_format
+  }
+
+  // Security-sensitive defaults
+  if (out.blur_booking_codes === undefined || out.blur_booking_codes === null) {
+    out.blur_booking_codes = false
+  }
+
+  return out
+}
 
 interface SettingsState {
   settings: Settings
@@ -59,10 +97,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   loadSettings: async () => {
     try {
       const data = await settingsApi.get()
-      set((state) => ({
-        settings: { ...state.settings, ...data.settings },
+      const normalized = normalizeSettings(data.settings || {})
+      set({
+        settings: normalized,
         isLoaded: true,
-      }))
+      })
     } catch (err: unknown) {
       set({ isLoaded: true })
       console.error('Failed to load settings:', err)

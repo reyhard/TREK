@@ -59,9 +59,9 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:read.description': 'Lire les données, entrées et statistiques de congés',
   'oauth.scope.vacay:write.label': 'Gérer les plans de congés',
   'oauth.scope.vacay:write.description': "Créer et gérer les entrées de congés, jours fériés et plans d'équipe",
-  'oauth.scope.geo:read.label': 'Cartes et géocodage',
+  'oauth.scope.geo:read.label': 'Cartes, géocodage & transports en commun',
   'oauth.scope.geo:read.description':
-    'Chercher des lieux, résoudre des URL cartographiques et géocoder des coordonnées',
+    'Chercher des lieux, résoudre des URL cartographiques, géocoder des coordonnées et chercher des itinéraires de transports en commun',
   'oauth.scope.weather:read.label': 'Prévisions météo',
   'oauth.scope.weather:read.description': 'Obtenir les prévisions météo pour les lieux et dates de voyage',
   'oauth.scope.journey:read.label': 'Voir les journaux de voyage',

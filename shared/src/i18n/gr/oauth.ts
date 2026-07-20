@@ -61,9 +61,9 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:read.description': 'Ανάγνωση δεδομένων σχεδιασμού διακοπών, καταχωρήσεων και στατιστικών',
   'oauth.scope.vacay:write.label': 'Διαχείριση πλάνων διακοπών',
   'oauth.scope.vacay:write.description': 'Δημιουργία και διαχείριση καταχωρήσεων διακοπών, αργιών και κοινών πλάνων',
-  'oauth.scope.geo:read.label': 'Χάρτες & γεωκωδικοποίηση',
+  'oauth.scope.geo:read.label': 'Χάρτες, γεωκωδικοποίηση και δημόσιες συγκοινωνίες',
   'oauth.scope.geo:read.description':
-    'Αναζήτηση τοποθεσιών, επίλυση URL χαρτών και αντίστροφη γεωκωδικοποίηση συντεταγμένων',
+    'Αναζήτηση τοποθεσιών, επίλυση URL χαρτών, αντίστροφη γεωκωδικοποίηση συντεταγμένων και αναζήτηση δρομολογίων δημόσιων συγκοινωνιών',
   'oauth.scope.weather:read.label': 'Προγνώσεις καιρού',
   'oauth.scope.weather:read.description': 'Λήψη προγνώσεων καιρού για τοποθεσίες και ημερομηνίες ταξιδιών',
   'oauth.scope.journey:read.label': 'Προβολή ταξιδιών',

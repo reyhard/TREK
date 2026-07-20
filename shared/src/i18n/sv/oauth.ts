@@ -62,9 +62,9 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:read.description': 'Läs information om semesterplanering, inlägg och statistik',
   'oauth.scope.vacay:write.label': 'Hantera semesterplaner',
   'oauth.scope.vacay:write.description': 'Skapa och hantera semesterposter, helgdagar och teamplaner',
-  'oauth.scope.geo:read.label': 'Kartor och geokodning',
+  'oauth.scope.geo:read.label': 'Kartor, geokodning och kollektivtrafik',
   'oauth.scope.geo:read.description':
-    'Sök efter platser, omvandla kart-URL:er och utför omvänd geokodning av koordinater',
+    'Sök efter platser, omvandla kart-URL:er, utför omvänd geokodning av koordinater och sök kollektivtrafikrutter',
   'oauth.scope.weather:read.label': 'Väderprognoser',
   'oauth.scope.weather:read.description': 'Hämta väderprognoser för resmål och datum',
   'oauth.scope.journey:read.label': 'Visa journeys',
