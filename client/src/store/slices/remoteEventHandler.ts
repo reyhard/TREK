@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand'
 import type { TripStoreState } from '../tripStore'
 import type { Assignment, Place, Day, DayNote, PackingItem, TodoItem, BudgetItem, BudgetItemMember, Reservation, Trip, TripFile, WebSocketEvent } from '../../types'
 import { offlineDb } from '../../db/offlineDb'
+import { parseStoredConnections } from '../../utils/connectionsVisibility'
 
 type SetState = StoreApi<TripStoreState>['setState']
 type GetState = StoreApi<TripStoreState>['getState']
@@ -432,6 +433,18 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
         return {
           reservations: state.reservations.map(r => r.id === (payload.reservation as Reservation).id ? payload.reservation as Reservation : r),
         }
+      case 'reservation:positions': {
+        const positions = payload.positions as { id: number; day_plan_position: number }[]
+        if (!Array.isArray(positions)) return {}
+        const posMap = new Map(positions.map(p => [p.id, p.day_plan_position]))
+        return {
+          reservations: state.reservations.map(r => {
+            const pos = posMap.get(r.id)
+            if (pos === undefined) return r
+            return { ...r, day_plan_position: pos }
+          }),
+        }
+      }
       case 'reservation:deleted':
         return {
           reservations: state.reservations.filter(r => r.id !== payload.reservationId),
@@ -463,6 +476,25 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
         return {}
     }
   })
+
+  // When a reservation is deleted remotely, remove its ID from the trip's
+  // stored route-visibility preference so the map never references a stale id.
+  if (type === 'reservation:deleted') {
+    const tripId = get().trip?.id
+    if (tripId != null && typeof window !== 'undefined') {
+      const key = `trek:visible-connections:${tripId}`
+      try {
+        const raw = window.localStorage.getItem(key)
+        if (raw) {
+          const stored = parseStoredConnections(raw)
+          if (stored) {
+            const filtered = stored.ids.filter(id => id !== (payload.reservationId as number))
+            window.localStorage.setItem(key, JSON.stringify({ ...stored, ids: filtered }))
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+  }
 
   // A reorder/insert re-pins dates and re-stamps booking times server-side, so
   // pull the authoritative days + reservations for collaborators.

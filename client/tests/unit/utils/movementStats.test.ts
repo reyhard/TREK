@@ -341,4 +341,42 @@ describe('calculateDayMovementStats', () => {
     expect(combined.driving.distanceMeters).toBe(10_000)
     expect(combined.cycling.contributionCount).toBe(0)
   })
+
+  it('handles transit metadata stored as an object (not only JSON string)', () => {
+    const reservation = buildReservation({
+      id: 50,
+      type: 'transit',
+      day_id: 10,
+      metadata: { transit: { legs: [{ mode: 'WALK', duration: 300, distance: 400 }] } } as unknown as string,
+    })
+    expect(createTransitWalkContributions(10, [reservation])).toHaveLength(1)
+    expect(createTransitWalkContributions(10, [reservation])[0]).toMatchObject({
+      durationSeconds: 300,
+      distanceMeters: 400,
+    })
+  })
+
+  it('skips transit reservations with null or undefined day_id when matching a specific day', () => {
+    expect(createTransitWalkContributions(10, [
+      buildReservation({ id: 51, type: 'transit', day_id: null as unknown as number, metadata: '{"transit":{"legs":[{"mode":"WALK","duration":300}]}}' }),
+    ])).toEqual([])
+    expect(createTransitWalkContributions(10, [
+      buildReservation({ id: 52, type: 'transit', metadata: '{"transit":{"legs":[{"mode":"WALK","duration":300}]}}' }),
+    ])).toEqual([])
+  })
+
+  it('returns empty for transit with no WALK legs and no walk_seconds fallback', () => {
+    expect(createTransitWalkContributions(10, [
+      buildReservation({ id: 53, type: 'transit', day_id: 10, metadata: JSON.stringify({ transit: { legs: [{ mode: 'SUBWAY', duration: 1200 }] } }) }),
+    ])).toEqual([])
+  })
+
+  it('returns empty for empty or null transit metadata', () => {
+    expect(createTransitWalkContributions(10, [
+      buildReservation({ id: 54, type: 'transit', day_id: 10, metadata: '{}' }),
+    ])).toEqual([])
+    expect(createTransitWalkContributions(10, [
+      buildReservation({ id: 55, type: 'transit', day_id: 10, metadata: null as unknown as string }),
+    ])).toEqual([])
+  })
 })
