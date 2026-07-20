@@ -3090,12 +3090,8 @@ function runMigrations(db: Database.Database): void {
       } catch (err: any) {
         if (!err.message?.includes('duplicate column name')) throw err;
       }
-      db.exec(
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_trips_feed_token ON trips(feed_token) WHERE feed_token IS NOT NULL',
-      );
-      db.exec(
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL',
-      );
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_trips_feed_token ON trips(feed_token) WHERE feed_token IS NOT NULL');
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL');
     },
     // Optimistic-concurrency token for offline conflict detection (#1135).
     // packing_items had only created_at, so an offline edit could not be checked
@@ -3109,9 +3105,7 @@ function runMigrations(db: Database.Database): void {
       } catch (err: any) {
         if (!err.message?.includes('duplicate column name')) throw err;
       }
-      db.exec(
-        'UPDATE packing_items SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL',
-      );
+      db.exec('UPDATE packing_items SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL');
     },
     // Video support (#823): the trek_photos registry held only images. media_type
     // discriminates image vs video so the gallery, lightbox and provider proxy can
@@ -3264,25 +3258,13 @@ function runMigrations(db: Database.Database): void {
 
     // Migration 151: user-added links on collections + saved places (JSON text)
     () => {
-      try {
-        db.exec('ALTER TABLE collections ADD COLUMN links TEXT');
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
-      try {
-        db.exec('ALTER TABLE collection_places ADD COLUMN links TEXT');
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      try { db.exec('ALTER TABLE collections ADD COLUMN links TEXT'); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      try { db.exec('ALTER TABLE collection_places ADD COLUMN links TEXT'); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 152: per-member permission role on a shared list. Existing
     // accepted members default to 'editor' so nothing regresses.
     () => {
-      try {
-        db.exec("ALTER TABLE collection_members ADD COLUMN role TEXT NOT NULL DEFAULT 'editor'");
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      try { db.exec("ALTER TABLE collection_members ADD COLUMN role TEXT NOT NULL DEFAULT 'editor'"); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 153: per-trip invite links (#1143). One rotating token per trip;
     // a logged-in existing user who opens the link joins the trip as a member.
@@ -3305,11 +3287,7 @@ function runMigrations(db: Database.Database): void {
     // who REGISTERS via the link is auto-added to the trip. Nullable for backward
     // compatibility; ON DELETE SET NULL so removing the trip just unbinds the invite.
     () => {
-      try {
-        db.exec('ALTER TABLE invite_tokens ADD COLUMN trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL');
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      try { db.exec('ALTER TABLE invite_tokens ADD COLUMN trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL'); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 155: plugin system scaffold (#plugins). A plugin is a row here;
     // its code lives on the /plugins volume and (once the runtime lands) runs in
@@ -3380,34 +3358,24 @@ function runMigrations(db: Database.Database): void {
     // Boot now retries every enabled plugin regardless of last status.
     () => {
       try {
-        db.exec('ALTER TABLE plugins ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;');
+        db.exec("ALTER TABLE plugins ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;");
         // Anything not explicitly deactivated was meant to be on ('inactive' is the
         // only status deactivate() sets; a crash/shutdown could leave error/stopped/starting).
         db.exec("UPDATE plugins SET enabled = 1 WHERE status != 'inactive';");
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 157: plugin capabilities (from trek-plugin.json) — the client
     // needs them to place widgets (e.g. widget.slot 'hero' renders as an overlay
     // on the boarding-pass bar instead of the dashboard sidebar).
     () => {
-      try {
-        db.exec("ALTER TABLE plugins ADD COLUMN capabilities TEXT NOT NULL DEFAULT '{}';");
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      try { db.exec("ALTER TABLE plugins ADD COLUMN capabilities TEXT NOT NULL DEFAULT '{}';"); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 158: TOFU pin for a plugin's author signing key (#plugins, #4).
     // Set on first install of a signed plugin; a later install whose registry key
     // differs is a hard stop (author change / key rotation / attack) unless an
     // admin re-trusts. NULL for unsigned plugins (signing is opt-in).
     () => {
-      try {
-        db.exec('ALTER TABLE plugins ADD COLUMN author_pubkey TEXT;');
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      try { db.exec("ALTER TABLE plugins ADD COLUMN author_pubkey TEXT;"); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 159: hash-chained capability audit log (#plugins, L1 hardening).
     // Every host-mediated capability call the plugin makes is recorded at the RPC
@@ -3428,9 +3396,7 @@ function runMigrations(db: Database.Database): void {
           hash TEXT NOT NULL
         );`);
         db.exec('CREATE INDEX IF NOT EXISTS idx_plugin_audit_plugin ON plugin_capability_audit (plugin_id, id);');
-      } catch (err) {
-        console.warn('[migrations] Non-fatal migration step failed:', err);
-      }
+      } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
     },
     // Migration 160: per-collection custom labels (#collections). Each list owns
     // its own label set (unlike the instance-wide `tags` table), and a place can
@@ -3450,9 +3416,7 @@ function runMigrations(db: Database.Database): void {
         PRIMARY KEY (collection_place_id, label_id)
       );`);
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_labels_collection ON collection_labels(collection_id);');
-      db.exec(
-        'CREATE INDEX IF NOT EXISTS idx_collection_place_labels_place ON collection_place_labels(collection_place_id);',
-      );
+      db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_place ON collection_place_labels(collection_place_id);');
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_label ON collection_place_labels(label_id);');
     },
     // Migration 161: plugin-owned metadata on core entities (#1429). A namespaced
@@ -3472,9 +3436,7 @@ function runMigrations(db: Database.Database): void {
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE (plugin_id, entity_type, entity_id, key)
       );`);
-      db.exec(
-        'CREATE INDEX IF NOT EXISTS idx_plugin_meta_entity ON plugin_entity_metadata (plugin_id, entity_type, entity_id);',
-      );
+      db.exec('CREATE INDEX IF NOT EXISTS idx_plugin_meta_entity ON plugin_entity_metadata (plugin_id, entity_type, entity_id);');
     },
 
     // Freeze the FX rate on settle-up transfers too (#1445). budget_settlements
@@ -3665,21 +3627,79 @@ function runMigrations(db: Database.Database): void {
       `);
     },
 
-    // Bind OAuth access and refresh tokens to the password-version invalidation gate.
+    // Why a plugin's update was REFUSED by the signature check (#plugins). A refused
+    // update leaves a working plugin pinned at its old version — previously the reason
+    // lived only in a transient toast, so the plugin quietly stopped updating and the
+    // admin had to re-attempt an update to rediscover why. Record it instead.
+    //
+    // `update_block_version` is the registry version that was refused: once the registry
+    // offers something NEWER, the block describes an artifact nobody is being offered
+    // anymore, so it reads as stale and the admin can just re-attempt (the next install
+    // re-verifies and either succeeds or re-blocks with fresh values). Deliberately no
+    // `status = 'error'` — the plugin still runs fine on its old code.
     () => {
-      const hasColumn = db
-        .prepare("SELECT 1 FROM pragma_table_info('oauth_tokens') WHERE name = 'user_password_version'")
-        .get();
-      if (!hasColumn) {
-        db.exec('ALTER TABLE oauth_tokens ADD COLUMN user_password_version INTEGER NOT NULL DEFAULT 0');
+      for (const col of ['update_block_code TEXT', 'update_block_detail TEXT', 'update_block_version TEXT']) {
+        try {
+          db.exec(`ALTER TABLE plugins ADD COLUMN ${col};`);
+        } catch (err) {
+          console.warn('[migrations] Non-fatal migration step failed:', err);
+        }
       }
+    },
+
+    // The semver RANGE of TREK versions a plugin declares it supports (its manifest's
+    // `trek`, e.g. ">=3.2.0 <4.0.0"). The existing `min_trek_version` only carries the
+    // lower bound, so it cannot express "stops working at 4.0" — which is precisely the
+    // case the activation gate has to catch after a TREK upgrade. Kept nullable: a plugin
+    // installed before this column existed has no range recorded, and the gate refuses to
+    // activate it rather than guessing (see TREK_VERSION_UNKNOWN).
+    () => {
+      try {
+        db.exec('ALTER TABLE plugins ADD COLUMN trek_range TEXT;');
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
+    },
+
+    // `place_regions` is a re-derivable Nominatim cache, only ever populated for a place ID
+    // that isn't already cached — so a wrong row, once written, was permanent. Region
+    // resolution now resolves a place's lat/lng directly against the bundled admin1 polygons
+    // (the same ones the client renders) instead of trusting Nominatim's address level, which
+    // could name a subdivision level the bundle doesn't carry (Barcelona's ES-B province vs
+    // the bundle's ES-CT autonomous community) and never highlight. That fix only helps
+    // places re-resolved after it, so clear the cache once and let every place re-resolve on
+    // the next Atlas load. The country_code stored alongside is cleared too, which also drops
+    // the old wrong-country rows a US-state-abbreviation address used to produce.
+    () => {
+      try {
+        db.exec('DELETE FROM place_regions');
+      } catch (err) {
+        // place_regions is created by an earlier migration; tolerate its absence on an
+        // unusual partial DB rather than aborting startup.
+        if (!(err instanceof Error) || !err.message.includes('no such table')) throw err;
+      }
+    },
+
+    // Tombstones for Atlas regions the user has explicitly removed — the region-level
+    // counterpart to hidden_countries above (#1490). A visited region is normally derived
+    // fresh from place_regions/visited_regions on every request, so "removing" it has
+    // nothing to delete; recording it here lets getVisitedRegions suppress a derived region
+    // the same way getStats already suppresses a derived country. Unlike the country-level
+    // tombstone (originally only reachable for a manually-marked or zero-count country),
+    // this also covers a region derived from real place data — e.g. one that ended up on
+    // the wrong side of a border-simplification gap and the user just wants gone.
+    () => {
       db.exec(`
-        UPDATE oauth_tokens
-        SET user_password_version = COALESCE(
-          (SELECT password_version FROM users WHERE users.id = oauth_tokens.user_id),
-          0
-        )
+        CREATE TABLE IF NOT EXISTS hidden_regions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          region_code TEXT NOT NULL,
+          country_code TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (user_id, region_code)
+        );
       `);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_hidden_regions_user ON hidden_regions (user_id);');
     },
   ];
 

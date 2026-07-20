@@ -60,7 +60,7 @@ export class BudgetController {
   @Get('settlement')
   settlement(@CurrentUser() user: User, @Param('tripId') tripId: string, @Query('base') base?: string) {
     const trip = this.requireTrip(tripId, user);
-    return this.budget.settlement(tripId, base, (trip as { currency?: string }).currency || 'EUR');
+    return this.budget.settlement(tripId, base, trip.currency || 'EUR');
   }
 
   @Get('settlements')

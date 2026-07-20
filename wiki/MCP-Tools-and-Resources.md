@@ -106,21 +106,15 @@ Requires `reservations:write` scope.
 | `update_transport` | Update an existing transport booking. Pass `endpoints[]` to replace all stops. |
 | `delete_transport` | Delete a transport booking from a trip. |
 
-### Automated Public Transit
+### Automated public transit
 
-| Tool | Scope | Description |
+Transit search is powered by Transitous and uses the existing `geo:read` and `reservations:write` scopes.
+
+| Tool | Scope required | Description |
 |---|---|---|
-| `search_transit_stops` | `places:read` | Search Transitous/MOTIS stop and station data. Use when route endpoint coordinates are unknown. |
-| `plan_transit_route` | `places:read` | Plan up to eight public-transit itineraries for a dated trip day, with depart-at/arrive-by time, mode filters, maximum transfers, and ranking preference. Returns all candidates; the agent selects one. |
-| `create_transit_route` | `reservations:write` | Save one complete selected itinerary as an automated `transit` entry. Does not call Transitous. |
-| `update_transit_route` | `reservations:write` | Replace the route data of an existing automated `transit` entry while preserving title and notes unless explicitly overridden. Does not call Transitous. |
-
-1. Call `search_transit_stops` when coordinates are unknown.
-2. Call `plan_transit_route` with a dated trip day and local `HH:mm` time.
-3. Compare every returned itinerary; TREK does not automatically select one.
-4. Pass one complete returned itinerary to `create_transit_route` or `update_transit_route`.
-
-Do not fabricate a Transitous itinerary. When Transitous cannot find a train or the journey comes from a ticket/manual timetable, use `create_transport` with `type: "train"` instead.
+| `search_transit_stops` | `geo:read` | Search real public-transit stops and stations, optionally biased around coordinates. |
+| `search_transit_routes` | `geo:read` | Search scheduled routes between two coordinates with time, mode, and transfer filters. Also returns `dropped`, the number of provider itineraries that failed validation and are absent from the results. |
+| `create_transit_journey` | `reservations:write` | Save a selected route as a first-class automated transit journey on a trip day. |
 
 ### Reservations
 

@@ -3,7 +3,7 @@
  * The Transitous/MOTIS proxy (#1065): input validation, mode whitelist,
  * response mapping (colors, walk time, wall-clock duration) and caching.
  */
-import { geocode, plan } from '../../../src/services/transitService';
+import { deriveTransitStats, geocode, plan, type TransitLeg } from '../../../src/services/transitService';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -71,6 +71,20 @@ describe('plan validation', () => {
     await expect(plan({ from: '52.50,13.40', to: '52.51,13.41', time: 'not-a-date' })).rejects.toMatchObject({
       status: 400,
     });
+  });
+});
+
+describe('itinerary statistics', () => {
+  it('derives wall-clock duration, walking time, and transfers from canonical legs', () => {
+    const leg = (mode: string, duration: number) => ({ mode, duration }) as TransitLeg;
+    const stats = deriveTransitStats('2026-07-13T08:00:00Z', '2026-07-13T08:30:00Z', [
+      leg('WALK', 300),
+      leg('BUS', 600),
+      leg('RAIL', 600),
+    ]);
+
+    expect(stats).toEqual({ duration: 1800, transfers: 1, walkSeconds: 300 });
+    expect(deriveTransitStats('2026-07-13T08:00:00Z', '2026-07-13T08:30:00Z', [leg('BUS', 1800)], 2).transfers).toBe(2);
   });
 });
 

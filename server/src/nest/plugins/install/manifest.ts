@@ -1,7 +1,7 @@
-import type { NotifEventType } from '../../../services/notificationPreferencesService';
-import { isKnownPermission } from '../protocol/envelope';
-
 import semver from 'semver';
+import { isKnownPermission } from '../protocol/envelope';
+import { isValidTrekRange, minTrekOf } from './host-compat';
+import type { NotifEventType } from '../../../services/notificationPreferencesService';
 
 /**
  * Parse + validate a plugin's trek-plugin.json (#plugins, M4). Kept deliberately
@@ -70,6 +70,8 @@ export interface PluginCapabilities {
   provides?: string[];
   /** Event names this plugin publishes to its dependents via ctx.events.emit. */
   emits?: string[];
+  /** The plugin ships client/settings.html; the host frames it on the user's settings page. */
+  settingsUi?: boolean;
 }
 
 /** A declared dependency on another plugin, pinned by a semver range. */
@@ -88,7 +90,11 @@ export interface PluginManifest {
   homepage?: string;
   icon?: string;
   type: 'integration' | 'page' | 'widget' | 'trip-page';
+  /** The raw semver RANGE of TREK versions this plugin supports (">=3.2.0 <4.0.0"). */
   trek?: string;
+  /** Same range, normalized: a valid+satisfiable one, or null. What the host gates on. */
+  trekRange: string | null;
+  /** The range's lower bound, for display ("Requires TREK 3.2.0+"). Derived, never authored. */
   minTrekVersion?: string;
   nativeModules: boolean;
   permissions: string[];
@@ -135,7 +141,19 @@ export function parseJsonText(text: string): unknown {
   return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
 }
 
-export function parseManifest(raw: unknown): PluginManifest {
+/**
+ * Validate a manifest.
+ *
+ * `requireTrek` is the INSTALL front doors (registry, sideload, dev-link): a plugin
+ * that doesn't say which TREK versions it supports may not be installed at all.
+ *
+ * It is deliberately OFF for discovery, which is a reconciler, not a gate. Discovery's
+ * failure path only logs and skips — it never touches the plugins row — so a plugin it
+ * rejects keeps its stale `enabled = 1` and gets spawned by the next boot anyway. Making
+ * this strict there would produce a plugin that is invisible to discovery and still
+ * running. Activation is where an undeclared range is actually refused.
+ */
+export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): PluginManifest {
   if (!raw || typeof raw !== 'object') throw new ManifestError('manifest is not an object');
   const m = raw as Record<string, unknown>;
 
@@ -177,15 +195,21 @@ export function parseManifest(raw: unknown): PluginManifest {
     egress.length === 0 &&
     m.operatorEgress !== true
   ) {
-    throw new ManifestError(
-      'http:outbound declared but egress[] is empty (set operatorEgress: true if the hosts are admin-supplied)',
-    );
+    throw new ManifestError('http:outbound declared but egress[] is empty (set operatorEgress: true if the hosts are admin-supplied)');
   }
   if (egress.includes('*')) throw new ManifestError('egress[] must not contain a bare "*"');
   const badEgress = egress.find((h) => !HOST_RE.test(h));
   if (badEgress !== undefined) throw new ManifestError(`invalid egress host "${badEgress}"`);
 
   const trek = optStr(m.trek);
+  const trekRange = isValidTrekRange(trek) ? trek : null;
+  if (opts?.requireTrek && !trekRange) {
+    throw new ManifestError(
+      trek
+        ? `invalid "trek" version range "${trek}" (expected a satisfiable semver range, e.g. ">=3.2.0 <4.0.0")`
+        : 'missing "trek" version range — declare the TREK versions this plugin supports, e.g. ">=3.2.0 <4.0.0"',
+    );
+  }
   return {
     id,
     name: str(m.name, 'name'),
@@ -197,7 +221,11 @@ export function parseManifest(raw: unknown): PluginManifest {
     icon: optStr(m.icon) ?? 'Blocks',
     type: type as PluginManifest['type'],
     trek,
-    minTrekVersion: trek ? (trek.match(/(\d+\.\d+\.\d+)/)?.[1] ?? undefined) : undefined,
+    trekRange,
+    // Derived from the range itself, never from the first number that looks like a
+    // version in it: a range of "<4.0.0" has a *first* semver of 4.0.0 but a lower
+    // bound of 0.0.0, so reading it off the text produced the exact inverse of the truth.
+    minTrekVersion: trekRange ? minTrekOf(trekRange) : undefined,
     nativeModules: false,
     permissions,
     egress,
@@ -214,8 +242,7 @@ export function parseManifest(raw: unknown): PluginManifest {
 function parseRequiredAddons(raw: unknown): string[] {
   const out: string[] = [];
   for (const v of arr(raw)) {
-    if (typeof v !== 'string' || !ADDON_ID_RE.test(v))
-      throw new ManifestError(`invalid requiredAddons entry "${String(v)}"`);
+    if (typeof v !== 'string' || !ADDON_ID_RE.test(v)) throw new ManifestError(`invalid requiredAddons entry "${String(v)}"`);
     if (!out.includes(v)) out.push(v);
   }
   return out;
@@ -237,8 +264,7 @@ function parsePluginDependencies(raw: unknown, selfId: string): PluginDependency
     if (id === selfId) throw new ManifestError(`plugin "${selfId}" cannot depend on itself`);
     if (out.some((e) => e.id === id)) throw new ManifestError(`duplicate pluginDependencies id "${id}"`);
     const version = str(d.version, 'pluginDependencies.version');
-    if (semver.validRange(version) === null)
-      throw new ManifestError(`invalid pluginDependencies version range "${version}" for "${id}"`);
+    if (semver.validRange(version) === null) throw new ManifestError(`invalid pluginDependencies version range "${version}" for "${id}"`);
     out.push({ id, version });
   }
   return out;
@@ -255,15 +281,7 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
   if (c.widget && typeof c.widget === 'object') {
     const w = c.widget as Record<string, unknown>;
     const slot = optStr(w.slot);
-    if (
-      slot &&
-      slot !== 'sidebar' &&
-      slot !== 'hero' &&
-      slot !== 'place-detail' &&
-      slot !== 'day-detail' &&
-      slot !== 'reservation-detail'
-    )
-      throw new ManifestError(`invalid widget slot "${slot}"`);
+    if (slot && slot !== 'sidebar' && slot !== 'hero' && slot !== 'place-detail' && slot !== 'day-detail' && slot !== 'reservation-detail') throw new ManifestError(`invalid widget slot "${slot}"`);
     out.widget = {
       title: optStr(w.title),
       defaultSize: optStr(w.defaultSize),
@@ -278,9 +296,7 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
       const replaces: string[] = [];
       for (const v of tp.replaces) {
         if (typeof v !== 'string' || !REPLACEABLE_TABS.includes(v)) {
-          throw new ManifestError(
-            `capabilities.tripPage.replaces: "${String(v)}" is not a replaceable tab (${REPLACEABLE_TABS.join(', ')})`,
-          );
+          throw new ManifestError(`capabilities.tripPage.replaces: "${String(v)}" is not a replaceable tab (${REPLACEABLE_TABS.join(', ')})`);
         }
         if (!replaces.includes(v)) replaces.push(v);
       }
@@ -294,14 +310,17 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
     }
     if (Object.keys(page).length) out.tripPage = page;
   }
+  if (c.settingsUi !== undefined) {
+    if (typeof c.settingsUi !== 'boolean') throw new ManifestError('capabilities.settingsUi must be a boolean');
+    if (c.settingsUi) out.settingsUi = true;
+  }
   if (c.notificationChannel && typeof c.notificationChannel === 'object') {
     const nc = c.notificationChannel as Record<string, unknown>;
     const channel: NotificationChannelCapability = {};
     const title = optStr(nc.title);
     if (title) channel.title = title;
     if (nc.events !== undefined) {
-      if (!Array.isArray(nc.events))
-        throw new ManifestError('capabilities.notificationChannel.events must be an array');
+      if (!Array.isArray(nc.events)) throw new ManifestError('capabilities.notificationChannel.events must be an array');
       const events: string[] = [];
       for (const v of nc.events) {
         if (typeof v !== 'string' || !(PLUGIN_CHANNEL_EVENTS as readonly string[]).includes(v)) {
@@ -362,8 +381,7 @@ function parseCapabilityNames(raw: unknown, field: string): string[] {
   if (!Array.isArray(raw)) throw new ManifestError(`capabilities.${field} must be an array of names`);
   const out: string[] = [];
   for (const v of raw) {
-    if (typeof v !== 'string' || !CAPABILITY_NAME_RE.test(v))
-      throw new ManifestError(`invalid capabilities.${field} entry "${String(v)}"`);
+    if (typeof v !== 'string' || !CAPABILITY_NAME_RE.test(v)) throw new ManifestError(`invalid capabilities.${field} entry "${String(v)}"`);
     if (!out.includes(v)) out.push(v);
   }
   return out;
@@ -385,23 +403,18 @@ function parseSettings(raw: unknown): ManifestSettingField[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
-    .map(
-      (s): ManifestSettingField => ({
-        key: assertSettingKey(String(s.key ?? '')),
-        label: optStr(s.label),
-        input_type: optStr(s.input_type) ?? 'text',
-        placeholder: optStr(s.placeholder),
-        hint: optStr(s.hint),
-        required: !!s.required,
-        secret: !!s.secret,
-        scope: s.scope === 'user' ? 'user' : 'instance',
-        options: parseSettingOptions(s.options),
-        oauth:
-          s.oauth && typeof s.oauth === 'object'
-            ? (s.oauth as { initPath?: string; callbackPath?: string })
-            : undefined,
-      }),
-    )
+    .map((s): ManifestSettingField => ({
+      key: assertSettingKey(String(s.key ?? '')),
+      label: optStr(s.label),
+      input_type: optStr(s.input_type) ?? 'text',
+      placeholder: optStr(s.placeholder),
+      hint: optStr(s.hint),
+      required: !!s.required,
+      secret: !!s.secret,
+      scope: s.scope === 'user' ? 'user' : 'instance',
+      options: parseSettingOptions(s.options),
+      oauth: s.oauth && typeof s.oauth === 'object' ? (s.oauth as { initPath?: string; callbackPath?: string }) : undefined,
+    }))
     .filter((s) => s.key);
 }
 
@@ -455,9 +468,7 @@ function assertSettingKey(key: string): string {
   // would leave the plugin expecting a setting the host will never store.
   if (!key) return key;
   if (!SETTING_KEY_RE.test(key) || RESERVED_SETTING_KEYS.has(key)) {
-    throw new ManifestError(
-      `invalid settings key "${key}" (letters, digits, . _ - ; must start with a letter; 1–64 chars)`,
-    );
+    throw new ManifestError(`invalid settings key "${key}" (letters, digits, . _ - ; must start with a letter; 1–64 chars)`);
   }
   return key;
 }

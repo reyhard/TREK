@@ -1,5 +1,3 @@
-import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the data + side-effect dependencies the service reaches into directly.
@@ -16,27 +14,20 @@ const { checkPermission } = vi.hoisted(() => ({ checkPermission: vi.fn(() => tru
 vi.mock('../../../src/services/permissions', () => ({ checkPermission }));
 
 const { budget } = vi.hoisted(() => ({
-  budget: {
-    createBudgetItem: vi.fn(),
-    updateBudgetItem: vi.fn(),
-    deleteBudgetItem: vi.fn(),
-    linkBudgetItemToReservation: vi.fn(),
-  },
+  budget: { createBudgetItem: vi.fn(), updateBudgetItem: vi.fn(), deleteBudgetItem: vi.fn(), linkBudgetItemToReservation: vi.fn() },
 }));
 vi.mock('../../../src/services/budgetService', () => budget);
 
 const { resv } = vi.hoisted(() => ({
   resv: {
-    verifyTripAccess: vi.fn(),
-    listReservations: vi.fn(),
-    createReservation: vi.fn(),
-    updatePositions: vi.fn(),
-    getReservation: vi.fn(),
-    updateReservation: vi.fn(),
-    deleteReservation: vi.fn(),
+    verifyTripAccess: vi.fn(), listReservations: vi.fn(), createReservation: vi.fn(), updatePositions: vi.fn(),
+    getReservation: vi.fn(), updateReservation: vi.fn(), deleteReservation: vi.fn(),
+    notifyBookingChange: vi.fn(),
   },
 }));
 vi.mock('../../../src/services/reservationService', () => resv);
+
+import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
 
 function svc() {
   return new ReservationsService();
@@ -74,18 +65,12 @@ describe('ReservationsService', () => {
     it('links a budget item and broadcasts budget:created', () => {
       budget.linkBudgetItemToReservation.mockReturnValue({ id: 7 });
       svc().syncBudgetOnCreate('5', 9, 'Hotel', 'lodging', { total_price: 200, category: 'Lodging' }, 'sock');
-      expect(budget.linkBudgetItemToReservation).toHaveBeenCalledWith('5', 9, {
-        name: 'Hotel',
-        category: 'Lodging',
-        total_price: 200,
-      });
+      expect(budget.linkBudgetItemToReservation).toHaveBeenCalledWith('5', 9, { name: 'Hotel', category: 'Lodging', total_price: 200 });
       expect(broadcast).toHaveBeenCalledWith('5', 'budget:created', { item: { id: 7 } }, 'sock');
     });
 
     it('falls back to type then "Other" for the category and swallows errors', () => {
-      budget.linkBudgetItemToReservation.mockImplementation(() => {
-        throw new Error('boom');
-      });
+      budget.linkBudgetItemToReservation.mockImplementation(() => { throw new Error('boom'); });
       expect(() => svc().syncBudgetOnCreate('5', 9, 'Hotel', undefined, { total_price: 50 }, 'sock')).not.toThrow();
     });
   });
@@ -117,11 +102,7 @@ describe('ReservationsService', () => {
       dbMock._stmt.get.mockReturnValueOnce({ id: 7 }); // existing lookup
       budget.updateBudgetItem.mockReturnValue({ id: 7 });
       svc().syncBudgetOnUpdate('5', '9', 'New', 'lodging', 'Old', 'lodging', { total_price: 80 }, 'sock');
-      expect(budget.updateBudgetItem).toHaveBeenCalledWith(7, '5', {
-        name: 'New',
-        category: 'lodging',
-        total_price: 80,
-      });
+      expect(budget.updateBudgetItem).toHaveBeenCalledWith(7, '5', { name: 'New', category: 'lodging', total_price: 80 });
       expect(broadcast).toHaveBeenCalledWith('5', 'budget:updated', { item: { id: 7 } }, 'sock');
     });
 
@@ -129,11 +110,7 @@ describe('ReservationsService', () => {
       dbMock._stmt.get.mockReturnValue(undefined); // no existing
       budget.createBudgetItem.mockReturnValue({ id: 9 });
       svc().syncBudgetOnUpdate('5', '9', '', undefined, 'Old title', 'flight', { total_price: 120 }, 'sock');
-      expect(budget.createBudgetItem).toHaveBeenCalledWith('5', {
-        name: 'Old title',
-        category: 'flight',
-        total_price: 120,
-      });
+      expect(budget.createBudgetItem).toHaveBeenCalledWith('5', { name: 'Old title', category: 'flight', total_price: 120 });
       expect(dbMock._stmt.run).toHaveBeenCalled(); // UPDATE budget_items SET reservation_id
       expect(broadcast).toHaveBeenCalledWith('5', 'budget:created', { item: { id: 9, reservation_id: 9 } }, 'sock');
     });

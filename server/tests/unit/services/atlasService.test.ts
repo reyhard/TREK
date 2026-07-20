@@ -1,22 +1,3 @@
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import {
-  getStats,
-  getCached,
-  setCache,
-  getCountryFromCoords,
-  getCountryFromAddress,
-  reverseGeocodeCountry,
-  getRegionGeo,
-  getCountryGeo,
-  getCountryPlaces,
-  getVisitedRegions,
-  markCountryVisited,
-  unmarkCountryVisited,
-} from '../../../src/services/atlasService';
-import { createUser, createTrip, createReservation } from '../../helpers/factories';
-import { resetTestDb } from '../../helpers/test-db';
-
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // ── DB setup (real in-memory SQLite — same pattern as mcp unit tests) ────────
@@ -33,15 +14,11 @@ const { testDb, dbMock } = vi.hoisted(() => {
     reinitialize: () => {},
     getPlaceWithTags: () => null,
     canAccessTrip: (tripId: any, userId: number) =>
-      db
-        .prepare(
-          `
+      db.prepare(`
         SELECT t.id, t.user_id FROM trips t
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ?
         WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)
-      `,
-        )
-        .get(userId, tripId, userId),
+      `).get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -50,24 +27,30 @@ const { testDb, dbMock } = vi.hoisted(() => {
 
 vi.mock('../../../src/db/database', () => dbMock);
 
+import { createTables } from '../../../src/db/schema';
+import { runMigrations } from '../../../src/db/migrations';
+import { resetTestDb } from '../../helpers/test-db';
+import { createUser, createTrip, createReservation } from '../../helpers/factories';
+import { getStats, getCached, setCache, getCountryFromCoords, getCountryFromAddress, isPointInCountryBox, reverseGeocodeCountry, getRegionGeo, getCountryGeo, getCountryPlaces, getVisitedRegions, markCountryVisited, unmarkCountryVisited, markRegionVisited, unmarkRegionVisited } from '../../../src/services/atlasService';
+
 function insertReservationEndpoint(
   db: any,
   reservationId: number,
   role: 'from' | 'to' | 'stop',
   sequence: number,
   lat: number,
-  lng: number,
+  lng: number
 ) {
   db.prepare(
-    'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(reservationId, role, sequence, `Endpoint ${sequence}`, lat, lng);
 }
 
 function insertPlace(db: any, tripId: number, name: string, address: string | null = null) {
   const cat = db.prepare('SELECT id FROM categories LIMIT 1').get() as { id: number } | undefined;
-  const result = db
-    .prepare('INSERT INTO places (trip_id, name, address, category_id) VALUES (?, ?, ?, ?)')
-    .run(tripId, name, address, cat?.id ?? null);
+  const result = db.prepare(
+    'INSERT INTO places (trip_id, name, address, category_id) VALUES (?, ?, ?, ?)'
+  ).run(tripId, name, address, cat?.id ?? null);
   return db.prepare('SELECT * FROM places WHERE id = ?').get(result.lastInsertRowid);
 }
 
@@ -79,13 +62,10 @@ beforeAll(() => {
 beforeEach(() => {
   resetTestDb(testDb);
   // Stub fetch so reverseGeocodeCountry never makes real HTTP calls
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({}),
-    }),
-  );
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false,
+    json: async () => ({}),
+  }));
 });
 
 afterAll(() => {
@@ -160,7 +140,7 @@ describe('getStats', () => {
     const reservation = createReservation(testDb, trip.id, { type: 'flight' });
     // Tokyo: 35.6762°N, 139.6503°E — inside the JP bounding box, no place row.
     insertReservationEndpoint(testDb, reservation.id, 'from', 0, 35.6762, 139.6503);
-    insertReservationEndpoint(testDb, reservation.id, 'to', 1, 51.47, -0.4543);
+    insertReservationEndpoint(testDb, reservation.id, 'to', 1, 51.4700, -0.4543);
 
     const stats = await getStats(user.id);
 
@@ -262,13 +242,13 @@ describe('getCountryFromCoords', () => {
 
   it('ATLAS-SVC-005c: #1331 a point inside Germany near the French border resolves to DE', () => {
     // Kehl (48.575, 7.815) — the German side of the same border.
-    expect(getCountryFromCoords(48.575, 7.815)).toBe('DE');
+    expect(getCountryFromCoords(48.5750, 7.8150)).toBe('DE');
   });
 
   it('ATLAS-SVC-005d: #1331 a micro-territory without an admin0 polygon keeps the smallest-box win (Hong Kong)', () => {
     // HK is not a separate admin0 polygon (it falls inside CN there), so the smallest
     // bounding box still wins for it.
-    expect(getCountryFromCoords(22.3, 114.17)).toBe('HK');
+    expect(getCountryFromCoords(22.30, 114.17)).toBe('HK');
   });
 
   it('ATLAS-SVC-005e: #1490 a point in southern Spain resolves to ES, not the overlapping Algeria box', () => {
@@ -288,24 +268,24 @@ describe('getCountryFromCoords', () => {
   it('ATLAS-SVC-005g: #1490 a country the hand-written box table omitted resolves correctly (Nigeria)', () => {
     // NG had no bounding box at all, so Lagos fell into Benin's box as the only
     // candidate and phantom-marked BJ as visited. Same class for Kano -> CM.
-    expect(getCountryFromCoords(6.5244, 3.3792)).toBe('NG'); // Lagos
-    expect(getCountryFromCoords(12.0022, 8.592)).toBe('NG'); // Kano
-    expect(getCountryFromCoords(9.0765, 7.3986)).toBe('NG'); // Abuja
+    expect(getCountryFromCoords(6.5244, 3.3792)).toBe('NG');   // Lagos
+    expect(getCountryFromCoords(12.0022, 8.5920)).toBe('NG');  // Kano
+    expect(getCountryFromCoords(9.0765, 7.3986)).toBe('NG');   // Abuja
   });
 
   it('ATLAS-SVC-005h: #1490 other previously box-less countries resolve (BY, GL, KP, TD, SS)', () => {
-    expect(getCountryFromCoords(53.9006, 27.559)).toBe('BY'); // Minsk (was RU)
-    expect(getCountryFromCoords(64.1836, -51.7214)).toBe('GL'); // Nuuk
-    expect(getCountryFromCoords(39.0392, 125.7625)).toBe('KP'); // Pyongyang
-    expect(getCountryFromCoords(12.1348, 15.0557)).toBe('TD'); // N'Djamena
-    expect(getCountryFromCoords(4.8594, 31.5713)).toBe('SS'); // Juba
+    expect(getCountryFromCoords(53.9006, 27.5590)).toBe('BY');   // Minsk (was RU)
+    expect(getCountryFromCoords(64.1836, -51.7214)).toBe('GL');  // Nuuk
+    expect(getCountryFromCoords(39.0392, 125.7625)).toBe('KP');  // Pyongyang
+    expect(getCountryFromCoords(12.1348, 15.0557)).toBe('TD');   // N'Djamena
+    expect(getCountryFromCoords(4.8594, 31.5713)).toBe('SS');    // Juba
   });
 
   it('ATLAS-SVC-005i: #1490 countries straddling the antimeridian resolve per-part, not to a globe-spanning box', () => {
     // Boxes are derived one-per-geometry-part. A single box around RU/US/FJ would span
     // nearly the whole globe and swallow unrelated points.
     expect(getCountryFromCoords(61.2181, -149.9003)).toBe('US'); // Anchorage
-    expect(getCountryFromCoords(64.423, -173.226)).toBe('RU'); // Provideniya, east of 180
+    expect(getCountryFromCoords(64.4230, -173.2260)).toBe('RU'); // Provideniya, east of 180
     expect(getCountryFromCoords(-18.1416, 178.4419)).toBe('FJ'); // Suva
   });
 
@@ -331,9 +311,30 @@ describe('getCountryFromCoords', () => {
     // Same mechanism as PS: XK is polygon-less and its box overlaps North Macedonia.
     // Skopje and Tetovo lie in the MK polygon and must resolve to MK, not XK — while
     // Pristina (in no neighbouring polygon) still resolves to XK.
-    expect(getCountryFromCoords(41.9973, 21.428)).toBe('MK'); // Skopje
+    expect(getCountryFromCoords(41.9973, 21.4280)).toBe('MK'); // Skopje
     expect(getCountryFromCoords(42.0106, 20.9714)).toBe('MK'); // Tetovo
     expect(getCountryFromCoords(42.6629, 21.1655)).toBe('XK'); // Pristina
+  });
+});
+
+// ── isPointInCountryBox — sanity gate for the address-derived region fallback ──────
+
+describe('isPointInCountryBox', () => {
+  it('ATLAS-SVC-006a: accepts a country whose box genuinely covers the point, even where the exact border excludes it', () => {
+    // Bollendorf-Pont: on the Luxembourg side of the border, but outside LU's exact
+    // simplified polygon (see getCountryFromCoords returning DE for this same point in
+    // atlasService.test.ts's region-resolution tests). The box gate must stay loose
+    // enough to admit this, or the Luxembourg address-fallback fix would regress.
+    expect(isPointInCountryBox('LU', 49.8502458, 6.3576404)).toBe(true);
+  });
+
+  it('ATLAS-SVC-006b: rejects a country whose box is nowhere near the point', () => {
+    // Mid-Atlantic, nowhere close to Japan under any simplification.
+    expect(isPointInCountryBox('JP', 20, -35)).toBe(false);
+  });
+
+  it('ATLAS-SVC-006c: returns false for an unknown/garbage country code', () => {
+    expect(isPointInCountryBox('ZZ', 48.85, 2.35)).toBe(false);
   });
 });
 
@@ -431,15 +432,12 @@ describe('reverseGeocodeCountry', () => {
   });
 
   it('ATLAS-SVC-014: returns country code when Nominatim returns valid response', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ address: { country_code: 'fr' } }),
-      }),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ address: { country_code: 'fr' } }),
+    }));
     // Berlin-ish coords not used elsewhere — unique to avoid cache collision
-    const code = await reverseGeocodeCountry(52.52, 13.4);
+    const code = await reverseGeocodeCountry(52.52, 13.40);
     expect(code).toBe('FR');
   });
 
@@ -525,18 +523,11 @@ describe('getCountryGeo', () => {
 
 // ── Helpers for new tests ────────────────────────────────────────────────────
 
-function insertPlaceWithCoords(
-  db: any,
-  tripId: number,
-  name: string,
-  lat: number,
-  lng: number,
-  address: string | null = null,
-) {
+function insertPlaceWithCoords(db: any, tripId: number, name: string, lat: number, lng: number, address: string | null = null) {
   const cat = db.prepare('SELECT id FROM categories LIMIT 1').get() as { id: number } | undefined;
-  const result = db
-    .prepare('INSERT INTO places (trip_id, name, address, lat, lng, category_id) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(tripId, name, address, lat, lng, cat?.id ?? null);
+  const result = db.prepare(
+    'INSERT INTO places (trip_id, name, address, lat, lng, category_id) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(tripId, name, address, lat, lng, cat?.id ?? null);
   return db.prepare('SELECT * FROM places WHERE id = ?').get(result.lastInsertRowid);
 }
 
@@ -577,11 +568,7 @@ describe('getStats — extended', () => {
 
   it('ATLAS-UNIT-008: lastTrip is resolved with a country code when its places have an address', async () => {
     const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id, {
-      title: 'Past France Trip',
-      start_date: '2023-05-01',
-      end_date: '2023-05-10',
-    });
+    const trip = createTrip(testDb, user.id, { title: 'Past France Trip', start_date: '2023-05-01', end_date: '2023-05-10' });
     insertPlace(testDb, trip.id, 'Eiffel Tower', 'Champ de Mars, Paris, France');
 
     const stats = await getStats(user.id);
@@ -606,16 +593,8 @@ describe('getStats — extended', () => {
   it('ATLAS-UNIT-010: streak counts consecutive years with trips and firstYear is the earliest', async () => {
     const { user } = createUser(testDb);
     const currentYear = new Date().getFullYear();
-    createTrip(testDb, user.id, {
-      title: 'This Year',
-      start_date: `${currentYear}-06-01`,
-      end_date: `${currentYear}-06-10`,
-    });
-    createTrip(testDb, user.id, {
-      title: 'Last Year',
-      start_date: `${currentYear - 1}-07-01`,
-      end_date: `${currentYear - 1}-07-10`,
-    });
+    createTrip(testDb, user.id, { title: 'This Year', start_date: `${currentYear}-06-01`, end_date: `${currentYear}-06-10` });
+    createTrip(testDb, user.id, { title: 'Last Year', start_date: `${currentYear - 1}-07-01`, end_date: `${currentYear - 1}-07-10` });
 
     const stats = await getStats(user.id);
 
@@ -642,6 +621,36 @@ describe('getStats — extended', () => {
     const stats = await getStats(user.id);
 
     expect(stats.lastTrip).toBeNull();
+  });
+
+  it('ATLAS-UNIT-027: a US place whose address ends in a state abbreviation resolves to US, not the colliding ISO country', async () => {
+    // getCountryFromAddress()'s "2-letter uppercase last segment = ISO code" heuristic
+    // parses "..., CA" as Canada (a real ISO code), not California. resolveCountryCodeSync
+    // used to try the address FIRST, so a place with coordinates that plainly resolve to the
+    // US via getCountryFromCoords would still get bucketed under Canada. Mirrors the
+    // region-level fix (ATLAS-UNIT-024) at the country level.
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'San Francisco Trip' });
+    insertPlaceWithCoords(testDb, trip.id, 'Hotel Pickwick', 37.7830549, -122.4066689, '85 5th St, San Francisco, CA');
+
+    const stats = await getStats(user.id);
+
+    const codes = stats.countries.map((c: any) => c.code);
+    expect(codes).toContain('US');
+    expect(codes).not.toContain('CA');
+  });
+
+  it('ATLAS-UNIT-028: lastTrip.countryCode resolves via coordinates, not a misparsed state-abbreviation address', async () => {
+    // lastTrip.countryCode calls resolveCountryCodeSync directly (not through the
+    // place_regions cache), so this exercises the fix independently of ATLAS-UNIT-027.
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Past NY Trip', start_date: '2023-05-01', end_date: '2023-05-10' });
+    insertPlaceWithCoords(testDb, trip.id, 'Imperial Court Hotel', 40.7848394, -73.981643, '307 W 79th Street, New York, NY');
+
+    const stats = await getStats(user.id);
+
+    expect(stats.lastTrip).not.toBeNull();
+    expect(stats.lastTrip!.countryCode).toBe('US');
   });
 });
 
@@ -709,9 +718,7 @@ describe('getVisitedRegions', () => {
   it('ATLAS-UNIT-018: returns manually marked regions even when user has no places with coordinates', async () => {
     const { user } = createUser(testDb);
     testDb.prepare('INSERT INTO visited_countries (user_id, country_code) VALUES (?, ?)').run(user.id, 'DE');
-    testDb
-      .prepare('INSERT INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)')
-      .run(user.id, 'DE-BY', 'Bayern', 'DE');
+    testDb.prepare('INSERT INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)').run(user.id, 'DE-BY', 'Bayern', 'DE');
 
     const result = await getVisitedRegions(user.id);
 
@@ -724,19 +731,16 @@ describe('getVisitedRegions', () => {
 
   it('ATLAS-UNIT-019: geocodes places with lat/lng using reverseGeocodeRegion via fetch', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          address: {
-            country_code: 'fr',
-            'ISO3166-2-lvl4': 'FR-75',
-            state: 'Île-de-France',
-          },
-        }),
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        address: {
+          country_code: 'fr',
+          'ISO3166-2-lvl4': 'FR-75',
+          state: 'Île-de-France',
+        },
       }),
-    );
+    }));
 
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Paris Trip' });
@@ -760,11 +764,9 @@ describe('getVisitedRegions', () => {
     const place = insertPlaceWithCoords(testDb, trip.id, 'Cached Place', 48.85, 2.35);
 
     // Pre-populate the place_regions cache so the fetch path is never reached
-    testDb
-      .prepare(
-        'INSERT OR REPLACE INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)',
-      )
-      .run(place.id, 'FR', 'FR-75', 'Île-de-France');
+    testDb.prepare(
+      'INSERT OR REPLACE INTO place_regions (place_id, country_code, region_code, region_name) VALUES (?, ?, ?, ?)'
+    ).run(place.id, 'FR', 'FR-75', 'Île-de-France');
 
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal('fetch', mockFetch);
@@ -777,43 +779,262 @@ describe('getVisitedRegions', () => {
     expect(codes).toContain('FR-75');
   });
 
-  it('ATLAS-UNIT-021: GB places resolving to a constituent country are re-resolved to the finer admin-1 code', async () => {
-    vi.useFakeTimers();
-    // A zoom-8 lookup only yields the constituent country (GB-ENG); the zoom-10 lookup
-    // exposes the borough code (GB-MAN) that Natural Earth's polygons actually carry.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((url: string) =>
-        Promise.resolve({
-          ok: true,
-          json: async () => ({
-            address: url.includes('zoom=10')
-              ? {
-                  country_code: 'gb',
-                  'ISO3166-2-lvl8': 'GB-MAN',
-                  city: 'Manchester',
-                  state: 'England',
-                  'ISO3166-2-lvl4': 'GB-ENG',
-                }
-              : { country_code: 'gb', 'ISO3166-2-lvl4': 'GB-ENG', state: 'England' },
-          }),
-        }),
-      ),
-    );
+  it('ATLAS-UNIT-021: a GB place resolves against the bundled admin1 polygon without calling Nominatim', async () => {
+    // The shipped geoBoundaries bundle only carries GB's 4 constituent countries
+    // (England/Scotland/Wales/Northern Ireland) — no county/borough level. Resolving
+    // Old Trafford's coordinates directly against those polygons lands on GB-ENG, the
+    // same feature the client highlights, with no reverse-geocode round trip at all.
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
 
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Manchester Trip' });
     insertPlaceWithCoords(testDb, trip.id, 'Old Trafford', 53.4631, -2.2913);
 
     await getVisitedRegions(user.id);
+    // The background geocode is fire-and-forget; give its microtasks a turn to settle
+    // before reading the now-cached result back.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const result = await getVisitedRegions(user.id);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.regions['GB']).toBeDefined();
+    const codes = result.regions['GB'].map((r: any) => r.code);
+    expect(codes).toContain('GB-ENG');
+  });
+
+  it('ATLAS-UNIT-022: a place whose Nominatim region level is finer than the bundle (Spain province vs autonomous community) still resolves to a bundle-matching feature', async () => {
+    // Regression for the Barcelona/Madrid bug: Nominatim's ISO3166-2-lvl6 gives the
+    // *province* (ES-B), but the bundle only has the *autonomous-community* level
+    // (Catalonia). Resolving by coordinates instead of trusting the geocoder's level
+    // guarantees a code the client bundle actually carries.
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Barcelona Trip' });
+    insertPlaceWithCoords(testDb, trip.id, 'Sagrada Familia', 41.4036, 2.1744);
+
+    await getVisitedRegions(user.id);
+    // The background geocode is fire-and-forget; give its microtasks a turn to settle
+    // before reading the now-cached result back.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const result = await getVisitedRegions(user.id);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.regions['ES']).toBeDefined();
+    expect(result.regions['ES'][0].code).not.toBe('ES-B');
+  });
+
+  it('ATLAS-UNIT-023: a place address disambiguates a border point the simplified admin0 polygon puts in the wrong country', async () => {
+    // A real Airbnb at Bollendorf-Pont sits on the Luxembourg side of the Sauer river,
+    // but the coordinates alone fall inside Germany's simplified admin0 polygon
+    // (border-simplification slop) — getCountryFromCoords(lat, lng) returns DE, so a
+    // coordinate-only region lookup finds nothing in DE. The place's own stored address
+    // says Luxembourg, so it is retried as a fallback before ever reaching Nominatim.
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Luxembourg Trip' });
+    insertPlaceWithCoords(
+      testDb, trip.id, 'Airbnb - Welcome Home', 49.8502458, 6.3576404,
+      '4 Gruusswiss, Bollendorf-Pont, Distrikt Gréiwemaacher 6555, Luxembourg'
+    );
+
+    await getVisitedRegions(user.id);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const result = await getVisitedRegions(user.id);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.regions['LU']).toBeDefined();
+    expect(result.regions['DE']).toBeUndefined();
+  });
+
+  it('ATLAS-UNIT-024: a US place whose address ends in a state abbreviation still resolves by coordinates, ignoring the address', async () => {
+    // getCountryFromAddress() treats any 2-letter uppercase last address segment as an
+    // ISO country code — "...CA" parses as Canada, not California. Trusting the address
+    // FIRST (as ATLAS-UNIT-023 might suggest) would send a San Francisco hotel's region
+    // lookup to Canada and fail to find one, costing a needless Nominatim round trip (or
+    // worse, a wrong match) for every US place whose address ends in a state code.
+    // Coordinates resolve this correctly on their own, so the address must only be
+    // consulted when the coordinate-only lookup finds nothing.
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'San Francisco Trip' });
+    insertPlaceWithCoords(
+      testDb, trip.id, 'Hotel Pickwick', 37.7830549, -122.4066689,
+      '85 5th St, San Francisco, CA'
+    );
+
+    await getVisitedRegions(user.id);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const result = await getVisitedRegions(user.id);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.regions['US']).toBeDefined();
+    expect(result.regions['CA']).toBeUndefined();
+  });
+
+  it('ATLAS-UNIT-025: when the bundle-only lookup finds nothing, the Nominatim fallback keeps the coarse GB constituent-country code instead of rescuing to a finer one', async () => {
+    // Mid-Atlantic open ocean — getCountryFromCoords finds no country and there's no
+    // address, so this always falls through to the Nominatim path. That path used to re-query at a
+    // finer zoom for GB and swap in a county/borough code (GB-MAN, GB-LND, …) that targeted
+    // Natural Earth's old, finer GB polygons — the current geoBoundaries bundle only has the
+    // 4 constituent countries, so that rescued code could never match anything and the
+    // region would never highlight. The coarse Nominatim result (GB-ENG) IS a real bundle
+    // feature and must be kept as-is, with a single geocode call (no zoom=10 re-query).
+    vi.useFakeTimers();
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ address: { country_code: 'gb', 'ISO3166-2-lvl4': 'GB-ENG', state: 'England' } }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Middle of the ocean' });
+    insertPlaceWithCoords(testDb, trip.id, 'Buoy', 10, -40);
+
+    await getVisitedRegions(user.id);
     await vi.runAllTimersAsync();
     const result = await getVisitedRegions(user.id);
 
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(result.regions['GB']).toBeDefined();
     const codes = result.regions['GB'].map((r: any) => r.code);
-    expect(codes).toContain('GB-MAN');
-    expect(codes).not.toContain('GB-ENG');
+    expect(codes).toContain('GB-ENG');
 
     vi.useRealTimers();
+  });
+
+  it('ATLAS-UNIT-026: an address country nowhere near the coordinates is rejected before it can produce a bogus region match', async () => {
+    // Coordinates in the open mid-Atlantic (no country polygon contains them) paired
+    // with a stored address ending in "JP" — getCountryFromAddress()'s 2-letter-uppercase
+    // heuristic returns 'JP' regardless of how implausible that is for these coordinates.
+    // Without a sanity check, getRegionFromCoords('JP', ...) would only return null because
+    // no Japanese region polygon happens to reach the mid-Atlantic — but that's incidental,
+    // not a guarantee, for some other coordinate/bogus-code combination. The admin0 box
+    // gate rejects JP outright (its bounding box is nowhere near these coordinates) so the
+    // address is never even tried against JP's regions, and resolution correctly falls
+    // through to Nominatim instead of risking a wrong match.
+    vi.useFakeTimers();
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ address: {} }), // Nominatim finds nothing here either
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Mid-Atlantic buoy' });
+    // Different coordinates than ATLAS-UNIT-025's mid-Atlantic point — reverseGeocodeRegion's
+    // regionCache is an in-memory Map keyed by rounded lat/lng and persists across tests in
+    // this file, so reusing the same point would silently hit that cached result instead of
+    // exercising this test's fetch/gate path.
+    insertPlaceWithCoords(testDb, trip.id, 'Weather buoy', 20, -35, '123 Nowhere Rd, JP');
+
+    await getVisitedRegions(user.id);
+    await vi.runAllTimersAsync();
+    const result = await getVisitedRegions(user.id);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1); // fell through to Nominatim, not a fabricated JP match
+    expect(result.regions['JP']).toBeUndefined();
+
+    vi.useRealTimers();
+  });
+});
+
+// ── unmarkRegionVisited — tombstones + country cascade ──────────────────────
+
+// Places are region-resolved by a fire-and-forget background task (see reverseGeocodeRegion
+// callers); a single getVisitedRegions() call returns before it settles. Populate the cache
+// deterministically before asserting against it or calling unmarkRegionVisited (which reads
+// place_regions directly, not through this function).
+async function primeRegionCache(userId: number): Promise<void> {
+  await getVisitedRegions(userId);
+  await new Promise(resolve => setTimeout(resolve, 10));
+}
+
+describe('unmarkRegionVisited — tombstones + country cascade', () => {
+  it('ATLAS-SVC-024: hides a region derived from a real place, not just a manually-marked one', async () => {
+    // Unlike unmarkCountryVisited (ATLAS-SVC-023), a region hide is NOT lifted just
+    // because it has a real place — that is exactly the case this feature exists for (a
+    // real place that resolved to a region the user doesn't want highlighted, e.g. a
+    // border-simplification misassignment), so it must stay hidden regardless of
+    // placeCount until explicitly re-marked.
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'SF Trip' });
+    insertPlaceWithCoords(testDb, trip.id, 'Golden Gate Park', 37.7694, -122.4862);
+    await primeRegionCache(user.id);
+
+    const before = await getVisitedRegions(user.id);
+    expect(before.regions['US']?.map((r: any) => r.code)).toContain('US-CA');
+
+    unmarkRegionVisited(user.id, 'US-CA');
+
+    const after = await getVisitedRegions(user.id);
+    expect(after.regions['US']?.map((r: any) => r.code) ?? []).not.toContain('US-CA');
+  });
+
+  it('ATLAS-SVC-025: re-marking a hidden region brings it back', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'SF Trip' });
+    insertPlaceWithCoords(testDb, trip.id, 'Golden Gate Park', 37.7694, -122.4862);
+    await primeRegionCache(user.id);
+
+    unmarkRegionVisited(user.id, 'US-CA');
+    expect((await getVisitedRegions(user.id)).regions['US']?.map((r: any) => r.code) ?? []).not.toContain('US-CA');
+
+    markRegionVisited(user.id, 'US-CA', 'California', 'US');
+    expect((await getVisitedRegions(user.id)).regions['US']?.map((r: any) => r.code)).toContain('US-CA');
+  });
+
+  it('ATLAS-SVC-026: hiding a country\'s only visible region also hides the country', async () => {
+    // Uses a manually-marked region rather than a real place: getStats' places-derived
+    // country entries are never suppressed by hidden_countries (#1490 — a country with a
+    // real place always reappears, see ATLAS-SVC-023), so the cascade can only ever have a
+    // visible effect on a country with no real place backing it, exactly like
+    // unmarkCountryVisited's own tombstone tests above use flight-endpoint-derived
+    // countries rather than real places for the same reason.
+    const { user } = createUser(testDb);
+    markRegionVisited(user.id, 'JP-13', 'Tokyo', 'JP'); // also auto-marks JP visited
+
+    const beforeStats = await getStats(user.id);
+    expect(beforeStats.countries.map((c: any) => c.code)).toContain('JP');
+
+    unmarkRegionVisited(user.id, 'JP-13');
+
+    const afterStats = await getStats(user.id);
+    expect(afterStats.countries.map((c: any) => c.code)).not.toContain('JP');
+  });
+
+  it('ATLAS-SVC-027: hiding one of a country\'s several regions does NOT cascade-hide the country', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'NY road trip' });
+    insertPlaceWithCoords(testDb, trip.id, 'Boston hotel', 42.3588336, -71.0578303); // MA
+    insertPlaceWithCoords(testDb, trip.id, 'Philly hotel', 39.9527237, -75.1635262); // PA
+    await primeRegionCache(user.id);
+
+    unmarkRegionVisited(user.id, 'US-MA');
+
+    const stats = await getStats(user.id);
+    expect(stats.countries.map((c: any) => c.code)).toContain('US');
+    const regions = (await getVisitedRegions(user.id)).regions['US'].map((r: any) => r.code);
+    expect(regions).not.toContain('US-MA');
+    expect(regions).toContain('US-PA');
+  });
+
+  it('ATLAS-SVC-028: re-marking a region whose country was cascade-hidden brings the country back too', async () => {
+    const { user } = createUser(testDb);
+    markRegionVisited(user.id, 'JP-13', 'Tokyo', 'JP');
+
+    unmarkRegionVisited(user.id, 'JP-13');
+    expect((await getStats(user.id)).countries.map((c: any) => c.code)).not.toContain('JP');
+
+    markRegionVisited(user.id, 'JP-13', 'Tokyo', 'JP');
+
+    const stats = await getStats(user.id);
+    expect(stats.countries.map((c: any) => c.code)).toContain('JP');
   });
 });

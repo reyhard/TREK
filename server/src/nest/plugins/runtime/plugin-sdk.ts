@@ -27,9 +27,7 @@ export interface PluginContext {
     /** Run several statements atomically on your OWN db — all commit or all roll
      * back. Each op is one statement; reads see the batch's own earlier writes.
      * A read returns `{ rows }`, a write `{ changes }`. Max 100 statements. */
-    tx(
-      ops: Array<{ sql: string; args?: unknown[] }>,
-    ): Promise<{ results: Array<{ changes?: number; rows?: unknown[] }> }>;
+    tx(ops: Array<{ sql: string; args?: unknown[] }>): Promise<{ results: Array<{ changes?: number; rows?: unknown[] }> }>;
   };
   trips: {
     // `asUserId` is accepted for source compatibility but IGNORED by the host —
@@ -50,15 +48,7 @@ export interface PluginContext {
     /** Update trip fields (title/dates/currency/reminder_days/...); needs 'db:write:trips' + the acting user's 'trip_edit' permission. */
     update(tripId: number, input: Record<string, unknown>): Promise<unknown>;
     /** Create a new trip owned by the acting user (importers). `title` required. Needs 'db:create:trips' + the acting user's 'trip_create'. */
-    create(input: {
-      title: string;
-      description?: string;
-      start_date?: string;
-      end_date?: string;
-      currency?: string;
-      reminder_days?: number;
-      day_count?: number;
-    }): Promise<unknown>;
+    create(input: { title: string; description?: string; start_date?: string; end_date?: string; currency?: string; reminder_days?: number; day_count?: number }): Promise<unknown>;
     /** The trip's member roster (id + display fields only). Membership-checked. Needs 'db:read:trips'. */
     members(tripId: number): Promise<unknown[]>;
     /** Add a user to a trip (GRANTS ACCESS — its own permission). Needs 'db:write:members' + the acting user's 'member_manage'. */
@@ -88,19 +78,7 @@ export interface PluginContext {
   // REST path — accommodations live in the day service, not the bookings one).
   // Creating one auto-creates its partner hotel reservation, exactly like the app.
   accommodations: {
-    create(
-      tripId: number,
-      input: {
-        place_id: number;
-        start_day_id: number;
-        end_day_id: number;
-        check_in?: string | null;
-        check_in_end?: string | null;
-        check_out?: string | null;
-        confirmation?: string | null;
-        notes?: string | null;
-      },
-    ): Promise<unknown>;
+    create(tripId: number, input: { place_id: number; start_day_id: number; end_day_id: number; check_in?: string | null; check_in_end?: string | null; check_out?: string | null; confirmation?: string | null; notes?: string | null }): Promise<unknown>;
     update(tripId: number, accommodationId: number, input: Record<string, unknown>): Promise<unknown>;
     delete(tripId: number, accommodationId: number): Promise<{ deleted: boolean }>;
   };
@@ -110,17 +88,7 @@ export interface PluginContext {
     /** A trip's packing items (hydrated bags/assignees). Needs 'db:read:packing'. */
     list(tripId: number): Promise<unknown[]>;
     /** Add a packing item (owner = acting user). Needs 'db:write:packing' + 'packing_edit'. */
-    create(
-      tripId: number,
-      input: {
-        name: string;
-        category?: string;
-        checked?: boolean;
-        is_private?: boolean;
-        visibility?: 'common' | 'personal' | 'shared';
-        recipient_ids?: number[];
-      },
-    ): Promise<unknown>;
+    create(tripId: number, input: { name: string; category?: string; checked?: boolean; is_private?: boolean; visibility?: 'common' | 'personal' | 'shared'; recipient_ids?: number[] }): Promise<unknown>;
     /** Update a packing item. Needs 'db:write:packing' + 'packing_edit'. */
     update(tripId: number, itemId: number, input: Record<string, unknown>): Promise<unknown>;
     /** Delete a packing item. Needs 'db:write:packing' + 'packing_edit'. */
@@ -136,34 +104,13 @@ export interface PluginContext {
     /** A trip's files, trash excluded. Needs 'db:read:files'. */
     list(tripId: number): Promise<unknown[]>;
     /** A file's bytes as base64 (10MB cap; trashed files refused). Needs 'db:read:files:content'. Returns { name, mimetype, size, content_base64 }. */
-    getContent(
-      tripId: number,
-      fileId: number,
-    ): Promise<{ name: string; mimetype: string; size: number; content_base64: string }>;
+    getContent(tripId: number, fileId: number): Promise<{ name: string; mimetype: string; size: number; content_base64: string }>;
     /** Store base64 content as a trip file (10MB cap, blocked extensions refused). Needs 'db:write:files' + 'file_upload'. */
-    create(
-      tripId: number,
-      input: {
-        name: string;
-        content_base64: string;
-        mimetype?: string;
-        description?: string;
-        place_id?: number;
-        reservation_id?: number;
-      },
-    ): Promise<unknown>;
+    create(tripId: number, input: { name: string; content_base64: string; mimetype?: string; description?: string; place_id?: number; reservation_id?: number }): Promise<unknown>;
     /** Link an existing file to a same-trip reservation/place/assignment. Needs 'db:write:files' + 'file_edit'. */
-    createLink(
-      tripId: number,
-      fileId: number,
-      opts: { reservation_id?: number; assignment_id?: number; place_id?: number },
-    ): Promise<unknown>;
+    createLink(tripId: number, fileId: number, opts: { reservation_id?: number; assignment_id?: number; place_id?: number }): Promise<unknown>;
     /** Update a file's description/links. Needs 'db:write:files' + 'file_edit'. */
-    update(
-      tripId: number,
-      fileId: number,
-      input: { description?: string; place_id?: number | null; reservation_id?: number | null },
-    ): Promise<unknown>;
+    update(tripId: number, fileId: number, input: { description?: string; place_id?: number | null; reservation_id?: number | null }): Promise<unknown>;
     /** Move a file to the trash. Needs 'db:write:files' + 'file_delete'. */
     softDelete(tripId: number, fileId: number): Promise<{ deleted: boolean }>;
   };
@@ -175,14 +122,8 @@ export interface PluginContext {
     listPolls(tripId: number): Promise<unknown[]>;
     /** A trip's chat messages (newest 100, oldest first; `before` = a message id to page back). Needs 'db:read:collab'. */
     listMessages(tripId: number, before?: number): Promise<unknown[]>;
-    createNote(
-      tripId: number,
-      input: { title: string; content?: string; category?: string; color?: string; website?: string; pinned?: boolean },
-    ): Promise<unknown>;
-    createPoll(
-      tripId: number,
-      input: { question: string; options: unknown[]; multiple?: boolean; deadline?: string },
-    ): Promise<unknown>;
+    createNote(tripId: number, input: { title: string; content?: string; category?: string; color?: string; website?: string; pinned?: boolean }): Promise<unknown>;
+    createPoll(tripId: number, input: { question: string; options: unknown[]; multiple?: boolean; deadline?: string }): Promise<unknown>;
     votePoll(tripId: number, pollId: number, optionIndex: number): Promise<unknown>;
     createMessage(tripId: number, text: string, replyTo?: number): Promise<unknown>;
   };
@@ -190,13 +131,7 @@ export interface PluginContext {
    * owns delivery + preferences. Recipient is FORCED to the acting user (scope 'user',
    * targetId = the acting user) or a trip they belong to (scope 'trip'). Needs 'notify:send'. */
   notify: {
-    send(input: {
-      title: string;
-      body: string;
-      link?: string;
-      scope: 'user' | 'trip';
-      targetId: number;
-    }): Promise<{ sent: boolean }>;
+    send(input: { title: string; body: string; link?: string; scope: 'user' | 'trip'; targetId: number }): Promise<{ sent: boolean }>;
   };
   /** Host-mediated LLM using the admin/user-configured provider — the plugin never holds a
    * key. `complete` returns { text }; `extract` returns { results } for your JSON schema.
@@ -250,17 +185,7 @@ export interface PluginContext {
   /** A trip's to-dos. Needs 'db:read:todos' (list) / 'db:write:todos' + 'packing_edit' (create/update/delete). */
   todos: {
     list(tripId: number): Promise<unknown[]>;
-    create(
-      tripId: number,
-      input: {
-        name: string;
-        category?: string;
-        due_date?: string;
-        description?: string;
-        assigned_user_id?: number;
-        priority?: number;
-      },
-    ): Promise<unknown>;
+    create(tripId: number, input: { name: string; category?: string; due_date?: string; description?: string; assigned_user_id?: number; priority?: number }): Promise<unknown>;
     update(tripId: number, todoId: number, input: Record<string, unknown>): Promise<unknown>;
     delete(tripId: number, todoId: number): Promise<{ deleted: boolean }>;
   };
@@ -293,14 +218,7 @@ export interface PluginContext {
     unmarkCountry(code: string): Promise<unknown>;
     markRegion(regionCode: string, countryCode: string, regionName?: string): Promise<unknown>;
     unmarkRegion(regionCode: string): Promise<unknown>;
-    createBucketItem(input: {
-      name: string;
-      lat?: number;
-      lng?: number;
-      country_code?: string;
-      notes?: string;
-      target_date?: string;
-    }): Promise<unknown>;
+    createBucketItem(input: { name: string; lat?: number; lng?: number; country_code?: string; notes?: string; target_date?: string }): Promise<unknown>;
     deleteBucketItem(itemId: number): Promise<{ deleted: boolean }>;
   };
   vacay: {
@@ -364,26 +282,10 @@ export interface PluginContext {
   // you can enrich core entities without forking the schema. The entity must belong
   // to a trip the current user can access. Values are JSON-serialisable.
   meta: {
-    get(
-      entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation',
-      entityId: number,
-      key: string,
-    ): Promise<unknown>;
-    set(
-      entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation',
-      entityId: number,
-      key: string,
-      value: unknown,
-    ): Promise<unknown>;
-    list(
-      entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation',
-      entityId: number,
-    ): Promise<Record<string, unknown>>;
-    delete(
-      entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation',
-      entityId: number,
-      key: string,
-    ): Promise<{ deleted: boolean }>;
+    get(entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation', entityId: number, key: string): Promise<unknown>;
+    set(entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation', entityId: number, key: string, value: unknown): Promise<unknown>;
+    list(entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation', entityId: number): Promise<Record<string, unknown>>;
+    delete(entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation', entityId: number, key: string): Promise<{ deleted: boolean }>;
   };
   users: {
     getById(id: number): Promise<unknown>;
@@ -430,7 +332,6 @@ export interface PluginRoute {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
   auth?: boolean;
-  oauthScope?: 'read' | 'write';
   handler(req: PluginRequest, ctx: PluginContext): Promise<PluginResponse>;
 }
 export interface PluginJob {
@@ -441,19 +342,9 @@ export interface PluginJob {
 // ── Provider hooks (host→plugin): core asks a hook the plugin implements for data,
 // gated by the matching hook:* permission. Each method also receives the per-
 // invocation ctx, so any trip reads it makes bind to the authenticated user. ──
-export interface Photo {
-  id: string;
-  title?: string;
-  thumbnailUrl: string;
-  fullUrl: string;
-  takenAt?: string;
-}
+export interface Photo { id: string; title?: string; thumbnailUrl: string; fullUrl: string; takenAt?: string; }
 export interface PhotoProvider {
-  search(
-    query: string,
-    opts: { page: number; limit: number },
-    ctx: PluginContext,
-  ): Promise<{ photos: Photo[]; total: number; hasMore: boolean }>;
+  search(query: string, opts: { page: number; limit: number }, ctx: PluginContext): Promise<{ photos: Photo[]; total: number; hasMore: boolean }>;
   getById(id: string, ctx: PluginContext): Promise<Photo | null>;
 }
 /**
@@ -496,33 +387,18 @@ export interface PluginActionResult {
   message?: string;
 }
 
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  start: string;
-  end: string;
-  allDay: boolean;
-}
+export interface CalendarEvent { id: string; title: string; start: string; end: string; allDay: boolean; }
 export interface CalendarSource {
   getName(ctx: PluginContext): string;
   getEvents(userId: number, start: string, end: string, ctx: PluginContext): Promise<CalendarEvent[]>;
 }
 /** One row of extra place info TREK renders natively (reviews/ratings/links/…). */
-export interface PlaceDetailItem {
-  label: string;
-  value?: string;
-  url?: string;
-}
+export interface PlaceDetailItem { label: string; value?: string; url?: string; }
 export interface PlaceDetailProvider {
   getDetails(placeId: number, ctx: PluginContext): Promise<PlaceDetailItem[]>;
 }
 /** A validation/warning a plugin raises on a trip; TREK surfaces it in the planner. */
-export interface TripWarning {
-  level: 'info' | 'warning' | 'error';
-  message: string;
-  dayId?: number;
-  placeId?: number;
-}
+export interface TripWarning { level: 'info' | 'warning' | 'error'; message: string; dayId?: number; placeId?: number; }
 export interface WarningProvider {
   getWarnings(tripId: number, ctx: PluginContext): Promise<TripWarning[]>;
 }
@@ -536,11 +412,11 @@ export type ContributionTone = 'default' | 'success' | 'warn' | 'danger';
 export interface TableColumnContribution {
   kind: 'column';
   entityId: number; // the reservation/place/day id this attaches to
-  id: string; // stable per-contribution id (for React keys / dedupe)
+  id: string;       // stable per-contribution id (for React keys / dedupe)
   label: string;
   value?: string;
-  url?: string; // http/https/mailto only — the host rejects any other scheme
-  icon?: string; // a lucide icon name, resolved by the host
+  url?: string;     // http/https/mailto only — the host rejects any other scheme
+  icon?: string;    // a lucide icon name, resolved by the host
   tone?: ContributionTone;
 }
 /** A labelled button on an entity's row/card; its target opens your sandboxed frame
@@ -564,13 +440,13 @@ export interface TableContributor {
 /** A bounded marker the host renders onto the trip map (#587). Declarative only —
  * the host draws a Leaflet marker + popup; plugin JS never runs on the map canvas. */
 export interface MapMarkerContribution {
-  id: string; // stable per-marker id (React key / dedupe)
-  lat: number; // -90..90
-  lng: number; // -180..180
-  label?: string; // short label shown in the popup title
-  popupText?: string; // one line of body text (host-sanitized, plain text)
-  url?: string; // http/https/mailto only — the host rejects any other scheme
-  icon?: string; // a lucide icon name, resolved by the host
+  id: string;            // stable per-marker id (React key / dedupe)
+  lat: number;           // -90..90
+  lng: number;           // -180..180
+  label?: string;        // short label shown in the popup title
+  popupText?: string;    // one line of body text (host-sanitized, plain text)
+  url?: string;          // http/https/mailto only — the host rejects any other scheme
+  icon?: string;         // a lucide icon name, resolved by the host
   tone?: ContributionTone;
 }
 export interface MapMarkerProvider {
@@ -582,8 +458,8 @@ export interface MapMarkerProvider {
 /** A text-only section the host appends to a trip's PDF export. Declarative only —
  * plain strings the host lays out and escapes; no markup ever reaches the document. */
 export interface PdfSection {
-  title: string; // section heading (capped at 120 chars)
-  paragraphs?: string[]; // body text — ≤20 paragraphs of ≤2000 chars each
+  title: string;          // section heading (capped at 120 chars)
+  paragraphs?: string[];  // body text — ≤20 paragraphs of ≤2000 chars each
   table?: { headers: string[]; rows: string[][] }; // simple table — ≤8 headers, ≤50 rows
 }
 export interface PdfSectionProvider {
@@ -593,15 +469,11 @@ export interface PdfSectionProvider {
 }
 
 /** One country in an Atlas tint layer. `code` is ISO-3166 alpha-2 (uppercased by the host). */
-export interface AtlasLayerCountry {
-  code: string;
-  tone?: ContributionTone;
-  label?: string;
-}
+export interface AtlasLayerCountry { code: string; tone?: ContributionTone; label?: string; }
 /** A country tint layer the host draws over the Atlas world map (wishlists, advisories, …). */
 export interface AtlasLayer {
-  id: string; // stable per-layer id (React key / dedupe)
-  name?: string; // short layer name
+  id: string;                    // stable per-layer id (React key / dedupe)
+  name?: string;                 // short layer name
   countries: AtlasLayerCountry[]; // ≤300 countries per layer
 }
 export interface AtlasLayerProvider {
@@ -612,11 +484,7 @@ export interface AtlasLayerProvider {
 }
 
 /** One row of extra info TREK renders under a journal entry (same shape as PlaceDetailItem). */
-export interface JournalEntryRow {
-  label: string;
-  value?: string;
-  url?: string;
-}
+export interface JournalEntryRow { label: string; value?: string; url?: string; }
 export interface JournalEntryProvider {
   /** Return rows for a journal entry. Runs with the current user bound, on a short
    * timeout; the host caps the row count and skips a failing call. */
@@ -625,13 +493,7 @@ export interface JournalEntryProvider {
 
 /** One badge the host renders on a dashboard trip card (declarative primitives only). */
 export interface TripCardContribution {
-  tripId: number;
-  id: string;
-  label: string;
-  value?: string;
-  icon?: string;
-  tone?: ContributionTone;
-  url?: string;
+  tripId: number; id: string; label: string; value?: string; icon?: string; tone?: ContributionTone; url?: string;
 }
 export interface TripCardProvider {
   /** Return badges for the dashboard trip cards on screen. `tripIds` are those cards
@@ -653,10 +515,7 @@ export interface PluginEventSubscription {
   // events have none. There is still no acting user — a trip read from the handler is
   // refused, so beyond the snapshot the id tells you what to react to, not what it
   // contains.
-  handler(
-    payload: { event: string; tripId: number; entity?: string; entityId?: number; snapshot?: Record<string, unknown> },
-    ctx: PluginContext,
-  ): Promise<void> | void;
+  handler(payload: { event: string; tripId: number; entity?: string; entityId?: number; snapshot?: Record<string, unknown> }, ctx: PluginContext): Promise<void> | void;
 }
 
 /** A function this plugin exposes to its dependents (declared in capabilities.provides). */
@@ -743,8 +602,7 @@ export function createPluginContext(
     id,
     config: Object.freeze({ ...config }),
     settings: {
-      get: (key) =>
-        (t.rpc('settings.get', { key, _inv: invocationId }) as Promise<{ value: unknown }>).then((r) => r?.value),
+      get: (key) => (t.rpc('settings.get', { key, _inv: invocationId }) as Promise<{ value: unknown }>).then((r) => r?.value),
     },
     db: {
       query: (sql, ...args) => t.rpc('db.query', { sql, args }) as Promise<never[]>,
@@ -757,104 +615,67 @@ export function createPluginContext(
       getPlaces: (tripId) => t.rpc('trips.getPlaces', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       getReservations: (tripId) => t.rpc('trips.getReservations', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       getDays: (tripId) => t.rpc('trips.getDays', { tripId, _inv: invocationId }) as Promise<unknown[]>,
-      getAccommodations: (tripId) =>
-        t.rpc('trips.getAccommodations', { tripId, _inv: invocationId }) as Promise<unknown[]>,
+      getAccommodations: (tripId) => t.rpc('trips.getAccommodations', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       listMine: () => t.rpc('trips.listMine', { _inv: invocationId }) as Promise<unknown[]>,
       update: (tripId, input) => t.rpc('trips.update', { tripId, input, _inv: invocationId }),
       create: (input) => t.rpc('trips.create', { input, _inv: invocationId }),
       members: (tripId) => t.rpc('trips.members', { tripId, _inv: invocationId }) as Promise<unknown[]>,
-      addMember: (tripId, userId) =>
-        t.rpc('trips.addMember', { tripId, userId, _inv: invocationId }) as Promise<{
-          joined: boolean;
-          tripId: number;
-        }>,
-      removeMember: (tripId, userId) =>
-        t.rpc('trips.removeMember', { tripId, userId, _inv: invocationId }) as Promise<{ removed: boolean }>,
+      addMember: (tripId, userId) => t.rpc('trips.addMember', { tripId, userId, _inv: invocationId }) as Promise<{ joined: boolean; tripId: number }>,
+      removeMember: (tripId, userId) => t.rpc('trips.removeMember', { tripId, userId, _inv: invocationId }) as Promise<{ removed: boolean }>,
     },
     reservations: {
       listMine: () => t.rpc('reservations.listMine', { _inv: invocationId }) as Promise<unknown[]>,
       create: (tripId, input) => t.rpc('reservations.create', { tripId, input, _inv: invocationId }),
-      update: (tripId, reservationId, input) =>
-        t.rpc('reservations.update', { tripId, reservationId, input, _inv: invocationId }),
-      delete: (tripId, reservationId) =>
-        t.rpc('reservations.delete', { tripId, reservationId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      update: (tripId, reservationId, input) => t.rpc('reservations.update', { tripId, reservationId, input, _inv: invocationId }),
+      delete: (tripId, reservationId) => t.rpc('reservations.delete', { tripId, reservationId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     accommodations: {
       create: (tripId, input) => t.rpc('accommodations.create', { tripId, input, _inv: invocationId }),
-      update: (tripId, accommodationId, input) =>
-        t.rpc('accommodations.update', { tripId, accommodationId, input, _inv: invocationId }),
-      delete: (tripId, accommodationId) =>
-        t.rpc('accommodations.delete', { tripId, accommodationId, _inv: invocationId }) as Promise<{
-          deleted: boolean;
-        }>,
+      update: (tripId, accommodationId, input) => t.rpc('accommodations.update', { tripId, accommodationId, input, _inv: invocationId }),
+      delete: (tripId, accommodationId) => t.rpc('accommodations.delete', { tripId, accommodationId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     packing: {
       list: (tripId) => t.rpc('packing.list', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       create: (tripId, input) => t.rpc('packing.create', { tripId, input, _inv: invocationId }),
       update: (tripId, itemId, input) => t.rpc('packing.update', { tripId, itemId, input, _inv: invocationId }),
-      delete: (tripId, itemId) =>
-        t.rpc('packing.delete', { tripId, itemId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      delete: (tripId, itemId) => t.rpc('packing.delete', { tripId, itemId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
       listBags: (tripId) => t.rpc('packing.listBags', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       createBag: (tripId, input) => t.rpc('packing.createBag', { tripId, input, _inv: invocationId }),
       updateBag: (tripId, bagId, input) => t.rpc('packing.updateBag', { tripId, bagId, input, _inv: invocationId }),
-      deleteBag: (tripId, bagId) =>
-        t.rpc('packing.deleteBag', { tripId, bagId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
-      setBagMembers: (tripId, bagId, userIds) =>
-        t.rpc('packing.setBagMembers', { tripId, bagId, userIds, _inv: invocationId }),
+      deleteBag: (tripId, bagId) => t.rpc('packing.deleteBag', { tripId, bagId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      setBagMembers: (tripId, bagId, userIds) => t.rpc('packing.setBagMembers', { tripId, bagId, userIds, _inv: invocationId }),
     },
     files: {
       list: (tripId) => t.rpc('files.list', { tripId, _inv: invocationId }) as Promise<unknown[]>,
-      getContent: (tripId, fileId) =>
-        t.rpc('files.getContent', { tripId, fileId, _inv: invocationId }) as Promise<{
-          name: string;
-          mimetype: string;
-          size: number;
-          content_base64: string;
-        }>,
+      getContent: (tripId, fileId) => t.rpc('files.getContent', { tripId, fileId, _inv: invocationId }) as Promise<{ name: string; mimetype: string; size: number; content_base64: string }>,
       create: (tripId, input) => t.rpc('files.create', { tripId, input, _inv: invocationId }),
       createLink: (tripId, fileId, opts) => t.rpc('files.createLink', { tripId, fileId, opts, _inv: invocationId }),
       update: (tripId, fileId, input) => t.rpc('files.update', { tripId, fileId, input, _inv: invocationId }),
-      softDelete: (tripId, fileId) =>
-        t.rpc('files.softDelete', { tripId, fileId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      softDelete: (tripId, fileId) => t.rpc('files.softDelete', { tripId, fileId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     collab: {
       listNotes: (tripId) => t.rpc('collab.listNotes', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       listPolls: (tripId) => t.rpc('collab.listPolls', { tripId, _inv: invocationId }) as Promise<unknown[]>,
-      listMessages: (tripId, before) =>
-        t.rpc('collab.listMessages', { tripId, before, _inv: invocationId }) as Promise<unknown[]>,
+      listMessages: (tripId, before) => t.rpc('collab.listMessages', { tripId, before, _inv: invocationId }) as Promise<unknown[]>,
       createNote: (tripId, input) => t.rpc('collab.createNote', { tripId, input, _inv: invocationId }),
       createPoll: (tripId, input) => t.rpc('collab.createPoll', { tripId, input, _inv: invocationId }),
-      votePoll: (tripId, pollId, optionIndex) =>
-        t.rpc('collab.votePoll', { tripId, pollId, optionIndex, _inv: invocationId }),
-      createMessage: (tripId, text, replyTo) =>
-        t.rpc('collab.createMessage', { tripId, text, replyTo, _inv: invocationId }),
+      votePoll: (tripId, pollId, optionIndex) => t.rpc('collab.votePoll', { tripId, pollId, optionIndex, _inv: invocationId }),
+      createMessage: (tripId, text, replyTo) => t.rpc('collab.createMessage', { tripId, text, replyTo, _inv: invocationId }),
     },
     notify: {
       send: (input) => t.rpc('notify.send', { input, _inv: invocationId }) as Promise<{ sent: boolean }>,
     },
     ai: {
-      complete: (prompt, system) =>
-        t.rpc('ai.complete', { prompt, system, _inv: invocationId }) as Promise<{ text: string }>,
-      extract: (text, jsonSchema, prompt) =>
-        t.rpc('ai.extract', { text, jsonSchema, prompt, _inv: invocationId }) as Promise<{
-          results: Record<string, unknown>[];
-        }>,
+      complete: (prompt, system) => t.rpc('ai.complete', { prompt, system, _inv: invocationId }) as Promise<{ text: string }>,
+      extract: (text, jsonSchema, prompt) => t.rpc('ai.extract', { text, jsonSchema, prompt, _inv: invocationId }) as Promise<{ results: Record<string, unknown>[] }>,
     },
     oauth: {
-      getAccessToken: () =>
-        (t.rpc('oauth.getToken', { _inv: invocationId }) as Promise<{ accessToken: string | null }>).then(
-          (r) => r?.accessToken ?? null,
-        ),
+      getAccessToken: () => (t.rpc('oauth.getToken', { _inv: invocationId }) as Promise<{ accessToken: string | null }>).then((r) => r?.accessToken ?? null),
     },
     scheduler: {
-      at: (whenMs, name, payload) =>
-        t.rpc('scheduler.set', { name, dueAt: whenMs, payload }) as Promise<{ scheduled: boolean }>,
-      in: (ms, name, payload) =>
-        t.rpc('scheduler.set', { name, dueAt: Date.now() + ms, payload }) as Promise<{ scheduled: boolean }>,
-      every: (ms, name, payload) =>
-        t.rpc('scheduler.set', { name, dueAt: Date.now() + ms, everyMs: ms, payload }) as Promise<{
-          scheduled: boolean;
-        }>,
+      at: (whenMs, name, payload) => t.rpc('scheduler.set', { name, dueAt: whenMs, payload }) as Promise<{ scheduled: boolean }>,
+      in: (ms, name, payload) => t.rpc('scheduler.set', { name, dueAt: Date.now() + ms, payload }) as Promise<{ scheduled: boolean }>,
+      every: (ms, name, payload) => t.rpc('scheduler.set', { name, dueAt: Date.now() + ms, everyMs: ms, payload }) as Promise<{ scheduled: boolean }>,
       cancel: (name) => t.rpc('scheduler.cancel', { name }) as Promise<{ cancelled: boolean }>,
     },
     weather: {
@@ -876,38 +697,31 @@ export function createPluginContext(
       list: (tripId) => t.rpc('todos.list', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       create: (tripId, input) => t.rpc('todos.create', { tripId, input, _inv: invocationId }),
       update: (tripId, todoId, input) => t.rpc('todos.update', { tripId, todoId, input, _inv: invocationId }),
-      delete: (tripId, todoId) =>
-        t.rpc('todos.delete', { tripId, todoId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      delete: (tripId, todoId) => t.rpc('todos.delete', { tripId, todoId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     journal: {
       listMine: () => t.rpc('journal.listMine', { _inv: invocationId }) as Promise<unknown[]>,
       getEntries: (journeyId) => t.rpc('journal.getEntries', { journeyId, _inv: invocationId }) as Promise<unknown[]>,
       createEntry: (journeyId, input) => t.rpc('journal.createEntry', { journeyId, input, _inv: invocationId }),
       updateEntry: (entryId, input) => t.rpc('journal.updateEntry', { entryId, input, _inv: invocationId }),
-      deleteEntry: (entryId) =>
-        t.rpc('journal.deleteEntry', { entryId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      deleteEntry: (entryId) => t.rpc('journal.deleteEntry', { entryId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
       createJourney: (input) => t.rpc('journal.createJourney', { input, _inv: invocationId }),
-      deleteJourney: (journeyId) =>
-        t.rpc('journal.deleteJourney', { journeyId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      deleteJourney: (journeyId) => t.rpc('journal.deleteJourney', { journeyId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     atlas: {
-      visited: () =>
-        t.rpc('atlas.visited', { _inv: invocationId }) as Promise<{ countries: unknown[]; regions: unknown[] }>,
+      visited: () => t.rpc('atlas.visited', { _inv: invocationId }) as Promise<{ countries: unknown[]; regions: unknown[] }>,
       bucketList: () => t.rpc('atlas.bucketList', { _inv: invocationId }) as Promise<unknown[]>,
       markCountry: (code) => t.rpc('atlas.markCountry', { code, _inv: invocationId }),
       unmarkCountry: (code) => t.rpc('atlas.unmarkCountry', { code, _inv: invocationId }),
-      markRegion: (regionCode, countryCode, regionName) =>
-        t.rpc('atlas.markRegion', { regionCode, countryCode, regionName, _inv: invocationId }),
+      markRegion: (regionCode, countryCode, regionName) => t.rpc('atlas.markRegion', { regionCode, countryCode, regionName, _inv: invocationId }),
       unmarkRegion: (regionCode) => t.rpc('atlas.unmarkRegion', { regionCode, _inv: invocationId }),
       createBucketItem: (input) => t.rpc('atlas.createBucketItem', { input, _inv: invocationId }),
-      deleteBucketItem: (itemId) =>
-        t.rpc('atlas.deleteBucketItem', { itemId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      deleteBucketItem: (itemId) => t.rpc('atlas.deleteBucketItem', { itemId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     vacay: {
       mine: () => t.rpc('vacay.mine', { _inv: invocationId }),
       toggleEntry: (date) => t.rpc('vacay.toggleEntry', { date, _inv: invocationId }) as Promise<{ action: string }>,
-      toggleCompanyHoliday: (date, note) =>
-        t.rpc('vacay.toggleCompanyHoliday', { date, note, _inv: invocationId }) as Promise<{ action: string }>,
+      toggleCompanyHoliday: (date, note) => t.rpc('vacay.toggleCompanyHoliday', { date, note, _inv: invocationId }) as Promise<{ action: string }>,
     },
     collections: {
       listMine: () => t.rpc('collections.listMine', { _inv: invocationId }),
@@ -916,51 +730,40 @@ export function createPluginContext(
       update: (id, input) => t.rpc('collections.update', { id, input, _inv: invocationId }),
       savePlace: (input) => t.rpc('collections.savePlace', { input, _inv: invocationId }),
       copyToTrip: (input) => t.rpc('collections.copyToTrip', { input, _inv: invocationId }),
-      deletePlace: (placeId) =>
-        t.rpc('collections.deletePlace', { placeId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      deletePlace: (placeId) => t.rpc('collections.deletePlace', { placeId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     daynotes: {
       list: (tripId, dayId) => t.rpc('daynotes.list', { tripId, dayId, _inv: invocationId }) as Promise<unknown[]>,
       create: (tripId, dayId, input) => t.rpc('daynotes.create', { tripId, dayId, input, _inv: invocationId }),
-      update: (tripId, dayId, noteId, input) =>
-        t.rpc('daynotes.update', { tripId, dayId, noteId, input, _inv: invocationId }),
-      delete: (tripId, dayId, noteId) =>
-        t.rpc('daynotes.delete', { tripId, dayId, noteId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      update: (tripId, dayId, noteId, input) => t.rpc('daynotes.update', { tripId, dayId, noteId, input, _inv: invocationId }),
+      delete: (tripId, dayId, noteId) => t.rpc('daynotes.delete', { tripId, dayId, noteId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     costs: {
       getByTrip: (tripId) => t.rpc('costs.getByTrip', { tripId, _inv: invocationId }) as Promise<unknown[]>,
       listMine: () => t.rpc('costs.listMine', { _inv: invocationId }) as Promise<unknown[]>,
       create: (tripId, input) => t.rpc('costs.create', { tripId, input, _inv: invocationId }),
       update: (tripId, itemId, input) => t.rpc('costs.update', { tripId, itemId, input, _inv: invocationId }),
-      delete: (tripId, itemId) =>
-        t.rpc('costs.delete', { tripId, itemId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      delete: (tripId, itemId) => t.rpc('costs.delete', { tripId, itemId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     places: {
       create: (tripId, input) => t.rpc('places.create', { tripId, input, _inv: invocationId }),
       update: (tripId, placeId, input) => t.rpc('places.update', { tripId, placeId, input, _inv: invocationId }),
-      delete: (tripId, placeId) =>
-        t.rpc('places.delete', { tripId, placeId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      delete: (tripId, placeId) => t.rpc('places.delete', { tripId, placeId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     days: {
       create: (tripId, input) => t.rpc('days.create', { tripId, input, _inv: invocationId }),
       update: (tripId, dayId, input) => t.rpc('days.update', { tripId, dayId, input, _inv: invocationId }),
-      delete: (tripId, dayId) =>
-        t.rpc('days.delete', { tripId, dayId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      delete: (tripId, dayId) => t.rpc('days.delete', { tripId, dayId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     itinerary: {
-      assign: (tripId, dayId, placeId, notes) =>
-        t.rpc('itinerary.assign', { tripId, dayId, placeId, notes, _inv: invocationId }),
-      unassign: (tripId, assignmentId) =>
-        t.rpc('itinerary.unassign', { tripId, assignmentId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      assign: (tripId, dayId, placeId, notes) => t.rpc('itinerary.assign', { tripId, dayId, placeId, notes, _inv: invocationId }),
+      unassign: (tripId, assignmentId) => t.rpc('itinerary.unassign', { tripId, assignmentId, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     meta: {
       get: (entityType, entityId, key) => t.rpc('meta.get', { entityType, entityId, key, _inv: invocationId }),
-      set: (entityType, entityId, key, value) =>
-        t.rpc('meta.set', { entityType, entityId, key, value, _inv: invocationId }),
-      list: (entityType, entityId) =>
-        t.rpc('meta.list', { entityType, entityId, _inv: invocationId }) as Promise<Record<string, unknown>>,
-      delete: (entityType, entityId, key) =>
-        t.rpc('meta.delete', { entityType, entityId, key, _inv: invocationId }) as Promise<{ deleted: boolean }>,
+      set: (entityType, entityId, key, value) => t.rpc('meta.set', { entityType, entityId, key, value, _inv: invocationId }),
+      list: (entityType, entityId) => t.rpc('meta.list', { entityType, entityId, _inv: invocationId }) as Promise<Record<string, unknown>>,
+      delete: (entityType, entityId, key) => t.rpc('meta.delete', { entityType, entityId, key, _inv: invocationId }) as Promise<{ deleted: boolean }>,
     },
     users: {
       getById: (uid) => t.rpc('users.getById', { id: uid, _inv: invocationId }),
@@ -985,10 +788,18 @@ export function createPluginContext(
     },
     events: {
       // Fire-and-forget by contract, but the host CAN reject (undeclared event name,
-      // rate-limit) — swallow it, otherwise the detached rejection crashes the child
-      // and terminally disables the plugin over one bad emit.
+      // rate-limit). The rejection must not escape — a detached rejection crashes the child
+      // and terminally disables the plugin over one bad emit — but swallowing it silently
+      // left an author with no way to discover that `emits` was missing from the manifest.
+      // Surface it on the plugin's own log stream instead.
       emit: (name, payload) => {
-        t.rpc('events.emit', { event: name, payload }).catch(() => {});
+        t.rpc('events.emit', { event: name, payload }).catch((e: unknown) => {
+          t.emit('log', {
+            level: 'warn',
+            msg: `events.emit("${name}") was rejected by the host: ${e instanceof Error ? e.message : String(e)}`,
+            meta: { event: name },
+          });
+        });
       },
     },
   };

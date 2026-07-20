@@ -1,15 +1,10 @@
-import { db } from '../../db/database';
-import {
-  createBudgetItem,
-  updateBudgetItem,
-  deleteBudgetItem,
-  linkBudgetItemToReservation,
-} from '../../services/budgetService';
-import { checkPermission } from '../../services/permissions';
-import * as svc from '../../services/reservationService';
-import type { User } from '../../types';
-import { broadcast } from '../../websocket';
 import { Injectable } from '@nestjs/common';
+import { db } from '../../db/database';
+import { broadcast } from '../../websocket';
+import { checkPermission } from '../../services/permissions';
+import type { User } from '../../types';
+import * as svc from '../../services/reservationService';
+import { createBudgetItem, updateBudgetItem, deleteBudgetItem, linkBudgetItemToReservation } from '../../services/budgetService';
 import { typeToCostCategory } from '@trek/shared';
 
 type Trip = NonNullable<ReturnType<typeof svc.verifyTripAccess>>;
@@ -58,12 +53,7 @@ export class ReservationsService {
     return svc.getReservation(id, tripId);
   }
 
-  update(
-    id: string,
-    tripId: string,
-    data: Parameters<typeof svc.updateReservation>[2],
-    current: Parameters<typeof svc.updateReservation>[3],
-  ) {
+  update(id: string, tripId: string, data: Parameters<typeof svc.updateReservation>[2], current: Parameters<typeof svc.updateReservation>[3]) {
     return svc.updateReservation(id, tripId, data, current);
   }
 
@@ -72,14 +62,7 @@ export class ReservationsService {
   }
 
   /** POST side effect: auto-create a linked budget item when a price is provided. */
-  syncBudgetOnCreate(
-    tripId: string,
-    reservationId: number,
-    title: string,
-    type: string | undefined,
-    entry: BudgetEntry,
-    socketId: string | undefined,
-  ): void {
+  syncBudgetOnCreate(tripId: string, reservationId: number, title: string, type: string | undefined, entry: BudgetEntry, socketId: string | undefined): void {
     if (!entry || !(Number(entry.total_price) > 0)) return;
     try {
       const item = linkBudgetItemToReservation(tripId, reservationId, {
@@ -94,23 +77,12 @@ export class ReservationsService {
   }
 
   /** PUT side effect: drop the linked budget item when the price is cleared, else create/update it. */
-  syncBudgetOnUpdate(
-    tripId: string,
-    id: string,
-    title: string,
-    type: string | undefined,
-    currentTitle: string,
-    currentType: string | undefined,
-    entry: BudgetEntry,
-    socketId: string | undefined,
-  ): void {
+  syncBudgetOnUpdate(tripId: string, id: string, title: string, type: string | undefined, currentTitle: string, currentType: string | undefined, entry: BudgetEntry, socketId: string | undefined): void {
     // When the booking type changes, keep a linked expense's category in sync —
     // but only if it still carries the auto-derived category (so a manual pick in
     // the Costs editor is preserved). Runs regardless of create_budget_entry.
     if (type && currentType && type !== currentType) {
-      const linked = db
-        .prepare('SELECT id, category FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
-        .get(tripId, id) as { id: number; category: string } | undefined;
+      const linked = db.prepare('SELECT id, category FROM budget_items WHERE trip_id = ? AND reservation_id = ?').get(tripId, id) as { id: number; category: string } | undefined;
       if (linked) {
         const oldCat = typeToCostCategory(currentType);
         const newCat = typeToCostCategory(type);
@@ -128,9 +100,7 @@ export class ReservationsService {
 
     if (!(Number(entry.total_price) > 0)) {
       // Explicit clear (total_price 0/empty) — drop the linked item.
-      const linked = db
-        .prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
-        .get(tripId, id) as { id: number } | undefined;
+      const linked = db.prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?').get(tripId, id) as { id: number } | undefined;
       if (linked) {
         deleteBudgetItem(linked.id, tripId);
         broadcast(tripId, 'budget:deleted', { itemId: linked.id }, socketId);
@@ -141,15 +111,9 @@ export class ReservationsService {
     try {
       const itemName = title || currentTitle;
       const category = entry.category || type || currentType || 'Other';
-      const existing = db
-        .prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
-        .get(tripId, id) as { id: number } | undefined;
+      const existing = db.prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?').get(tripId, id) as { id: number } | undefined;
       if (existing) {
-        const updated = updateBudgetItem(existing.id, tripId, {
-          name: itemName,
-          category,
-          total_price: entry.total_price,
-        });
+        const updated = updateBudgetItem(existing.id, tripId, { name: itemName, category, total_price: entry.total_price });
         broadcast(tripId, 'budget:updated', { item: updated }, socketId);
       } else {
         const item = createBudgetItem(tripId, { name: itemName, category, total_price: entry.total_price });
@@ -164,21 +128,6 @@ export class ReservationsService {
 
   /** Fire-and-forget booking-change notification, mirroring the legacy dynamic import. */
   notifyBookingChange(tripId: string, actor: User, booking: string, type: string): void {
-    import('../../services/notificationService').then(({ send }) => {
-      const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
-      send({
-        event: 'booking_change',
-        actorId: actor.id,
-        scope: 'trip',
-        targetId: Number(tripId),
-        params: {
-          trip: tripInfo?.title || 'Untitled',
-          actor: actor.email,
-          booking,
-          type: type || 'booking',
-          tripId: String(tripId),
-        },
-      }).catch(() => {});
-    });
+    svc.notifyBookingChange(tripId, actor.id, booking, type);
   }
 }

@@ -19,17 +19,45 @@ export interface ReservationEndpoint {
 
 export type EndpointInput = Omit<ReservationEndpoint, 'id' | 'reservation_id' | 'sequence'> & { sequence?: number };
 
+export function notifyBookingChange(
+  tripId: string | number,
+  actorId: number,
+  booking: string,
+  type: string,
+): void {
+  import('./notificationService')
+    .then(({ send }) => {
+      try {
+        const actor = db.prepare('SELECT email FROM users WHERE id = ?').get(actorId) as { email: string } | undefined;
+        if (!actor) return;
+        const trip = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
+        send({
+          event: 'booking_change',
+          actorId,
+          scope: 'trip',
+          targetId: Number(tripId),
+          params: {
+            trip: trip?.title || 'Untitled',
+            actor: actor.email,
+            booking,
+            type: type || 'booking',
+            tripId: String(tripId),
+          },
+        }).catch(() => {});
+      } catch {
+        // Notifications must never make the booking write fail.
+      }
+    })
+    .catch(() => {});
+}
+
 export function loadEndpointsByTrip(tripId: string | number): Map<number, ReservationEndpoint[]> {
-  const rows = db
-    .prepare(
-      `
+  const rows = db.prepare(`
     SELECT e.* FROM reservation_endpoints e
     JOIN reservations r ON e.reservation_id = r.id
     WHERE r.trip_id = ?
     ORDER BY e.reservation_id, e.sequence
-  `,
-    )
-    .all(tripId) as ReservationEndpoint[];
+  `).all(tripId) as ReservationEndpoint[];
   const map = new Map<number, ReservationEndpoint[]>();
   for (const r of rows) {
     const list = map.get(r.reservation_id!) ?? [];
@@ -40,9 +68,9 @@ export function loadEndpointsByTrip(tripId: string | number): Map<number, Reserv
 }
 
 function loadEndpoints(reservationId: number): ReservationEndpoint[] {
-  return db
-    .prepare('SELECT * FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
-    .all(reservationId) as ReservationEndpoint[];
+  return db.prepare(
+    'SELECT * FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence'
+  ).all(reservationId) as ReservationEndpoint[];
 }
 
 // Resolve the day row whose date matches the date portion of an ISO-ish
@@ -58,9 +86,9 @@ function resolveDayIdFromTime(
   if (!time) return null;
   const datePart = time.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
-  const exact = db.prepare('SELECT id FROM days WHERE trip_id = ? AND date = ? LIMIT 1').get(tripId, datePart) as
-    | { id: number }
-    | undefined;
+  const exact = db
+    .prepare('SELECT id FROM days WHERE trip_id = ? AND date = ? LIMIT 1')
+    .get(tripId, datePart) as { id: number } | undefined;
   if (exact) return exact.id;
   // Fallback: clamp to the nearest day in the trip so an imported booking whose
   // exact date has no day row (or sits just outside the span) still lands on a day.
@@ -78,20 +106,17 @@ function resolveDayIdFromTime(
 // the booking visually shifts by the offset (#1288). Re-anchor non-hotel bookings to the
 // day matching their absolute reservation_time — the same derivation create/updateReservation
 // use. Only updates when a matching day exists, so a booking whose date now falls outside
-// the new range is left untouched. Hotels keep their range on the linked day_accommodation.
+// the new range is left untouched. Hotels linked to a day_accommodation are excluded here —
+// resyncAccommodationDays re-anchors the accommodation span and its linked reservation;
+// unlinked dated hotels (e.g. imported ones) re-anchor like any other booking.
 export function resyncReservationDays(tripId: string | number): void {
-  const rows = db
-    .prepare(
-      `SELECT id, reservation_time, reservation_end_time, day_id, end_day_id
+  const rows = db.prepare(
+    `SELECT id, reservation_time, reservation_end_time, day_id, end_day_id
        FROM reservations
-      WHERE trip_id = ? AND type != 'hotel' AND reservation_time IS NOT NULL`,
-    )
-    .all(tripId) as {
-    id: number;
-    reservation_time: string | null;
-    reservation_end_time: string | null;
-    day_id: number | null;
-    end_day_id: number | null;
+      WHERE trip_id = ? AND (type != 'hotel' OR accommodation_id IS NULL) AND reservation_time IS NOT NULL`,
+  ).all(tripId) as {
+    id: number; reservation_time: string | null; reservation_end_time: string | null;
+    day_id: number | null; end_day_id: number | null;
   }[];
   const update = db.prepare('UPDATE reservations SET day_id = ?, end_day_id = ? WHERE id = ?');
   for (const r of rows) {
@@ -125,27 +150,14 @@ function saveEndpoints(reservationId: number, endpoints: EndpointInput[]): void 
     eps
       .filter((e) => e.lat != null && e.lng != null)
       .forEach((e, i) => {
-        insert.run(
-          rid,
-          e.role,
-          e.sequence ?? i,
-          e.name,
-          e.code ?? null,
-          e.lat,
-          e.lng,
-          e.timezone ?? null,
-          e.local_time ?? null,
-          e.local_date ?? null,
-        );
+        insert.run(rid, e.role, e.sequence ?? i, e.name, e.code ?? null, e.lat, e.lng, e.timezone ?? null, e.local_time ?? null, e.local_date ?? null);
       });
   });
   tx(reservationId, endpoints);
 }
 
 export function listReservations(tripId: string | number) {
-  const reservations = db
-    .prepare(
-      `
+  const reservations = db.prepare(`
     SELECT r.*, d.day_number, p.name as place_name, r.assignment_id,
       ap.place_id as accommodation_place_id, acc_p.name as accommodation_name,
       ap.start_day_id as accommodation_start_day_id, ap.end_day_id as accommodation_end_day_id
@@ -156,20 +168,14 @@ export function listReservations(tripId: string | number) {
     LEFT JOIN places acc_p ON ap.place_id = acc_p.id
     WHERE r.trip_id = ?
     ORDER BY r.reservation_time ASC, r.created_at ASC
-  `,
-    )
-    .all(tripId) as any[];
+  `).all(tripId) as any[];
 
-  const dayPositions = db
-    .prepare(
-      `
+  const dayPositions = db.prepare(`
     SELECT rdp.reservation_id, rdp.day_id, rdp.position
     FROM reservation_day_positions rdp
     JOIN reservations r ON rdp.reservation_id = r.id
     WHERE r.trip_id = ?
-  `,
-    )
-    .all(tripId) as { reservation_id: number; day_id: number; position: number }[];
+  `).all(tripId) as { reservation_id: number; day_id: number; position: number }[];
 
   const posMap = new Map<number, Record<number, number>>();
   for (const dp of dayPositions) {
@@ -200,9 +206,7 @@ export function getUpcomingReservations(userId: number, limit = 6) {
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
 
-  const reservations = db
-    .prepare(
-      `
+  const reservations = db.prepare(`
     SELECT r.id, r.trip_id, r.title, r.type, r.status, r.location,
            r.reservation_time, r.confirmation_number,
            t.title as trip_title, t.cover_image as trip_cover,
@@ -221,17 +225,13 @@ export function getUpcomingReservations(userId: number, limit = 6) {
       )
     ORDER BY COALESCE(r.reservation_time, d.date) ASC
     LIMIT ?
-  `,
-    )
-    .all(userId, userId, now, today, limit) as any[];
+  `).all(userId, userId, now, today, limit) as any[];
 
   return reservations;
 }
 
 export function getReservationWithJoins(id: string | number) {
-  const row = db
-    .prepare(
-      `
+  const row = db.prepare(`
     SELECT r.*, d.day_number, p.name as place_name, r.assignment_id,
       ap.place_id as accommodation_place_id, acc_p.name as accommodation_name,
       ap.start_day_id as accommodation_start_day_id, ap.end_day_id as accommodation_end_day_id
@@ -241,9 +241,7 @@ export function getReservationWithJoins(id: string | number) {
     LEFT JOIN day_accommodations ap ON r.accommodation_id = ap.id
     LEFT JOIN places acc_p ON ap.place_id = acc_p.id
     WHERE r.id = ?
-  `,
-    )
-    .get(id) as any;
+  `).get(id) as any;
   if (!row) return undefined;
   row.endpoints = loadEndpoints(row.id);
   // accommodation_id is a TEXT column; the integer FK reads back as a numeric
@@ -282,29 +280,12 @@ interface CreateReservationData {
   needs_review?: boolean;
 }
 
-export function createReservation(
-  tripId: string | number,
-  data: CreateReservationData,
-): { reservation: any; accommodationCreated: boolean } {
+export function createReservation(tripId: string | number, data: CreateReservationData): { reservation: any; accommodationCreated: boolean } {
   const {
-    title,
-    reservation_time,
-    reservation_end_time,
-    location,
-    confirmation_number,
-    notes,
-    url,
-    day_id,
-    end_day_id,
-    place_id,
-    assignment_id,
-    status,
-    type,
-    accommodation_id,
-    metadata,
-    create_accommodation,
-    endpoints,
-    needs_review,
+    title, reservation_time, reservation_end_time, location,
+    confirmation_number, notes, url, day_id, end_day_id, place_id, assignment_id,
+    status, type, accommodation_id, metadata, create_accommodation,
+    endpoints, needs_review
   } = data;
 
   let accommodationCreated = false;
@@ -312,28 +293,11 @@ export function createReservation(
   // Auto-create accommodation for hotel reservations
   let resolvedAccommodationId: number | null = accommodation_id || null;
   if (type === 'hotel' && !resolvedAccommodationId && create_accommodation) {
-    const {
-      place_id: accPlaceId,
-      start_day_id,
-      end_day_id,
-      check_in,
-      check_out,
-      confirmation: accConf,
-    } = create_accommodation;
+    const { place_id: accPlaceId, start_day_id, end_day_id, check_in, check_out, confirmation: accConf } = create_accommodation;
     if (start_day_id && end_day_id) {
-      const accResult = db
-        .prepare(
-          'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out, confirmation) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        )
-        .run(
-          tripId,
-          accPlaceId || null,
-          start_day_id,
-          end_day_id,
-          check_in || null,
-          check_out || null,
-          accConf || confirmation_number || null,
-        );
+      const accResult = db.prepare(
+        'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out, confirmation) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(tripId, accPlaceId || null, start_day_id, end_day_id, check_in || null, check_out || null, accConf || confirmation_number || null);
       resolvedAccommodationId = Number(accResult.lastInsertRowid);
       accommodationCreated = true;
     }
@@ -352,32 +316,28 @@ export function createReservation(
     resolvedEndDayId = resolveDayIdFromTime(tripId, reservation_end_time);
   }
 
-  const result = db
-    .prepare(
-      `
+  const result = db.prepare(`
     INSERT INTO reservations (trip_id, day_id, end_day_id, place_id, assignment_id, title, reservation_time, reservation_end_time, location, confirmation_number, notes, url, status, type, accommodation_id, metadata, needs_review)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `,
-    )
-    .run(
-      tripId,
-      resolvedDayId,
-      resolvedEndDayId,
-      place_id || null,
-      assignment_id || null,
-      title,
-      reservation_time || null,
-      reservation_end_time || null,
-      location || null,
-      confirmation_number || null,
-      notes || null,
-      url || null,
-      status || 'pending',
-      resolvedType,
-      resolvedAccommodationId,
-      metadata ? JSON.stringify(metadata) : null,
-      needs_review ? 1 : 0,
-    );
+  `).run(
+    tripId,
+    resolvedDayId,
+    resolvedEndDayId,
+    place_id || null,
+    assignment_id || null,
+    title,
+    reservation_time || null,
+    reservation_end_time || null,
+    location || null,
+    confirmation_number || null,
+    notes || null,
+    url || null,
+    status || 'pending',
+    resolvedType,
+    resolvedAccommodationId,
+    metadata ? JSON.stringify(metadata) : null,
+    needs_review ? 1 : 0
+  );
 
   if (endpoints && endpoints.length > 0) {
     saveEndpoints(Number(result.lastInsertRowid), endpoints);
@@ -387,15 +347,12 @@ export function createReservation(
   if (accommodation_id && metadata) {
     const meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
     if (meta.check_in_time || meta.check_in_end_time || meta.check_out_time) {
-      db.prepare(
-        'UPDATE day_accommodations SET check_in = COALESCE(?, check_in), check_in_end = COALESCE(?, check_in_end), check_out = COALESCE(?, check_out) WHERE id = ?',
-      ).run(meta.check_in_time || null, meta.check_in_end_time || null, meta.check_out_time || null, accommodation_id);
+      db.prepare('UPDATE day_accommodations SET check_in = COALESCE(?, check_in), check_in_end = COALESCE(?, check_in_end), check_out = COALESCE(?, check_out) WHERE id = ?')
+        .run(meta.check_in_time || null, meta.check_in_end_time || null, meta.check_out_time || null, accommodation_id);
     }
     if (confirmation_number) {
-      db.prepare('UPDATE day_accommodations SET confirmation = COALESCE(?, confirmation) WHERE id = ?').run(
-        confirmation_number,
-        accommodation_id,
-      );
+      db.prepare('UPDATE day_accommodations SET confirmation = COALESCE(?, confirmation) WHERE id = ?')
+        .run(confirmation_number, accommodation_id);
     }
   }
 
@@ -403,16 +360,10 @@ export function createReservation(
   return { reservation, accommodationCreated };
 }
 
-export function updatePositions(
-  tripId: string | number,
-  positions: { id: number; day_plan_position: number }[],
-  dayId?: number | string,
-) {
+export function updatePositions(tripId: string | number, positions: { id: number; day_plan_position: number }[], dayId?: number | string) {
   if (dayId) {
     // Per-day positions for multi-day reservations
-    const stmt = db.prepare(
-      'INSERT OR REPLACE INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)',
-    );
+    const stmt = db.prepare('INSERT OR REPLACE INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)');
     const updateMany = db.transaction((items: { id: number; day_plan_position: number }[]) => {
       for (const item of items) {
         stmt.run(item.id, dayId, item.day_plan_position);
@@ -432,9 +383,7 @@ export function updatePositions(
 }
 
 export function getReservation(id: string | number, tripId: string | number) {
-  return db.prepare('SELECT * FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId) as
-    | Reservation
-    | undefined;
+  return db.prepare('SELECT * FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId) as Reservation | undefined;
 }
 
 interface UpdateReservationData {
@@ -458,78 +407,32 @@ interface UpdateReservationData {
   needs_review?: boolean;
 }
 
-export function updateReservation(
-  id: string | number,
-  tripId: string | number,
-  data: UpdateReservationData,
-  current: Reservation,
-): { reservation: any; accommodationChanged: boolean } {
+export function updateReservation(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): { reservation: any; accommodationChanged: boolean } {
   const {
-    title,
-    reservation_time,
-    reservation_end_time,
-    location,
-    confirmation_number,
-    notes,
-    url,
-    day_id,
-    end_day_id,
-    place_id,
-    assignment_id,
-    status,
-    type,
-    accommodation_id,
-    metadata,
-    create_accommodation,
-    endpoints,
-    needs_review,
+    title, reservation_time, reservation_end_time, location,
+    confirmation_number, notes, url, day_id, end_day_id, place_id, assignment_id,
+    status, type, accommodation_id, metadata, create_accommodation,
+    endpoints, needs_review
   } = data;
 
   let accommodationChanged = false;
 
   // Update or create accommodation for hotel reservations
-  let resolvedAccId: number | null =
-    accommodation_id !== undefined ? accommodation_id || null : (current.accommodation_id ?? null);
+  let resolvedAccId: number | null = accommodation_id !== undefined ? (accommodation_id || null) : (current.accommodation_id ?? null);
   if (resolvedAccId) {
     const accExists = db.prepare('SELECT id FROM day_accommodations WHERE id = ?').get(resolvedAccId);
     if (!accExists) resolvedAccId = null;
   }
   if (type === 'hotel' && create_accommodation) {
-    const {
-      place_id: accPlaceId,
-      start_day_id,
-      end_day_id,
-      check_in,
-      check_out,
-      confirmation: accConf,
-    } = create_accommodation;
+    const { place_id: accPlaceId, start_day_id, end_day_id, check_in, check_out, confirmation: accConf } = create_accommodation;
     if (start_day_id && end_day_id) {
       if (resolvedAccId) {
-        db.prepare(
-          'UPDATE day_accommodations SET place_id = ?, start_day_id = ?, end_day_id = ?, check_in = ?, check_out = ?, confirmation = ? WHERE id = ?',
-        ).run(
-          accPlaceId || null,
-          start_day_id,
-          end_day_id,
-          check_in || null,
-          check_out || null,
-          accConf || confirmation_number || null,
-          resolvedAccId,
-        );
+        db.prepare('UPDATE day_accommodations SET place_id = ?, start_day_id = ?, end_day_id = ?, check_in = ?, check_out = ?, confirmation = ? WHERE id = ?')
+          .run(accPlaceId || null, start_day_id, end_day_id, check_in || null, check_out || null, accConf || confirmation_number || null, resolvedAccId);
       } else if (accPlaceId) {
-        const accResult = db
-          .prepare(
-            'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out, confirmation) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          )
-          .run(
-            tripId,
-            accPlaceId,
-            start_day_id,
-            end_day_id,
-            check_in || null,
-            check_out || null,
-            accConf || confirmation_number || null,
-          );
+        const accResult = db.prepare(
+          'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out, confirmation) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).run(tripId, accPlaceId, start_day_id, end_day_id, check_in || null, check_out || null, accConf || confirmation_number || null);
         resolvedAccId = Number(accResult.lastInsertRowid);
       }
       accommodationChanged = true;
@@ -537,18 +440,12 @@ export function updateReservation(
   }
 
   const resolvedType = (type ?? current.type) || 'other';
-  const nextReservationTime =
-    resolvedType === 'hotel'
-      ? null
-      : reservation_time !== undefined
-        ? reservation_time || null
-        : current.reservation_time;
-  const nextReservationEndTime =
-    resolvedType === 'hotel'
-      ? null
-      : reservation_end_time !== undefined
-        ? reservation_end_time || null
-        : current.reservation_end_time;
+  const nextReservationTime = resolvedType === 'hotel'
+    ? null
+    : (reservation_time !== undefined ? (reservation_time || null) : current.reservation_time);
+  const nextReservationEndTime = resolvedType === 'hotel'
+    ? null
+    : (reservation_end_time !== undefined ? (reservation_end_time || null) : current.reservation_end_time);
 
   // day_id / end_day_id: honour an explicit value from the client,
   // otherwise derive from the (possibly updated) reservation_time so the
@@ -578,8 +475,7 @@ export function updateReservation(
     nextEndDayId = (current as any).end_day_id ?? null;
   }
 
-  db.prepare(
-    `
+  db.prepare(`
     UPDATE reservations SET
       title = COALESCE(?, title),
       reservation_time = ?,
@@ -598,25 +494,24 @@ export function updateReservation(
       metadata = ?,
       needs_review = COALESCE(?, needs_review)
     WHERE id = ?
-  `,
-  ).run(
+  `).run(
     title || null,
     nextReservationTime,
     nextReservationEndTime,
-    location !== undefined ? location || null : current.location,
-    confirmation_number !== undefined ? confirmation_number || null : current.confirmation_number,
-    notes !== undefined ? notes || null : current.notes,
-    url !== undefined ? url || null : (current as any).url,
+    location !== undefined ? (location || null) : current.location,
+    confirmation_number !== undefined ? (confirmation_number || null) : current.confirmation_number,
+    notes !== undefined ? (notes || null) : current.notes,
+    url !== undefined ? (url || null) : (current as any).url,
     nextDayId,
     nextEndDayId,
-    place_id !== undefined ? place_id || null : current.place_id,
-    assignment_id !== undefined ? assignment_id || null : current.assignment_id,
+    place_id !== undefined ? (place_id || null) : current.place_id,
+    assignment_id !== undefined ? (assignment_id || null) : current.assignment_id,
     status || null,
     type || null,
     resolvedAccId,
     metadata !== undefined ? (metadata ? JSON.stringify(metadata) : null) : current.metadata,
-    needs_review === undefined ? null : needs_review ? 1 : 0,
-    id,
+    needs_review === undefined ? null : (needs_review ? 1 : 0),
+    id
   );
 
   if (endpoints !== undefined) {
@@ -624,21 +519,17 @@ export function updateReservation(
   }
 
   // Sync check-in/out to accommodation if linked
-  const resolvedMeta =
-    metadata !== undefined ? metadata : current.metadata ? JSON.parse(current.metadata as string) : null;
+  const resolvedMeta = metadata !== undefined ? metadata : (current.metadata ? JSON.parse(current.metadata as string) : null);
   if (resolvedAccId && resolvedMeta) {
     const meta = typeof resolvedMeta === 'string' ? JSON.parse(resolvedMeta) : resolvedMeta;
     if (meta.check_in_time || meta.check_in_end_time || meta.check_out_time) {
-      db.prepare(
-        'UPDATE day_accommodations SET check_in = COALESCE(?, check_in), check_in_end = COALESCE(?, check_in_end), check_out = COALESCE(?, check_out) WHERE id = ?',
-      ).run(meta.check_in_time || null, meta.check_in_end_time || null, meta.check_out_time || null, resolvedAccId);
+      db.prepare('UPDATE day_accommodations SET check_in = COALESCE(?, check_in), check_in_end = COALESCE(?, check_in_end), check_out = COALESCE(?, check_out) WHERE id = ?')
+        .run(meta.check_in_time || null, meta.check_in_end_time || null, meta.check_out_time || null, resolvedAccId);
     }
     const resolvedConf = confirmation_number !== undefined ? confirmation_number : current.confirmation_number;
     if (resolvedConf) {
-      db.prepare('UPDATE day_accommodations SET confirmation = COALESCE(?, confirmation) WHERE id = ?').run(
-        resolvedConf,
-        resolvedAccId,
-      );
+      db.prepare('UPDATE day_accommodations SET confirmation = COALESCE(?, confirmation) WHERE id = ?')
+        .run(resolvedConf, resolvedAccId);
     }
   }
 
@@ -646,17 +537,8 @@ export function updateReservation(
   return { reservation, accommodationChanged };
 }
 
-export function deleteReservation(
-  id: string | number,
-  tripId: string | number,
-): {
-  deleted: { id: number; title: string; type: string; accommodation_id: number | null } | undefined;
-  accommodationDeleted: boolean;
-  deletedBudgetItemId: number | null;
-} {
-  const reservation = db
-    .prepare('SELECT id, title, type, accommodation_id FROM reservations WHERE id = ? AND trip_id = ?')
-    .get(id, tripId) as { id: number; title: string; type: string; accommodation_id: number | null } | undefined;
+export function deleteReservation(id: string | number, tripId: string | number): { deleted: { id: number; title: string; type: string; accommodation_id: number | null } | undefined; accommodationDeleted: boolean; deletedBudgetItemId: number | null } {
+  const reservation = db.prepare('SELECT id, title, type, accommodation_id FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId) as { id: number; title: string; type: string; accommodation_id: number | null } | undefined;
   if (!reservation) return { deleted: undefined, accommodationDeleted: false, deletedBudgetItemId: null };
 
   let accommodationDeleted = false;
@@ -665,9 +547,7 @@ export function deleteReservation(
     accommodationDeleted = true;
   }
 
-  const linkedBudget = db
-    .prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
-    .get(tripId, id) as { id: number } | undefined;
+  const linkedBudget = db.prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?').get(tripId, id) as { id: number } | undefined;
   if (linkedBudget) {
     db.prepare('DELETE FROM budget_items WHERE id = ?').run(linkedBudget.id);
   }

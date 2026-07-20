@@ -3,49 +3,29 @@
  * routes are public), the whitelisted request view forwarded to the child, and
  * error/404 handling — all without a real fork (the runtime is faked).
  */
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-import { PluginsProxyController } from '../../../src/nest/plugins/plugins-proxy.controller';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { pluginsEnabledMock, extractTokenMock, verifyMock, oauthTokenMock } = vi.hoisted(() => ({
+const { pluginsEnabledMock, extractTokenMock, verifyMock } = vi.hoisted(() => ({
   pluginsEnabledMock: vi.fn(() => true),
   extractTokenMock: vi.fn(() => 'tok'),
-  verifyMock: vi.fn(() => ({ id: 5, username: 'ada', is_admin: false })),
-  oauthTokenMock: vi.fn(() => ({
-    user: { id: 9, username: 'oauth-user', email: 'oauth@example.com', role: 'user' },
-    scopes: ['plugin:mymap-sync:read'],
-    clientId: 'client-1',
-    audience: 'http://localhost:3001/api/plugins/mymap-sync',
-  })),
+  verifyMock: vi.fn(() => ({ id: 5, username: 'ada', role: 'user' })),
 }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled: pluginsEnabledMock }));
 vi.mock('../../../src/middleware/auth', () => ({ extractToken: extractTokenMock, verifyJwtAndLoadUser: verifyMock }));
-vi.mock('../../../src/services/oauthService', () => ({ getUserByAccessToken: oauthTokenMock }));
+
+import { PluginsProxyController } from '../../../src/nest/plugins/plugins-proxy.controller';
+import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
 
 function fakeRes() {
   const res = {
     statusCode: 0,
     headers: {} as Record<string, string>,
     body: undefined as unknown,
-    status(c: number) {
-      res.statusCode = c;
-      return res;
-    },
-    setHeader(k: string, v: string) {
-      res.headers[k] = v;
-    },
-    json(b: unknown) {
-      res.body = b;
-      return res;
-    },
-    send(b: unknown) {
-      res.body = b;
-      return res;
-    },
-    end() {
-      return res;
-    },
+    status(c: number) { res.statusCode = c; return res; },
+    setHeader(k: string, v: string) { res.headers[k] = v; },
+    json(b: unknown) { res.body = b; return res; },
+    send(b: unknown) { res.body = b; return res; },
+    end() { return res; },
   };
   return res;
 }
@@ -64,112 +44,11 @@ function makeRuntime(over: Partial<PluginRuntimeService> = {}): PluginRuntimeSer
 
 beforeEach(() => {
   pluginsEnabledMock.mockClear().mockReturnValue(true);
-  verifyMock.mockClear().mockReturnValue({ id: 5, username: 'ada', is_admin: false });
+  verifyMock.mockClear().mockReturnValue({ id: 5, username: 'ada', role: 'user' });
   extractTokenMock.mockClear().mockReturnValue('tok');
-  oauthTokenMock.mockClear().mockReturnValue({
-    user: { id: 9, username: 'oauth-user', email: 'oauth@example.com', role: 'user' },
-    scopes: ['plugin:mymap-sync:read'],
-    clientId: 'client-1',
-    audience: 'http://localhost:3001/api/plugins/mymap-sync',
-  });
 });
 
 describe('PluginsProxyController', () => {
-  it('authorizes an opted-in route with a plugin OAuth token and binds its user', async () => {
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 3, method: 'GET', path: '/status', auth: true, oauthScope: 'read' }]),
-    } as never);
-    const res = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'mymap-sync',
-      fakeReq('GET', '/status', { headers: { authorization: 'Bearer trekoa_access' } }),
-      res as never,
-    );
-    expect(res.statusCode).toBe(200);
-    expect(runtime.invoke).toHaveBeenCalledWith(
-      'mymap-sync',
-      'invoke.route',
-      expect.objectContaining({
-        routeId: 3,
-        req: expect.objectContaining({ user: { id: 9, username: 'oauth-user', isAdmin: false } }),
-      }),
-      9,
-    );
-  });
-
-  it('rejects a plugin OAuth token with a wrong audience or insufficient scope', async () => {
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 0, method: 'POST', path: '/apply', auth: true, oauthScope: 'write' }]),
-    } as never);
-    const res = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'mymap-sync',
-      fakeReq('POST', '/apply', { headers: { authorization: 'Bearer trekoa_access' } }),
-      res as never,
-    );
-    expect(res.statusCode).toBe(403);
-    expect(runtime.invoke).not.toHaveBeenCalled();
-
-    oauthTokenMock.mockReturnValue({
-      user: { id: 9, username: 'oauth-user', email: '', role: 'user' },
-      scopes: ['places:read'],
-      clientId: 'mcp',
-      audience: 'http://localhost:3001/mcp',
-    });
-    const wrongAudience = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'mymap-sync',
-      fakeReq('POST', '/apply', { headers: { authorization: 'Bearer trekoa_access' } }),
-      wrongAudience as never,
-    );
-    expect(wrongAudience.statusCode).toBe(401);
-  });
-
-  it('rejects invalid OAuth credentials without falling back to session JWT auth', async () => {
-    oauthTokenMock.mockReturnValue(null);
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 0, method: 'GET', path: '/status', auth: true, oauthScope: 'read' }]),
-    } as never);
-    const res = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'mymap-sync',
-      fakeReq('GET', '/status', { headers: { authorization: 'Bearer trekoa_fake' } }),
-      res as never,
-    );
-    expect(res.statusCode).toBe(401);
-    expect(verifyMock).not.toHaveBeenCalled();
-    expect(runtime.invoke).not.toHaveBeenCalled();
-  });
-
-  it('keeps session auth compatible on an OAuth-enabled route', async () => {
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 0, method: 'GET', path: '/status', auth: true, oauthScope: 'read' }]),
-    } as never);
-    const res = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'mymap-sync',
-      fakeReq('GET', '/status', { headers: {}, cookies: { trek_session: 'session' } }),
-      res as never,
-    );
-    expect(res.statusCode).toBe(200);
-    expect(verifyMock).toHaveBeenCalledWith('tok');
-    expect(oauthTokenMock).not.toHaveBeenCalled();
-  });
-
-  it('does not enable OAuth on a session-only route', async () => {
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 0, method: 'GET', path: '/status', auth: true }]),
-    } as never);
-    verifyMock.mockReturnValue(null as never);
-    const res = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'mymap-sync',
-      fakeReq('GET', '/status', { headers: { authorization: 'Bearer trekoa_access' } }),
-      res as never,
-    );
-    expect(res.statusCode).toBe(401);
-    expect(oauthTokenMock).not.toHaveBeenCalled();
-  });
   it('404 when the runtime is disabled', async () => {
     pluginsEnabledMock.mockReturnValue(false);
     const res = fakeRes();
@@ -179,11 +58,7 @@ describe('PluginsProxyController', () => {
 
   it('404 when the plugin is not active', async () => {
     const res = fakeRes();
-    await new PluginsProxyController(makeRuntime({ isActive: vi.fn(() => false) } as never)).proxy(
-      'p',
-      fakeReq('GET', '/status'),
-      res as never,
-    );
+    await new PluginsProxyController(makeRuntime({ isActive: vi.fn(() => false) } as never)).proxy('p', fakeReq('GET', '/status'), res as never);
     expect(res.statusCode).toBe(404);
   });
 
@@ -209,91 +84,66 @@ describe('PluginsProxyController', () => {
     expect(res.body).toBe('{"ok":true}');
     // the child receives only a whitelisted user view, never the token/cookie;
     // the acting user (5) is bound server-side as the 4th invoke arg
-    expect(runtime.invoke).toHaveBeenCalledWith(
-      'p',
-      'invoke.route',
-      expect.objectContaining({
-        routeId: 0,
-        req: expect.objectContaining({ user: { id: 5, username: 'ada', isAdmin: false } }),
-      }),
-      5,
-    );
+    expect(runtime.invoke).toHaveBeenCalledWith('p', 'invoke.route', expect.objectContaining({
+      routeId: 0,
+      req: expect.objectContaining({ user: { id: 5, username: 'ada', isAdmin: false } }),
+    }), 5);
+  });
+
+  it('maps role:admin to isAdmin:true in the forwarded user view', async () => {
+    // Regression: the proxy derives isAdmin from the loaded user's `role`, not a
+    // non-existent `is_admin` field — otherwise every user (admins included) is false.
+    verifyMock.mockReturnValue({ id: 7, username: 'root', role: 'admin' } as never);
+    const runtime = makeRuntime();
+    const res = fakeRes();
+    await new PluginsProxyController(runtime).proxy('p', fakeReq('GET', '/status'), res as never);
+    expect(runtime.invoke).toHaveBeenCalledWith('p', 'invoke.route', expect.objectContaining({
+      req: expect.objectContaining({ user: { id: 7, username: 'root', isAdmin: true } }),
+    }), 7);
   });
 
   it('a public (auth:false) route skips the session check', async () => {
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 1, method: 'POST', path: '/webhook', auth: false }]),
-    } as never);
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 1, method: 'POST', path: '/webhook', auth: false }]) } as never);
     const res = fakeRes();
     await new PluginsProxyController(runtime).proxy('p', fakeReq('POST', '/webhook'), res as never);
     expect(res.statusCode).toBe(200);
     expect(extractTokenMock).not.toHaveBeenCalled();
     // a public route has no session user → no bound acting user (undefined)
-    expect(runtime.invoke).toHaveBeenCalledWith(
-      'p',
-      'invoke.route',
-      expect.objectContaining({
-        req: expect.objectContaining({ user: null }),
-      }),
-      undefined,
-    );
+    expect(runtime.invoke).toHaveBeenCalledWith('p', 'invoke.route', expect.objectContaining({
+      req: expect.objectContaining({ user: null }),
+    }), undefined);
   });
 
   it('forwards the raw request bytes to a webhook (auth:false) route, but withholds them from an authenticated route', async () => {
     // Webhook route → the plugin gets the raw payload so it can verify an HMAC.
-    const wh = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 1, method: 'POST', path: '/webhook', auth: false }]),
-    } as never);
-    await new PluginsProxyController(wh).proxy(
-      'p',
-      fakeReq('POST', '/webhook', { rawBody: Buffer.from('{"a":1}') }),
-      fakeRes() as never,
-    );
+    const wh = makeRuntime({ routesOf: vi.fn(() => [{ i: 1, method: 'POST', path: '/webhook', auth: false }]) } as never);
+    await new PluginsProxyController(wh).proxy('p', fakeReq('POST', '/webhook', { rawBody: Buffer.from('{"a":1}') }), fakeRes() as never);
     // forwarded as base64 so a non-UTF-8 signed body survives
-    expect(wh.invoke).toHaveBeenCalledWith(
-      'p',
-      'invoke.route',
-      expect.objectContaining({
-        req: expect.objectContaining({ rawBodyBase64: Buffer.from('{"a":1}').toString('base64') }),
-      }),
-      undefined,
-    );
+    expect(wh.invoke).toHaveBeenCalledWith('p', 'invoke.route', expect.objectContaining({
+      req: expect.objectContaining({ rawBodyBase64: Buffer.from('{"a":1}').toString('base64') }),
+    }), undefined);
 
     // Authenticated route → raw bytes are never handed to the plugin.
     const auth = makeRuntime();
-    await new PluginsProxyController(auth).proxy(
-      'p',
-      fakeReq('GET', '/status', { rawBody: Buffer.from('secret') }),
-      fakeRes() as never,
-    );
-    const fwd = (auth.invoke as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][2] as {
-      req: { rawBodyBase64?: unknown };
-    };
+    await new PluginsProxyController(auth).proxy('p', fakeReq('GET', '/status', { rawBody: Buffer.from('secret') }), fakeRes() as never);
+    const fwd = (auth.invoke as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][2] as { req: { rawBodyBase64?: unknown } };
     expect(fwd.req.rawBodyBase64).toBeUndefined();
   });
 
   it('a webhook (auth:false) route gets ONLY allowlisted inbound headers — never Cookie/Authorization', async () => {
-    const runtime = makeRuntime({
-      routesOf: vi.fn(() => [{ i: 1, method: 'POST', path: '/webhook', auth: false }]),
-    } as never);
+    const runtime = makeRuntime({ routesOf: vi.fn(() => [{ i: 1, method: 'POST', path: '/webhook', auth: false }]) } as never);
     const res = fakeRes();
     const headers = {
       'content-type': 'application/json',
       'stripe-signature': 't=1,v1=abc',
       'x-hub-signature-256': 'sha256=deadbeef',
-      cookie: 'trek_session=secret', // must be dropped
-      authorization: 'Bearer leak', // must be dropped
-      'x-socket-id': 'sock-1', // must be dropped
+      cookie: 'trek_session=secret',              // must be dropped
+      authorization: 'Bearer leak',               // must be dropped
+      'x-socket-id': 'sock-1',                    // must be dropped
     };
     await new PluginsProxyController(runtime).proxy('p', fakeReq('POST', '/webhook', { headers }), res as never);
-    const forwarded = (runtime.invoke as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][2] as {
-      req: { headers: Record<string, string> };
-    };
-    expect(forwarded.req.headers).toEqual({
-      'content-type': 'application/json',
-      'stripe-signature': 't=1,v1=abc',
-      'x-hub-signature-256': 'sha256=deadbeef',
-    });
+    const forwarded = (runtime.invoke as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][2] as { req: { headers: Record<string, string> } };
+    expect(forwarded.req.headers).toEqual({ 'content-type': 'application/json', 'stripe-signature': 't=1,v1=abc', 'x-hub-signature-256': 'sha256=deadbeef' });
     expect(forwarded.req.headers.cookie).toBeUndefined();
     expect(forwarded.req.headers.authorization).toBeUndefined();
     expect(forwarded.req.headers['x-socket-id']).toBeUndefined();
@@ -302,24 +152,14 @@ describe('PluginsProxyController', () => {
   it('an authenticated route gets NO inbound headers (even safe ones)', async () => {
     const runtime = makeRuntime(); // /status, auth:true
     const res = fakeRes();
-    await new PluginsProxyController(runtime).proxy(
-      'p',
-      fakeReq('GET', '/status', { headers: { 'content-type': 'application/json', 'stripe-signature': 'x' } }),
-      res as never,
-    );
-    const forwarded = (runtime.invoke as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][2] as {
-      req: { headers: Record<string, string> };
-    };
+    await new PluginsProxyController(runtime).proxy('p', fakeReq('GET', '/status', { headers: { 'content-type': 'application/json', 'stripe-signature': 'x' } }), res as never);
+    const forwarded = (runtime.invoke as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][2] as { req: { headers: Record<string, string> } };
     expect(forwarded.req.headers).toEqual({});
   });
 
   it('strips unsafe response headers from the child', async () => {
     const runtime = makeRuntime({
-      invoke: vi.fn(async () => ({
-        status: 200,
-        headers: { 'content-type': 'text/plain', 'set-cookie': 'evil=1' },
-        body: 'ok',
-      })),
+      invoke: vi.fn(async () => ({ status: 200, headers: { 'content-type': 'text/plain', 'set-cookie': 'evil=1' }, body: 'ok' })),
     } as never);
     const res = fakeRes();
     await new PluginsProxyController(runtime).proxy('p', fakeReq('GET', '/status'), res as never);
@@ -328,11 +168,7 @@ describe('PluginsProxyController', () => {
   });
 
   it('502 when the plugin invoke throws', async () => {
-    const runtime = makeRuntime({
-      invoke: vi.fn(async () => {
-        throw new Error('down');
-      }),
-    } as never);
+    const runtime = makeRuntime({ invoke: vi.fn(async () => { throw new Error('down'); }) } as never);
     const res = fakeRes();
     await new PluginsProxyController(runtime).proxy('p', fakeReq('GET', '/status'), res as never);
     expect(res.statusCode).toBe(502);

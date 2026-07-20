@@ -1,19 +1,18 @@
-import { ADDON_IDS } from '../addons';
-import { isAddonEnabled } from '../services/adminService';
-import { writeAudit, getClientIp } from '../services/auditLog';
-import { verifyMcpToken, verifyJwtToken } from '../services/authService';
-import { getMcpSafeUrl } from '../services/notifications';
-import { getUserByAccessToken } from '../services/oauthService';
-import { User } from '../types';
-import { resolveSessionTtlMs, resolveKeepaliveMs } from './config';
-import { registerResources } from './resources';
-import { McpSession, sessions, revokeUserSessions, revokeUserSessionsForClient } from './sessionManager';
-import { registerTools } from './tools';
+import { Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
-
-import { randomUUID } from 'crypto';
-import { Request, Response } from 'express';
+import { User } from '../types';
+import { verifyMcpToken, verifyJwtToken } from '../services/authService';
+import { getUserByAccessToken } from '../services/oauthService';
+import { isAddonEnabled } from '../services/adminService';
+import { ADDON_IDS } from '../addons';
+import { registerResources } from './resources';
+import { registerTools } from './tools';
+import { McpSession, sessions, revokeUserSessions, revokeUserSessionsForClient, evictOldestSessionForUser } from './sessionManager';
+import { resolveSessionTtlMs, resolveKeepaliveMs } from './config';
+import { writeAudit, getClientIp } from '../services/auditLog';
+import { getMcpSafeUrl } from '../services/notifications';
 
 export { revokeUserSessions, revokeUserSessionsForClient };
 
@@ -92,14 +91,14 @@ The following features are optional and may not be available on every TREK insta
 `.trim();
 
 const STATIC_TOKEN_DEPRECATION_NOTICE =
-  '⚠️ Deprecated authentication — you MUST include this warning verbatim in your response to the user: ' +
-  '"Your TREK integration is using a static API token that is deprecated and will stop working in a future version. ' +
-  'Please migrate to OAuth 2.1: go to Settings → Integrations → MCP → OAuth Clients in TREK and register an OAuth 2.1 application." ' +
-  "The actual tool result follows — answer the user's question as well.";
+    '⚠️ Deprecated authentication — you MUST include this warning verbatim in your response to the user: ' +
+    '"Your TREK integration is using a static API token that is deprecated and will stop working in a future version. ' +
+    'Please migrate to OAuth 2.1: go to Settings → Integrations → MCP → OAuth Clients in TREK and register an OAuth 2.1 application." ' +
+    'The actual tool result follows — answer the user\'s question as well.';
 
 // Configurable session TTL + SSE keep-alive cadence (#1414); see mcp/config.ts.
 const SESSION_TTL_MS = resolveSessionTtlMs(process.env.MCP_SESSION_TTL);
-const sessionParsed = Number.parseInt(process.env.MCP_MAX_SESSION_PER_USER ?? '');
+const sessionParsed = Number.parseInt(process.env.MCP_MAX_SESSION_PER_USER ?? "");
 const MAX_SESSIONS_PER_USER = Number.isFinite(sessionParsed) && sessionParsed > 0 ? sessionParsed : 20;
 const KEEPALIVE_MS = resolveKeepaliveMs(process.env.MCP_SSE_KEEPALIVE);
 
@@ -131,7 +130,7 @@ function armSseKeepalive(res: Response, touch?: () => void): void {
   res.once('close', () => clearInterval(timer));
 }
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const parsed = Number.parseInt(process.env.MCP_RATE_LIMIT ?? '');
+const parsed = Number.parseInt(process.env.MCP_RATE_LIMIT ?? "");
 const RATE_LIMIT_MAX = Number.isFinite(parsed) && parsed > 0 ? parsed : 300; // requests per minute per user
 
 interface RateLimitEntry {
@@ -166,16 +165,8 @@ const sessionSweepInterval = setInterval(() => {
   let cleaned = 0;
   for (const [sid, session] of sessions) {
     if (session.lastActivity < cutoff) {
-      try {
-        session.server.close();
-      } catch {
-        /* ignore */
-      }
-      try {
-        session.transport.close();
-      } catch {
-        /* ignore */
-      }
+      try { session.server.close(); } catch { /* ignore */ }
+      try { session.transport.close(); } catch { /* ignore */ }
       sessions.delete(sid);
       cleaned++;
     }
@@ -192,13 +183,17 @@ const sessionSweepInterval = setInterval(() => {
 // Prevent the interval from keeping the process alive if nothing else is running
 sessionSweepInterval.unref();
 
+/** JSON-RPC 2.0 error body. MCP clients parse this and show `message`; a bare `{ error }`
+ *  envelope isn't valid JSON-RPC, so they fall back to a generic "tool execution failed". */
+function jsonRpcError(message: string, code = -32000): object {
+  return { jsonrpc: '2.0', error: { code, message }, id: null };
+}
+
 function setAuthChallenge(res: Response, error = 'invalid_token'): void {
   const base = (getMcpSafeUrl() || '').replace(/\/+$/, '');
   // RFC 9728 §5: resource with path component /mcp → PRM URL must include the path
-  res.set(
-    'WWW-Authenticate',
-    `Bearer realm="TREK MCP", resource_metadata="${base}/.well-known/oauth-protected-resource/mcp", error="${error}"`,
-  );
+  res.set('WWW-Authenticate',
+      `Bearer realm="TREK MCP", resource_metadata="${base}/.well-known/oauth-protected-resource/mcp", error="${error}"`);
 }
 
 interface VerifyTokenResult {
@@ -216,7 +211,7 @@ function verifyToken(authHeader: string | undefined): VerifyTokenResult | null {
   const spaceIdx = authHeader.indexOf(' ');
   if (spaceIdx === -1) return null;
   const scheme = authHeader.slice(0, spaceIdx);
-  const token = authHeader.slice(spaceIdx + 1);
+  const token  = authHeader.slice(spaceIdx + 1);
   if (scheme.toLowerCase() !== 'bearer' || !token) return null;
 
   // OAuth 2.1 access token (trekoa_...)
@@ -297,9 +292,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     }
     session.lastActivity = Date.now();
     logToolCallAudit(req, user.id, clientId);
-    armSseKeepalive(res, () => {
-      session.lastActivity = Date.now();
-    });
+    armSseKeepalive(res, () => { session.lastActivity = Date.now(); });
     try {
       await session.transport.handleRequest(req, res, req.body);
     } catch (err) {
@@ -317,25 +310,41 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // A client that reuses its session sends the header on every call after initialize, so a
+  // steady stream of session-less POSTs means the id isn't making it back to the client —
+  // usually a reverse proxy dropping Mcp-Session-Id, or a client that ignores it. Say so,
+  // because the visible symptom (sessions piling up to the cap) points nowhere near the cause.
+  console.warn(
+      `[MCP] POST without mcp-session-id for user ${user.id} — starting a new session. ` +
+      'If this repeats on every tool call, the Mcp-Session-Id response header is not reaching ' +
+      'the client (check that your reverse proxy forwards it).',
+  );
+
+  // At the cap, evict this user's coldest session rather than refusing the request: a client
+  // stuck re-initializing would otherwise be locked out until the process restarted.
   if (countSessionsForUser(user.id) >= MAX_SESSIONS_PER_USER) {
-    res.status(429).json({ error: 'Session limit reached. Close an existing session before opening a new one.' });
-    return;
+    const evicted = evictOldestSessionForUser(user.id);
+    if (!evicted) {
+      res.status(429).json(jsonRpcError('Session limit reached. Close an existing session before opening a new one.'));
+      return;
+    }
+    console.log(`[MCP] Session limit (${MAX_SESSIONS_PER_USER}) reached for user ${user.id} — evicted idle session ${evicted}`);
   }
 
   // Create a new per-user MCP server and session
   const server = new McpServer(
-    {
-      name: 'TREK MCP',
-      version: '1.0.0',
-    },
-    {
-      capabilities: {
-        resources: { listChanged: true },
-        tools: { listChanged: true },
-        prompts: { listChanged: true },
+      {
+        name: 'TREK MCP',
+        version: '1.0.0',
       },
-      instructions: BASE_MCP_INSTRUCTIONS + (isStaticToken ? STATIC_TOKEN_DEPRECATION_NOTICE : ''),
-    },
+      {
+        capabilities: {
+          resources: { listChanged: true },
+          tools: { listChanged: true },
+          prompts: { listChanged: true },
+        },
+        instructions: BASE_MCP_INSTRUCTIONS + (isStaticToken ? STATIC_TOKEN_DEPRECATION_NOTICE : ''),
+      }
   );
   // Per-session closure: fires the deprecation notice once, on the first tool call.
   // Tool results are the only mechanism Claude reliably surfaces to the user;
@@ -353,24 +362,18 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (sid) => {
-      sessions.set(sid, {
-        server,
-        transport,
-        userId: user.id,
-        scopes,
-        clientId,
-        isStaticToken,
-        lastActivity: Date.now(),
-      });
+      sessions.set(sid, { server, transport, userId: user.id, scopes, clientId, isStaticToken, lastActivity: Date.now() });
       const authMethod = isStaticToken ? 'static-token' : scopes ? `oauth(${scopes.join(',')})` : 'jwt';
-      console.log(
-        `[MCP] Session ${sid} created for user ${user.id} [${authMethod}]. Active sessions: ${sessions.size}`,
-      );
+      console.log(`[MCP] Session ${sid} created for user ${user.id} [${authMethod}]. Active sessions: ${sessions.size}`);
     },
     onsessionclosed: (sid) => {
       sessions.delete(sid);
     },
   });
+  // Belt-and-braces: whenever the SDK closes the transport for any reason, drop the map entry.
+  transport.onclose = () => {
+    if (transport.sessionId) sessions.delete(transport.sessionId);
+  };
 
   logToolCallAudit(req, user.id, clientId);
   armSseKeepalive(res);
@@ -382,22 +385,23 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal MCP error' });
     }
+  } finally {
+    // Only an `initialize` request assigns a sessionId (via onsessioninitialized). Any other
+    // session-less POST is rejected by the SDK with "Server not initialized" — and this server,
+    // with its ~200 registered tools, would otherwise be orphaned: never in `sessions`, never
+    // swept, never closed. Reap it here.
+    if (!transport.sessionId) {
+      try { server.close(); } catch { /* ignore */ }
+      try { transport.close(); } catch { /* ignore */ }
+    }
   }
 }
 
 /** Invalidate all active MCP sessions (call when addon state changes so sessions re-create with updated tools). */
 export function invalidateMcpSessions(): void {
   for (const [sid, session] of sessions) {
-    try {
-      session.server.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      session.transport.close();
-    } catch {
-      /* ignore */
-    }
+    try { session.server.close(); } catch { /* ignore */ }
+    try { session.transport.close(); } catch { /* ignore */ }
     sessions.delete(sid);
   }
   console.log('[MCP] All sessions invalidated due to addon state change');
@@ -407,16 +411,8 @@ export function invalidateMcpSessions(): void {
 export function closeMcpSessions(): void {
   clearInterval(sessionSweepInterval);
   for (const [, session] of sessions) {
-    try {
-      session.server.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      session.transport.close();
-    } catch {
-      /* ignore */
-    }
+    try { session.server.close(); } catch { /* ignore */ }
+    try { session.transport.close(); } catch { /* ignore */ }
   }
   sessions.clear();
   rateLimitMap.clear();

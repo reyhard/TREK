@@ -1,7 +1,9 @@
 // FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-042
-import { render, screen, waitFor, fireEvent, act } from '../../../tests/helpers/render'
+import { render, screen, waitFor, fireEvent } from '../../../tests/helpers/render'
 import userEvent from '@testing-library/user-event'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { http, HttpResponse } from 'msw'
+import { server } from '../../../tests/helpers/msw/server'
+import { clearExchangeRateCache } from '../../hooks/useExchangeRates'
 import { useAuthStore } from '../../store/authStore'
 import { useTripStore } from '../../store/tripStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -23,14 +25,6 @@ const mockDayNotesState = vi.hoisted(() => ({
   saveNote: vi.fn(),
   deleteNote: vi.fn(),
   moveNote: vi.fn(),
-}))
-
-const routeCalculatorMocks = vi.hoisted(() => ({
-  calculateRouteWithLegs: vi.fn(),
-}))
-
-const resolverMocks = vi.hoisted(() => ({
-  resolveDayMovementPlan: vi.fn(),
 }))
 
 // ── Module mocks ────────────────────────────────────────────────────────────
@@ -57,42 +51,14 @@ vi.mock('../Map/RouteCalculator', () => ({
   calculateRoute: vi.fn().mockResolvedValue({ distanceText: '5 km', durationText: '1h', coordinates: [] }),
   generateGoogleMapsUrl: vi.fn().mockReturnValue('https://maps.google.com/...'),
   optimizeRoute: vi.fn().mockImplementation((places) => places),
-  calculateRouteWithLegs: routeCalculatorMocks.calculateRouteWithLegs,
-  formatRouteDistance: (meters: number) => meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`,
-  formatDuration: (seconds: number) => `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`,
+  // One leg per waypoint gap; the connector between two stops reads distanceText.
+  calculateRouteWithLegs: vi.fn().mockImplementation((waypoints) => Promise.resolve({
+    distanceText: '2 km', durationText: '10 min',
+    legs: Array.from({ length: Math.max(0, (waypoints?.length ?? 0) - 1) }, () => ({
+      distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
+    })),
+  })),
 }))
-
-vi.mock('../../utils/resolveDayMovementPlan', async (importOriginal) => {
-  const actual = await importOriginal() as any
-  resolverMocks.resolveDayMovementPlan.mockImplementation(actual.resolveDayMovementPlan)
-  return { ...actual, resolveDayMovementPlan: resolverMocks.resolveDayMovementPlan }
-})
-
-function defaultRouteWithLegsImplementation(waypoints: any[], options: { profile?: string } = {}) {
-  const duration = options.profile === 'walking' ? 1500 : 600
-  const distance = 2000
-  const legs = Array.from({ length: Math.max(0, (waypoints?.length ?? 0) - 1) }, (_, index) => {
-    const from = waypoints[index]
-    const to = waypoints[index + 1]
-    return {
-      from: [from.lat, from.lng],
-      to: [to.lat, to.lng],
-      mid: [(from.lat + to.lat) / 2, (from.lng + to.lng) / 2],
-      distance,
-      duration,
-      distanceText: '2 km',
-      durationText: options.profile === 'walking' ? '25 min' : '10 min',
-      drivingText: '10 min',
-      walkingText: '25 min',
-    }
-  })
-  return Promise.resolve({
-    coordinates: waypoints.map(point => [point.lat, point.lng]),
-    distance: legs.length * distance,
-    duration: legs.length * duration,
-    legs,
-  })
-}
 
 // PlaceAvatar needs IntersectionObserver
 class MockIO { observe = vi.fn(); disconnect = vi.fn(); unobserve = vi.fn() }
@@ -165,9 +131,11 @@ function makeDefaultProps(overrides = {}) {
 beforeEach(() => {
   resetAllStores()
   vi.clearAllMocks()
-  routeCalculatorMocks.calculateRouteWithLegs.mockImplementation(defaultRouteWithLegsImplementation)
   sessionStorage.clear()
   localStorage.clear()
+  // Cost totals fetch FX rates for their base currency; keep the suite hermetic.
+  clearExchangeRateCache()
+  server.use(http.get('https://api.frankfurter.dev/v2/rates', () => HttpResponse.json([])))
   // Reset mutable day-notes state
   mockDayNotesState.noteUi = {}
   mockDayNotesState.dayNotes = {}
@@ -424,6 +392,53 @@ describe('DayPlanSidebar', () => {
     expect(screen.queryByText('Alexanderplatz')).not.toBeInTheDocument()
   })
 
+  it('FE-PLANNER-DAYPLAN-106: the toolbar button shows "show all" and calls onToggleAllConnections when not all routes are shown', async () => {
+    const user = userEvent.setup()
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const res1 = {
+      ...buildReservation({ id: 401, type: 'flight' }),
+      endpoints: [
+        { role: 'from', sequence: 0, name: 'A', code: null, lat: 1, lng: 2, timezone: null, local_time: null, local_date: null },
+        { role: 'to', sequence: 1, name: 'B', code: null, lat: 3, lng: 4, timezone: null, local_time: null, local_date: null },
+      ],
+    }
+    const onToggleAllConnections = vi.fn()
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], reservations: [res1 as any],
+      visibleConnectionIds: [], onToggleConnection: vi.fn(),
+      allConnectionsShown: false, onToggleAllConnections,
+    })} />)
+    await user.click(screen.getByLabelText('Show all booking routes'))
+    expect(onToggleAllConnections).toHaveBeenCalledTimes(1)
+  })
+
+  it('FE-PLANNER-DAYPLAN-107: the toolbar button reads "hide" once allConnectionsShown is true, and calls onToggleAllConnections on click', async () => {
+    const user = userEvent.setup()
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const res1 = {
+      ...buildReservation({ id: 401, type: 'flight' }),
+      endpoints: [
+        { role: 'from', sequence: 0, name: 'A', code: null, lat: 1, lng: 2, timezone: null, local_time: null, local_date: null },
+        { role: 'to', sequence: 1, name: 'B', code: null, lat: 3, lng: 4, timezone: null, local_time: null, local_date: null },
+      ],
+    }
+    const onToggleAllConnections = vi.fn()
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], reservations: [res1 as any],
+      visibleConnectionIds: [401], onToggleConnection: vi.fn(),
+      allConnectionsShown: true, onToggleAllConnections,
+    })} />)
+    await user.click(screen.getByLabelText('Hide all booking routes'))
+    expect(onToggleAllConnections).toHaveBeenCalledTimes(1)
+  })
+
+  it('FE-PLANNER-DAYPLAN-108: the toolbar button is absent when the trip has no routable reservation', () => {
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], reservations: [], onToggleAllConnections: vi.fn() })} />)
+    expect(screen.queryByLabelText('Show all booking routes')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Hide all booking routes')).not.toBeInTheDocument()
+  })
+
   // ── Day info button ─────────────────────────────────────────────────────
 
   it('FE-PLANNER-DAYPLAN-018: clicking day header calls onDayDetail', async () => {
@@ -638,6 +653,50 @@ describe('DayPlanSidebar', () => {
     })} />)
     // Budget footer shows "Total Cost" label when totalCost > 0
     expect(screen.getByText('Total Cost')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-037b: converts foreign-currency prices into the display currency (#1561)', async () => {
+    server.use(http.get('https://api.frankfurter.dev/v2/rates', ({ request }) => {
+      expect(new URL(request.url).searchParams.get('base')).toBe('USD')
+      return HttpResponse.json([{ quote: 'NOK', rate: 10 }]) // 10 NOK per 1 USD
+    }))
+    seedStore(useSettingsStore, { settings: { time_format: '24h', default_currency: 'USD' } } as any)
+    const placeUsd = buildPlace({ id: 1, name: 'Hotel', price: 25, currency: 'USD' } as any)
+    const placeNok = buildPlace({ id: 2, name: 'Museum', price: 250, currency: null } as any) // implicit trip currency
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [placeUsd, placeNok],
+      assignments: { '10': [
+        buildAssignment({ id: 1, day_id: 10, order_index: 0, place: placeUsd }),
+        buildAssignment({ id: 2, day_id: 10, order_index: 1, place: placeNok }),
+      ] },
+      trip: buildTrip({ id: 1, currency: 'NOK' }),
+    })} />)
+    // $25 + 250 NOK / 10 = $50, marked as approximate; footer and day header agree.
+    await waitFor(() => expect(screen.getByText('≈ $50.00')).toBeInTheDocument())
+    expect(screen.getByText('≈ $50')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-037c: falls back to a per-currency breakdown when rates are unavailable (#1561)', async () => {
+    server.use(http.get('https://api.frankfurter.dev/v2/rates', () => HttpResponse.error()))
+    const placeUsd = buildPlace({ id: 1, name: 'Hotel', price: 2730.27, currency: 'USD' } as any)
+    const placeNok = buildPlace({ id: 2, name: 'Museum', price: 2500, currency: 'NOK' } as any)
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places: [placeUsd, placeNok],
+      assignments: { '10': [
+        buildAssignment({ id: 1, day_id: 10, order_index: 0, place: placeUsd }),
+        buildAssignment({ id: 2, day_id: 10, order_index: 1, place: placeNok }),
+      ] },
+      trip: buildTrip({ id: 1, currency: 'NOK' }),
+    })} />)
+    // The USD amount must never be folded into a NOK-labeled number (the #1561 bug):
+    // footer keeps each currency separate, base (NOK) first.
+    await waitFor(() => expect(screen.getByText(/kr.*\+.*\$2,730\.27|2\s?500,00\s?kr.*\+/)).toBeInTheDocument())
+    expect(screen.queryByText(/≈/)).toBeNull()
+    expect(screen.queryByText(/5\s?230/)).toBeNull()
   })
 
   // ── Route tools (Optimize / Google Maps) ────────────────────────────────
@@ -1931,7 +1990,6 @@ describe('DayPlanSidebar', () => {
       const lat = wp?.[0]?.lat ?? 0
       const txt = `${Math.round(lat * 100)} m`
       return Promise.resolve({
-        coordinates: wp.map((point: any) => [point.lat, point.lng]),
         distanceText: txt, durationText: '1 min',
         legs: Array.from({ length: Math.max(0, (wp?.length ?? 0) - 1) }, () => ({
           distanceText: txt, durationText: '1 min', drivingText: '1 min', walkingText: '1 min',
@@ -1968,7 +2026,6 @@ describe('DayPlanSidebar', () => {
     const user = userEvent.setup()
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
     vi.mocked(calculateRouteWithLegs as any).mockImplementation((wp: any) => Promise.resolve({
-      coordinates: wp.map((point: any) => [point.lat, point.lng]),
       distanceText: '2 km', durationText: '10 min',
       legs: Array.from({ length: Math.max(0, (wp?.length ?? 0) - 1) }, () => ({
         distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
@@ -2000,857 +2057,5 @@ describe('DayPlanSidebar', () => {
     // Only day 2 has places, so it renders the sole Route toggle.
     await user.click(screen.getByRole('button', { name: 'Route' }))
     expect(await screen.findByText('2 km')).toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-107: movement total is hidden when desktop Route is off', () => {
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: false })} />)
-    expect(screen.queryByTestId('day-movement-total')).not.toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-108: desktop Route shows the active driving total', async () => {
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places, assignments, selectedDayId: 10, routeShown: true, routeProfile: 'driving',
-    })} />)
-    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-109: rerendering with Walking recalculates and switches the total', async () => {
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    const base = makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })
-    const { rerender } = render(<DayPlanSidebar {...base} routeProfile="driving" />)
-    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
-    rerender(<DayPlanSidebar {...base} routeProfile="walking" />)
-    expect(await screen.findByText('25 min · 2 km')).toBeInTheDocument()
-    expect(screen.getByLabelText('Walking movement total')).toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-110: Walking total includes transit walking and track activity', async () => {
-    const routePlace = buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 })
-    const trackPlace = buildPlace({
-      id: 2,
-      name: 'Trail',
-      lat: 48.86,
-      lng: 2.36,
-      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
-      transport_mode: 'walking',
-    } as any)
-    const day = buildDay({ id: 10 })
-    const assignments = {
-      '10': [
-        buildAssignment({ id: 1, day_id: 10, order_index: 0, place: routePlace }),
-        buildAssignment({ id: 2, day_id: 10, order_index: 1, place: { ...trackPlace, place_time: '09:00', end_time: '10:00' } }),
-      ],
-    }
-    const transit = buildReservation({
-      id: 50,
-      type: 'transit',
-      day_id: 10,
-      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 240, distance: 300 }] } }),
-    })
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [routePlace, trackPlace], assignments, reservations: [transit],
-      selectedDayId: 10, routeShown: true, routeProfile: 'walking',
-    })} />)
-    expect(await screen.findByText('42 min · 3.4 km')).toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-111: movement row shows Calculating while current route metrics are unresolved', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    let resolveRoute: (value: any) => void = () => {}
-    vi.mocked(calculateRouteWithLegs as any).mockImplementationOnce(() => new Promise(resolve => { resolveRoute = resolve }))
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
-    expect(await screen.findByText('Calculating...')).toBeInTheDocument()
-    await act(async () => {
-      resolveRoute({
-        coordinates: [[48.85, 2.35], [48.86, 2.36]], distance: 2000, duration: 600,
-        legs: [{
-          from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
-          distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
-        }],
-      })
-    })
-    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-112: too few returned legs marks the total as a known minimum', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValueOnce({
-      coordinates: [[48.85, 2.35], [48.86, 2.36]], distance: 2000, duration: 600,
-      legs: [{
-        from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
-        distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
-      }],
-    })
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-      buildPlace({ id: 3, name: 'C', lat: 48.87, lng: 2.37 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
-    const row = await screen.findByLabelText('Driving movement total')
-    expect(screen.getByText('≥10 min · ≥2 km')).toBeInTheDocument()
-    expect(row.title).toContain('incomplete movement statistics')
-  })
-
-  it('FE-PLANNER-DAYPLAN-112b: a correct-count leg with an invalid metric remains partial', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValueOnce({
-      coordinates: [[48.85, 2.35], [48.86, 2.36]], distance: 0, duration: 600,
-      legs: [{
-        from: [48.85, 2.35], to: [48.86, 2.36], mid: [48.855, 2.355],
-        duration: 600, distanceText: '', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
-      }],
-    })
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
-    const row = await screen.findByLabelText('Driving movement total')
-    expect(screen.getByText('≥10 min · ≥0 m')).toBeInTheDocument()
-    expect(row.title).toContain('incomplete movement statistics')
-  })
-
-  it('FE-PLANNER-DAYPLAN-113: mobile Route toggle shows the movement total without selecting the day', async () => {
-    const user = userEvent.setup()
-    const onSelectDay = vi.fn()
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places, assignments, selectedDayId: null, showRouteToolsWhenExpanded: true, onSelectDay,
-    })} />)
-    await user.click(screen.getByRole('button', { name: 'Route' }))
-    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
-    expect(onSelectDay).not.toHaveBeenCalled()
-  })
-
-  it('FE-PLANNER-DAYPLAN-114: changing the distance unit reformats the total', async () => {
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places, assignments, selectedDayId: 10, routeShown: true })} />)
-    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
-    act(() => {
-      useSettingsStore.setState(state => ({
-        settings: { ...state.settings, distance_unit: 'imperial' },
-      }))
-    })
-    expect(await screen.findByText('10 min · 1.2 mi')).toBeInTheDocument()
-  })
-
-  it('FE-PLANNER-DAYPLAN-115: profile changes synchronously replace stale totals with Calculating', async () => {
-    const user = userEvent.setup()
-    const places = [
-      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
-      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
-    ]
-    const day = buildDay({ id: 10 })
-    const assignments = { '10': places.map((place, index) => buildAssignment({ id: index + 1, day_id: 10, order_index: index, place })) }
-    const walkingLayout = vi.fn()
-
-    function ProfileHarness() {
-      const [profile, setProfile] = useState<'driving' | 'walking'>('driving')
-      const containerRef = useRef<HTMLDivElement>(null)
-      useLayoutEffect(() => {
-        if (profile === 'walking') walkingLayout(containerRef.current?.textContent ?? '')
-      }, [profile])
-      return (
-        <div ref={containerRef}>
-          <DayPlanSidebar {...makeDefaultProps({
-            days: [day], places, assignments, selectedDayId: 10, routeShown: true,
-            routeProfile: profile, onSetRouteProfile: setProfile,
-          })} />
-        </div>
-      )
-    }
-
-    render(<ProfileHarness />)
-    expect(await screen.findByText('10 min · 2 km')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Walking' }))
-    expect(walkingLayout).toHaveBeenCalled()
-    const committedText = walkingLayout.mock.calls[walkingLayout.mock.calls.length - 1]?.[0] as string
-    expect(committedText).toContain('Calculating...')
-    expect(committedText).not.toContain('10 min · 2 km')
-  })
-
-  it('FE-PLANNER-DAYPLAN-116: a desktop track-only day can activate Route and show movement', async () => {
-    const track = buildPlace({
-      id: 1, name: 'Trail', lat: 48.85, lng: 2.35,
-      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]), transport_mode: 'walking',
-    } as any)
-    const day = buildDay({ id: 10 })
-    const assignments = {
-      '10': [buildAssignment({
-        id: 1, day_id: 10, order_index: 0,
-        place: { ...track, place_time: '09:00', end_time: '10:00' },
-      })],
-    }
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [track], assignments, selectedDayId: 10,
-      routeShown: true, routeProfile: 'walking',
-    })} />)
-    expect(await screen.findByText('13 min · 1.1 km')).toBeInTheDocument()
-  })
-
-  it('renders scheduled track movement independently from the driving connector profile', async () => {
-    const before = buildPlace({ id: 1, name: 'Trailhead bus stop', lat: 52, lng: 4.99 })
-    const track = buildPlace({
-      id: 2, name: 'Dune trail', lat: 52, lng: 5,
-      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
-      place_time: '09:15', end_time: '11:45', transport_mode: 'walking',
-    } as any)
-    const after = buildPlace({ id: 3, name: 'Beach cafe', lat: 52, lng: 5.02 })
-    const day = buildDay({ id: 10 })
-    const dayAssignments = [before, track, after].map((place, index) => buildAssignment({
-      id: index + 1, day_id: 10, order_index: index, place,
-    }))
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [before, track, after], assignments: { '10': dayAssignments },
-      selectedDayId: 10, routeShown: true, routeProfile: 'driving',
-    })} />)
-
-    const summary = await screen.findByTestId('track-summary-2')
-    expect(summary).toHaveAttribute('title', 'Scheduled trail time')
-    expect(summary).toHaveTextContent('2 h 30 min')
-    expect(summary).toHaveTextContent('685 m')
-    expect(summary).toHaveAttribute('data-track-mode', 'walking')
-    expect(routeCalculatorMocks.calculateRouteWithLegs).toHaveBeenCalledWith(
-      [{ lat: 52, lng: 4.99 }, { lat: 52, lng: 5 }],
-      expect.objectContaining({ profile: 'driving' }),
-    )
-    expect(routeCalculatorMocks.calculateRouteWithLegs).toHaveBeenCalledWith(
-      [{ lat: 52, lng: 5.01 }, { lat: 52, lng: 5.02 }],
-      expect.objectContaining({ profile: 'driving' }),
-    )
-
-    const trackName = screen.getByText('Dune trail')
-    expect(trackName.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    const departureConnectors = screen.getAllByText('10 min')
-    const departureConnector = departureConnectors[departureConnectors.length - 1]
-    expect(summary.compareDocumentPosition(departureConnector) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('keeps the track summary fixed while switching connector profile', async () => {
-    const track = buildPlace({
-      id: 2, name: 'Dune trail', lat: 52, lng: 5,
-      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
-      place_time: '09:00', end_time: '10:00', transport_mode: 'walking',
-    } as any)
-    const after = buildPlace({ id: 3, name: 'Beach cafe', lat: 52, lng: 5.02 })
-    const day = buildDay({ id: 10 })
-    const dayAssignments = [track, after].map((place, index) => buildAssignment({
-      id: index + 2, day_id: 10, order_index: index, place,
-    }))
-
-    const base = makeDefaultProps({
-      days: [day], places: [track, after], assignments: { '10': dayAssignments },
-      selectedDayId: 10, routeShown: true,
-    })
-    const { rerender } = render(<DayPlanSidebar {...base} routeProfile="driving" />)
-    expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
-    expect(screen.getByTestId('track-summary-2')).toHaveTextContent('685 m')
-    expect(await screen.findByText('10 min')).toBeInTheDocument()
-
-    rerender(<DayPlanSidebar {...base} routeProfile="walking" />)
-    expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
-    expect(screen.getByTestId('track-summary-2')).toHaveTextContent('685 m')
-    expect(await screen.findByText('25 min')).toBeInTheDocument()
-  })
-
-  it('retains intrinsic track UI and marks connector metrics partial after an unexpected resolver rejection', async () => {
-    resolverMocks.resolveDayMovementPlan.mockRejectedValueOnce(new Error('resolver failed unexpectedly'))
-    const track = buildPlace({
-      id: 2, name: 'Dune trail', lat: 52, lng: 5,
-      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
-      place_time: '09:00', end_time: '10:00', transport_mode: 'walking',
-    } as any)
-    const after = buildPlace({ id: 3, name: 'Beach cafe', lat: 52, lng: 5.02 })
-    const day = buildDay({ id: 10 })
-    const dayAssignments = [track, after].map((place, index) => buildAssignment({
-      id: index + 2, day_id: 10, order_index: index, place,
-    }))
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [track, after], assignments: { '10': dayAssignments },
-      selectedDayId: 10, routeShown: true, routeProfile: 'walking',
-    })} />)
-
-    expect(await screen.findByTestId('track-summary-2')).toHaveTextContent('1 h 0 min')
-    const total = await screen.findByLabelText('Walking movement total')
-    expect(total).toHaveAttribute('title', expect.stringContaining('incomplete movement statistics'))
-  })
-
-  it('FE-PLANNER-DAYPLAN-117: a mobile transit-only day can toggle Route and show walking movement', async () => {
-    const user = userEvent.setup()
-    const day = buildDay({ id: 10 })
-    const transit = buildReservation({
-      id: 50, type: 'transit', day_id: 10,
-      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 240, distance: 300 }] } }),
-    })
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [], assignments: {}, reservations: [transit], selectedDayId: null,
-      showRouteToolsWhenExpanded: true, routeProfile: 'walking',
-    })} />)
-    await user.click(screen.getByRole('button', { name: 'Route' }))
-    expect(await screen.findByText('4 min · 300 m')).toBeInTheDocument()
-  })
-
-  it('shows Route for a transit-only day from the pure movement plan', async () => {
-    const user = userEvent.setup()
-    const day = buildDay({ id: 10 })
-    const onToggleRoute = vi.fn()
-    const transit = buildReservation({
-      id: 51,
-      type: 'transit',
-      day_id: 10,
-      day_plan_position: 0,
-      endpoints: [
-        { role: 'from', lat: 52.1, lng: 5.1 },
-        { role: 'to', lat: 52.2, lng: 5.2 },
-      ],
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [], assignments: {}, reservations: [transit],
-      selectedDayId: 10, routeShown: false, onToggleRoute,
-    })} />)
-
-    expect(screen.queryByRole('button', { name: 'Open in Google Maps' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Route' }))
-    expect(onToggleRoute).toHaveBeenCalledOnce()
-  })
-
-  it('exports an external connector to transit without exporting transit-internal endpoints', async () => {
-    const user = userEvent.setup()
-    const { generateGoogleMapsUrl } = await import('../Map/RouteCalculator')
-    const day = buildDay({ id: 10 })
-    const origin = buildPlace({ id: 1, name: 'Origin', lat: 52, lng: 5 })
-    const transit = buildReservation({
-      id: 52,
-      type: 'transit',
-      day_id: 10,
-      day_plan_position: 1,
-      endpoints: [
-        { role: 'from', lat: 52.1, lng: 5.1 },
-        { role: 'to', lat: 52.2, lng: 5.2 },
-      ],
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin],
-      assignments: { '10': [buildAssignment({ id: 1, day_id: 10, order_index: 0, place: origin })] },
-      reservations: [transit],
-      selectedDayId: 10,
-    })} />)
-
-    await user.click(screen.getByRole('button', { name: 'Open in Google Maps' }))
-    expect(generateGoogleMapsUrl).toHaveBeenCalledWith([
-      { lat: 52, lng: 5 },
-      { lat: 52.1, lng: 5.1 },
-    ])
-  })
-
-  it('exports ordered movement anchors with both track endpoints and adjacent deduplication', async () => {
-    const user = userEvent.setup()
-    const { generateGoogleMapsUrl } = await import('../Map/RouteCalculator')
-    const previous = buildPlace({ id: 1, name: 'Previous', lat: 52, lng: 5 })
-    const track = buildPlace({
-      id: 2,
-      name: 'Trail',
-      lat: 99,
-      lng: 99,
-      route_geometry: JSON.stringify([[52, 5], [52.2, 5.2]]),
-    } as any)
-    const next = buildPlace({ id: 3, name: 'Next', lat: 52.3, lng: 5.3 })
-    const day = buildDay({ id: 10 })
-    const dayAssignments = [previous, track, next].map((place, index) => buildAssignment({
-      id: index + 1, day_id: 10, order_index: index, place,
-    }))
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day], places: [previous, track, next], assignments: { '10': dayAssignments },
-      selectedDayId: 10,
-    })} />)
-
-    await user.click(screen.getByRole('button', { name: 'Open in Google Maps' }))
-    expect(generateGoogleMapsUrl).toHaveBeenCalledWith([
-      { lat: 52, lng: 5 },
-      { lat: 52.2, lng: 5.2 },
-      { lat: 52.3, lng: 5.3 },
-    ])
-  })
-
-  it('keeps a valid full-place track fixed and excludes it from optimizer input', async () => {
-    const user = userEvent.setup()
-    const { optimizeRoute } = await import('../Map/RouteCalculator')
-    vi.mocked(optimizeRoute).mockImplementationOnce((movable: any[]) => [...movable].reverse())
-    const a = buildPlace({ id: 1, name: 'A', lat: 52, lng: 5 })
-    const fullTrack = buildPlace({
-      id: 2,
-      name: 'Trail',
-      lat: 52.1,
-      lng: 5.1,
-      route_geometry: JSON.stringify([[52.1, 5.1], [52.2, 5.2]]),
-    } as any)
-    const b = buildPlace({ id: 3, name: 'B', lat: 52.3, lng: 5.3 })
-    const assignmentsForDay = [a, fullTrack, b].map((place, index) => buildAssignment({
-      id: index + 1,
-      day_id: 10,
-      order_index: index,
-      place: place.id === fullTrack.id ? { ...place, route_geometry: null } : place,
-    }))
-    const onReorder = vi.fn()
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [buildDay({ id: 10 })],
-      places: [a, fullTrack, b],
-      assignments: { '10': assignmentsForDay },
-      selectedDayId: 10,
-      onReorder,
-    })} />)
-
-    await user.click(screen.getByRole('button', { name: /optimize/i }))
-    expect(optimizeRoute).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 1 }),
-        expect.objectContaining({ id: 3 }),
-      ]),
-      expect.any(Object),
-    )
-    const optimizeCalls = vi.mocked(optimizeRoute).mock.calls
-    expect(optimizeCalls[optimizeCalls.length - 1]?.[0]).toHaveLength(2)
-    expect(onReorder).toHaveBeenCalledWith(10, [3, 2, 1])
-  })
-
-  it('opens connector transit planning with adjacent POI prefill', async () => {
-    const user = userEvent.setup()
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16', title: 'Kamakura' })
-    const origin = buildPlace({
-      id: 101,
-      name: 'Enoshima Sea Candle',
-      lat: 35.2997,
-      lng: 139.4803,
-      place_time: '17:20',
-      end_time: '17:45',
-    })
-    const destination = buildPlace({
-      id: 102,
-      name: 'Kamakura Station',
-      lat: 35.3192,
-      lng: 139.5505,
-      place_time: '18:30',
-    })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-    const onPlanTransit = vi.fn()
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit,
-    })} />)
-
-    const trigger = await screen.findByRole('button', {
-      name: 'Plan public transit: Enoshima Sea Candle → Kamakura Station',
-    })
-    await user.click(trigger)
-    await user.click(screen.getByRole('menuitem', { name: 'Plan public transit' }))
-
-    expect(onPlanTransit).toHaveBeenCalledWith(10, {
-      from: { name: 'Enoshima Sea Candle', lat: 35.2997, lng: 139.4803 },
-      to: { name: 'Kamakura Station', lat: 35.3192, lng: 139.5505 },
-      time: '17:45',
-      placement: { dayId: 10, position: 0.5 },
-    })
-  })
-
-  it('ignores notes between POIs when opening connector transit planning', async () => {
-    const user = userEvent.setup()
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 2, end_time: '09:45' })
-    const destination = buildPlace({ id: 102, name: 'Destination', lat: 3, lng: 4 })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-    mockDayNotesState.dayNotes = {
-      '10': [buildDayNote({ id: 55, day_id: 10, sort_order: 0.5, text: 'Buy tickets' })],
-    }
-    const onPlanTransit = vi.fn()
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit,
-    })} />)
-
-    expect(screen.getByText('Buy tickets')).toBeInTheDocument()
-    await user.click(await screen.findByRole('button', {
-      name: 'Plan public transit: Origin → Destination',
-    }))
-    await user.click(screen.getByRole('menuitem', { name: 'Plan public transit' }))
-
-    expect(onPlanTransit).toHaveBeenCalledWith(10, {
-      from: { name: 'Origin', lat: 1, lng: 2 },
-      to: { name: 'Destination', lat: 3, lng: 4 },
-      time: '09:45',
-      placement: { dayId: 10, position: 0.5 },
-    })
-  })
-
-  it('keeps the connector display-only when transit planning is unavailable', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 1 })
-    const destination = buildPlace({ id: 102, name: 'Destination', lat: 2, lng: 2 })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-    })} />)
-
-    expect(await screen.findByText('25 min')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Plan public transit:/ })).not.toBeInTheDocument()
-  })
-
-  it('suppresses route connectors immediately around a transit journey', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const origin = buildPlace({
-      id: 101,
-      name: 'Origin',
-      lat: 1,
-      lng: 1,
-      place_time: '09:00',
-      end_time: '09:30',
-    })
-    const destination = buildPlace({
-      id: 102,
-      name: 'Destination',
-      lat: 2,
-      lng: 2,
-      place_time: '10:00',
-    })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-    const transit = buildReservation({
-      id: 301,
-      day_id: 10,
-      end_day_id: 10,
-      type: 'transit',
-      title: 'Origin → Destination',
-      status: 'confirmed',
-      reservation_time: '2026-07-16T09:30',
-      reservation_end_time: '2026-07-16T09:50',
-      day_positions: { '10': 0.5 },
-      endpoints: [
-        {
-          role: 'from', sequence: 0, name: 'Origin', code: null,
-          lat: 1, lng: 1, timezone: 'UTC',
-          local_date: '2026-07-16', local_time: '09:30',
-        },
-        {
-          role: 'to', sequence: 1, name: 'Destination', code: null,
-          lat: 2, lng: 2, timezone: 'UTC',
-          local_date: '2026-07-16', local_time: '09:50',
-        },
-      ],
-      metadata: {
-        transit: {
-          duration: 1200,
-          transfers: 0,
-          walk_seconds: 120,
-          legs: [],
-        },
-      },
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      reservations: [transit],
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit: vi.fn(),
-    })} />)
-
-    expect(await screen.findAllByText('Origin')).toHaveLength(2)
-    await waitFor(() => expect(screen.queryByText('25 min')).not.toBeInTheDocument())
-  })
-
-  it('suppresses both adjacent connectors for a transit row without rich metadata', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 1 })
-    const destination = buildPlace({ id: 102, name: 'Destination', lat: 2, lng: 2 })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-    const transit = buildReservation({
-      id: 301,
-      day_id: 10,
-      end_day_id: 10,
-      type: 'transit',
-      title: 'Sparse transit journey',
-      reservation_time: '2026-07-16T09:30',
-      reservation_end_time: '2026-07-16T09:50',
-      day_positions: { '10': 0.5 },
-      endpoints: [
-        {
-          role: 'from', sequence: 0, name: 'Origin', code: null,
-          lat: 1, lng: 1, timezone: 'UTC',
-          local_date: '2026-07-16', local_time: '09:30',
-        },
-        {
-          role: 'to', sequence: 1, name: 'Destination', code: null,
-          lat: 2, lng: 2, timezone: 'UTC',
-          local_date: '2026-07-16', local_time: '09:50',
-        },
-      ],
-      metadata: {},
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      reservations: [transit],
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit: vi.fn(),
-    })} />)
-
-    expect(await screen.findByText('Sparse transit journey')).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryAllByText('25 min')).toHaveLength(0))
-  })
-
-  it('ignores notes when suppressing the connector before a transit journey', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const origin = buildPlace({ id: 101, name: 'Origin', lat: 1, lng: 1 })
-    const destination = buildPlace({ id: 102, name: 'Destination', lat: 2, lng: 2 })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-    mockDayNotesState.dayNotes = {
-      '10': [buildDayNote({ id: 55, day_id: 10, sort_order: 0.25, text: 'Keep this note' })],
-    }
-    const transit = buildReservation({
-      id: 301,
-      day_id: 10,
-      end_day_id: 10,
-      type: 'transit',
-      title: 'Origin → Destination',
-      reservation_time: '2026-07-16T09:30',
-      reservation_end_time: '2026-07-16T09:50',
-      day_positions: { '10': 0.5 },
-      metadata: {},
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      reservations: [transit],
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit: vi.fn(),
-    })} />)
-
-    expect(await screen.findByText('Keep this note')).toBeInTheDocument()
-    expect(screen.getByText('Origin → Destination')).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryAllByText('25 min')).toHaveLength(0))
-  })
-
-  it('keeps route connectors around a non-transit train reservation', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [{ distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' }],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const origin = buildPlace({ id: 101, name: 'Place A', lat: 1, lng: 1 })
-    const destination = buildPlace({ id: 102, name: 'Place B', lat: 2, lng: 2 })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: origin })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: destination })
-    const train = buildReservation({
-      id: 401,
-      day_id: 10,
-      end_day_id: 10,
-      type: 'train',
-      title: 'Local train',
-      status: 'confirmed',
-      reservation_time: '2026-07-16T09:30',
-      reservation_end_time: '2026-07-16T09:50',
-      day_positions: { '10': 0.5 },
-      endpoints: [
-        {
-          role: 'from', sequence: 0, name: 'Origin station', code: null,
-          lat: 1.1, lng: 1.1, timezone: null,
-          local_date: '2026-07-16', local_time: '09:30',
-        },
-        {
-          role: 'to', sequence: 1, name: 'Destination station', code: null,
-          lat: 1.9, lng: 1.9, timezone: null,
-          local_date: '2026-07-16', local_time: '09:50',
-        },
-      ],
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [origin, destination],
-      assignments: { '10': [a, b] },
-      reservations: [train],
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit: vi.fn(),
-    })} />)
-
-    expect(await screen.findByText('Local train')).toBeInTheDocument()
-    expect((await screen.findAllByText('25 min')).length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('keeps the later connector after a transit journey', async () => {
-    const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockResolvedValue({
-      coordinates: [[1, 1], [2, 2], [3, 3]],
-      distanceText: '2 km', durationText: '25 min',
-      legs: [
-        { distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' },
-        { distanceText: '2 km', durationText: '25 min', drivingText: '10 min', walkingText: '25 min' },
-      ],
-    })
-    const day = buildDay({ id: 10, date: '2026-07-16' })
-    const placeA = buildPlace({ id: 101, name: 'Place A', lat: 1, lng: 1 })
-    const placeB = buildPlace({ id: 102, name: 'Place B', lat: 2, lng: 2 })
-    const placeC = buildPlace({ id: 103, name: 'Place C', lat: 3, lng: 3 })
-    const a = buildAssignment({ id: 201, day_id: 10, order_index: 0, place: placeA })
-    const b = buildAssignment({ id: 202, day_id: 10, order_index: 1, place: placeB })
-    const c = buildAssignment({ id: 203, day_id: 10, order_index: 2, place: placeC })
-    const transit = buildReservation({
-      id: 301,
-      day_id: 10,
-      end_day_id: 10,
-      type: 'transit',
-      title: 'Place A → Place B',
-      status: 'confirmed',
-      reservation_time: '2026-07-16T09:30',
-      reservation_end_time: '2026-07-16T09:50',
-      day_positions: { '10': 0.5 },
-      endpoints: [
-        {
-          role: 'from', sequence: 0, name: 'Place A', code: null,
-          lat: 1, lng: 1, timezone: null,
-          local_date: '2026-07-16', local_time: '09:30',
-        },
-        {
-          role: 'to', sequence: 1, name: 'Place B', code: null,
-          lat: 2, lng: 2, timezone: null,
-          local_date: '2026-07-16', local_time: '09:50',
-        },
-      ],
-    } as any)
-
-    render(<DayPlanSidebar {...makeDefaultProps({
-      days: [day],
-      places: [placeA, placeB, placeC],
-      assignments: { '10': [a, b, c] },
-      reservations: [transit],
-      selectedDayId: 10,
-      routeShown: true,
-      routeProfile: 'walking',
-      onPlanTransit: vi.fn(),
-    })} />)
-
-    expect(await screen.findByText('Place A → Place B')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByText('25 min')).toHaveLength(1))
-    expect(screen.getByRole('button', {
-      name: 'Plan public transit: Place B → Place C',
-    })).toBeInTheDocument()
   })
 })

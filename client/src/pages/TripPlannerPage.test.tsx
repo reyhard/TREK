@@ -7,12 +7,10 @@ import { buildUser, buildTrip, buildDay, buildPlace, buildAssignment } from '../
 import { useAuthStore } from '../store/authStore';
 import { useTripStore } from '../store/tripStore';
 import { usePluginStore } from '../store/pluginStore';
-import { usePermissionsStore } from '../store/permissionsStore';
+import { useSettingsStore } from '../store/settingsStore';
 import TripPlannerPage from './TripPlannerPage';
 import { server } from '../../tests/helpers/msw/server';
 import { http, HttpResponse } from 'msw';
-import { reservationsApi } from '../api/client';
-import { placeRepo } from '../repo/placeRepo';
 
 // Mock Leaflet-dependent components
 const capturedMapViewProps: { current: Record<string, any> } = { current: {} };
@@ -126,16 +124,6 @@ vi.mock('../components/Planner/ReservationsPanel', () => ({
   },
 }));
 
-const capturedTransportModalProps: { current: Record<string, any> } = { current: {} };
-vi.mock('../components/Planner/TransportModal', () => ({
-  TransportModal: (props: Record<string, any>) => {
-    capturedTransportModalProps.current = props;
-    return props.isOpen
-      ? React.createElement('div', { 'data-testid': 'transport-modal' })
-      : null;
-  },
-}));
-
 const capturedPlaceFormModalProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/Planner/PlaceFormModal', () => ({
   default: (props: Record<string, any>) => {
@@ -227,12 +215,12 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
 }
 
 // Helper to render TripPlannerPage with route params
-function renderPlannerPage(tripId: number | string, suffix = '') {
+function renderPlannerPage(tripId: number | string) {
   return render(
     <Routes>
       <Route path="/trips/:id" element={<TripPlannerPage />} />
     </Routes>,
-    { initialEntries: [`/trips/${tripId}${suffix}`] },
+    { initialEntries: [`/trips/${tripId}`] },
   );
 }
 
@@ -244,10 +232,10 @@ beforeEach(() => {
   mockSelectAssignment.mockReset();
   mockPlaceSelectionState.selectedPlaceId = null;
   mockPlaceSelectionState.selectedAssignmentId = null;
+  capturedMapViewProps.current = {};
   capturedDayPlanSidebarProps.current = {};
   capturedPlacesSidebarProps.current = {};
   capturedReservationsPanelProps.current = {};
-  capturedTransportModalProps.current = {};
   capturedPlaceFormModalProps.current = {};
   capturedReservationModalProps.current = {};
   capturedConfirmDialogProps.current = {};
@@ -256,7 +244,6 @@ beforeEach(() => {
   capturedTripMembersModalProps.current = {};
   capturedFileManagerProps.current = {};
   capturedPlaceInspectorProps.current = {};
-  capturedMapViewProps.current = {};
   seedStore(useAuthStore, { isAuthenticated: true, user: buildUser() });
 });
 
@@ -674,6 +661,50 @@ describe('TripPlannerPage', () => {
         capturedDayPlanSidebarProps.current.onSelectDay?.(day.id);
       });
     });
+
+    it('bumps map fitKey even when selecting the already selected day', async () => {
+      vi.useFakeTimers();
+
+      const { day } = seedTripStore({ id: 42 });
+      seedStore(useTripStore, { selectedDayId: day.id } as any);
+
+      renderPlannerPage(42);
+
+      act(() => { vi.runAllTimers(); });
+
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+
+      const initialFitKey = capturedMapViewProps.current.fitKey;
+
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onSelectDay?.(day.id);
+      });
+
+      await waitFor(() => {
+        expect(capturedMapViewProps.current.fitKey).toBe(initialFitKey + 1);
+      });
+    });
+
+    it('leaves the opening camera to the map instead of passing a default centre', async () => {
+      vi.useFakeTimers();
+      seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('map-view')).toBeInTheDocument();
+      });
+
+      // The map frames itself on the trip's places at mount; a center/zoom from settings
+      // would only fight that.
+      expect(capturedMapViewProps.current.center).toBeUndefined();
+      expect(capturedMapViewProps.current.zoom).toBeUndefined();
+    });
   });
 
   describe('FE-PAGE-PLANNER-020b: the transit (tram) action needs trip dates', () => {
@@ -801,149 +832,6 @@ describe('TripPlannerPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('map-view')).toBeInTheDocument();
       });
-    });
-  });
-
-  describe('place repositioning', () => {
-    function deferred<T>() {
-      let resolve!: (value: T) => void;
-      let reject!: (reason?: unknown) => void;
-      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
-      return { promise, resolve, reject };
-    }
-
-    it('optimistically moves through placeRepo, refreshes assignment coordinates, and exits on success', async () => {
-      vi.useFakeTimers();
-      const place = buildPlace({ id: 71, trip_id: 42, lat: 48.8566, lng: 2.3522 });
-      const { day } = seedTripStore({ id: 42 });
-      const assignment = buildAssignment({ id: 72, day_id: day.id, place, order_index: 0 });
-      mockPlaceSelectionState.selectedPlaceId = place.id;
-      const pending = deferred<{ place: typeof place }>();
-      const updateSpy = vi.spyOn(placeRepo, 'update').mockReturnValue(pending.promise);
-      seedStore(useTripStore, {
-        selectedDayId: day.id,
-        places: [place],
-        assignments: { [String(day.id)]: [assignment] },
-      } as any);
-
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
-
-      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
-      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(71));
-      expect(capturedMapViewProps.current.canRepositionPlaces).toBe(true);
-
-      let savePromise!: Promise<void>;
-      act(() => {
-        savePromise = capturedMapViewProps.current.onPlaceRepositionEnd?.(71, { lat: 48.9, lng: 2.4 });
-      });
-      expect(updateSpy).toHaveBeenCalledWith(42, 71, { lat: 48.9, lng: 2.4 });
-      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBeNull());
-      expect(useTripStore.getState().places.find(p => p.id === 71)).toMatchObject({ lat: 48.9, lng: 2.4 });
-      expect(useTripStore.getState().assignments[String(day.id)][0].place).toMatchObject({ lat: 48.9, lng: 2.4 });
-
-      pending.resolve({ place: { ...place, lat: 48.9, lng: 2.4 } });
-      await act(async () => { await savePromise; });
-      expect(capturedMapViewProps.current.repositionPlaceId).toBeNull();
-      updateSpy.mockRestore();
-    });
-
-    it('rolls coordinates back and exits when placeRepo rejects', async () => {
-      vi.useFakeTimers();
-      const place = buildPlace({ id: 81, trip_id: 42, lat: 48.8566, lng: 2.3522 });
-      const { day } = seedTripStore({ id: 42 });
-      const assignment = buildAssignment({ id: 82, day_id: day.id, place, order_index: 0 });
-      mockPlaceSelectionState.selectedPlaceId = place.id;
-      const updateSpy = vi.spyOn(placeRepo, 'update').mockRejectedValue(new Error('save failed'));
-      seedStore(useTripStore, {
-        selectedDayId: day.id,
-        places: [place],
-        assignments: { [String(day.id)]: [assignment] },
-      } as any);
-
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
-      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
-      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(81));
-
-      await act(async () => {
-        await capturedMapViewProps.current.onPlaceRepositionEnd?.(81, { lat: 49, lng: 3 });
-      });
-      expect(useTripStore.getState().places.find(p => p.id === 81)).toMatchObject({ lat: 48.8566, lng: 2.3522 });
-      expect(useTripStore.getState().assignments[String(day.id)][0].place).toMatchObject({ lat: 48.8566, lng: 2.3522 });
-      expect(capturedMapViewProps.current.repositionPlaceId).toBeNull();
-      updateSpy.mockRestore();
-    });
-
-    it('ignores invalid drag coordinates without calling the repository', async () => {
-      vi.useFakeTimers();
-      const place = buildPlace({ id: 91, trip_id: 42, lat: 48.8566, lng: 2.3522 });
-      mockPlaceSelectionState.selectedPlaceId = place.id;
-      const updateSpy = vi.spyOn(placeRepo, 'update');
-      seedTripStore({ id: 42 });
-      seedStore(useTripStore, { places: [place] } as any);
-
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
-      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
-      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(91));
-      await act(async () => {
-        await capturedMapViewProps.current.onPlaceRepositionEnd?.(91, { lat: 91, lng: 2.4 });
-      });
-      expect(updateSpy).not.toHaveBeenCalled();
-      expect(useTripStore.getState().places.find(p => p.id === 91)).toMatchObject({ lat: 48.8566, lng: 2.3522 });
-      updateSpy.mockRestore();
-    });
-
-    it('cancels active repositioning with Escape', async () => {
-      vi.useFakeTimers();
-      const place = buildPlace({ id: 101, trip_id: 42, lat: 48.8566, lng: 2.3522 });
-      mockPlaceSelectionState.selectedPlaceId = place.id;
-      seedTripStore({ id: 42 });
-      seedStore(useTripStore, { places: [place] } as any);
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
-      act(() => { capturedPlaceInspectorProps.current.onStartReposition?.(); });
-      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBe(101));
-      fireEvent.keyDown(window, { key: 'Escape' });
-      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBeNull());
-    });
-
-    it('does not enable repositioning for a user without place_edit permission', async () => {
-      vi.useFakeTimers();
-      const place = buildPlace({ id: 111, trip_id: 42, lat: 48.8566, lng: 2.3522 });
-      mockPlaceSelectionState.selectedPlaceId = place.id;
-      usePermissionsStore.setState({ permissions: { place_edit: 'admin' } });
-      seedTripStore({ id: 42 });
-      seedStore(useTripStore, { places: [place] } as any);
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('place-inspector')).toBeInTheDocument());
-      expect(capturedPlaceInspectorProps.current.canReposition).toBe(false);
-      expect(capturedMapViewProps.current.canRepositionPlaces).toBe(false);
-      usePermissionsStore.setState({ permissions: {} });
-    });
-
-    it('keeps saved places with valid zero coordinates on the map', async () => {
-      vi.useFakeTimers();
-      const place = buildPlace({ id: 121, trip_id: 42, lat: 0, lng: 0 });
-      seedTripStore({ id: 42 });
-      seedStore(useTripStore, { places: [place] } as any);
-
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-
-      await waitFor(() => expect(capturedMapViewProps.current.places).toContainEqual(place));
     });
   });
 
@@ -1210,23 +1098,6 @@ describe('TripPlannerPage', () => {
       await act(async () => {
         capturedDayPlanSidebarProps.current.onRouteCalculated?.(null);
       });
-    });
-  });
-
-  describe('track-aware transit route visibility', () => {
-    it('enables transit map routes when the sidebar Route control is toggled', async () => {
-      vi.useFakeTimers();
-      seedTripStore({ id: 42 });
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-
-      await waitFor(() => expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument());
-      expect(capturedMapViewProps.current.showTransitRoutes).toBe(false);
-
-      await act(async () => capturedDayPlanSidebarProps.current.onToggleRoute?.());
-
-      expect(capturedMapViewProps.current.showTransitRoutes).toBe(true);
     });
   });
 
@@ -1646,6 +1517,31 @@ describe('TripPlannerPage', () => {
   });
 
   describe('FE-PAGE-PLANNER-049: Mobile sidebar left panel opens via Plan button', () => {
+    it('renders the POI category pill in the mobile map controls', async () => {
+      vi.useFakeTimers();
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      seedStore(useSettingsStore, {
+        settings: {
+          ...useSettingsStore.getState().settings,
+          map_poi_pill_enabled: true,
+        },
+      } as any);
+      seedTripStore({ id: 42 });
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        const pill = screen.getByTestId('mobile-poi-category-pill');
+        expect(pill).toBeInTheDocument();
+        expect(pill.querySelectorAll('button').length).toBeGreaterThan(0);
+      });
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+
     it('clicking the mobile Plan button opens the left sidebar portal (lines 882-893)', async () => {
       vi.useFakeTimers();
 
@@ -1769,181 +1665,6 @@ describe('TripPlannerPage', () => {
       expect(screen.getAllByTestId('day-plan-sidebar').length).toBe(2);
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
-    });
-  });
-
-  describe('connector transit placement', () => {
-    const datedTrip = () => {
-      const { trip, day } = seedTripStore({ id: 42 });
-      seedStore(useTripStore, {
-        trip: { ...trip, start_date: '2026-07-16', end_date: '2026-07-20' },
-        days: [{ ...day, id: 10, date: '2026-07-16' }],
-      } as any);
-    };
-
-    const openConnectorTransit = async () => {
-      const prefill = {
-        from: { name: 'Origin', lat: 1, lng: 2 },
-        to: { name: 'Destination', lat: 3, lng: 4 },
-        time: '17:45',
-        placement: { dayId: 10, position: 0.5 },
-      };
-      await act(async () => capturedDayPlanSidebarProps.current.onPlanTransit(10, prefill));
-      await waitFor(() => expect(screen.getByTestId('transport-modal')).toBeInTheDocument());
-      return prefill;
-    };
-
-    it('forwards connector prefill into Automated transport mode', async () => {
-      vi.useFakeTimers();
-      datedTrip();
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-
-      const prefill = await openConnectorTransit();
-
-      expect(capturedTransportModalProps.current.selectedDayId).toBe(10);
-      expect(capturedTransportModalProps.current.initialAutomated).toBe(true);
-      expect(capturedTransportModalProps.current.transitPrefill).toEqual(prefill);
-    });
-
-    it('keeps the day-header transit shortcut unprefilled', async () => {
-      vi.useFakeTimers();
-      const { trip, day } = seedTripStore({ id: 42 });
-      seedStore(useTripStore, {
-        ...useTripStore.getState(),
-        trip: {
-          ...trip,
-          start_date: '2026-07-16',
-          end_date: '2026-07-20',
-        },
-        days: [{ ...day, id: 10, date: '2026-07-16' }],
-      } as any);
-
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-
-      act(() => capturedDayPlanSidebarProps.current.onPlanTransit(10));
-
-      await waitFor(() => {
-        expect(capturedTransportModalProps.current.isOpen).toBe(true);
-      });
-      expect(capturedTransportModalProps.current.initialAutomated).toBe(true);
-      expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
-    });
-
-    it('persists a created transit journey at the connector position', async () => {
-      vi.useFakeTimers();
-      datedTrip();
-      const addReservation = vi.fn(async (_tripId, data) => {
-        const reservation = { id: 301, trip_id: 42, ...data } as any;
-        useTripStore.setState(state => ({ reservations: [reservation, ...state.reservations] }));
-        return reservation;
-      });
-      useTripStore.setState({ addReservation } as any);
-      const updatePositions = vi.spyOn(reservationsApi, 'updatePositions').mockResolvedValue({});
-
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await openConnectorTransit();
-
-      await act(async () => {
-        await capturedTransportModalProps.current.onSave({
-          title: 'Origin → Destination', type: 'transit', status: 'confirmed', day_id: 10,
-          _connectorPlacement: { dayId: 10, position: 0.5 },
-        });
-      });
-
-      expect(addReservation).toHaveBeenCalledWith(42, {
-        title: 'Origin → Destination', type: 'transit', status: 'confirmed', day_id: 10,
-      });
-      expect(updatePositions).toHaveBeenCalledWith(
-        42,
-        [{ id: 301, day_plan_position: 0.5 }],
-        10,
-      );
-      expect(useTripStore.getState().reservations.find(r => r.id === 301)?.day_positions)
-        .toEqual({ 10: 0.5 });
-    });
-
-    it('strips connector placement from edit payloads', async () => {
-      vi.useFakeTimers();
-      datedTrip();
-      const updateReservation = vi.fn().mockResolvedValue({ id: 301 });
-      useTripStore.setState({ updateReservation } as any);
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-
-      await act(async () => capturedDayPlanSidebarProps.current.onEditTransport({
-        id: 301, day_id: 10, title: 'Train', type: 'train', status: 'confirmed',
-      }));
-      await waitFor(() => expect(screen.getByTestId('transport-modal')).toBeInTheDocument());
-      await act(async () => capturedTransportModalProps.current.onSave({
-        title: 'Train', type: 'train', day_id: 10,
-        _connectorPlacement: { dayId: 10, position: 0.5 },
-      }));
-
-      expect(updateReservation).toHaveBeenCalledWith(42, 301, {
-        title: 'Train', type: 'train', day_id: 10,
-      });
-    });
-
-    it('clears connector state before a later manual create', async () => {
-      vi.useFakeTimers();
-      datedTrip();
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await openConnectorTransit();
-
-      await act(async () => capturedDayPlanSidebarProps.current.onAddTransport(10));
-
-      expect(capturedTransportModalProps.current.initialAutomated).toBe(false);
-      expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
-    });
-
-    it('opens URL-requested transport creation in clean manual state', async () => {
-      vi.useFakeTimers();
-      datedTrip();
-      renderPlannerPage(42, '?create=transport');
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-
-      await waitFor(() => expect(screen.getByTestId('transport-modal')).toBeInTheDocument());
-      expect(capturedTransportModalProps.current.initialAutomated).toBe(false);
-      expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
-    });
-
-    it('keeps the created reservation and closes when connector positioning fails', async () => {
-      vi.useFakeTimers();
-      datedTrip();
-      const addReservation = vi.fn(async (_tripId, data) => {
-        const reservation = { id: 302, trip_id: 42, ...data } as any;
-        useTripStore.setState(state => ({ reservations: [reservation, ...state.reservations] }));
-        return reservation;
-      });
-      useTripStore.setState({ addReservation } as any);
-      vi.spyOn(reservationsApi, 'updatePositions').mockRejectedValue(new Error('Position failed'));
-      const toastSpy = vi.fn();
-      window.__addToast = toastSpy;
-      renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
-      vi.useRealTimers();
-      await openConnectorTransit();
-
-      await act(async () => capturedTransportModalProps.current.onSave({
-        title: 'Origin → Destination', type: 'transit', day_id: 10,
-        _connectorPlacement: { dayId: 10, position: 0.5 },
-      }));
-
-      expect(useTripStore.getState().reservations.some(r => r.id === 302)).toBe(true);
-      expect(screen.queryByTestId('transport-modal')).not.toBeInTheDocument();
-      expect(toastSpy).toHaveBeenCalledWith('Position failed', 'error', undefined);
-      expect(toastSpy).not.toHaveBeenCalledWith(expect.any(String), 'success', undefined);
-      delete window.__addToast;
     });
   });
 

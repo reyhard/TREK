@@ -14,13 +14,17 @@ import { getAppUrl } from './notifications';
  */
 
 const TRANSIT_API_BASE = (process.env.TRANSIT_API_URL || 'https://api.transitous.org').replace(/\/+$/, '');
-const UA = buildUserAgent(getAppUrl());
+let userAgent: string | null = null;
+
+function getUserAgent(): string {
+  userAgent ??= buildUserAgent(getAppUrl());
+  return userAgent;
+}
 
 // Modes the client may request — a strict whitelist so the proxy can't be used
 // to smuggle arbitrary query values upstream. TRANSIT covers everything; the
 // others let the user filter (RAIL already includes subway/suburban etc.).
-const ALLOWED_MODES = new Set([
-  'TRANSIT',
+export const SCHEDULED_TRANSIT_MODES = [
   'BUS',
   'COACH',
   'TRAM',
@@ -36,7 +40,9 @@ const ALLOWED_MODES = new Set([
   'NIGHT_RAIL',
   'REGIONAL_RAIL',
   'SUBURBAN',
-]);
+] as const;
+
+const ALLOWED_MODES = new Set(['TRANSIT', ...SCHEDULED_TRANSIT_MODES]);
 
 // Short-lived response cache: planning is the expensive call per the Transitous
 // usage policy, and a user toggling filters re-requests identical plans.
@@ -72,7 +78,7 @@ function isCoord(v: string): boolean {
 
 async function upstream(path: string, params: URLSearchParams): Promise<unknown> {
   const url = `${TRANSIT_API_BASE}${path}?${params}`;
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+  const res = await fetch(url, { headers: { 'User-Agent': getUserAgent(), Accept: 'application/json' } });
   if (!res.ok) {
     const err = new Error(`Transit provider error (HTTP ${res.status})`) as Error & { status: number };
     err.status = res.status === 429 ? 429 : 502;
@@ -172,6 +178,22 @@ export interface PlanQuery {
   arriveBy?: boolean;
   modes?: string;
   maxTransfers?: number;
+}
+
+export function deriveTransitStats(
+  startTime: string,
+  endTime: string,
+  legs: TransitLeg[],
+  reportedTransfers?: number,
+): Pick<TransitItinerary, 'duration' | 'transfers' | 'walkSeconds'> {
+  return {
+    duration: Math.max(0, Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)),
+    transfers:
+      typeof reportedTransfers === 'number'
+        ? reportedTransfers
+        : Math.max(0, legs.filter((leg) => leg.mode !== 'WALK').length - 1),
+    walkSeconds: legs.filter((leg) => leg.mode === 'WALK').reduce((total, leg) => total + leg.duration, 0),
+  };
 }
 
 // GTFS colors come as bare hex ("FF0000"), with hash, or empty — normalise to
@@ -286,19 +308,14 @@ export async function plan(q: PlanQuery): Promise<{ itineraries: TransitItinerar
       geometry: leg.legGeometry?.points || null,
       geometryPrecision: leg.legGeometry?.precision ?? 6,
     }));
-    const walkSeconds = legs.filter((l) => l.mode === 'WALK').reduce((a, l) => a + l.duration, 0);
+    const stats = deriveTransitStats(it.startTime, it.endTime, legs, it.transfers);
     return [
       {
         startTime: it.startTime,
         endTime: it.endTime,
         // Wall-clock duration (start→end) so waits/transfers count — summing leg
         // run-times would understate the journey and mis-slot it in the timeline.
-        duration: Math.max(0, Math.round((new Date(it.endTime).getTime() - new Date(it.startTime).getTime()) / 1000)),
-        transfers:
-          typeof it.transfers === 'number'
-            ? it.transfers
-            : Math.max(0, legs.filter((l) => l.mode !== 'WALK').length - 1),
-        walkSeconds,
+        ...stats,
         legs,
       },
     ];

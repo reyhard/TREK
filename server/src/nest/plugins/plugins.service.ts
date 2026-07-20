@@ -1,24 +1,19 @@
-import { db } from '../../db/database';
-import { isAddonEnabled } from '../../services/adminService';
-import { maybe_encrypt_api_key, decrypt_api_key } from '../../services/apiKeyCrypto';
-import {
-  parseDependencies,
-  disabledRequiredAddons,
-  resolveDependencyState,
-  type PluginDepRow,
-  type PluginDependencies,
-  type VersionMismatch,
-} from './dependencies';
-import { devLinkEnabled } from './dev-link';
-import { pluginBudgetUsage } from './host/create-rpc-host';
-import { readAudit } from './host/plugin-audit';
-import type { PluginDependency } from './install/manifest';
-import { pluginsEnabled } from './kill-switch';
 import { Injectable } from '@nestjs/common';
+import { db } from '../../db/database';
+import { pluginsEnabled } from './kill-switch';
+import { devLinkEnabled } from './dev-link';
+import { maybe_encrypt_api_key, decrypt_api_key } from '../../services/apiKeyCrypto';
+import { readAudit } from './host/plugin-audit';
+import { keyFingerprint } from './signature-status';
+import { pluginBudgetUsage } from './host/create-rpc-host';
+import { isAddonEnabled } from '../../services/adminService';
+import { parseDependencies, disabledRequiredAddons, resolveDependencyState, type PluginDepRow, type PluginDependencies, type VersionMismatch } from './dependencies';
+import { hostSatisfies, hostVersion } from './install/host-compat';
+import type { PluginDependency } from './install/manifest';
 
 const SECRET_MASK = '••••••••';
 
-export type PluginDependencyStatus = 'ok' | 'addonDisabled' | 'missingPlugin';
+export type PluginDependencyStatus = 'ok' | 'addonDisabled' | 'missingPlugin' | 'hostIncompatible';
 
 /**
  * Read side of the plugin system (#plugins), M0 scaffold. Lists installed
@@ -42,6 +37,11 @@ interface PluginRawRow {
   permissions: string;
   capabilities: string;
   dependencies: string | null;
+  trek_range: string | null;
+  author_pubkey: string | null;
+  update_block_code: string | null;
+  update_block_detail: string | null;
+  update_block_version: string | null;
 }
 
 /** Hosts an admin has added for a plugin (0 unless it declared operatorEgress). */
@@ -77,8 +77,24 @@ export interface PluginListItem {
   dependencies: PluginDependencies;
   /** Whether this plugin can currently activate, and why not if it can't. */
   dependencyStatus: PluginDependencyStatus;
+  /** The TREK range the plugin declares it supports; null if it declared none. */
+  trekRange: string | null;
+  /** The running TREK, so the UI can say "needs X, you have Y" without doing semver. */
+  hostVersion: string;
   /** The concrete blockers, so the UI can render chips + the resolve dialog. */
   dependencyIssues: { disabledAddons: string[]; missing: PluginDependency[]; versionMismatch: VersionMismatch[] };
+  /**
+   * The author's signature was verified and their key TOFU-pinned at install.
+   * False means the bytes matched the registry's sha256 pin and nothing more — one
+   * fewer guarantee, not "insecure". Meaningless for a sideloaded/dev-linked plugin,
+   * which sits outside the registry trust model entirely; the UI badges those instead.
+   */
+  signed: boolean;
+  /** Short, human-comparable form of the pinned key — for reading out to the author. */
+  keyFingerprint: string | null;
+  /** Why an update was refused, if one was. `version` is the registry version that was
+   * refused, so a caller can treat the block as stale once a newer one is on offer. */
+  updateBlock: { code: string; detail: string | null; version: string | null } | null;
 }
 
 @Injectable()
@@ -87,7 +103,8 @@ export class PluginsService {
     const rows = db
       .prepare(
         `SELECT id, name, description, type, icon, version, status, enabled, last_error, reviewed_at, source_repo,
-                permissions, capabilities, dependencies, operator_egress
+                permissions, capabilities, dependencies, operator_egress, trek_range,
+                author_pubkey, update_block_code, update_block_detail, update_block_version
          FROM plugins
          ORDER BY sort_order, name`,
       )
@@ -99,19 +116,39 @@ export class PluginsService {
       const deps = parseDependencies(r.dependencies);
       const disabledAddons = disabledRequiredAddons(deps, isAddonEnabled);
       const state = resolveDependencyState(deps, installed);
-      const dependencyStatus: PluginDependencyStatus = disabledAddons.length
-        ? 'addonDisabled'
-        : state.missing.length || state.versionMismatch.length
-          ? 'missingPlugin'
-          : 'ok';
-      const { dependencies: _raw, operator_egress: _oe, ...rest } = r as PluginRawRow & { operator_egress?: number };
+      // Mirrors the order of assertActivatable's gate, so the card explains the same
+      // blocker the activate call would hit rather than a second, lesser one.
+      const dependencyStatus: PluginDependencyStatus = !hostSatisfies(r.trek_range)
+        ? 'hostIncompatible'
+        : disabledAddons.length
+          ? 'addonDisabled'
+          : state.missing.length || state.versionMismatch.length
+            ? 'missingPlugin'
+            : 'ok';
+      const {
+        dependencies: _raw,
+        operator_egress: _oe,
+        trek_range,
+        author_pubkey,
+        update_block_code,
+        update_block_detail,
+        update_block_version,
+        ...rest
+      } = r as PluginRawRow & { operator_egress?: number };
       return {
         ...rest,
         operatorEgress: _oe === 1,
         egressHostCount: egressHostCount(r.id),
         dependencies: deps,
         dependencyStatus,
+        trekRange: trek_range,
+        hostVersion: hostVersion(),
         dependencyIssues: { disabledAddons, missing: state.missing, versionMismatch: state.versionMismatch },
+        signed: !!author_pubkey,
+        keyFingerprint: keyFingerprint(author_pubkey),
+        updateBlock: update_block_code
+          ? { code: update_block_code, detail: update_block_detail, version: update_block_version }
+          : null,
       };
     });
     return { enabled: pluginsEnabled(), devLink: devLinkEnabled(), plugins };
@@ -129,9 +166,7 @@ export class PluginsService {
     const secretKeys = new Set(
       (
         db
-          .prepare(
-            "SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1",
-          )
+          .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1")
           .all(id) as Array<{ field_key: string }>
       ).map((r) => r.field_key),
     );
@@ -145,10 +180,7 @@ export class PluginsService {
         config[k] = v;
       }
     }
-    db.prepare('UPDATE plugins SET config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
-      JSON.stringify(config),
-      id,
-    );
+    db.prepare('UPDATE plugins SET config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(config), id);
     return maskSecrets(config, secretKeys);
   }
 
@@ -187,9 +219,9 @@ export class PluginsService {
 
   /** A user's own config for a plugin, secrets masked (safe to send to the client). */
   getUserConfig(id: string, userId: number): Record<string, unknown> {
-    const row = db
-      .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
-      .get(id, userId) as { config: string } | undefined;
+    const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(id, userId) as
+      | { config: string }
+      | undefined;
     return maskSecrets(safeParse(row?.config ?? '{}'), this.userSecretKeys(id));
   }
 
@@ -197,16 +229,14 @@ export class PluginsService {
    * ciphertext). Only keys declared as `scope:'user'` fields are accepted. Returns masked. */
   updateUserConfig(id: string, userId: number, patch: Record<string, unknown>): Record<string, unknown> {
     const allowed = new Set(
-      (
-        db
-          .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user'")
-          .all(id) as Array<{ field_key: string }>
-      ).map((r) => r.field_key),
+      (db.prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user'").all(id) as Array<{ field_key: string }>).map(
+        (r) => r.field_key,
+      ),
     );
     const secretKeys = this.userSecretKeys(id);
-    const existing = db
-      .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
-      .get(id, userId) as { config: string } | undefined;
+    const existing = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(id, userId) as
+      | { config: string }
+      | undefined;
     const config = safeParse(existing?.config ?? '{}');
     for (const [k, v] of Object.entries(patch)) {
       if (!allowed.has(k)) continue; // never store an undeclared key
@@ -227,9 +257,9 @@ export class PluginsService {
   /** A user's own config with secrets DECRYPTED — host-only, for runtime `ctx.settings`.
    * Never sent to a client; the acting user is resolved host-side. */
   getUserConfigDecrypted(id: string, userId: number): Record<string, unknown> {
-    const row = db
-      .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
-      .get(id, userId) as { config: string } | undefined;
+    const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(id, userId) as
+      | { config: string }
+      | undefined;
     const config = safeParse(row?.config ?? '{}');
     const secretKeys = this.userSecretKeys(id);
     const out: Record<string, unknown> = {};
@@ -240,9 +270,7 @@ export class PluginsService {
   /** A plugin's error log, newest first. */
   errors(id: string): Array<{ ts: string; level: string; message: string }> {
     return db
-      .prepare(
-        'SELECT ts, level, message FROM plugin_error_log WHERE plugin_id = ? ORDER BY ts DESC, id DESC LIMIT 200',
-      )
+      .prepare('SELECT ts, level, message FROM plugin_error_log WHERE plugin_id = ? ORDER BY ts DESC, id DESC LIMIT 200')
       .all(id) as Array<{ ts: string; level: string; message: string }>;
   }
 
@@ -267,9 +295,7 @@ export class PluginsService {
     const secretKeys = new Set(
       (
         db
-          .prepare(
-            "SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1",
-          )
+          .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'instance' AND secret = 1")
           .all(id) as Array<{ field_key: string }>
       ).map((r) => r.field_key),
     );
@@ -314,14 +340,12 @@ function safeArray(json: string): unknown[] | undefined {
  * Standalone (no Nest DI) so the RPC host wiring can call it directly. */
 export function readUserSettingDecrypted(pluginId: string, userId: number, key: string): unknown {
   const isSecret =
-    (
-      db
-        .prepare("SELECT secret FROM plugin_settings_fields WHERE plugin_id = ? AND field_key = ? AND scope = 'user'")
-        .get(pluginId, key) as { secret: number } | undefined
-    )?.secret === 1;
-  const row = db
-    .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
-    .get(pluginId, userId) as { config: string } | undefined;
+    (db.prepare("SELECT secret FROM plugin_settings_fields WHERE plugin_id = ? AND field_key = ? AND scope = 'user'").get(pluginId, key) as
+      | { secret: number }
+      | undefined)?.secret === 1;
+  const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
+    | { config: string }
+    | undefined;
   const v = safeParse(row?.config ?? '{}')[key];
   if (v == null) return undefined;
   return isSecret ? decrypt_api_key(v) : v;
@@ -335,9 +359,9 @@ export function readUserSettingsDecrypted(pluginId: string, userId: number): Rec
   const fields = db
     .prepare("SELECT field_key, secret FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user'")
     .all(pluginId) as Array<{ field_key: string; secret: number }>;
-  const row = db
-    .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
-    .get(pluginId, userId) as { config: string } | undefined;
+  const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
+    | { config: string }
+    | undefined;
   const stored = safeParse(row?.config ?? '{}');
   // Null-prototype for the same reason as safeParse: never let a field key write through
   // to Object.prototype on the way out to the plugin.
@@ -358,11 +382,11 @@ export function hasRequiredUserSettings(pluginId: string, userId: number): boole
     .prepare("SELECT field_key FROM plugin_settings_fields WHERE plugin_id = ? AND scope = 'user' AND required = 1")
     .all(pluginId) as Array<{ field_key: string }>;
   if (required.length === 0) return true;
-  const row = db
-    .prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?')
-    .get(pluginId, userId) as { config: string } | undefined;
+  const row = db.prepare('SELECT config FROM plugin_user_config WHERE plugin_id = ? AND user_id = ?').get(pluginId, userId) as
+    | { config: string }
+    | undefined;
   const stored = safeParse(row?.config ?? '{}');
-  return required.every((f) => {
+  return required.every(f => {
     const v = stored[f.field_key];
     return v != null && String(v) !== '';
   });

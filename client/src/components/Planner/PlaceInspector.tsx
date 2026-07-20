@@ -4,7 +4,7 @@ import { openFile } from '../../utils/fileDownload'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Map as MapIcon, Users, Mountain, TrendingUp, Bookmark, BookmarkCheck, Copy } from 'lucide-react'
+import { X, Clock, MapPin, ExternalLink, Phone, Banknote, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Map as MapIcon, Users, Mountain, TrendingUp, Bookmark, BookmarkCheck, Copy } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import GuestBadge from '../shared/GuestBadge'
 import StatusBadge from '../Collections/StatusBadge'
@@ -20,8 +20,8 @@ import { usePluginStore } from '../../store/pluginStore'
 import PluginFrame from '../Plugins/PluginFrame'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
 import type { CollectionStatus } from '@trek/shared'
-import { splitReservationDateTime, formatTime } from '../../utils/formatters'
-import { getTrackMovement } from '../../utils/trackGeometry'
+import { splitReservationDateTime, formatTime, formatMoney } from '../../utils/formatters'
+import { useTripStore } from '../../store/tripStore'
 import { formatDistance, formatElevation } from '../../utils/units'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 import { getOpenStreetMapUrlForPlace } from './placeOpenStreetMap'
@@ -128,11 +128,6 @@ interface PlaceInspectorProps {
   tripMembers?: TripMember[]
   onSetParticipants?: (assignmentId: number, dayId: number, participantIds: number[]) => void
   onUpdatePlace?: (placeId: number, data: Partial<Place>) => void
-  canReposition?: boolean
-  isRepositioning?: boolean
-  isRepositionSaving?: boolean
-  onStartReposition?: () => void
-  onCancelReposition?: () => void
   leftWidth?: number
   rightWidth?: number
   // ── Collection-mode props ──
@@ -147,8 +142,6 @@ export default function PlaceInspector({
   assignments = {}, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
-  canReposition = false, isRepositioning = false, isRepositionSaving = false,
-  onStartReposition, onCancelReposition,
   leftWidth = 0, rightWidth = 0,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
 }: PlaceInspectorProps) {
@@ -168,6 +161,8 @@ export default function PlaceInspector({
     return () => { cancelled = true }
   }, [placeIdForDetails])
   const { t, locale, language } = useTranslation()
+  // Currency-less prices mean "the trip's currency"; null in collection mode (EUR fallback below).
+  const tripCurrency = useTripStore(s => s.trip?.currency)
   const toast = useToast()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
   const distanceUnit = useSettingsStore(s => s.settings.distance_unit) || 'metric'
@@ -321,18 +316,6 @@ export default function PlaceInspector({
         {/* Content — scrollable */}
         <div data-testid="inspector-scroll" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-          {isRepositioning && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="bg-surface-hover text-content"
-              style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '9px 12px', fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}
-            >
-              <MapPin size={14} aria-hidden="true" />
-              <span>{isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}</span>
-            </div>
-          )}
-
           {/* Info-Chips — hidden on mobile, shown on desktop */}
           <div className="hidden sm:flex" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             {googleDetails?.rating && (() => {
@@ -350,7 +333,7 @@ export default function PlaceInspector({
               )
             })()}
             {place.price > 0 && (
-              <Chip icon={<Euro size={12} />} text={`${place.price} ${place.currency || '€'}`} color="#059669" bg="#ecfdf5" />
+              <Chip icon={<Banknote size={12} />} text={formatMoney(Number(place.price) || 0, place.currency || tripCurrency || 'EUR', locale)} color="#059669" bg="#ecfdf5" />
             )}
           </div>
 
@@ -461,25 +444,6 @@ export default function PlaceInspector({
               label={<span className="hidden sm:inline">{t('inspector.website')}</span>} />
           )}
           <div style={{ flex: 1 }} />
-          {mode === 'trip' && canReposition && !isRepositioning && place.lat != null && place.lng != null && Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng)) && onStartReposition && (
-            <ActionButton
-              onClick={onStartReposition}
-              variant="ghost"
-              icon={<MapPin size={13} />}
-              label={<span className="hidden sm:inline">{t('inspector.reposition')}</span>}
-              ariaLabel={t('inspector.reposition')}
-            />
-          )}
-          {mode === 'trip' && isRepositioning && onCancelReposition && (
-            <ActionButton
-              onClick={onCancelReposition}
-              variant="ghost"
-              icon={<X size={13} />}
-              label={<span className="hidden sm:inline">{t('inspector.cancelReposition')}</span>}
-              ariaLabel={t('inspector.cancelReposition')}
-              disabled={isRepositionSaving}
-            />
-          )}
           {mode === 'trip' && onEdit && (
             <ActionButton onClick={onEdit} variant="ghost" icon={<Edit2 size={13} />} label={<span className="hidden sm:inline">{t('common.edit')}</span>} />
           )}
@@ -532,11 +496,9 @@ interface ActionButtonProps {
   variant: 'primary' | 'ghost' | 'danger'
   icon: React.ReactNode
   label: React.ReactNode
-  ariaLabel?: string
-  disabled?: boolean
 }
 
-export function ActionButton({ onClick, variant, icon, label, ariaLabel, disabled = false }: ActionButtonProps) {
+export function ActionButton({ onClick, variant, icon, label }: ActionButtonProps) {
   const base = {
     primary: { background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', hoverBg: 'var(--text-secondary)' },
     ghost: { background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: 'none', hoverBg: 'var(--bg-tertiary)' },
@@ -546,16 +508,14 @@ export function ActionButton({ onClick, variant, icon, label, ariaLabel, disable
   return (
     <button
       onClick={onClick}
-      aria-label={ariaLabel}
-      disabled={disabled}
       style={{
         display: 'flex', alignItems: 'center', gap: 5,
         padding: '6px 12px', borderRadius: 10, minHeight: 30,
-        fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer',
+        fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: 'pointer',
         fontFamily: 'inherit', transition: 'background 0.15s, opacity 0.15s',
-        background: s.background, color: s.color, border: s.border, opacity: disabled ? 0.55 : 1,
+        background: s.background, color: s.color, border: s.border,
       }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = s.hoverBg }}
+      onMouseEnter={e => e.currentTarget.style.background = s.hoverBg}
       onMouseLeave={e => e.currentTarget.style.background = s.background}
     >
       {icon}{label}
@@ -913,34 +873,53 @@ function PlaceExtras({ openingHours, weekdayIndex, hoursExpanded, setHoursExpand
 
           {/* GPX Track stats */}
           {place.route_geometry && (() => {
-            const track = getTrackMovement(place)
-            if (!track) return null
+            try {
+              const pts: number[][] = JSON.parse(place.route_geometry)
+              if (!pts || pts.length < 2) return null
+              const hasEle = pts[0].length >= 3
 
-            const distKm = track.distance / 1000
-            const hasEle = track.minElevation != null
-            const minEle = track.minElevation
-            const maxEle = track.maxElevation
-            const totalUp = track.elevationGain
-            const totalDown = track.elevationLoss
-            const elevations = track.elevations.flatMap(value => value == null ? [] : [value])
+              // Haversine distance
+              const toRad = (d: number) => d * Math.PI / 180
+              let totalDist = 0
+              for (let i = 1; i < pts.length; i++) {
+                const [lat1, lng1] = pts[i - 1], [lat2, lng2] = pts[i]
+                const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1)
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+                totalDist += 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+              }
+              const distKm = totalDist / 1000
 
-            const chartW = 280
-            const chartH = 60
-            let pathD = ''
-            if (elevations.length > 1) {
-              const step = Math.max(1, Math.floor(elevations.length / chartW))
-              const sampled = elevations.filter((_, index) => index % step === 0)
-              const eMin = Math.min(...sampled)
-              const eMax = Math.max(...sampled)
-              const range = eMax - eMin || 1
-              pathD = sampled.map((elevation, index) => {
-                const x = (index / (sampled.length - 1)) * chartW
-                const y = chartH - ((elevation - eMin) / range) * (chartH - 4) - 2
-                return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-              }).join(' ')
-            }
+              // Elevation stats
+              let minEle = Infinity, maxEle = -Infinity, totalUp = 0, totalDown = 0
+              if (hasEle) {
+                for (let i = 0; i < pts.length; i++) {
+                  const e = pts[i][2]
+                  if (e < minEle) minEle = e
+                  if (e > maxEle) maxEle = e
+                  if (i > 0) {
+                    const diff = e - pts[i - 1][2]
+                    if (diff > 0) totalUp += diff; else totalDown += Math.abs(diff)
+                  }
+                }
+              }
 
-            return (
+              // Elevation profile SVG
+              const chartW = 280, chartH = 60
+              const elevations = hasEle ? pts.map(p => p[2]) : []
+              let pathD = ''
+              if (elevations.length > 1) {
+                const step = Math.max(1, Math.floor(elevations.length / chartW))
+                const sampled = elevations.filter((_, i) => i % step === 0)
+                const eMin = Math.min(...sampled), eMax = Math.max(...sampled)
+                const range = eMax - eMin || 1
+                pathD = sampled.map((e, i) => {
+                  const x = (i / (sampled.length - 1)) * chartW
+                  const y = chartH - ((e - eMin) / range) * (chartH - 4) - 2
+                  return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+                }).join(' ')
+              }
+
+              return (
                 <div className="bg-surface-hover" style={{ borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <TrendingUp size={13} color="#9ca3af" />
@@ -955,11 +934,11 @@ function PlaceExtras({ openingHours, weekdayIndex, hoursExpanded, setHoursExpand
                       <>
                         <div className="text-content" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600 }}>
                           <Mountain size={12} color="#22c55e" />
-                          {formatElevation(maxEle!, distanceUnit)}
+                          {formatElevation(maxEle, distanceUnit)}
                         </div>
                         <div className="text-content" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600 }}>
                           <Mountain size={12} color="#ef4444" />
-                          {formatElevation(minEle!, distanceUnit)}
+                          {formatElevation(minEle, distanceUnit)}
                         </div>
                         <div className="text-content-muted" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>
                           ↑{formatElevation(totalUp, distanceUnit)} &nbsp;↓{formatElevation(totalDown, distanceUnit)}
@@ -980,7 +959,8 @@ function PlaceExtras({ openingHours, weekdayIndex, hoursExpanded, setHoursExpand
                     </svg>
                   )}
                 </div>
-            )
+              )
+            } catch { return null }
           })()}
 
           {/* Files section */}

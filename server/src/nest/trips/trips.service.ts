@@ -1,17 +1,17 @@
-import { db, canAccessTrip } from '../../db/database';
-import { listBudgetItems } from '../../services/budgetService';
-import { listDays, listAccommodations } from '../../services/dayService';
-import { listFiles } from '../../services/fileService';
-import { listItems as listPackingItems } from '../../services/packingService';
-import { checkPermission } from '../../services/permissions';
-import { listPlaces } from '../../services/placeService';
-import { listReservations } from '../../services/reservationService';
-import { listItems as listTodoItems } from '../../services/todoService';
-import * as tripSvc from '../../services/tripService';
-import { searchUnsplashPhotos, getUnsplashKey } from '../../services/unsplashService';
-import type { User } from '../../types';
-import { broadcast } from '../../websocket';
 import { Injectable } from '@nestjs/common';
+import { db, canAccessTrip } from '../../db/database';
+import { broadcast } from '../../websocket';
+import { checkPermission } from '../../services/permissions';
+import type { User } from '../../types';
+import * as tripSvc from '../../services/tripService';
+import { listDays, listAccommodations } from '../../services/dayService';
+import { listPlaces } from '../../services/placeService';
+import { listItems as listPackingItems } from '../../services/packingService';
+import { listItems as listTodoItems } from '../../services/todoService';
+import { listBudgetItems, rebaseTripCurrency } from '../../services/budgetService';
+import { listReservations } from '../../services/reservationService';
+import { listFiles } from '../../services/fileService';
+import { searchUnsplashPhotos, getUnsplashKey } from '../../services/unsplashService';
 
 /**
  * Thin Nest wrapper around the existing trip service + the per-domain list
@@ -58,7 +58,11 @@ export class TripsService {
     return tripSvc.getTripOwner(tripId);
   }
 
-  update(tripId: string, userId: number, body: Parameters<typeof tripSvc.updateTrip>[2], role: string) {
+  async update(tripId: string, userId: number, body: Parameters<typeof tripSvc.updateTrip>[2], role: string) {
+    // Re-anchor the budget while the outgoing currency is still on the trip row,
+    // otherwise the frozen FX rates and the currency-less expenses that inherit the
+    // trip's base are left pointing at a currency that no longer exists (#1543).
+    await rebaseTripCurrency(tripId, body.currency);
     return tripSvc.updateTrip(tripId, userId, body, role);
   }
 

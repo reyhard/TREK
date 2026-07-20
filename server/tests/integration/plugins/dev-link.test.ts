@@ -5,21 +5,20 @@
  * built artifact, native binaries, don't-clobber-a-real-plugin, reload only a link),
  * and a full link -> activate -> reload loop through a real isolated child.
  */
-import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 const { testDb } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE plugins (
     id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT, icon TEXT, version TEXT, api_version INTEGER,
-    min_trek_version TEXT, permissions TEXT DEFAULT '[]', capabilities TEXT DEFAULT '{}', dependencies TEXT DEFAULT '{}',
+    min_trek_version TEXT, trek_range TEXT, permissions TEXT DEFAULT '[]', capabilities TEXT DEFAULT '{}', dependencies TEXT DEFAULT '{}',
     operator_egress INTEGER DEFAULT 0, granted_permissions TEXT DEFAULT '', status TEXT, enabled INTEGER DEFAULT 0, config TEXT DEFAULT '{}',
-    source_repo TEXT, source_commit TEXT, sha256 TEXT, author_pubkey TEXT, reviewed_at TEXT, last_error TEXT, updated_at TEXT);
+    source_repo TEXT, source_commit TEXT, sha256 TEXT, author_pubkey TEXT, reviewed_at TEXT, last_error TEXT, updated_at TEXT,
+    update_block_code TEXT, update_block_detail TEXT, update_block_version TEXT);
     CREATE TABLE plugin_error_log (id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id TEXT, level TEXT, message TEXT, ts TEXT);
     CREATE TABLE plugin_settings_fields (plugin_id TEXT, field_key TEXT, label TEXT, input_type TEXT, placeholder TEXT, hint TEXT, required INTEGER, secret INTEGER, scope TEXT, options TEXT, oauth_config TEXT, sort_order INTEGER);
     CREATE TABLE settings (user_id INTEGER, key TEXT, value TEXT);
@@ -30,6 +29,8 @@ const { testDb } = vi.hoisted(() => {
 vi.mock('../../../src/db/database', () => ({ db: testDb, canAccessTrip: () => undefined }));
 vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
+import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+
 let codeRoot: string;
 let dataRoot: string;
 let srcRoot: string; // the "developer's" source lives OUTSIDE the plugins volume
@@ -38,13 +39,12 @@ let runtime: PluginRuntimeService;
 const ROUTE = (v: string) =>
   `module.exports = { routes: [{ method: 'GET', path: '/v', auth: false, async handler() { return { status: 200, body: JSON.stringify({ v: ${v} }) }; } }] };`;
 
-function writeSource(id: string, opts: { index?: string; native?: boolean; noBuild?: boolean } = {}): string {
+function writeSource(id: string, opts: { index?: string; native?: boolean; noBuild?: boolean; trek?: string } = {}): string {
   const dir = path.join(srcRoot, id);
   fs.mkdirSync(path.join(dir, 'server'), { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, 'trek-plugin.json'),
-    JSON.stringify({ id, name: id, version: '1.0.0', type: 'integration', permissions: [] }),
-  );
+  // dev-link requires a `trek` range like any other install front door; `opts.trek`
+  // overrides it to exercise the gate.
+  fs.writeFileSync(path.join(dir, 'trek-plugin.json'), JSON.stringify({ id, name: id, version: '1.0.0', type: 'integration', permissions: [], trek: opts.trek ?? '>=3.0.0 <4.0.0' }));
   if (!opts.noBuild) fs.writeFileSync(path.join(dir, 'server', 'index.js'), opts.index ?? 'module.exports = {};');
   if (opts.native) fs.writeFileSync(path.join(dir, 'server', 'addon.node'), '\0');
   return dir;
@@ -82,9 +82,7 @@ describe('PluginRuntimeService dev-link', () => {
     expect(fs.realpathSync(dest)).toBe(fs.realpathSync(dir));
 
     const row = testDb.prepare("SELECT source_repo, status, enabled FROM plugins WHERE id = 'linkplug'").get() as {
-      source_repo: string;
-      status: string;
-      enabled: number;
+      source_repo: string; status: string; enabled: number;
     };
     expect(row).toMatchObject({ source_repo: 'local:link', status: 'inactive', enabled: 0 });
   });
@@ -102,12 +100,23 @@ describe('PluginRuntimeService dev-link', () => {
     await expect(runtime.link(writeSource('nativeplug', { native: true }))).rejects.toThrow(/native/);
   });
 
+  it('rejects a local dir whose TREK range this server does not satisfy', async () => {
+    // Dev-link is the third install front door, and it hands TREK code to RUN against real
+    // data — the fact that the author is standing right there is not a reason to skip the
+    // check that the code supports the host it is about to be spawned on.
+    process.env.APP_VERSION = '3.3.0';
+    try {
+      await expect(runtime.link(writeSource('oldplug', { trek: '>=2.0.0 <3.0.0' }))).rejects.toMatchObject({
+        code: 'TREK_VERSION_INCOMPATIBLE',
+      });
+      await expect(runtime.link(writeSource('rangeless', { trek: '' }))).rejects.toThrow(/missing "trek"/);
+    } finally {
+      delete process.env.APP_VERSION;
+    }
+  });
+
   it('refuses to clobber a real (non-linked) installed plugin of the same id', async () => {
-    testDb
-      .prepare(
-        "INSERT INTO plugins (id, name, type, version, status, source_repo) VALUES ('installed','X','integration','1.0.0','inactive','local:upload')",
-      )
-      .run();
+    testDb.prepare("INSERT INTO plugins (id, name, type, version, status, source_repo) VALUES ('installed','X','integration','1.0.0','inactive','local:upload')").run();
     await expect(runtime.link(writeSource('installed'))).rejects.toThrow(/already installed/);
   });
 

@@ -4,15 +4,13 @@
  * focuses on auth, status codes (mark POSTs stay 200), the cache headers and the
  * bespoke 400/404 bodies.
  */
-import { AtlasModule } from '../../src/nest/atlas/atlas.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { seedUser, sessionCookie } from './harness';
-import { Test } from '@nestjs/testing';
-
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import zlib from 'zlib';
+import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import request from 'supertest';
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { Test } from '@nestjs/testing';
+import { seedUser, sessionCookie } from './harness';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -36,7 +34,7 @@ const { mocks } = vi.hoisted(() => ({
     unmarkRegionVisited: vi.fn(),
     getVisitedRegions: vi.fn(),
     getRegionGeo: vi.fn(),
-    getCountryGeo: vi.fn(),
+    getCountryGeoGz: vi.fn(),
     listBucketList: vi.fn(),
     createBucketItem: vi.fn(),
     updateBucketItem: vi.fn(),
@@ -44,6 +42,9 @@ const { mocks } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../src/services/atlasService', () => mocks);
+
+import { AtlasModule } from '../../src/nest/atlas/atlas.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('Atlas e2e (real auth guard + temp SQLite)', () => {
   let server: Server;
@@ -76,10 +77,13 @@ describe('Atlas e2e (real auth guard + temp SQLite)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('200 countries/geo returns the admin-0 FeatureCollection', async () => {
-    mocks.getCountryGeo.mockReturnValue({ type: 'FeatureCollection', features: [{ id: 'NO' }] });
+  it('200 countries/geo serves gzipped admin-0 that the client decompresses to a FeatureCollection', async () => {
+    const gz = zlib.gzipSync(JSON.stringify({ type: 'FeatureCollection', features: [{ id: 'NO' }] }));
+    mocks.getCountryGeoGz.mockReturnValue(gz);
     const res = await request(server).get('/api/addons/atlas/countries/geo').set('Cookie', sessionCookie(1));
     expect(res.status).toBe(200);
+    expect(res.headers['content-encoding']).toBe('gzip');
+    // superagent transparently decompresses, mirroring the browser.
     expect(res.body.type).toBe('FeatureCollection');
     expect(res.headers['cache-control']).toContain('max-age=86400');
   });
@@ -98,10 +102,7 @@ describe('Atlas e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('400 on region mark without name/country_code', async () => {
-    const res = await request(server)
-      .post('/api/addons/atlas/region/by/mark')
-      .set('Cookie', sessionCookie(1))
-      .send({ name: 'Bavaria' });
+    const res = await request(server).post('/api/addons/atlas/region/by/mark').set('Cookie', sessionCookie(1)).send({ name: 'Bavaria' });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'name and country_code are required' });
   });
@@ -122,10 +123,7 @@ describe('Atlas e2e (real auth guard + temp SQLite)', () => {
 
   it('201 on bucket-list create', async () => {
     mocks.createBucketItem.mockReturnValue({ id: 2, name: 'Kyoto' });
-    const res = await request(server)
-      .post('/api/addons/atlas/bucket-list')
-      .set('Cookie', sessionCookie(1))
-      .send({ name: 'Kyoto' });
+    const res = await request(server).post('/api/addons/atlas/bucket-list').set('Cookie', sessionCookie(1)).send({ name: 'Kyoto' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ item: { id: 2, name: 'Kyoto' } });
   });

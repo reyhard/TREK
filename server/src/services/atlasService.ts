@@ -17,35 +17,192 @@ import zlib from 'zlib';
 // __dirname is server/dist/services at runtime and server/src/services under vitest;
 // both resolve ../../assets to server/assets.
 
-const geoBundleCache = new Map<string, any>();
+// Neither parsed bundle is cached. admin0 (~145MB) and admin1 (~260MB) parsed at once are
+// what exhausted a 512MB host while using Atlas (#1576). Instead we retain only compact
+// derivatives: the raw admin0 .gz bytes for direct serving, a Float64Array poly/box index
+// for server-side point-in-polygon (see buildCountryIndexes), and admin1 pre-split per
+// country into ready-to-serve GeoJSON strings, built by streaming the gz so the full
+// bundle is never materialised in one piece.
 
-function loadGeoBundle(name: 'admin0' | 'admin1'): any {
-  const cached = geoBundleCache.get(name);
-  if (cached) return cached;
-  const file = path.join(__dirname, '..', '..', 'assets', 'atlas', `${name}.geojson.gz`);
-  if (!fs.existsSync(file)) {
-    console.warn(`[Atlas] ${name}.geojson.gz missing — run \`node scripts/build-atlas-geo.mjs\``);
-    const empty = { type: 'FeatureCollection', features: [] };
-    geoBundleCache.set(name, empty);
-    return empty;
-  }
-  const geo = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8'));
-  geoBundleCache.set(name, geo);
-  console.log(`[Atlas] Loaded ${name} GeoJSON: ${geo.features?.length || 0} features`);
-  return geo;
+function assetPath(name: 'admin0' | 'admin1'): string {
+  return path.join(__dirname, '..', '..', 'assets', 'atlas', `${name}.geojson.gz`);
 }
 
-/** Full admin-0 country-border FeatureCollection (for the client map's country layer). */
+let admin0Gz: Buffer | null | undefined;
+function loadAdmin0Gz(): Buffer | null {
+  if (admin0Gz !== undefined) return admin0Gz;
+  const file = assetPath('admin0');
+  if (!fs.existsSync(file)) {
+    console.warn(`[Atlas] admin0.geojson.gz missing — run \`node scripts/build-atlas-geo.mjs\``);
+    return (admin0Gz = null);
+  }
+  return (admin0Gz = fs.readFileSync(file));
+}
+
+/** admin-0 country borders as gzipped GeoJSON bytes, served to the client map with
+ *  Content-Encoding: gzip so the server never holds the parsed FeatureCollection. */
+export function getCountryGeoGz(): Buffer | null {
+  return loadAdmin0Gz();
+}
+
+/** Parsed admin-0 FeatureCollection, parsed on demand (not cached). Not on the client hot
+ *  path — the map is served the gz bytes via getCountryGeoGz — but kept for internal/test
+ *  callers that need the objects. */
 export function getCountryGeo(): any {
-  return loadGeoBundle('admin0');
+  const gz = loadAdmin0Gz();
+  if (!gz) return { type: 'FeatureCollection', features: [] };
+  return JSON.parse(zlib.gunzipSync(gz).toString('utf8'));
 }
 
 export async function getRegionGeo(countryCodes: string[]): Promise<any> {
-  const geo = loadGeoBundle('admin1');
-  if (!geo) return { type: 'FeatureCollection', features: [] };
-  const codes = new Set(countryCodes.map((c) => c.toUpperCase()));
-  const features = geo.features.filter((f: any) => codes.has(f.properties?.iso_a2?.toUpperCase()));
-  return { type: 'FeatureCollection', features };
+  const store = await getAdmin1Store();
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const code of countryCodes) {
+    const c = code.toUpperCase();
+    if (seen.has(c)) continue;
+    seen.add(c);
+    const s = store.get(c);
+    if (s) parts.push(s);
+  }
+  if (parts.length === 0) return { type: 'FeatureCollection', features: [] };
+  // Each stored value is that country's features as comma-joined GeoJSON text; wrap the
+  // requested subset into one FeatureCollection and parse only that (per-viewport, small).
+  return JSON.parse(`{"type":"FeatureCollection","features":[${parts.join(',')}]}`);
+}
+
+// admin1 regions, pre-split per ISO_A2 into comma-joined feature text. Built once by
+// streaming the gz through a brace-depth splitter that emits one Feature at a time, so the
+// ~260MB full parse never happens (it OOMs a 512MB host). Concurrent first-callers share
+// one in-flight build via admin1Building.
+let admin1Store: Map<string, string> | null = null;
+let admin1Building: Promise<Map<string, string>> | null = null;
+
+function getAdmin1Store(): Promise<Map<string, string>> {
+  if (admin1Store) return Promise.resolve(admin1Store);
+  if (!admin1Building) {
+    admin1Building = buildAdmin1Store().then((s) => {
+      admin1Store = s;
+      admin1Building = null;
+      return s;
+    });
+  }
+  return admin1Building;
+}
+
+// Feed arbitrary gunzip chunks; invokes onFeature(text) once per top-level Feature object
+// inside "features":[ … ]. `pending` holds only the unconsumed tail (at most one partial
+// feature + the current chunk), keeping memory flat regardless of bundle size.
+function createFeatureSplitter(onFeature: (text: string) => void): (chunk: string) => void {
+  let pending = '';
+  let started = false;
+  // Scan progress is carried across chunks so each character is examined exactly once.
+  // A large Feature (e.g. Canada, ~5.5MB) spans hundreds of gunzip chunks; re-scanning the
+  // accumulated partial from the start on every chunk was O(n²) per feature and pushed the
+  // one-time admin1 build past the 15s test timeout under coverage/CI (#1576-followup).
+  let scanning = false; // currently inside a Feature object?
+  let depth = 0,
+    inStr = false,
+    esc = false;
+  let scanPos = 0,
+    featStart = 0; // resume point + current feature start, in `pending`
+  return (chunk: string) => {
+    pending += chunk;
+    if (!started) {
+      const fi = pending.indexOf('"features"');
+      if (fi === -1) return;
+      const br = pending.indexOf('[', fi);
+      if (br === -1) return;
+      pending = pending.slice(br + 1);
+      started = true;
+      scanPos = 0;
+    }
+    const n = pending.length;
+    while (scanPos < n) {
+      if (!scanning) {
+        const c = pending[scanPos];
+        if (c === ' ' || c === '\n' || c === '\r' || c === '\t' || c === ',') {
+          scanPos++;
+          continue;
+        }
+        if (c === ']') {
+          scanPos = n;
+          break;
+        }
+        if (c !== '{') {
+          scanPos++;
+          continue;
+        }
+        scanning = true;
+        depth = 0;
+        inStr = false;
+        esc = false;
+        featStart = scanPos;
+      }
+      let end = -1;
+      for (let j = scanPos; j < n; j++) {
+        const c = pending[j];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (c === '\\') esc = true;
+          else if (c === '"') inStr = false;
+        } else if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') {
+          if (--depth === 0) {
+            end = j + 1;
+            scanPos = j + 1;
+            break;
+          }
+        }
+      }
+      if (end === -1) {
+        scanPos = n;
+        break;
+      } // partial feature — resume from n next chunk
+      onFeature(pending.slice(featStart, end));
+      scanning = false;
+    }
+    // Drop the fully-consumed prefix, keeping at most the current partial feature.
+    const keepFrom = scanning ? featStart : scanPos;
+    if (keepFrom > 0) {
+      pending = pending.slice(keepFrom);
+      scanPos -= keepFrom;
+      if (scanning) featStart -= keepFrom;
+    }
+  };
+}
+
+function buildAdmin1Store(): Promise<Map<string, string>> {
+  const file = assetPath('admin1');
+  if (!fs.existsSync(file)) {
+    console.warn(`[Atlas] admin1.geojson.gz missing — run \`node scripts/build-atlas-geo.mjs\``);
+    return Promise.resolve(new Map());
+  }
+  // Concatenate each country's features straight into the store as we stream, rather than
+  // collecting arrays and joining at the end (that doubling, plus the source bundle's
+  // whitespace, peaked high enough to OOM a 512MB host on the first build). Re-serialising
+  // each feature via JSON drops the source formatting (~114MB → ~68MB retained) and the
+  // parse/stringify garbage is per-feature and short-lived.
+  const store = new Map<string, string>();
+  const split = createFeatureSplitter((text) => {
+    const f = JSON.parse(text);
+    const code = f.properties?.iso_a2?.toUpperCase();
+    if (!code) return; // features with a null iso_a2 are skipped, matching the old filter
+    const compact = JSON.stringify(f);
+    const prev = store.get(code);
+    store.set(code, prev ? prev + ',' + compact : compact);
+  });
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(file)
+      .pipe(zlib.createGunzip())
+      .on('data', (chunk: Buffer) => split(chunk.toString('utf8')))
+      .on('end', () => {
+        console.log(`[Atlas] Indexed admin1 GeoJSON: ${store.size} countries`);
+        resolve(store);
+      })
+      .on('error', reject);
+  });
 }
 
 // ── Geocode cache ───────────────────────────────────────────────────────────
@@ -366,7 +523,7 @@ export async function reverseGeocodeCountry(lat: number, lng: number): Promise<s
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=3&accept-language=en`,
       {
-        headers: { 'User-Agent': 'TREK Travel Planner (https://github.com/mauriceboe/TREK)' },
+        headers: { 'User-Agent': 'TREK Travel Planner (https://github.com/liketrek/TREK)' },
         signal: AbortSignal.timeout(10_000),
       },
     );
@@ -383,13 +540,17 @@ export async function reverseGeocodeCountry(lat: number, lng: number): Promise<s
 // ── Point-in-polygon over the bundled admin0 borders (#1331) ─────────────────
 
 // Ray-casting (even-odd) test of (lng,lat) against a single GeoJSON ring.
-function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
+// Ray-cast on a flat [lng,lat,lng,lat,…] ring. Same algorithm as the classic number[][]
+// version, but the coordinates live in a Float64Array so the parsed admin0 geometry (with
+// its millions of tiny [lng,lat] arrays, ~145MB) need not be retained — only these rings.
+function pointInFlatRing(lng: number, lat: number, ring: Float64Array): boolean {
   let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0],
-      yi = ring[i][1];
-    const xj = ring[j][0],
-      yj = ring[j][1];
+  const n = ring.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = ring[2 * i],
+      yi = ring[2 * i + 1];
+    const xj = ring[2 * j],
+      yj = ring[2 * j + 1];
     if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
@@ -397,32 +558,67 @@ function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
   return inside;
 }
 
-// True when (lng,lat) falls inside a Polygon/MultiPolygon, honouring holes.
-function pointInGeometry(
-  lng: number,
-  lat: number,
-  geom: { type: string; coordinates: number[][][] | number[][][][] },
-): boolean {
-  const polygons = (geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates) as number[][][][];
-  for (const poly of polygons) {
-    if (!pointInRing(lng, lat, poly[0])) continue;
-    let inHole = false;
-    for (let h = 1; h < poly.length; h++) {
-      if (pointInRing(lng, lat, poly[h])) {
-        inHole = true;
-        break;
+// True when (lng,lat) falls inside a compact Polygon/MultiPolygon, honouring holes.
+// `rings` is every ring flattened; `polyRingCounts[k]` is how many rings polygon k owns
+// (its first ring is the outer boundary, the rest are holes).
+function pointInGeometry(lng: number, lat: number, geom: CompactGeom): boolean {
+  let ri = 0;
+  for (const rc of geom.polyRingCounts) {
+    if (pointInFlatRing(lng, lat, geom.rings[ri])) {
+      let inHole = false;
+      for (let h = 1; h < rc; h++) {
+        if (pointInFlatRing(lng, lat, geom.rings[ri + h])) {
+          inHole = true;
+          break;
+        }
       }
+      if (!inHole) return true;
     }
-    if (!inHole) return true;
+    ri += rc;
   }
   return false;
 }
 
-type Geometry = { type: string; coordinates: number[][][] | number[][][][] };
+// Compact polygon geometry: rings flattened into Float64Arrays, grouped into polygons by
+// polyRingCounts. Replaces the retained parsed GeoJSON geometry.
+type CompactGeom = { rings: Float64Array[]; polyRingCounts: number[] };
 type Box = [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
 
-// ISO_A2 → admin0 geometry + bounding boxes, both derived from the bundled admin0
-// borders on first use and cached.
+// Flatten a GeoJSON Polygon/MultiPolygon into the same compact form the country index uses,
+// plus one bounding box per part (a part-box, like buildCountryIndexes builds, so an
+// archipelago-style region — Illes Balears, Canarias, … — gets one tight box per island
+// group rather than one box spanning the whole span between them). Used to resolve admin1
+// regions against the bundle, which are parsed per country on demand rather than held whole.
+function compactGeomFromGeometry(geometry: { type: string; coordinates: unknown }): { geom: CompactGeom; boxes: Box[] } {
+  const parts = (geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates) as number[][][][];
+  const rings: Float64Array[] = [];
+  const polyRingCounts: number[] = [];
+  const boxes: Box[] = [];
+  for (const part of parts) {
+    polyRingCounts.push(part.length);
+    for (const ring of part) {
+      const flat = new Float64Array(ring.length * 2);
+      for (let i = 0; i < ring.length; i++) {
+        flat[2 * i] = ring[i][0];
+        flat[2 * i + 1] = ring[i][1];
+      }
+      rings.push(flat);
+    }
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const [lng, lat] of part[0]) {
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+    boxes.push([minLng, minLat, maxLng, maxLat]);
+  }
+  return { geom: { rings, polyRingCounts }, boxes };
+}
+
+// ISO_A2 → compact admin0 geometry + bounding boxes, derived from the bundled admin0
+// borders on first use. The parsed FeatureCollection is dropped after this runs; only the
+// Float64Array rings and boxes are retained (≈1MB vs the ≈145MB parsed geometry, #1576).
 //
 // The boxes used to be a hand-maintained table, which drifted: 43 countries (NG, BY,
 // GL, KP, TD, SS, …) had no box at all, so their coordinates fell into a *neighbour's*
@@ -433,35 +629,61 @@ type Box = [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
 // One box is stored PER GEOMETRY PART, not per country. A single box around a country
 // that straddles the antimeridian (RU, US, FJ, KI) would span nearly the whole globe;
 // per-part boxes keep Alaska and Chukotka separate and handle the ±180 wrap for free.
-let countryPolyIndex: Map<string, Geometry> | null = null;
+let countryPolyIndex: Map<string, CompactGeom> | null = null;
 let countryBoxIndex: Map<string, Box[]> | null = null;
 
 function buildCountryIndexes(): void {
-  const polys = new Map<string, Geometry>();
+  const polys = new Map<string, CompactGeom>();
   const boxes = new Map<string, Box[]>();
 
-  for (const f of loadGeoBundle('admin0').features ?? []) {
-    const raw = f.properties?.ISO_A2;
-    if (!raw || raw === '-99' || !f.geometry) continue;
-    const code = String(raw).toUpperCase();
-    polys.set(code, f.geometry);
+  const gz = loadAdmin0Gz();
+  if (gz) {
+    // Parse ONE feature at a time off the gunzipped string rather than JSON.parse-ing the
+    // whole FeatureCollection: the full parse transiently allocates ~285MB (the 145MB
+    // object graph plus intermediates) and V8 keeps those pages, which alone exhausts a
+    // 512MB host before admin1 even loads (#1576).
+    const json = zlib.gunzipSync(gz).toString('utf8');
+    const consume = createFeatureSplitter((text) => {
+      const f = JSON.parse(text);
+      const raw = f.properties?.ISO_A2;
+      if (!raw || raw === '-99' || !f.geometry) return;
+      const code = String(raw).toUpperCase();
 
-    const parts = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
-    const codeBoxes = boxes.get(code) ?? [];
-    for (const part of parts) {
-      let minLng = Infinity,
-        minLat = Infinity,
-        maxLng = -Infinity,
-        maxLat = -Infinity;
-      for (const [lng, lat] of part[0]) {
-        if (lng < minLng) minLng = lng;
-        if (lng > maxLng) maxLng = lng;
-        if (lat < minLat) minLat = lat;
-        if (lat > maxLat) maxLat = lat;
+      const parts = (
+        f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates
+      ) as number[][][][];
+      const rings: Float64Array[] = [];
+      const polyRingCounts: number[] = [];
+      const codeBoxes = boxes.get(code) ?? [];
+      for (const part of parts) {
+        polyRingCounts.push(part.length);
+        for (const ring of part) {
+          const flat = new Float64Array(ring.length * 2);
+          for (let i = 0; i < ring.length; i++) {
+            flat[2 * i] = ring[i][0];
+            flat[2 * i + 1] = ring[i][1];
+          }
+          rings.push(flat);
+        }
+        // Bounding box from the part's outer ring (part[0]).
+        let minLng = Infinity,
+          minLat = Infinity,
+          maxLng = -Infinity,
+          maxLat = -Infinity;
+        for (const [lng, lat] of part[0]) {
+          if (lng < minLng) minLng = lng;
+          if (lng > maxLng) maxLng = lng;
+          if (lat < minLat) minLat = lat;
+          if (lat > maxLat) maxLat = lat;
+        }
+        codeBoxes.push([minLng, minLat, maxLng, maxLat]);
       }
-      codeBoxes.push([minLng, minLat, maxLng, maxLat]);
-    }
-    boxes.set(code, codeBoxes);
+      // Matches the previous index exactly: geometry is overwritten (last feature for a
+      // code wins) while boxes accumulate across a code's features.
+      polys.set(code, { rings, polyRingCounts });
+      boxes.set(code, codeBoxes);
+    });
+    consume(json);
   }
 
   // Micro-territories aren't in admin0 — give them their box, but no polygon.
@@ -473,7 +695,7 @@ function buildCountryIndexes(): void {
   countryBoxIndex = boxes;
 }
 
-function getCountryPolyIndex(): Map<string, Geometry> {
+function getCountryPolyIndex(): Map<string, CompactGeom> {
   if (!countryPolyIndex) buildCountryIndexes();
   return countryPolyIndex!;
 }
@@ -481,6 +703,17 @@ function getCountryPolyIndex(): Map<string, Geometry> {
 function getCountryBoxIndex(): Map<string, Box[]> {
   if (!countryBoxIndex) buildCountryIndexes();
   return countryBoxIndex!;
+}
+
+// Broad sanity check — is (lat,lng) anywhere within the country's own admin0 bounding
+// box(es)? Deliberately looser than the polygon test in getCountryFromCoords: a genuine
+// border-simplification miss (a point just outside the exact border) still needs to pass
+// this, so it only rejects a country that isn't even in the right part of the globe. Used
+// to gate the address-derived fallback in both country and region resolution.
+export function isPointInCountryBox(countryCode: string, lat: number, lng: number): boolean {
+  const boxes = getCountryBoxIndex().get(countryCode.toUpperCase());
+  if (!boxes) return false;
+  return boxes.some(([minLng, minLat, maxLng, maxLat]) => lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng);
 }
 
 export function getCountryFromCoords(lat: number, lng: number): string | null {
@@ -540,25 +773,46 @@ export function getCountryFromAddress(address: string | null): string | null {
   return null;
 }
 
-// ── Resolve a place to a country code (address -> bbox -> geocode) ──────────
-
+// ── Resolve a place to a country code (bbox -> address -> geocode) ──────────
+//
+// Coordinates are tried FIRST and, when they resolve, trusted outright — getCountryFromCoords
+// is a real point-in-polygon test against the same borders the map renders. Address parsing
+// is only a fallback. It used to run first, but its "2-letter uppercase last segment = ISO
+// code" heuristic collides with US state abbreviations that are ALSO real ISO country codes
+// (DE=Germany, GA=Georgia, IN=India, LA=Laos, MA=Morocco, MO=Macau, PA=Panama, VA=Vatican,
+// CA=Canada, ...) — a place stored as "..., San Francisco, CA" resolved to Canada, not the
+// United States, whenever address ran first. When coordinates are present but didn't resolve
+// to any country, the address result is sanity-gated against that country's own admin0
+// bounding box (isPointInCountryBox) before being trusted — the same guard the region-level
+// address fallback uses. A place with no coordinates at all has nothing to gate against, so
+// the address is trusted directly there, as before.
 async function resolveCountryCode(place: Place): Promise<string | null> {
-  let code = getCountryFromAddress(place.address);
-  if (!code && place.lat && place.lng) {
-    code = getCountryFromCoords(place.lat, place.lng);
+  const hasCoords = !!(place.lat && place.lng);
+  if (hasCoords) {
+    const fromCoords = getCountryFromCoords(place.lat!, place.lng!);
+    if (fromCoords) return fromCoords;
   }
-  if (!code && place.lat && place.lng) {
-    code = await reverseGeocodeCountry(place.lat, place.lng);
+  const fromAddress = getCountryFromAddress(place.address);
+  if (fromAddress && (!hasCoords || isPointInCountryBox(fromAddress, place.lat!, place.lng!))) {
+    return fromAddress;
   }
-  return code;
+  if (hasCoords) {
+    return await reverseGeocodeCountry(place.lat!, place.lng!);
+  }
+  return null;
 }
 
 function resolveCountryCodeSync(place: Place): string | null {
-  let code = getCountryFromAddress(place.address);
-  if (!code && place.lat && place.lng) {
-    code = getCountryFromCoords(place.lat, place.lng);
+  const hasCoords = !!(place.lat && place.lng);
+  if (hasCoords) {
+    const fromCoords = getCountryFromCoords(place.lat!, place.lng!);
+    if (fromCoords) return fromCoords;
   }
-  return code;
+  const fromAddress = getCountryFromAddress(place.address);
+  if (fromAddress && (!hasCoords || isPointInCountryBox(fromAddress, place.lat!, place.lng!))) {
+    return fromAddress;
+  }
+  return null;
 }
 
 // ── Shared query: all trips the user owns or is a member of ─────────────────
@@ -625,7 +879,7 @@ function resolvePlaceCountries(places: Place[]): Map<number, string> {
       try {
         for (const place of uncachedForGeocode) {
           try {
-            const info = await reverseGeocodeRegion(place.lat!, place.lng!);
+            const info = await reverseGeocodeRegion(place.lat!, place.lng!, place.address);
             if (info) insertStmt.run(place.id, info.country_code, info.region_code, info.region_name);
           } catch {
             /* continue */
@@ -936,35 +1190,72 @@ export function listManuallyVisitedRegions(
     .all(userId) as { region_code: string; region_name: string; country_code: string }[];
 }
 
+/** Regions the user explicitly removed, which getVisitedRegions must not re-derive. */
+export function getHiddenRegions(userId: number): Set<string> {
+  const rows = db.prepare('SELECT region_code FROM hidden_regions WHERE user_id = ?').all(userId) as { region_code: string }[];
+  return new Set(rows.map(r => r.region_code));
+}
+
+// Bundled/geocoded region codes are always "<countryCode>-<rest>" (ISO 3166-2 format, and
+// buildRegionInfo's synthesized fallback follows the same convention) — used to recover a
+// region's country when there's no visited_regions row to read it from (a place-derived
+// region was never inserted there).
+function countryCodeFromRegionCode(regionCode: string): string {
+  return (regionCode.split('-')[0] || '').toUpperCase();
+}
+
 export function markRegionVisited(userId: number, regionCode: string, regionName: string, countryCode: string): void {
-  db.prepare(
-    'INSERT OR IGNORE INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)',
-  ).run(userId, regionCode, regionName, countryCode);
-  // Auto-mark parent country if not already visited
+  db.prepare('INSERT OR IGNORE INTO visited_regions (user_id, region_code, region_name, country_code) VALUES (?, ?, ?, ?)').run(userId, regionCode, regionName, countryCode);
+  // Re-marking lifts a previous removal of the region itself...
+  db.prepare('DELETE FROM hidden_regions WHERE user_id = ? AND region_code = ?').run(userId, regionCode);
+  // ...and of the parent country, which the "last region removed" cascade in
+  // unmarkRegionVisited below may have hidden — otherwise marking a region visited again
+  // would leave its country invisible.
   db.prepare('INSERT OR IGNORE INTO visited_countries (user_id, country_code) VALUES (?, ?)').run(userId, countryCode);
+  db.prepare('DELETE FROM hidden_countries WHERE user_id = ? AND country_code = ?').run(userId, countryCode);
+}
+
+// True when the given country still has at least one region that would show as visited —
+// derived from place_regions or manually marked — after excluding the given user's hidden
+// regions. Used to decide whether removing a region should cascade into hiding the country.
+function hasVisibleRegionForCountry(userId: number, countryCode: string, hidden: Set<string>): boolean {
+  const tripIds = getUserTrips(userId).map(t => t.id);
+  const placeIds = getPlacesForTrips(tripIds).filter(p => p.lat && p.lng).map(p => p.id);
+  const placeRegionCodes = placeIds.length > 0
+    ? (db.prepare(
+        `SELECT DISTINCT region_code FROM place_regions WHERE country_code = ? AND place_id IN (${placeIds.map(() => '?').join(',')})`
+      ).all(countryCode, ...placeIds) as { region_code: string }[]).map(r => r.region_code)
+    : [];
+  const manualRegionCodes = (db.prepare(
+    'SELECT region_code FROM visited_regions WHERE user_id = ? AND country_code = ?'
+  ).all(userId, countryCode) as { region_code: string }[]).map(r => r.region_code);
+  return [...placeRegionCodes, ...manualRegionCodes].some(code => !hidden.has(code));
 }
 
 export function unmarkRegionVisited(userId: number, regionCode: string): void {
-  const region = db
-    .prepare('SELECT country_code FROM visited_regions WHERE user_id = ? AND region_code = ?')
-    .get(userId, regionCode) as { country_code: string } | undefined;
+  const region = db.prepare('SELECT country_code FROM visited_regions WHERE user_id = ? AND region_code = ?').get(userId, regionCode) as { country_code: string } | undefined;
+  const countryCode = region?.country_code || countryCodeFromRegionCode(regionCode);
+
   db.prepare('DELETE FROM visited_regions WHERE user_id = ? AND region_code = ?').run(userId, regionCode);
-  if (region) {
-    const remaining = db
-      .prepare('SELECT COUNT(*) as count FROM visited_regions WHERE user_id = ? AND country_code = ?')
-      .get(userId, region.country_code) as { count: number };
-    if (remaining.count === 0) {
-      db.prepare('DELETE FROM visited_countries WHERE user_id = ? AND country_code = ?').run(
-        userId,
-        region.country_code,
-      );
+
+  // Tombstone unconditionally, not just for a manually-marked region — a region derived
+  // from real place data (the common case) needs to be dismissable too, mirroring
+  // unmarkCountryVisited's tombstone for a place-derived country (#1490).
+  if (countryCode) {
+    db.prepare('INSERT OR IGNORE INTO hidden_regions (user_id, region_code, country_code) VALUES (?, ?, ?)').run(userId, regionCode, countryCode);
+
+    // If that was the country's last visible region, hide the country too — otherwise it
+    // keeps showing "visited" on the world map with nothing left to drill into.
+    const hidden = getHiddenRegions(userId);
+    if (!hasVisibleRegionForCountry(userId, countryCode, hidden)) {
+      unmarkCountryVisited(userId, countryCode);
     }
   }
 }
 
 // ── Sub-national region resolution ────────────────────────────────────────
 
-interface RegionInfo {
+export interface RegionInfo {
   country_code: string;
   region_code: string;
   region_name: string;
@@ -975,10 +1266,83 @@ const geocodingInFlight = new Set<number>();
 
 const regionCache = new Map<string, RegionInfo | null>();
 
-// A zoom-8 reverse geocode of a GB place only resolves to the constituent country
-// (England/Scotland/Wales/Northern Ireland). Natural Earth's admin-1 polygons for GB
-// are counties and boroughs, so those four codes match no polygon and never highlight.
-const GB_CONSTITUENT_CODES = new Set(['GB-ENG', 'GB-SCT', 'GB-WLS', 'GB-NIR']);
+// ── Point-in-polygon over the bundled admin1 regions ────────────────────────
+//
+// Nominatim's reverse-geocode address levels (province, autonomous community, borough, …)
+// don't line up with whatever granularity geoBoundaries ships per country — e.g. Nominatim
+// gives Barcelona the *province* code ES-B while the bundle only has the *autonomous-
+// community* level (Catalonia), and Belgium/Italy's bundle only has a handful of top-level
+// regions while Nominatim returns provinces. Comparing those codes/names (even accent/dash-
+// normalized) can never match because they name different levels of subdivision. Resolving
+// the place's own lat/lng directly against the SAME polygons the client renders — like
+// getCountryFromCoords does for admin0 (#1331) — sidesteps the whole class of bug: the
+// stored region_code/region_name are then guaranteed to equal a bundle feature.
+//
+// The admin1 bundle is streamed and held as per-country GeoJSON text (never parsed whole,
+// #1576), so a country's region features are parsed and flattened to CompactGeom on first
+// use and cached — only visited countries ever pay the parse.
+type RegionFeature = { code: string; name: string; nameEn: string; geom: CompactGeom; boxes: Box[] };
+const regionFeatureCache = new Map<string, RegionFeature[]>();
+
+async function getRegionFeatures(countryCode: string): Promise<RegionFeature[]> {
+  const cc = countryCode.toUpperCase();
+  const cached = regionFeatureCache.get(cc);
+  if (cached) return cached;
+  const store = await getAdmin1Store();
+  const text = store.get(cc);
+  if (!text) {
+    regionFeatureCache.set(cc, []);
+    return [];
+  }
+  let features: { properties?: Record<string, string>; geometry?: { type: string; coordinates: unknown } }[];
+  try {
+    features = JSON.parse(`{"type":"FeatureCollection","features":[${text}]}`).features ?? [];
+  } catch {
+    regionFeatureCache.set(cc, []);
+    return [];
+  }
+  const out: RegionFeature[] = [];
+  for (const f of features) {
+    const code = f.properties?.iso_3166_2;
+    if (!code || !f.geometry) continue;
+    const { geom, boxes } = compactGeomFromGeometry(f.geometry);
+    out.push({
+      code,
+      name: f.properties?.name || code,
+      nameEn: f.properties?.name_en || f.properties?.name || code,
+      geom,
+      boxes,
+    });
+  }
+  regionFeatureCache.set(cc, out);
+  return out;
+}
+
+// Resolve (lat,lng) to a bundled admin1 region within the given country, smallest
+// matching-part-first (mirroring getCountryFromCoords' candidate ranking) so a point near
+// a shared border prefers the tighter-fitting candidate. Returns null when the country has
+// no admin1 coverage in the bundle or the point falls outside every polygon (simplification
+// gaps at coastlines, etc.) — callers should fall back to reverse geocoding.
+export async function getRegionFromCoords(countryCode: string, lat: number, lng: number): Promise<RegionInfo | null> {
+  const features = await getRegionFeatures(countryCode);
+  if (features.length === 0) return null;
+  const candidates: { f: RegionFeature; area: number }[] = [];
+  for (const f of features) {
+    for (const [minLng, minLat, maxLng, maxLat] of f.boxes) {
+      if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) {
+        candidates.push({ f, area: (maxLng - minLng) * (maxLat - minLat) });
+        break;
+      }
+    }
+  }
+  candidates.sort((a, b) => a.area - b.area);
+  for (const { f } of candidates) {
+    if (pointInGeometry(lng, lat, f.geom)) {
+      return { country_code: countryCode.toUpperCase(), region_code: f.code, region_name: f.nameEn || f.name };
+    }
+  }
+  return null;
+}
 
 // Returns the OSM address object, {} for an "ok but empty" response (so it is cached as
 // a definitive miss), or null for a transient failure (so it is retried next time).
@@ -988,7 +1352,7 @@ async function fetchNominatimAddress(lat: number, lng: number, zoom: number): Pr
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=${zoom}&accept-language=en`,
       {
-        headers: { 'User-Agent': 'TREK Travel Planner (https://github.com/mauriceboe/TREK)' },
+        headers: { 'User-Agent': 'TREK Travel Planner (https://github.com/liketrek/TREK)' },
         signal: AbortSignal.timeout(10_000),
       },
     );
@@ -1033,20 +1397,50 @@ function buildRegionInfo(address: Record<string, string>, preferFinest: boolean)
   };
 }
 
-async function reverseGeocodeRegion(lat: number, lng: number): Promise<RegionInfo | null> {
+async function reverseGeocodeRegion(lat: number, lng: number, placeAddress?: string | null): Promise<RegionInfo | null> {
   const key = roundKey(lat, lng);
   if (regionCache.has(key)) return regionCache.get(key)!;
+
+  // Prefer resolving directly against the bundled polygons: offline, deterministic, and —
+  // unlike Nominatim's address levels — guaranteed to match a feature the client can
+  // actually highlight. Falls through to reverse geocoding when the country has no admin1
+  // coverage or the point lands outside every polygon.
+  const coordCountry = getCountryFromCoords(lat, lng);
+  if (coordCountry) {
+    const fromBundle = await getRegionFromCoords(coordCountry, lat, lng);
+    if (fromBundle) {
+      regionCache.set(key, fromBundle);
+      return fromBundle;
+    }
+  }
+  // The coordinate-only lookup found no matching region — either no country polygon contains
+  // the point, or a simplified admin0 border put it in the WRONG country (a place on the
+  // Luxembourg side of the Sauer river fell inside Germany's simplified box). Retry against
+  // the place's own stored address, the same order resolveCountryCode(Sync) uses for country
+  // resolution — but only as a fallback: trusting it FIRST regressed places whose address
+  // ends in a US state abbreviation that collides with a real ISO code (e.g. "...CA" parsed
+  // as Canada instead of California), which coordinates alone already resolve correctly.
+  //
+  // Sanity-gate the address country against its own admin0 BOX (not the tighter polygon —
+  // the Luxembourg case needs a country whose exact border misses this very point) before
+  // trusting a region match in it.
+  const addressCountry = getCountryFromAddress(placeAddress ?? null);
+  if (addressCountry && addressCountry !== coordCountry && isPointInCountryBox(addressCountry, lat, lng)) {
+    const fromAddress = await getRegionFromCoords(addressCountry, lat, lng);
+    if (fromAddress) {
+      regionCache.set(key, fromAddress);
+      return fromAddress;
+    }
+  }
+
+  // Only reached when the bundle's own polygons for this country don't cover the point at
+  // all (coastal/simplification gaps) — a genuinely rare miss. Nominatim's coarse address
+  // level (state/province) is what the bundle actually carries; the former GB "rescue" to a
+  // finer county/borough level targeted the old Natural Earth polygons and produced a code
+  // the current geoBoundaries bundle can never match, so it was removed.
   const address = await fetchNominatimAddress(lat, lng, 8);
   if (!address) return null; // transient failure — leave uncached so a later call retries
-  let info = buildRegionInfo(address, false);
-  // GB constituent-country codes map to no admin-1 polygon, so re-resolve them at a finer
-  // zoom where Nominatim exposes the county/borough code (GB-LND, GB-MAN, GB-CON, …) that
-  // the polygons actually carry.
-  if (info && info.country_code === 'GB' && GB_CONSTITUENT_CODES.has(info.region_code)) {
-    const finerAddress = await fetchNominatimAddress(lat, lng, 10);
-    const finer = finerAddress ? buildRegionInfo(finerAddress, true) : null;
-    if (finer && !GB_CONSTITUENT_CODES.has(finer.region_code)) info = finer;
-  }
+  const info = buildRegionInfo(address, false);
   regionCache.set(key, info);
   return info;
 }
@@ -1079,7 +1473,7 @@ export async function getVisitedRegions(
       try {
         for (const place of uncached) {
           try {
-            const info = await reverseGeocodeRegion(place.lat!, place.lng!);
+            const info = await reverseGeocodeRegion(place.lat!, place.lng!, place.address);
             if (info) insertStmt.run(place.id, info.country_code, info.region_code, info.region_name);
           } catch {
             // individual failure — continue with remaining places
@@ -1120,6 +1514,17 @@ export async function getVisitedRegions(
     if (!result[r.country_code]) result[r.country_code] = [];
     if (!result[r.country_code].find((x) => x.code === r.region_code)) {
       result[r.country_code].push({ code: r.region_code, name: r.region_name, placeCount: 0, manuallyMarked: true });
+    }
+  }
+
+  // Suppress regions the user explicitly removed, same as getStats does for countries
+  // via getHiddenCountries (#1490) — otherwise a region derived fresh from place_regions
+  // (or a manual mark) on every request could never actually be dismissed.
+  const hidden = getHiddenRegions(userId);
+  if (hidden.size > 0) {
+    for (const country of Object.keys(result)) {
+      result[country] = result[country].filter(r => !hidden.has(r.code));
+      if (result[country].length === 0) delete result[country];
     }
   }
 
