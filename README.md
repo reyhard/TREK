@@ -445,6 +445,9 @@ Caddy handles TLS and WebSockets automatically.
 | `ADMIN_PASSWORD` | Password for the first admin on initial boot. Pairs with `ADMIN_EMAIL`. | random |
 | **Other** | | |
 | `DEMO_MODE` | Enable demo mode (hourly data resets) | `false` |
+| `DEMO_ADMIN_USER` | Username of the seeded demo admin account (when `DEMO_MODE=true`) | `admin` |
+| `DEMO_ADMIN_EMAIL` | Email of the seeded demo admin account (when `DEMO_MODE=true`) | `admin@trek.app` |
+| `DEMO_ADMIN_PASS` | Initial password for the seeded demo admin (when `DEMO_MODE=true`) | `admin12345` |
 | `UNSPLASH_ACCESS_KEY` | Optional Unsplash Access Key for trip-cover and place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from. Get a free key at [unsplash.com/developers](https://unsplash.com/developers). Overrides any per-admin key set in Admin > Settings (where it can also be configured instead). | — |
 | `MCP_RATE_LIMIT` | Max MCP API requests per user per minute | `300` |
 | `MCP_MAX_SESSION_PER_USER` | Max concurrent MCP sessions per user. At the cap, the least-recently-active session is closed to make room | `20` |
@@ -452,6 +455,10 @@ Caddy handles TLS and WebSockets automatically.
 | `MCP_SSE_KEEPALIVE` | SSE keep-alive interval in seconds (`0` = off). Keeps reverse proxies from killing idle SSE streams between tool calls | `25` |
 | `TRANSIT_API_URL` | Base URL for a Transitous-compatible public-transit routing API. When set, overrides the default public endpoint. Point it at your own Transitous instance for locked-down egress | auto |
 | `KITINERARY_EXTRACTOR_PATH` | Full path to the `kitinerary-extractor` binary. Auto-detected from PATH when unset | auto |
+| `BACKUP_MAX_DECOMPRESSED_MB` | Upper bound on total decompressed size of a restore archive | `5120` (5 GB) |
+| `IDEMPOTENCY_TTL_SECONDS` | TTL for `X-Idempotency-Key` entries in the database | `2592000` (30 days) |
+| `TREK_API_DOCS_ENABLED` | Serve Swagger UI / OpenAPI spec at `/api/docs` | `false` |
+| `TREK_PLACE_PHOTO_DIR` | Override directory for cached Google Places photo thumbnails | `uploads/photos/google` |
 | `WEBAUTHN_ORIGINS` | Comma-separated list of allowed WebAuthn origins for passkey authentication. Defaults to `APP_URL` when unset | auto |
 | `WEBAUTHN_RP_ID` | WebAuthn relying party ID (usually the domain without scheme or port). Defaults to the hostname when unset | auto |
 | `SMTP_HOST` | SMTP server hostname for outbound email notifications. Configurable in Admin > Settings; env var overrides | — |

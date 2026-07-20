@@ -74,6 +74,12 @@ env:
   # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik).
   # DEMO_MODE: "false"
   # Enable demo mode (hourly data resets).
+  # DEMO_ADMIN_USER: "admin"
+  # Username of the seeded demo admin (when DEMO_MODE=true). Default: admin.
+  # DEMO_ADMIN_EMAIL: "admin@trek.app"
+  # Email of the seeded demo admin (when DEMO_MODE=true). Default: admin@trek.app.
+  # DEMO_ADMIN_PASS: "admin12345"
+  # Initial password for the seeded demo admin (when DEMO_MODE=true). Default: admin12345.
   # TRANSIT_API_URL: "https://transitous.example.com"
   # Transitous-compatible transit routing API (default: public Transitous endpoint).
   # KITINERARY_EXTRACTOR_PATH: ""
@@ -104,6 +110,8 @@ env:
   # Enable dev-link (set to "1" for local development only).
   # TREK_PLUGIN_PERMISSIONS: "on"
   # OS permission jail for plugin children (default: on).
+  # TREK_PLUGIN_ALLOW_PRIVATE_EGRESS: ""
+  # Permit plugin children to reach private/RFC-1918 targets. Set 'on' to allow; default blocks LAN/private-network addresses.
   # TREK_PLUGIN_REGISTRY_URL: ""
   # Override plugin registry index URL.
   # TREK_PLUGIN_RPC_BURST: "60"
@@ -132,12 +140,20 @@ env:
   # MCP session idle timeout in seconds. Defaults to 3600 (1 hour).
   # MCP_SSE_KEEPALIVE: "25"
   # SSE keep-alive interval in seconds (0 = off). Defaults to 25. Keeps reverse proxies from killing idle SSE streams between tool calls.
+  # IDEMPOTENCY_TTL_SECONDS: "2592000"
+  # TTL for X-Idempotency-Key entries (default: 2592000 / 30 days).
+  # BACKUP_MAX_DECOMPRESSED_MB: "5120"
+  # Max decompressed size of a restore archive (default: 5120 MB / 5 GB).
+  # TREK_API_DOCS_ENABLED: "false"
+  # Serve Swagger UI / OpenAPI spec at /api/docs (default: false).
   # OVERPASS_URL: ""
   # Custom Overpass endpoint(s) for the map POI "explore" search, comma-separated. When set, REPLACES the bundled
   # public mirrors — point it at an internal/self-hosted Overpass instance when the public mirrors are unreachable
   # from the cluster (e.g. locked-down egress). Non-http(s) entries are ignored.
   # OVERPASS_TIMEOUT_MS: "12000"
   # Per-endpoint timeout (ms) for Overpass POI requests. Raise it for a slow self-hosted Overpass instance. Defaults to 12000.
+  # TREK_PLACE_PHOTO_DIR: ""
+  # Override directory for cached Google Places photo thumbnails. Default: uploads/photos/google. Primarily a test seam — you should not normally need to set this.
 
 
 # Secret environment variables stored in a Kubernetes Secret.

@@ -100,6 +100,15 @@ data:
   {{- if .Values.env.SMTP_SKIP_TLS_VERIFY }}
   SMTP_SKIP_TLS_VERIFY: {{ .Values.env.SMTP_SKIP_TLS_VERIFY | quote }}
   {{- end }}
+  {{- if .Values.env.DEMO_ADMIN_USER }}
+  DEMO_ADMIN_USER: {{ .Values.env.DEMO_ADMIN_USER | quote }}
+  {{- end }}
+  {{- if .Values.env.DEMO_ADMIN_EMAIL }}
+  DEMO_ADMIN_EMAIL: {{ .Values.env.DEMO_ADMIN_EMAIL | quote }}
+  {{- end }}
+  {{- if .Values.env.DEMO_ADMIN_PASS }}
+  DEMO_ADMIN_PASS: {{ .Values.env.DEMO_ADMIN_PASS | quote }}
+  {{- end }}
   {{- if .Values.env.TREK_PLUGINS_ENABLED }}
   TREK_PLUGINS_ENABLED: {{ .Values.env.TREK_PLUGINS_ENABLED | quote }}
   {{- end }}
@@ -114,6 +123,9 @@ data:
   {{- end }}
   {{- if .Values.env.TREK_PLUGIN_PERMISSIONS }}
   TREK_PLUGIN_PERMISSIONS: {{ .Values.env.TREK_PLUGIN_PERMISSIONS | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_ALLOW_PRIVATE_EGRESS }}
+  TREK_PLUGIN_ALLOW_PRIVATE_EGRESS: {{ .Values.env.TREK_PLUGIN_ALLOW_PRIVATE_EGRESS | quote }}
   {{- end }}
   {{- if .Values.env.TREK_PLUGIN_REGISTRY_URL }}
   TREK_PLUGIN_REGISTRY_URL: {{ .Values.env.TREK_PLUGIN_REGISTRY_URL | quote }}
@@ -165,4 +177,16 @@ data:
   {{- end }}
   {{- if .Values.env.MCP_SSE_KEEPALIVE }}
   MCP_SSE_KEEPALIVE: {{ .Values.env.MCP_SSE_KEEPALIVE | quote }}
+  {{- end }}
+  {{- if .Values.env.IDEMPOTENCY_TTL_SECONDS }}
+  IDEMPOTENCY_TTL_SECONDS: {{ .Values.env.IDEMPOTENCY_TTL_SECONDS | quote }}
+  {{- end }}
+  {{- if .Values.env.BACKUP_MAX_DECOMPRESSED_MB }}
+  BACKUP_MAX_DECOMPRESSED_MB: {{ .Values.env.BACKUP_MAX_DECOMPRESSED_MB | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_API_DOCS_ENABLED }}
+  TREK_API_DOCS_ENABLED: {{ .Values.env.TREK_API_DOCS_ENABLED | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLACE_PHOTO_DIR }}
+  TREK_PLACE_PHOTO_DIR: {{ .Values.env.TREK_PLACE_PHOTO_DIR | quote }}
   {{- end }}

@@ -43,6 +43,9 @@ services:
 #      - OIDC_DISCOVERY_URL= # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik)
 #      - ADMIN_EMAIL=admin@trek.local # Initial admin e-mail — only used on first boot when no users exist
 #      - ADMIN_PASSWORD=changeme      # Initial admin password — only used on first boot when no users exist
+#      - DEMO_ADMIN_USER=admin # Username of the seeded demo admin (when DEMO_MODE=true)
+#      - DEMO_ADMIN_EMAIL=admin@trek.app # Email of the seeded demo admin
+#      - DEMO_ADMIN_PASS=admin12345 # Initial password for the seeded demo admin
 #      - WEBAUTHN_ORIGINS=https://trek.example.com # Comma-separated allowed WebAuthn origins. Defaults to APP_URL.
 #      - WEBAUTHN_RP_ID=trek.example.com # WebAuthn relying party ID (domain without scheme/port). Defaults to APP_URL hostname.
 #      - SMTP_HOST=smtp.example.com # SMTP server hostname for outbound email notifications.
@@ -55,6 +58,9 @@ services:
 #      - MCP_MAX_SESSION_PER_USER=20 # Max concurrent MCP sessions per user (default: 20)
 #      - MCP_SESSION_TTL=3600 # MCP session idle timeout in seconds (default: 3600)
 #      - MCP_SSE_KEEPALIVE=25 # SSE keep-alive interval in seconds (default: 25). Keeps reverse proxies from killing idle SSE streams.
+#      - IDEMPOTENCY_TTL_SECONDS=2592000 # TTL for X-Idempotency-Key entries (default: 2592000 / 30 days)
+#      - BACKUP_MAX_DECOMPRESSED_MB=5120 # Max decompressed size of a restore archive (default: 5120 MB)
+#      - TREK_API_DOCS_ENABLED=false # Serve Swagger UI / OpenAPI spec at /api/docs (default: false)
 #      - TRANSIT_API_URL=https://transitous.example.com # Transitous-compatible transit routing API (default: public Transitous endpoint)
 #      - KITINERARY_EXTRACTOR_PATH= # Optional. Full path to kitinerary-extractor binary. Auto-detected from PATH and /usr/lib/*/libexec/kf6/ when unset.
 #      - OAUTH_HTTP_REDIRECT_HOSTS= # Comma-separated list of LAN hostnames allowed for HTTP OAuth redirect URIs. Default: only localhost/127.0.0.1/[::1].
@@ -63,6 +69,7 @@ services:
 #      - TREK_PLUGINS_DATA_DIR= # Override the root directory for plugin-writable data. Default: data/plugins-data.
 #      - TREK_PLUGINS_DEV_LINK=1 # Enable dev-link for loading plugins from local directories. ONLY set in development. Default: off.
 #      - TREK_PLUGIN_PERMISSIONS=on # OS permission jail for plugin child processes. Set to 'off' to disable (not recommended). Default: on.
+#      - TREK_PLUGIN_ALLOW_PRIVATE_EGRESS=on # Permit plugin child processes to reach private/RFC-1918 targets. Set 'on' to allow; default (unset) blocks LAN/private-network addresses.
 #      - TREK_PLUGIN_REGISTRY_URL= # Override the plugin registry index URL. Default: GitHub TREK-Plugins main dist/index.json.
 #      - TREK_PLUGIN_RPC_BURST=60 # Per-plugin RPC burst allowance (calls before rate limiting kicks in). Default: 60.
 #      - TREK_PLUGIN_RPC_PER_SEC=20 # Per-plugin sustained RPC calls per second. Default: 20.
@@ -74,6 +81,7 @@ services:
 #      - TREK_PLUGIN_AUDIT_MAX_ROWS=20000 # Max audit log rows retained per plugin. Default: 20000.
 #      - TREK_PLUGIN_MAX_RSS_MB=300 # Max RSS memory per plugin child in MB. Default: 300.
 #      - UNSPLASH_ACCESS_KEY= # Optional. Unsplash Access Key for trip-cover / place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from (#1449). Free key at unsplash.com/developers. Can also be set per-admin in Admin > Settings; the env var overrides that.
+#      - TREK_PLACE_PHOTO_DIR= # Override directory for cached Google Places photo thumbnails. Default: uploads/photos/google. Primarily a test seam — you should not normally need to set this.
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
