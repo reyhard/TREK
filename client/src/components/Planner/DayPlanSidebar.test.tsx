@@ -52,12 +52,15 @@ vi.mock('../Map/RouteCalculator', () => ({
   generateGoogleMapsUrl: vi.fn().mockReturnValue('https://maps.google.com/...'),
   optimizeRoute: vi.fn().mockImplementation((places) => places),
   // One leg per waypoint gap; the connector between two stops reads distanceText.
-  calculateRouteWithLegs: vi.fn().mockImplementation((waypoints) => Promise.resolve({
-    distanceText: '2 km', durationText: '10 min',
-    legs: Array.from({ length: Math.max(0, (waypoints?.length ?? 0) - 1) }, () => ({
-      distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
-    })),
-  })),
+  calculateRouteWithLegs: vi.fn().mockImplementation((waypoints) => {
+    const count = Math.max(0, (waypoints?.length ?? 0) - 1)
+    const coords: [number, number][] = (waypoints ?? []).map((p: { lat: number; lng: number }) => [p.lat, p.lng])
+    const leg = { distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min', mid: [0, 0] as [number, number], from: [0, 0] as [number, number], to: [0, 0] as [number, number] }
+    return Promise.resolve({
+      coordinates: coords, distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min',
+      legs: Array.from({ length: count }, () => ({ ...leg })),
+    })
+  }),
 }))
 
 // PlaceAvatar needs IntersectionObserver
@@ -1989,11 +1992,12 @@ describe('DayPlanSidebar', () => {
     vi.mocked(calculateRouteWithLegs as any).mockImplementation((wp: any) => {
       const lat = wp?.[0]?.lat ?? 0
       const txt = `${Math.round(lat * 100)} m`
+      const count = Math.max(0, (wp?.length ?? 0) - 1)
+      const coords: [number, number][] = (wp ?? []).map((p: { lat: number; lng: number }) => [p.lat, p.lng])
+      const leg = { distance: 1000, duration: 60, distanceText: txt, durationText: '1 min', drivingText: '1 min', walkingText: '1 min', mid: [0, 0] as [number, number], from: [0, 0] as [number, number], to: [0, 0] as [number, number] }
       return Promise.resolve({
-        distanceText: txt, durationText: '1 min',
-        legs: Array.from({ length: Math.max(0, (wp?.length ?? 0) - 1) }, () => ({
-          distanceText: txt, durationText: '1 min', drivingText: '1 min', walkingText: '1 min',
-        })),
+        coordinates: coords, distance: 1000, duration: 60, distanceText: txt, durationText: '1 min',
+        legs: Array.from({ length: count }, () => ({ ...leg })),
       })
     })
     const dayA = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
@@ -2025,12 +2029,15 @@ describe('DayPlanSidebar', () => {
   it('FE-PLANNER-DAYPLAN-106: leg distance survives a car rental on its middle days (#1504)', async () => {
     const user = userEvent.setup()
     const { calculateRouteWithLegs } = await import('../Map/RouteCalculator')
-    vi.mocked(calculateRouteWithLegs as any).mockImplementation((wp: any) => Promise.resolve({
-      distanceText: '2 km', durationText: '10 min',
-      legs: Array.from({ length: Math.max(0, (wp?.length ?? 0) - 1) }, () => ({
-        distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min',
-      })),
-    }))
+    vi.mocked(calculateRouteWithLegs as any).mockImplementation((wp: any) => {
+      const count = Math.max(0, (wp?.length ?? 0) - 1)
+      const coords: [number, number][] = (wp ?? []).map((p: { lat: number; lng: number }) => [p.lat, p.lng])
+      const leg = { distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min', drivingText: '10 min', walkingText: '25 min', mid: [0, 0] as [number, number], from: [0, 0] as [number, number], to: [0, 0] as [number, number] }
+      return Promise.resolve({
+        coordinates: coords, distance: 2000, duration: 600, distanceText: '2 km', durationText: '10 min',
+        legs: Array.from({ length: count }, () => ({ ...leg })),
+      })
+    })
     // A rental spanning days 10–12: on day 11 (middle) its row is not rendered in
     // the timeline, so the through-leg between the places around it must stay keyed
     // to the place — re-keying it to the hidden car row would drop the distance.

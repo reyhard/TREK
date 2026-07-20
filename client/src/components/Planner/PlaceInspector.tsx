@@ -130,6 +130,10 @@ interface PlaceInspectorProps {
   onUpdatePlace?: (placeId: number, data: Partial<Place>) => void
   leftWidth?: number
   rightWidth?: number
+  canReposition?: boolean
+  isRepositioning?: boolean
+  onStartReposition?: () => void
+  onCancelReposition?: () => void
   // ── Collection-mode props ──
   collectionStatus?: CollectionStatus
   onCopyToTrip?: () => void
