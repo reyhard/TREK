@@ -20,8 +20,8 @@ import {
   ok,
   permissionDenied,
   safeBroadcast,
-  TOOL_ANNOTATIONS_OPEN_WORLD_NON_IDEMPOTENT,
   TOOL_ANNOTATIONS_OPEN_WORLD_READONLY,
+  TOOL_ANNOTATIONS_WRITE,
 } from './_shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
@@ -138,7 +138,7 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
         itinerary: transitItinerarySchema,
         notes: z.string().max(1000).optional(),
       },
-      annotations: TOOL_ANNOTATIONS_OPEN_WORLD_NON_IDEMPOTENT,
+      annotations: TOOL_ANNOTATIONS_WRITE,
     },
     async ({ tripId, dayId, from, to, itinerary, notes }) => {
       if (isDemoUser(userId)) return demoDenied();
@@ -196,7 +196,7 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
         to: transitPlaceSchema,
         itinerary: transitItinerarySchema,
       },
-      annotations: TOOL_ANNOTATIONS_OPEN_WORLD_NON_IDEMPOTENT,
+      annotations: TOOL_ANNOTATIONS_WRITE,
     },
     async ({ tripId, reservationId, dayId, from, to, itinerary }) => {
       if (isDemoUser(userId)) return demoDenied();
@@ -235,14 +235,12 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
 
       try {
         const { reservation } = updateReservation(reservationId, tripId, {
-          title: `${from.name} → ${to.name}`,
           day_id: patch.day_id,
           end_day_id: patch.end_day_id,
           reservation_time: patch.reservation_time,
           reservation_end_time: patch.reservation_end_time,
           metadata: patch.metadata,
           endpoints: patch.endpoints,
-          needs_review: false,
         }, current);
         safeBroadcast(tripId, 'reservation:updated', { reservation });
         notifyBookingChange(tripId, userId, reservation.title, reservation.type || '');
