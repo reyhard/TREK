@@ -3701,6 +3701,28 @@ function runMigrations(db: Database.Database): void {
       `);
       db.exec('CREATE INDEX IF NOT EXISTS idx_hidden_regions_user ON hidden_regions (user_id);');
     },
+
+    // Bind OAuth access and refresh tokens to the password-version invalidation gate.
+    // When a user changes their password (password_version incremented), all OAuth
+    // tokens issued before that change are rejected. This column records the password
+    // version at token-issuance time; a mismatch with the current users.password_version
+    // causes the token to be considered invalid. Backfilled for any tokens that were
+    // already issued before this migration was applied.
+    () => {
+      const hasColumn = db
+        .prepare("SELECT 1 FROM pragma_table_info('oauth_tokens') WHERE name = 'user_password_version'")
+        .get();
+      if (!hasColumn) {
+        db.exec('ALTER TABLE oauth_tokens ADD COLUMN user_password_version INTEGER NOT NULL DEFAULT 0');
+      }
+      db.exec(`
+        UPDATE oauth_tokens
+        SET user_password_version = COALESCE(
+          (SELECT password_version FROM users WHERE users.id = oauth_tokens.user_id),
+          0
+        )
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {
