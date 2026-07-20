@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // OAuth 2.1 scope definitions for TREK MCP
 // ---------------------------------------------------------------------------
+import { isPluginScope } from '../services/oauthResources';
 
 export const SCOPES = {
   TRIPS_READ:          'trips:read',
@@ -47,7 +48,7 @@ export const SCOPE_INFO: Record<Scope, ScopeInfo> = {
   'trips:write':         { label: 'Edit trips & itineraries',   description: 'Create and update trips, days, notes, and manage members',              group: 'Trips' },
   'trips:delete':        { label: 'Delete trips',               description: 'Permanently delete entire trips — this action is irreversible',          group: 'Trips' },
   'trips:share':         { label: 'Manage share links',         description: 'Create, update, and revoke public share links for trips',               group: 'Trips' },
-  'places:read':         { label: 'View places & map data',     description: 'Read places, day assignments, tags, and categories',                    group: 'Places' },
+  'places:read':         { label: 'View places & discover locations', description: 'Read trip places, assignments, tags, categories, and search real-world places or transit stops', group: 'Places' },
   'places:write':        { label: 'Manage places',              description: 'Create, update, and delete places, assignments, and tags',              group: 'Places' },
   'atlas:read':          { label: 'View Atlas',                 description: 'Read visited countries, regions, and bucket list',                      group: 'Atlas' },
   'atlas:write':         { label: 'Manage Atlas',               description: 'Mark countries and regions visited, manage bucket list',                group: 'Atlas' },
@@ -65,7 +66,7 @@ export const SCOPE_INFO: Record<Scope, ScopeInfo> = {
   'notifications:write': { label: 'Manage notifications',       description: 'Mark notifications as read and respond to them',                       group: 'Notifications' },
   'vacay:read':          { label: 'View vacation plans',        description: 'Read vacation planning data, entries, and stats',                      group: 'Vacation' },
   'vacay:write':         { label: 'Manage vacation plans',      description: 'Create and manage vacation entries, holidays, and team plans',          group: 'Vacation' },
-  'geo:read':            { label: 'Maps, geocoding & transit',  description: 'Search locations and public transit routes, resolve map URLs, and reverse geocode coordinates', group: 'Geo' },
+  'geo:read':            { label: 'Maps & geocoding',          description: 'Search locations, resolve map URLs, and reverse geocode coordinates',    group: 'Geo' },
   'weather:read':        { label: 'Weather forecasts',          description: 'Fetch weather forecasts for trip locations and dates',                  group: 'Weather' },
   'journey:read':        { label: 'View journeys',              description: 'Read journeys, entries, and contributor list',                          group: 'Journey' },
   'journey:write':       { label: 'Manage journeys',            description: 'Create, update, and delete journeys and their entries',                 group: 'Journey' },
@@ -114,6 +115,6 @@ export function canShareJourneys(scopes: string[] | null): boolean {
 }
 
 export function validateScopes(requestedScopes: string[]): { valid: boolean; invalid: string[] } {
-  const invalid = requestedScopes.filter(s => !ALL_SCOPES.includes(s as Scope));
+  const invalid = requestedScopes.filter(s => !(ALL_SCOPES as string[]).includes(s) && !isPluginScope(s));
   return { valid: invalid.length === 0, invalid };
 }

@@ -118,4 +118,56 @@ describe('dynamic plugin scopes', () => {
     expect(pluginScopeParts('plugin:mymap_sync:read')).toBeNull()
     expect(getScopeDisplay('plugin:mymap_sync:read', identity).group).toBe('Other')
   })
+
+  it('FE-OAUTH-SCOPES-011: pluginScopeParts rejects id with uppercase', () => {
+    expect(pluginScopeParts('plugin:MyApp:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-012: pluginScopeParts rejects id starting with digit', () => {
+    expect(pluginScopeParts('plugin:2app:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-013: pluginScopeParts rejects id shorter than 3 chars', () => {
+    expect(pluginScopeParts('plugin:ab:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-014: pluginScopeParts rejects id longer than 40 chars', () => {
+    expect(pluginScopeParts('plugin:' + 'a'.repeat(41) + ':read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-015: pluginScopeParts rejects invalid access level', () => {
+    expect(pluginScopeParts('plugin:app:delete')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-016: pluginScopeParts accepts 3-char minimum id', () => {
+    expect(pluginScopeParts('plugin:abc:read')).toEqual({ pluginId: 'abc', access: 'read' })
+  })
+
+  it('FE-OAUTH-SCOPES-017: pluginScopeParts accepts 40-char maximum id', () => {
+    const id = 'a'.repeat(40)
+    expect(pluginScopeParts(`plugin:${id}:write`)).toEqual({ pluginId: id, access: 'write' })
+  })
+
+  it('FE-OAUTH-SCOPES-018: pluginScopeParts accepts id with hyphens', () => {
+    expect(pluginScopeParts('plugin:my-plugin-id:read')).toEqual({ pluginId: 'my-plugin-id', access: 'read' })
+  })
+
+  it('FE-OAUTH-SCOPES-019: pluginScopeParts returns null for empty string', () => {
+    expect(pluginScopeParts('')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-020: pluginScopeParts returns null for non-plugin static scope', () => {
+    expect(pluginScopeParts('trips:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-021: getScopeDisplay for plugin:read returns read description', () => {
+    const display = getScopeDisplay('plugin:gmail:read', identity)
+    expect(display.label).toBe('gmail plugin access')
+    expect(display.description).toBe('Allow this client to read the gmail plugin proxy')
+  })
+
+  it('FE-OAUTH-SCOPES-022: getScopeDisplay for plugin:write returns read+write description', () => {
+    const display = getScopeDisplay('plugin:gmail:write', identity)
+    expect(display.description).toBe('Allow this client to read and write the gmail plugin proxy')
+  })
 })
