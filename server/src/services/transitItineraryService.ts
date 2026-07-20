@@ -2,6 +2,7 @@ import { haversineKm } from './distanceService';
 import type { EndpointInput } from './reservationService';
 import { localParts, resolveTimeZone } from './timezoneService';
 import { deriveTransitStats, type TransitItinerary, type TransitLeg } from './transitService';
+import { getDay, listDays } from './dayService';
 
 import { z } from 'zod';
 
@@ -284,4 +285,149 @@ export function buildTransitReservationParts(
   };
 
   return { endpoints, metadata };
+}
+
+export interface TransitJourneyPatch {
+  day_id: number;
+  end_day_id: number;
+  reservation_time: string;
+  reservation_end_time: string;
+  metadata: Record<string, unknown>;
+  endpoints: EndpointInput[];
+  needs_review: false;
+}
+
+export function metadataObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return { ...(value as Record<string, unknown>) };
+  if (typeof value !== 'string' || value.trim() === '') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { ...(parsed as Record<string, unknown>) }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export function buildTransitJourneyPatch(
+  tripId: number,
+  dayId: number,
+  from: TransitPlaceInput,
+  to: TransitPlaceInput,
+  itinerary: TransitItinerary,
+  existingMetadata?: unknown,
+): TransitJourneyPatch {
+  const day = getDay(dayId, tripId);
+  if (!day) throw new Error('Day does not belong to this trip');
+  if (!day.date) throw new Error('The selected day has no date');
+
+  const fromTimezone = timezoneAt(from.lat, from.lng);
+  const toTimezone = timezoneAt(to.lat, to.lng);
+  const departure = transitLocalParts(itinerary.startTime, fromTimezone);
+  const arrival = transitLocalParts(itinerary.endTime, toTimezone);
+
+  if (departure.date !== day.date) {
+    throw new Error(`The journey departs on ${departure.date}, but dayId is ${day.date}.`);
+  }
+
+  const arrivalDay = listDays(tripId).days.find((d) => d.date === arrival.date);
+  if (!arrivalDay) {
+    throw new Error(`No trip day exists for the arrival date ${arrival.date}.`);
+  }
+
+  const transitLegs = itinerary.legs.filter((leg) => leg.mode !== 'WALK');
+  const endpoints: EndpointInput[] = [
+    {
+      role: 'from',
+      sequence: 0,
+      name: from.name,
+      code: null,
+      lat: from.lat,
+      lng: from.lng,
+      timezone: fromTimezone,
+      local_date: departure.date,
+      local_time: departure.time,
+    },
+  ];
+
+  transitLegs.slice(0, -1).forEach((leg, index) => {
+    const stop = leg.to;
+    const timezone = timezoneAt(stop.lat, stop.lng);
+    const stopTime = effectiveTransitStopTime(stop);
+    const local = stopTime ? transitLocalParts(stopTime, timezone) : null;
+    endpoints.push({
+      role: 'stop',
+      sequence: index + 1,
+      name: stop.name,
+      code: null,
+      lat: stop.lat,
+      lng: stop.lng,
+      timezone,
+      local_date: local?.date ?? null,
+      local_time: local?.time ?? null,
+    });
+  });
+
+  endpoints.push({
+    role: 'to',
+    sequence: endpoints.length,
+    name: to.name,
+    code: null,
+    lat: to.lat,
+    lng: to.lng,
+    timezone: toTimezone,
+    local_date: arrival.date,
+    local_time: arrival.time,
+  });
+
+  const stats = deriveTransitStats(itinerary.startTime, itinerary.endTime, itinerary.legs, itinerary.transfers);
+  const transitMetadata = {
+    provider: 'transitous',
+    duration: stats.duration,
+    transfers: stats.transfers,
+    walk_seconds: stats.walkSeconds,
+    legs: itinerary.legs.map((leg: TransitLeg) => {
+      const fromTime = effectiveTransitStopTime(leg.from);
+      const toTime = effectiveTransitStopTime(leg.to);
+      return {
+        mode: leg.mode,
+        line: leg.line,
+        line_color: leg.lineColor,
+        line_text_color: leg.lineTextColor,
+        headsign: leg.headsign,
+        agency: leg.agency,
+        duration: leg.duration,
+        distance: leg.distance,
+        stops: leg.intermediateStops,
+        from: {
+          name: leg.from.name,
+          time: fromTime ? transitLocalParts(fromTime, timezoneAt(leg.from.lat, leg.from.lng)).time : null,
+          track: leg.from.track,
+        },
+        to: {
+          name: leg.to.name,
+          time: toTime ? transitLocalParts(toTime, timezoneAt(leg.to.lat, leg.to.lng)).time : null,
+          track: leg.to.track,
+        },
+        geometry: leg.geometry,
+        geometry_precision: leg.geometryPrecision,
+      };
+    }),
+  };
+
+  const metadata = {
+    ...metadataObject(existingMetadata),
+    transit: transitMetadata,
+  };
+
+  return {
+    day_id: dayId,
+    end_day_id: arrivalDay.id,
+    reservation_time: `${departure.date}T${departure.time}`,
+    reservation_end_time: `${arrival.date}T${arrival.time}`,
+    metadata,
+    endpoints,
+    needs_review: false as const,
+  };
 }
