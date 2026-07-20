@@ -50,6 +50,7 @@ const { resv, budget, day } = vi.hoisted(() => ({
     updateReservation: vi.fn(),
     deleteReservation: vi.fn(),
     getUpcomingReservations: vi.fn(),
+    notifyBookingChange: vi.fn(),
   },
   budget: {
     createBudgetItem: vi.fn(),
@@ -139,6 +140,7 @@ describe('Reservations + accommodations e2e (real auth guard + temp SQLite)', ()
       .send({ title: 'Hotel' });
     expect(ok.status).toBe(201);
     expect(ok.body).toEqual({ reservation: { id: 9, title: 'Hotel' } });
+    expect(resv.notifyBookingChange).toHaveBeenCalledWith('5', 1, 'Hotel', '');
     const bad = await request(server).post('/api/trips/5/reservations').set('Cookie', sessionCookie(1)).send({});
     expect(bad.status).toBe(400);
     expect(bad.body).toEqual({ error: 'Title is required' });

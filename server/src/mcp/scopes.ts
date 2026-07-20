@@ -66,7 +66,7 @@ export const SCOPE_INFO: Record<Scope, ScopeInfo> = {
   },
   'places:read': {
     label: 'View places & discover locations',
-    description: 'Read trip places, assignments, tags, categories, and search real-world places or transit stops',
+    description: 'Read trip places, assignments, tags, categories, and search real-world places',
     group: 'Places',
   },
   'places:write': {
@@ -215,6 +215,6 @@ export function canShareJourneys(scopes: string[] | null): boolean {
 }
 
 export function validateScopes(requestedScopes: string[]): { valid: boolean; invalid: string[] } {
-  const invalid = requestedScopes.filter((s) => !ALL_SCOPES.includes(s as Scope) && !isPluginScope(s));
+  const invalid = requestedScopes.filter((s) => !(ALL_SCOPES as string[]).includes(s) && !isPluginScope(s));
   return { valid: invalid.length === 0, invalid };
 }

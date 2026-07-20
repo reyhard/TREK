@@ -769,7 +769,13 @@ describe('NotificationsTab', () => {
 const pluginMatrix = (over: Record<string, unknown> = {}) => ({
   preferences: { trip_invite: { inapp: true, 'plugin:trek-gotify': true } },
   channels: [
-    { id: 'inapp', source: 'builtin', labelKey: 'settings.notificationPreferences.inapp', active: true, configured: true },
+    {
+      id: 'inapp',
+      source: 'builtin',
+      labelKey: 'settings.notificationPreferences.inapp',
+      active: true,
+      configured: true,
+    },
     {
       id: 'plugin:trek-gotify',
       source: 'plugin',
@@ -787,7 +793,7 @@ const pluginMatrix = (over: Record<string, unknown> = {}) => ({
 function mockMatrix(matrix: unknown) {
   server.use(
     http.get('*/api/notifications/preferences', () => HttpResponse.json(matrix)),
-    http.get('*/api/settings', () => HttpResponse.json({ settings: {} })),
+    http.get('*/api/settings', () => HttpResponse.json({ settings: {} }))
   );
 }
 
@@ -835,9 +841,14 @@ describe('NotificationsTab — plugin channels', () => {
       http.post('*/api/notifications/test/:channelId', ({ params }) => {
         called = String(params.channelId);
         return HttpResponse.json({ success: true });
-      }),
+      })
     );
-    render(<><NotificationsTab /><ToastContainer /></>);
+    render(
+      <>
+        <NotificationsTab />
+        <ToastContainer />
+      </>
+    );
 
     await userEvent.click(await screen.findByRole('button', { name: /send test/i }));
     await waitFor(() => expect(called).toBe('plugin:trek-gotify'));

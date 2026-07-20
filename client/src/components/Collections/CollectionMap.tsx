@@ -1,15 +1,15 @@
-import React from 'react'
-import { MapViewAuto } from '../Map/MapViewAuto'
-import type { CollectionPlace } from '@trek/shared'
-import { mappablePlaces } from '../../pages/collections/collectionsModel'
+import type { CollectionPlace } from '@trek/shared';
+import React from 'react';
+import { mappablePlaces } from '../../pages/collections/collectionsModel';
+import { MapViewAuto } from '../Map/MapViewAuto';
 
 interface CollectionMapProps {
-  places: CollectionPlace[]
-  selectedPlaceId: number | null
-  onOpenPlace: (id: number) => void
+  places: CollectionPlace[];
+  selectedPlaceId: number | null;
+  onOpenPlace: (id: number) => void;
   /** Clicking the map background clears the selection. */
-  onDeselect?: () => void
-  dark: boolean
+  onDeselect?: () => void;
+  dark: boolean;
 }
 
 /**
@@ -18,14 +18,17 @@ interface CollectionMapProps {
  * The parent `.col-mapwrap` supplies the rounded, bordered box + height, so this
  * just fills it.
  */
-export default function CollectionMap({ places, selectedPlaceId, onOpenPlace, onDeselect, dark }: CollectionMapProps): React.ReactElement {
-  const pts = mappablePlaces(places)
-  const center: [number, number] = pts.length > 0
-    ? [pts[0].lat as number, pts[0].lng as number]
-    : [48.8566, 2.3522]
+export default function CollectionMap({
+  places,
+  selectedPlaceId,
+  onOpenPlace,
+  onDeselect,
+  dark,
+}: CollectionMapProps): React.ReactElement {
+  const pts = mappablePlaces(places);
   const tileUrl = dark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -35,11 +38,11 @@ export default function CollectionMap({ places, selectedPlaceId, onOpenPlace, on
         hoverDisabled
         onMarkerClick={onOpenPlace}
         onMapClick={onDeselect ? () => onDeselect() : undefined}
-        center={center}
-        zoom={pts.length > 0 ? 6 : 3}
+        // No center/zoom: the map frames itself on the collection's places at mount, and
+        // falls back to the world view for a collection with none.
         tileUrl={tileUrl}
         fitKey={pts.length}
       />
     </div>
-  )
+  );
 }

@@ -75,6 +75,12 @@ spec:
                   name: {{ default (printf "%s-secret" (include "trek.fullname" .)) .Values.existingSecret }}
                   key: UNSPLASH_ACCESS_KEY
                   optional: true
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-secret" (include "trek.fullname" .)) .Values.existingSecret }}
+                  key: SMTP_PASS
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /app/data

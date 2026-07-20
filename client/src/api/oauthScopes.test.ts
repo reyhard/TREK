@@ -1,4 +1,4 @@
-// FE-OAUTH-SCOPES-001 to FE-OAUTH-SCOPES-010
+// FE-OAUTH-SCOPES-001 to FE-OAUTH-SCOPES-032
 import { describe, it, expect } from 'vitest'
 import { SCOPE_GROUPS, ALL_SCOPES, SCOPE_GROUP_NAMES, getScopeDisplay, getScopesByGroup, pluginScopeParts } from './oauthScopes'
 
@@ -117,5 +117,163 @@ describe('dynamic plugin scopes', () => {
     expect(getScopeDisplay('trips:read', identity).label).toBe('oauth.scope.trips:read.label')
     expect(pluginScopeParts('plugin:mymap_sync:read')).toBeNull()
     expect(getScopeDisplay('plugin:mymap_sync:read', identity).group).toBe('Other')
+  })
+
+  it('FE-OAUTH-SCOPES-011: pluginScopeParts rejects id with uppercase', () => {
+    expect(pluginScopeParts('plugin:MyApp:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-012: pluginScopeParts rejects id starting with digit', () => {
+    expect(pluginScopeParts('plugin:2app:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-013: pluginScopeParts rejects id shorter than 3 chars', () => {
+    expect(pluginScopeParts('plugin:ab:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-014: pluginScopeParts rejects id longer than 40 chars', () => {
+    expect(pluginScopeParts('plugin:' + 'a'.repeat(41) + ':read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-015: pluginScopeParts rejects invalid access level', () => {
+    expect(pluginScopeParts('plugin:app:delete')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-016: pluginScopeParts accepts 3-char minimum id', () => {
+    expect(pluginScopeParts('plugin:abc:read')).toEqual({ pluginId: 'abc', access: 'read' })
+  })
+
+  it('FE-OAUTH-SCOPES-017: pluginScopeParts accepts 40-char maximum id', () => {
+    const id = 'a'.repeat(40)
+    expect(pluginScopeParts(`plugin:${id}:write`)).toEqual({ pluginId: id, access: 'write' })
+  })
+
+  it('FE-OAUTH-SCOPES-018: pluginScopeParts accepts id with hyphens', () => {
+    expect(pluginScopeParts('plugin:my-plugin-id:read')).toEqual({ pluginId: 'my-plugin-id', access: 'read' })
+  })
+
+  it('FE-OAUTH-SCOPES-019: pluginScopeParts returns null for empty string', () => {
+    expect(pluginScopeParts('')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-020: pluginScopeParts returns null for non-plugin static scope', () => {
+    expect(pluginScopeParts('trips:read')).toBeNull()
+  })
+
+  it('FE-OAUTH-SCOPES-021: getScopeDisplay for plugin:read returns read description', () => {
+    const display = getScopeDisplay('plugin:gmail:read', identity)
+    expect(display.label).toBe('gmail plugin access')
+    expect(display.description).toBe('Allow this client to read the gmail plugin proxy')
+  })
+
+  it('FE-OAUTH-SCOPES-022: getScopeDisplay for plugin:write returns read+write description', () => {
+    const display = getScopeDisplay('plugin:gmail:write', identity)
+    expect(display.description).toBe('Allow this client to read and write the gmail plugin proxy')
+  })
+})
+
+describe('Step 1: OAuth display requirements', () => {
+  // Use a t function that returns meaningful translated text for known keys
+  // and falls back to the key itself for unknown keys, to match real usage.
+  const t = (key: string) => {
+    const known: Record<string, string> = {
+      'oauth.scope.geo:read.label': 'Maps, geocoding & transit',
+      'oauth.scope.geo:read.description': 'Search locations, resolve map URLs, reverse geocode coordinates, and search public transit routes',
+      'oauth.scope.places:read.label': 'View places & map data',
+      'oauth.scope.places:read.description': 'Read places, day assignments, tags, and categories',
+      'oauth.scope.group.geo': 'Geo',
+      'oauth.scope.group.places': 'Places',
+      'oauth.scope.group.weather': 'Weather',
+    }
+    return known[key] || key
+  }
+
+  it('FE-OAUTH-SCOPES-023: geo:read description includes maps, geocoding, and public transit', () => {
+    const display = getScopeDisplay('geo:read', t)
+    const desc = display.description.toLowerCase()
+    expect(desc).toContain('search')
+    expect(desc).toContain('map')
+    expect(desc).toContain('geocod')
+    expect(desc).toContain('transit')
+  })
+
+  it('FE-OAUTH-SCOPES-024: places:read does not claim transit provider search', () => {
+    const display = getScopeDisplay('places:read', t)
+    const desc = display.description.toLowerCase()
+    expect(desc).toContain('place')
+    expect(desc).not.toContain('transit')
+    expect(desc).not.toContain('route')
+  })
+
+  it('FE-OAUTH-SCOPES-025: plugin scopes group by plugin ID and distinguish read/write', () => {
+    const pluginRead = getScopeDisplay('plugin:travelbuddy:read', t)
+    const pluginWrite = getScopeDisplay('plugin:travelbuddy:write', t)
+
+    expect(pluginRead.group).toBe('Plugin: travelbuddy')
+    expect(pluginWrite.group).toBe('Plugin: travelbuddy')
+
+    const readDesc = pluginRead.description.toLowerCase()
+    expect(readDesc).toContain('read')
+    expect(readDesc).not.toContain('write')
+
+    const writeDesc = pluginWrite.description.toLowerCase()
+    expect(writeDesc).toContain('read and write')
+  })
+
+  it('FE-OAUTH-SCOPES-026: malformed plugin scopes render as unrecognized', () => {
+    const display = getScopeDisplay('plugin:invalid!scope:read', t)
+    expect(display.group).toBe('Other')
+    expect(display.description).toBe('Unrecognized scope')
+  })
+
+  it('FE-OAUTH-SCOPES-027: unknown scopes render as unrecognized with scope name as label', () => {
+    const display = getScopeDisplay('completely:unknown', t)
+    expect(display.group).toBe('Other')
+    expect(display.label).toBe('completely:unknown')
+    expect(display.description).toBe('Unrecognized scope')
+  })
+
+  it('FE-OAUTH-SCOPES-028: getScopesByGroup deduplicates duplicate scopes', () => {
+    const groups = getScopesByGroup(t, ['trips:read', 'geo:read', 'trips:read', 'geo:read'])
+    const allScopes = Object.values(groups).flat().map(s => s.scope)
+    expect(allScopes.filter(s => s === 'trips:read')).toHaveLength(1)
+    expect(allScopes.filter(s => s === 'geo:read')).toHaveLength(1)
+  })
+
+  it('FE-OAUTH-SCOPES-029: same getScopeDisplay used for both static and dynamic client scope rendering', () => {
+    const staticResult = getScopeDisplay('trips:read', t)
+    expect(staticResult).toHaveProperty('label')
+    expect(staticResult).toHaveProperty('description')
+    expect(staticResult).toHaveProperty('group')
+
+    const pluginResult = getScopeDisplay('plugin:test:read', t)
+    expect(pluginResult).toHaveProperty('label')
+    expect(pluginResult).toHaveProperty('description')
+    expect(pluginResult).toHaveProperty('group')
+
+    const unknownResult = getScopeDisplay('unknown:scope', t)
+    expect(unknownResult).toHaveProperty('label')
+    expect(unknownResult).toHaveProperty('description')
+    expect(unknownResult).toHaveProperty('group')
+  })
+
+  it('FE-OAUTH-SCOPES-030: plugin scopes for different plugin IDs produce separate groups', () => {
+    const aRead = getScopeDisplay('plugin:plugin-a:read', t)
+    const bRead = getScopeDisplay('plugin:plugin-b:read', t)
+    expect(aRead.group).not.toBe(bRead.group)
+    expect(aRead.group).toBe('Plugin: plugin-a')
+    expect(bRead.group).toBe('Plugin: plugin-b')
+  })
+
+  it('FE-OAUTH-SCOPES-031: getScopesByGroup with empty array returns empty groups', () => {
+    const groups = getScopesByGroup(t, [])
+    expect(Object.keys(groups)).toHaveLength(0)
+  })
+
+  it('FE-OAUTH-SCOPES-032: getScopeDisplay for weather:read returns valid display', () => {
+    const display = getScopeDisplay('weather:read', t)
+    expect(display.label).toBeTruthy()
+    expect(display.description).toBeTruthy()
+    expect(display.group).toBeTruthy()
   })
 })

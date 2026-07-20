@@ -74,14 +74,13 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   const [movementParts, setMovementParts] = useState<ResolvedMovementPart[]>([])
   const [routeEligibility, setRouteEligibility] = useState<RouteEligibility>(EMPTY_ELIGIBILITY)
   const routeAbortRef = useRef<AbortController | null>(null)
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
   const reservationsForSignature = useTripStore((s) => s.reservations)
   const placesForSignature = useTripStore((s) => s.places)
   // Draw the day's accommodation bookend legs (hotel → first stop, last stop →
   // hotel) unless the user turned the setting off — same gate as the sidebar.
   const optimizeFromAccommodation = useSettingsStore((s) => s.settings.optimize_from_accommodation)
-  // Recompute when the user flips km↔mi so leg distances (formatted at compute time)
-  // refresh instead of showing stale cached text (#1300).
-  const distanceUnit = useSettingsStore((s) => s.settings.distance_unit)
 
   const updateRouteForDay = useCallback(async (dayId: number | null) => {
     if (routeAbortRef.current) routeAbortRef.current.abort()
@@ -115,7 +114,7 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
     setMovementParts(pendingMovementParts(plan, profile))
     // Route drawing is manual, but intrinsic tracks/transit remain eligible and visible
     // to consumers even while the road-route toggle is off.
-    if (!enabled || !plan.hasRoutedConnectors) {
+    if (!enabledRef.current || !plan.hasRoutedConnectors) {
       setRoute(null)
       setRouteSegments([])
       return
@@ -138,7 +137,7 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
       // Aborted (day changed) — newer call owns the state. Anything else: keep straight lines.
       if (!controller.signal.aborted && !isAbortError(err)) setRouteSegments([])
     }
-  }, [enabled, profile, accommodations, optimizeFromAccommodation])
+  }, [profile, accommodations, optimizeFromAccommodation])
 
   // Stable signature for transport reservations on the selected day — changes when a transport
   // is added, removed, or repositioned, ensuring route recalc fires even on transport-only reorders.
@@ -190,7 +189,7 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
     }
     updateRouteForDay(selectedDayId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDayId, selectedDayAssignments, transportSignature, fullPlaceSignature, enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
+  }, [selectedDayId, selectedDayAssignments, transportSignature, fullPlaceSignature, profile, accommodations, optimizeFromAccommodation])
 
   useEffect(() => () => {
     routeAbortRef.current?.abort()
@@ -198,8 +197,8 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   }, [])
 
   return {
-    route,
-    routeSegments,
+    route: enabled ? route : null,
+    routeSegments: enabled ? routeSegments : [],
     movementParts,
     routeEligibility,
     routeInfo,

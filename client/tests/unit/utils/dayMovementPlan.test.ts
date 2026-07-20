@@ -20,7 +20,7 @@ const track = (id: number, coordinates: number[][], extra = {}) =>
   place(id, coordinates[0][0], coordinates[0][1], { route_geometry: JSON.stringify(coordinates), ...extra })
 const reservation = (id: number, extra = {}) => ({
   id, trip_id: 1, type: 'transit', title: `R${id}`, day_id: 1, end_day_id: 1,
-  reservation_time: '10:00', day_positions: { '1': 1 }, endpoints: [], ...extra,
+  reservation_time: '10:00', day_positions: { '1': 1 }, endpoints: [], status: 'confirmed', ...extra,
 })
 const endpoint = (role: 'from' | 'to', lat: number, lng: number) => ({ role, lat, lng })
 const build = (opts: Partial<BuildDayMovementPlanOptions> = {}) => buildDayMovementPlan({
@@ -125,12 +125,12 @@ describe('buildDayMovementPlan', () => {
       endpoints: [endpoint('from', 40, 3), endpoint('to', 41, 4)],
     })
     const hotel = {
-      id: 30, start_day_id: 1, end_day_id: 2, check_in: '15:00',
+      id: 30, trip_id: 1, start_day_id: 1, end_day_id: 2, check_in: '15:00',
       place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9,
     }
     const plan = build({
       assignments: [assignment(11, a, 0), assignment(12, b, 2)],
-      places: [a, b], reservations: [dining], accommodations: [hotel],
+      places: [a, b], reservations: [dining], accommodations: [hotel as any],
     })
     expect(plan.parts.map(part => part.kind)).toEqual(['routed', 'routed'])
     expect((plan.parts[0] as PlannedRoutedPart).from).toMatchObject({ placeId: a.id })
@@ -167,8 +167,8 @@ describe('buildDayMovementPlan', () => {
 
   it('uses track start/time for morning hotel and track end/end_time for evening hotel', () => {
     const t = track(1, [[52, 5], [52.2, 5.2]], { place_time: '10:00', end_time: '18:00' })
-    const hotel = { id: 30, start_day_id: 1, end_day_id: 2, place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
-    const plan = build({ assignments: [assignment(11, t, 0)], places: [t], accommodations: [hotel] })
+    const hotel = { id: 30, trip_id: 1, start_day_id: 1, end_day_id: 2, place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
+    const plan = build({ assignments: [assignment(11, t, 0)], places: [t], accommodations: [hotel as any] })
     expect(plan.parts.map(p => p.kind)).toEqual(['routed', 'track', 'routed'])
     expect((plan.parts[0] as PlannedRoutedPart).to).toMatchObject({ lat: 52, lng: 5, source: 'track-start' })
     expect((plan.parts[2] as PlannedRoutedPart).from).toMatchObject({ lat: 52.2, lng: 5.2, source: 'track-end' })
@@ -178,9 +178,9 @@ describe('buildDayMovementPlan', () => {
     const checkoutDay = { ...day, id: 2, day_number: 2 }
     const allDays = [{ ...day, day_number: 1 }, checkoutDay]
     const t = track(1, [[52, 5], [52.2, 5.2]], { place_time: '18:00', end_time: '09:00' })
-    const hotel = { id: 30, start_day_id: 1, end_day_id: 2, check_out: '10:00', place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
+    const hotel = { id: 30, trip_id: 1, start_day_id: 1, end_day_id: 2, check_out: '10:00', place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
     const a = { ...assignment(11, t, 0), day_id: 2 }
-    const plan = buildDayMovementPlan({ day: checkoutDay, days: allDays, assignments: [a], places: [t], reservations: [], accommodations: [hotel] })
+    const plan = buildDayMovementPlan({ day: checkoutDay, days: allDays, assignments: [a], places: [t], reservations: [], accommodations: [hotel as any] })
     expect(plan.parts.map(p => p.kind)).toEqual(['routed', 'track', 'routed'])
     expect((plan.parts[plan.parts.length - 1] as PlannedRoutedPart).from).toMatchObject({ source: 'track-end' })
   })
@@ -189,10 +189,10 @@ describe('buildDayMovementPlan', () => {
     const transfer = { ...day, id: 2, day_number: 2 }
     const allDays = [{ ...day, day_number: 1 }, transfer, { ...day, id: 3, day_number: 3 }]
     const hotels = [
-      { id: 30, start_day_id: 1, end_day_id: 2, place_name: 'Old', place_lat: 52, place_lng: 5 },
-      { id: 31, start_day_id: 2, end_day_id: 3, place_name: 'New', place_lat: 53, place_lng: 6 },
+      { id: 30, trip_id: 1, start_day_id: 1, end_day_id: 2, place_name: 'Old', place_lat: 52, place_lng: 5 },
+      { id: 31, trip_id: 1, start_day_id: 2, end_day_id: 3, place_name: 'New', place_lat: 53, place_lng: 6 },
     ]
-    const plan = buildDayMovementPlan({ day: transfer, days: allDays, assignments: [], places: [], reservations: [], accommodations: hotels })
+    const plan = buildDayMovementPlan({ day: transfer, days: allDays, assignments: [], places: [], reservations: [], accommodations: hotels as any })
     expect(plan.parts.map(p => p.kind)).toEqual(['routed'])
   })
 

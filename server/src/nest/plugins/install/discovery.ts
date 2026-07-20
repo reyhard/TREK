@@ -78,7 +78,7 @@ function upsert(db: BetterSqlite3.Database, m: PluginManifest): void {
   if (existing) {
     db.prepare(
       `UPDATE plugins SET name = ?, description = ?, type = ?, icon = ?, version = ?, api_version = ?,
-         min_trek_version = ?, permissions = ?, capabilities = ?, dependencies = ?, operator_egress = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+         min_trek_version = ?, trek_range = ?, permissions = ?, capabilities = ?, dependencies = ?, operator_egress = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     ).run(
       m.name,
       m.description ?? null,
@@ -87,6 +87,7 @@ function upsert(db: BetterSqlite3.Database, m: PluginManifest): void {
       m.version,
       m.apiVersion,
       m.minTrekVersion ?? null,
+      m.trekRange,
       JSON.stringify(m.permissions),
       JSON.stringify(m.capabilities),
       dependencies,
@@ -97,8 +98,8 @@ function upsert(db: BetterSqlite3.Database, m: PluginManifest): void {
     db.prepare(
       // granted_permissions '' (empty, not '[]') marks "never consented" so the
       // first activation is distinguishable from a plugin consented to zero perms.
-      `INSERT INTO plugins (id, name, description, type, icon, version, api_version, min_trek_version, permissions, capabilities, dependencies, operator_egress, granted_permissions, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'inactive')`,
+      `INSERT INTO plugins (id, name, description, type, icon, version, api_version, min_trek_version, trek_range, permissions, capabilities, dependencies, operator_egress, granted_permissions, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'inactive')`,
     ).run(
       m.id,
       m.name,
@@ -108,6 +109,7 @@ function upsert(db: BetterSqlite3.Database, m: PluginManifest): void {
       m.version,
       m.apiVersion,
       m.minTrekVersion ?? null,
+      m.trekRange,
       JSON.stringify(m.permissions),
       JSON.stringify(m.capabilities),
       dependencies,

@@ -1,22 +1,27 @@
 // FE-COMP-NAVBAR-001 to FE-COMP-NAVBAR-028
-import { render, screen, waitFor } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { buildSettings, buildUser } from '../../../tests/helpers/factories';
 import { server } from '../../../tests/helpers/msw/server';
-import { useAuthStore } from '../../store/authStore';
-import { useSettingsStore } from '../../store/settingsStore';
-import { useAddonStore } from '../../store/addonStore';
+import { render, screen, waitFor } from '../../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser, buildSettings } from '../../../tests/helpers/factories';
+import { useAddonStore } from '../../store/addonStore';
+import { useAuthStore } from '../../store/authStore';
+import { usePluginStore } from '../../store/pluginStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import Navbar from './Navbar';
 
 beforeEach(() => {
   resetAllStores();
   server.use(
     http.get('/api/auth/app-config', () => HttpResponse.json({ version: '2.9.10' })),
-    http.get('/api/addons', () => HttpResponse.json({ addons: [] })),
+    http.get('/api/addons', () => HttpResponse.json({ addons: [] }))
   );
-  seedStore(useAuthStore, { user: buildUser({ username: 'testuser', role: 'user' }), isAuthenticated: true, appVersion: '2.9.10' });
+  seedStore(useAuthStore, {
+    user: buildUser({ username: 'testuser', role: 'user' }),
+    isAuthenticated: true,
+    appVersion: '2.9.10',
+  });
   seedStore(useSettingsStore, { settings: buildSettings() });
 });
 
@@ -205,9 +210,11 @@ describe('Navbar', () => {
 
   it('FE-COMP-NAVBAR-024: global addon nav links appear when addons enabled', () => {
     server.use(
-      http.get('/api/addons', () => HttpResponse.json({
-        addons: [{ id: 'vacay', name: 'Vacay', icon: 'CalendarDays', type: 'global', enabled: true }],
-      })),
+      http.get('/api/addons', () =>
+        HttpResponse.json({
+          addons: [{ id: 'vacay', name: 'Vacay', icon: 'CalendarDays', type: 'global', enabled: true }],
+        })
+      )
     );
     seedStore(useAddonStore, {
       addons: [{ id: 'vacay', name: 'Vacay', icon: 'CalendarDays', type: 'global', enabled: true }],
@@ -303,5 +310,22 @@ describe('Navbar', () => {
     render(<Navbar />);
     await user.click(screen.getByText('adminuser'));
     expect(screen.getByText('Administrator')).toBeInTheDocument();
+  });
+
+  it('FE-COMP-NAVBAR-034: page plugin renders the icon its manifest declares', () => {
+    seedStore(usePluginStore, {
+      plugins: [{ id: 'trip-doctor', name: 'Trip Doctor', type: 'page', icon: 'Stethoscope' }],
+    });
+    const { container } = render(<Navbar />);
+    expect(screen.getByRole('link', { name: /trip doctor/i })).toBeInTheDocument();
+    expect(container.querySelector('.lucide-stethoscope')).not.toBeNull();
+  });
+
+  it('FE-COMP-NAVBAR-035: page plugin with an unknown icon falls back to Blocks', () => {
+    seedStore(usePluginStore, {
+      plugins: [{ id: 'bogus', name: 'Bogus', type: 'page', icon: 'NotAnIcon' }],
+    });
+    const { container } = render(<Navbar />);
+    expect(container.querySelector('.lucide-blocks')).not.toBeNull();
   });
 });

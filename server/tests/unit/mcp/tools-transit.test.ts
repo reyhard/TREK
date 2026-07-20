@@ -1,72 +1,112 @@
 import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
-import { ALL_SCOPES, SCOPE_INFO } from '../../../src/mcp/scopes';
-import { invalidatePermissionsCache } from '../../../src/services/permissions';
-import { resetTransitUsageLimits } from '../../../src/services/transitRateLimit';
-import type { TransitItinerary } from '../../../src/services/transitService';
-import {
-  addTripMember,
-  createDay,
-  createPlace,
-  createReservation,
-  createTrip,
-  createUser,
-} from '../../helpers/factories';
+import { invalidatePermissionsCache, savePermissions } from '../../../src/services/permissions';
+import { addTripMember, createDay, createTrip, createUser } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
   const db = new Database(':memory:');
-  db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');
-  db.exec('PRAGMA busy_timeout = 5000');
-  const canAccessTrip = (tripId: number, userId: number) =>
-    db
-      .prepare(
-        `SELECT t.id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
-      )
-      .get(userId, tripId, userId);
-  return {
-    testDb: db,
-    dbMock: {
-      db,
-      closeDb: () => {},
-      reinitialize: () => {},
-      getPlaceWithTags: () => null,
-      canAccessTrip: vi.fn(canAccessTrip),
-      canAccessTripImplementation: canAccessTrip,
-      isOwner: (tripId: number, userId: number) =>
-        !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
-    },
+  const mock = {
+    db,
+    closeDb: () => {},
+    reinitialize: () => {},
+    getPlaceWithTags: () => null,
+    canAccessTrip: (tripId: number, userId: number) =>
+      db
+        .prepare(
+          'SELECT t.id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)',
+        )
+        .get(userId, tripId, userId),
+    isOwner: (tripId: number, userId: number) =>
+      !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
+  return { testDb: db, dbMock: mock };
 });
 
+const { geocodeMock, planMock, broadcastMock, notifyBookingChangeMock } = vi.hoisted(() => ({
+  geocodeMock: vi.fn(),
+  planMock: vi.fn(),
+  broadcastMock: vi.fn(),
+  notifyBookingChangeMock: vi.fn(),
+}));
+
 vi.mock('../../../src/db/database', () => dbMock);
+vi.mock('../../../src/services/transitService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/transitService')>()),
+  geocode: geocodeMock,
+  plan: planMock,
+}));
+vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
+vi.mock('../../../src/services/reservationService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/reservationService')>()),
+  notifyBookingChange: notifyBookingChangeMock,
+}));
 vi.mock('../../../src/config', () => ({
   JWT_SECRET: 'test-jwt-secret-for-trek-testing-only',
   ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
   updateJwtSecret: () => {},
 }));
 
-const transitMock = vi.hoisted(() => ({ geocode: vi.fn(), plan: vi.fn() }));
-vi.mock('../../../src/services/transitService', () => ({
-  geocode: transitMock.geocode,
-  plan: transitMock.plan,
-}));
-
-const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
-vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
-
-const ALL_MODE_GROUPS = ['rail', 'subway', 'tram', 'bus', 'ferry', 'cable_car'];
-
-it('describes transit-stop discovery through places:read without adding transit scopes', () => {
-  expect(SCOPE_INFO['places:read'].description).toContain('transit stops');
-  expect(ALL_SCOPES).not.toContain('transit:read' as any);
-  expect(ALL_SCOPES).not.toContain('transit:write' as any);
-});
+const from = { name: 'Namba', lat: 34.667, lng: 135.501 };
+const to = { name: 'Umeda', lat: 34.702, lng: 135.496 };
+const itinerary = {
+  startTime: '2026-12-03T00:00:00Z',
+  endTime: '2026-12-03T00:30:00Z',
+  duration: 1800,
+  transfers: 0,
+  walkSeconds: 300,
+  legs: [
+    {
+      mode: 'WALK',
+      from: { ...from, name: 'START', time: '2026-12-03T00:00:00Z', scheduledTime: null, track: null },
+      to: {
+        name: 'Namba Station',
+        lat: 34.666,
+        lng: 135.5,
+        time: '2026-12-03T00:05:00Z',
+        scheduledTime: null,
+        track: null,
+      },
+      duration: 300,
+      distance: 300,
+      headsign: null,
+      line: null,
+      lineColor: null,
+      lineTextColor: null,
+      agency: null,
+      intermediateStops: 0,
+      geometry: null,
+      geometryPrecision: 6,
+    },
+    {
+      mode: 'SUBWAY',
+      from: {
+        name: 'Namba Station',
+        lat: 34.666,
+        lng: 135.5,
+        time: '2026-12-03T00:05:00Z',
+        scheduledTime: null,
+        track: '1',
+      },
+      to: { ...to, name: 'END', time: '2026-12-03T00:30:00Z', scheduledTime: null, track: '2' },
+      duration: 1500,
+      distance: 5000,
+      headsign: 'Umeda',
+      line: 'M',
+      lineColor: '#E5171F',
+      lineTextColor: '#FFFFFF',
+      agency: 'Osaka Metro',
+      intermediateStops: 3,
+      geometry: 'encoded',
+      geometryPrecision: 6,
+    },
+  ],
+};
 
 beforeAll(() => {
   createTables(testDb);
@@ -75,814 +115,889 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetTestDb(testDb);
-  transitMock.geocode.mockReset();
-  transitMock.plan.mockReset();
+  geocodeMock.mockReset();
+  planMock.mockReset();
   broadcastMock.mockReset();
-  dbMock.canAccessTrip.mockReset().mockImplementation(dbMock.canAccessTripImplementation);
-  resetTransitUsageLimits();
-  invalidatePermissionsCache();
+  notifyBookingChangeMock.mockReset();
   delete process.env.DEMO_MODE;
-});
-
-afterEach(() => {
-  testDb.exec('DROP TRIGGER IF EXISTS fail_transit_insert');
-  vi.restoreAllMocks();
+  invalidatePermissionsCache();
 });
 
 afterAll(() => testDb.close());
 
-async function withHarness(
-  userId: number,
-  scopes: string[] | null,
-  fn: (h: McpHarness) => Promise<void>,
-): Promise<void> {
-  const h = await createMcpHarness({ userId, scopes, withResources: false });
+async function withHarness(userId: number, scopes: string[] | null, fn: (harness: McpHarness) => Promise<void>) {
+  const harness = await createMcpHarness({ userId, scopes, withResources: false });
   try {
-    await fn(h);
+    await fn(harness);
   } finally {
-    await h.cleanup();
+    await harness.cleanup();
   }
 }
 
-function route(overrides: Partial<TransitItinerary> = {}): TransitItinerary {
-  return {
-    startTime: '2026-10-02T08:00:00.000Z',
-    endTime: '2026-10-02T08:30:00.000Z',
-    duration: 1800,
-    transfers: 0,
-    walkSeconds: 300,
-    legs: [
-      {
-        mode: 'WALK',
-        from: {
-          name: 'START',
-          lat: 52.5,
-          lng: 13.4,
-          time: '2026-10-02T08:00:00.000Z',
-          scheduledTime: null,
-          track: null,
-        },
-        to: {
-          name: 'Stop A',
-          lat: 52.51,
-          lng: 13.41,
-          time: '2026-10-02T08:05:00.000Z',
-          scheduledTime: null,
-          track: null,
-        },
-        duration: 300,
-        distance: 250,
-        headsign: null,
-        line: null,
-        lineColor: null,
-        lineTextColor: null,
-        agency: null,
-        intermediateStops: 0,
-        geometry: 'abc',
-        geometryPrecision: 6,
-      },
-      {
-        mode: 'BUS',
-        from: {
-          name: 'Stop A',
-          lat: 52.51,
-          lng: 13.41,
-          time: '2026-10-02T08:07:00.000Z',
-          scheduledTime: null,
-          track: '2',
-        },
-        to: { name: 'END', lat: 52.52, lng: 13.42, time: '2026-10-02T08:30:00.000Z', scheduledTime: null, track: null },
-        duration: 1380,
-        distance: 6000,
-        headsign: 'City Centre',
-        line: '100',
-        lineColor: '#FF0000',
-        lineTextColor: '#FFFFFF',
-        agency: 'BVG',
-        intermediateStops: 4,
-        geometry: 'def',
-        geometryPrecision: 6,
-      },
-    ],
-    ...overrides,
-  };
-}
-
-function datedTrip(userId: number) {
-  const trip = createTrip(testDb, userId, { start_date: '2026-10-02', end_date: '2026-10-02' });
-  const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as { id: number; date: string };
-  return { trip, day };
-}
-
-function planArguments(tripId: number, dayId: number) {
-  return {
-    tripId,
-    dayId,
-    from: { name: 'A', lat: 52.5, lng: 13.4 },
-    to: { name: 'B', lat: 52.6, lng: 13.5 },
-    time: '09:00',
-  };
-}
-
-function providerError(message: string, status: number): Error & { status: number } {
-  return Object.assign(new Error(message), { status });
-}
-
-describe('MCP transit read-tool registration', () => {
-  it('registers read tools for places:read but not write tools', async () => {
+describe('MCP transit tools', () => {
+  it('registers search tools for geo scope and create/update for reservations scope', async () => {
     const { user } = createUser(testDb);
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const names = (await h.client.listTools()).tools.map((tool) => tool.name);
+    await withHarness(user.id, ['geo:read'], async (harness) => {
+      const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
       expect(names).toContain('search_transit_stops');
-      expect(names).toContain('plan_transit_route');
-      expect(names).not.toContain('create_transit_route');
-      expect(names).not.toContain('update_transit_route');
+      expect(names).toContain('search_transit_routes');
+      expect(names).not.toContain('create_transit_journey');
+      expect(names).not.toContain('update_transit_journey');
+    });
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const tools = (await harness.client.listTools()).tools;
+      const names = tools.map((tool) => tool.name);
+      expect(names).toContain('create_transit_journey');
+      expect(names).toContain('update_transit_journey');
+      expect(names).not.toContain('search_transit_routes');
+      expect(tools.find((tool) => tool.name === 'create_transit_journey')?.annotations?.openWorldHint).toBe(false);
+      expect(tools.find((tool) => tool.name === 'create_transit_journey')?.annotations?.idempotentHint).toBe(true);
     });
   });
 
-  it('registers read tools for places:write and static full access', async () => {
+  it('forwards stop and route searches and replaces provider endpoint names', async () => {
     const { user } = createUser(testDb);
-    for (const scopes of [['places:write'], null]) {
-      await withHarness(user.id, scopes, async (h) => {
-        const names = (await h.client.listTools()).tools.map((tool) => tool.name);
-        expect(names).toContain('search_transit_stops');
-        expect(names).toContain('plan_transit_route');
-      });
-    }
-  });
-
-  it('does not register read tools for reservations:write alone', async () => {
-    const { user } = createUser(testDb);
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const names = (await h.client.listTools()).tools.map((tool) => tool.name);
-      expect(names).not.toContain('search_transit_stops');
-      expect(names).not.toContain('plan_transit_route');
+    geocodeMock.mockResolvedValue({ results: [from] });
+    planMock.mockResolvedValue({
+      itineraries: [
+        itinerary,
+        { ...itinerary, legs: [itinerary.legs[0]] },
+        {
+          ...itinerary,
+          legs: itinerary.legs.map((leg, index) => (index === 0 ? { ...leg, from: { ...leg.from, lat: 35.5 } } : leg)),
+        },
+      ],
     });
-  });
-});
-
-describe('Tool: search_transit_stops', () => {
-  it('searches transit stops without requiring a trip', async () => {
-    const { user } = createUser(testDb);
-    transitMock.geocode.mockResolvedValue({
-      results: [{ name: 'Alexanderplatz', lat: 52.52, lng: 13.41, type: 'STOP', area: 'Berlin' }],
-    });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = parseToolResult(
-        await h.client.callTool({
+    await withHarness(user.id, ['geo:read'], async (harness) => {
+      const stops = parseToolResult(
+        await harness.client.callTool({
           name: 'search_transit_stops',
-          arguments: { query: 'Alexanderplatz', language: 'de', near: { lat: 52.5, lng: 13.4 } },
+          arguments: { query: 'Namba', language: 'ja', near: { lat: 34.67, lng: 135.5 } },
         }),
       ) as any;
-      expect(result.results).toHaveLength(1);
-      expect(transitMock.geocode).toHaveBeenCalledWith('Alexanderplatz', 'de', '52.5,13.4');
+      expect(stops.results[0].name).toBe('Namba');
+      expect(geocodeMock).toHaveBeenCalledWith('Namba', 'ja', '34.67,135.5');
+
+      const routes = parseToolResult(
+        await harness.client.callTool({
+          name: 'search_transit_routes',
+          arguments: { from, to, time: '2026-12-03T09:00:00+09:00', modes: ['SUBWAY'] },
+        }),
+      ) as any;
+      expect(routes.itineraries[0].legs[0].from.name).toBe('Namba');
+      expect(routes.itineraries[0].legs[1].to.name).toBe('Umeda');
+      expect(routes.itineraries).toHaveLength(1);
+      expect(planMock).toHaveBeenCalledWith(expect.objectContaining({ modes: 'SUBWAY' }));
+
+      const invalidNear = await harness.client.callTool({
+        name: 'search_transit_stops',
+        arguments: { query: 'Namba', near: { lat: 999, lng: 999 } },
+      });
+      expect(invalidNear.isError).toBe(true);
     });
   });
 
-  it('returns the provider error message as an MCP error', async () => {
+  it('persists a selected itinerary with local dates, endpoints, and transit metadata', async () => {
     const { user } = createUser(testDb);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    transitMock.geocode.mockRejectedValue(providerError('Transit geocoder unavailable', 502));
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Transit geocoder unavailable');
-      expect(errorSpy).not.toHaveBeenCalled();
-    });
-    errorSpy.mockRestore();
-  });
-
-  it('logs unexpected search failures without exposing internal details', async () => {
-    const { user } = createUser(testDb);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    transitMock.geocode.mockRejectedValue(new Error('database password appeared in an internal stack'));
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Failed to search transit stops.');
-      expect((result.content[0] as any).text).not.toContain('database password');
-      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit stop search failed:', expect.any(Error));
-    });
-    errorSpy.mockRestore();
-  });
-
-  it('rate-limits the 301st stop search in the per-user geocode bucket before another provider call', async () => {
-    const first = createUser(testDb).user;
-    const second = createUser(testDb).user;
-    transitMock.geocode.mockResolvedValue({ results: [] });
-    await withHarness(first.id, ['places:read'], async (h) => {
-      for (let index = 0; index < 300; index += 1) {
-        const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
-        expect(result.isError).not.toBe(true);
-      }
-      const limited = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
-      expect(limited.isError).toBe(true);
-      expect((limited.content[0] as any).text).toBe('Transit provider rate limit exceeded. Try again later.');
-      expect(transitMock.geocode).toHaveBeenCalledTimes(300);
-    });
-    await withHarness(second.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'search_transit_stops', arguments: { query: 'Berlin' } });
-      expect(result.isError).not.toBe(true);
-      expect(transitMock.geocode).toHaveBeenCalledTimes(301);
-    });
-  });
-});
-
-describe('Tool: plan_transit_route', () => {
-  it('plans from a saved place ID and explicit destination using the trip day date', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const hotel = createPlace(testDb, trip.id, { name: 'Hotel', lat: 35.689, lng: 139.692 });
-    transitMock.plan.mockResolvedValue({ itineraries: [route()] });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const data = parseToolResult(
-        await h.client.callTool({
-          name: 'plan_transit_route',
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const result = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
           arguments: {
             tripId: trip.id,
             dayId: day.id,
-            from: { placeId: hotel.id },
-            to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
-            time: '09:00',
-            timeMode: 'depart_at',
-            modes: ['rail', 'bus'],
-            preference: 'less_walking',
-            maxTransfers: 2,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
           },
         }),
       ) as any;
-      expect(transitMock.plan).toHaveBeenCalledWith({
-        from: '35.689,139.692',
-        to: '35.7148,139.7967',
-        time: '2026-10-02T00:00:00.000Z',
-        arriveBy: false,
-        modes: 'HIGHSPEED_RAIL,LONG_DISTANCE,NIGHT_RAIL,REGIONAL_RAIL,SUBURBAN,BUS,COACH',
-        maxTransfers: 2,
-      });
-      expect(data.query).toEqual({
-        tripId: trip.id,
-        dayId: day.id,
-        date: '2026-10-02',
-        time: '09:00',
-        timeMode: 'depart_at',
-        preference: 'less_walking',
-        modes: ['rail', 'bus'],
-        maxTransfers: 2,
-      });
-      expect(data.from.name).toBe('Hotel');
-      expect(data.itineraries[0].routeIndex).toBe(0);
-      expect(data.itineraries[0].summary).toBeTypeOf('string');
-      expect(data.itineraries[0].legs[0].from.name).toBe('Hotel');
-      expect(data.itineraries[0].legs.at(-1).to.name).toBe('Temple');
-      expect(broadcastMock).not.toHaveBeenCalled();
+      expect(result.reservation.type).toBe('transit');
+      expect(result.reservation.status).toBe('confirmed');
+      expect(result.reservation.reservation_time).toBe('2026-12-03T09:00');
+      expect(result.reservation.endpoints).toHaveLength(2);
+      expect(result.reservation.endpoints[0].timezone).toBe('Asia/Tokyo');
+      const metadata = JSON.parse(result.reservation.metadata);
+      expect(metadata.transit.provider).toBe('transitous');
+      expect(metadata.transit.duration).toBe(1800);
+      expect(metadata.transit.transfers).toBe(0);
+      expect(metadata.transit.walk_seconds).toBe(300);
+      expect(metadata.transit.legs[1].line_color).toBe('#E5171F');
+      expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'reservation:created', expect.anything());
+      expect(notifyBookingChangeMock).toHaveBeenCalledWith(trip.id, user.id, 'Namba → Umeda', 'transit');
     });
   });
 
-  it('uses all friendly mode groups and omits maxTransfers from the query by default', async () => {
+  it('rejects dateless, mismatched, and out-of-range journey dates', async () => {
     const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    transitMock.plan.mockResolvedValue({ itineraries: [] });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const data = parseToolResult(
-        await h.client.callTool({
-          name: 'plan_transit_route',
-          arguments: planArguments(trip.id, day.id),
-        }),
-      ) as any;
-      expect(data.query).toEqual({
-        tripId: trip.id,
-        dayId: day.id,
-        date: '2026-10-02',
-        time: '09:00',
-        timeMode: 'depart_at',
-        preference: 'best',
-        modes: ALL_MODE_GROUPS,
+    const datelessTrip = createTrip(testDb, user.id);
+    const datelessDay = createDay(testDb, datelessTrip.id);
+    const datedTrip = createTrip(testDb, user.id, { start_date: '2026-12-02', end_date: '2026-12-03' });
+    const datedDay = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(datedTrip.id, '2026-12-02') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const dateless = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: datelessTrip.id, dayId: datelessDay.id, from, to, itinerary },
       });
-      expect(data.query).not.toHaveProperty('maxTransfers');
-      expect(transitMock.plan).toHaveBeenCalledWith({
-        from: '52.5,13.4',
-        to: '52.6,13.5',
-        time: '2026-10-02T07:00:00.000Z',
-        arriveBy: false,
-        modes: undefined,
+      expect(dateless.isError).toBe(true);
+      expect((dateless.content[0] as any).text).toContain('no date');
+
+      const mismatch = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: datedTrip.id, dayId: datedDay.id, from, to, itinerary },
       });
+      expect(mismatch.isError).toBe(true);
+      expect((mismatch.content[0] as any).text).toContain('departs on 2026-12-03');
+
+      const nextDayItinerary = {
+        ...itinerary,
+        endTime: '2026-12-04T00:30:00Z',
+        legs: itinerary.legs.map((leg, index) =>
+          index === itinerary.legs.length - 1
+            ? { ...leg, duration: 87_900, to: { ...leg.to, time: '2026-12-04T00:30:00Z' } }
+            : leg,
+        ),
+      };
+      const startDay = testDb
+        .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+        .get(datedTrip.id, '2026-12-03') as any;
+      const outside = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: datedTrip.id, dayId: startDay.id, from, to, itinerary: nextDayItinerary },
+      });
+      expect(outside.isError).toBe(true);
+      expect((outside.content[0] as any).text).toContain('No trip day exists');
     });
   });
 
-  it('anchors arrive-by time to the destination timezone', async () => {
+  it('rejects malformed provider data before persistence', async () => {
     const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    transitMock.plan.mockResolvedValue({ itineraries: [] });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      await h.client.callTool({
-        name: 'plan_transit_route',
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+    const allWalk = { ...itinerary, legs: [itinerary.legs[0]] };
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: allWalk },
+      });
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare("SELECT COUNT(*) AS count FROM reservations WHERE type = 'transit'").get()).toEqual({
+        count: 0,
+      });
+
+      const wrongDestination = {
+        ...itinerary,
+        legs: itinerary.legs.map((leg, index) =>
+          index === itinerary.legs.length - 1 ? { ...leg, to: { ...leg.to, lat: 35.0 } } : leg,
+        ),
+      };
+      const mismatch = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: wrongDestination },
+      });
+      expect(mismatch.isError).toBe(true);
+      expect((mismatch.content[0] as any).text).toContain('does not match');
+      expect(testDb.prepare("SELECT COUNT(*) AS count FROM reservations WHERE type = 'transit'").get()).toEqual({
+        count: 0,
+      });
+
+      const invalidTime = {
+        ...itinerary,
+        legs: itinerary.legs.map((leg, index) =>
+          index === 0 ? { ...leg, from: { ...leg.from, time: '09:00' } } : leg,
+        ),
+      };
+      const malformedTime = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: invalidTime },
+      });
+      expect(malformedTime.isError).toBe(true);
+
+      const excessiveTransfers = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, transfers: 9 } },
+      });
+      expect(excessiveTransfers.isError).toBe(true);
+
+      const unanchored = await harness.client.callTool({
+        name: 'create_transit_journey',
         arguments: {
           tripId: trip.id,
           dayId: day.id,
-          from: { name: 'London', lat: 51.5074, lng: -0.1278 },
-          to: { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
-          time: '09:00',
-          timeMode: 'arrive_by',
+          from,
+          to,
+          itinerary: { ...itinerary, endTime: '2026-12-04T00:30:00Z' },
         },
       });
-      expect(transitMock.plan).toHaveBeenCalledWith(
-        expect.objectContaining({ time: '2026-10-02T00:00:00.000Z', arriveBy: true }),
-      );
+      expect(unanchored.isError).toBe(true);
+
+      const wrongDuration = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: {
+          tripId: trip.id,
+          dayId: day.id,
+          from,
+          to,
+          itinerary: {
+            ...itinerary,
+            legs: itinerary.legs.map((leg, index) => (index === 0 ? { ...leg, duration: 1 } : leg)),
+          },
+        },
+      });
+      expect(wrongDuration.isError).toBe(true);
+
+      const overlappingLegs = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: {
+          tripId: trip.id,
+          dayId: day.id,
+          from,
+          to,
+          itinerary: {
+            ...itinerary,
+            legs: itinerary.legs.map((leg, index) =>
+              index === 0 ? { ...leg, duration: 600, to: { ...leg.to, time: '2026-12-03T00:10:00Z' } } : leg,
+            ),
+          },
+        },
+      });
+      expect(overlappingLegs.isError).toBe(true);
+
+      const missingTimes = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: {
+          tripId: trip.id,
+          dayId: day.id,
+          from,
+          to,
+          itinerary: {
+            ...itinerary,
+            legs: itinerary.legs.map((leg, index) =>
+              index === 1 ? { ...leg, from: { ...leg.from, time: null, scheduledTime: null } } : leg,
+            ),
+          },
+        },
+      });
+      expect(missingTimes.isError).toBe(true);
+
+      const disconnected = {
+        ...itinerary,
+        legs: itinerary.legs.map((leg, index) => (index === 1 ? { ...leg, from: { ...leg.from, lat: 35.5 } } : leg)),
+      };
+      const disconnectedResult = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: disconnected },
+      });
+      expect(disconnectedResult.isError).toBe(true);
+      expect(testDb.prepare("SELECT COUNT(*) AS count FROM reservations WHERE type = 'transit'").get()).toEqual({
+        count: 0,
+      });
     });
   });
 
-  it('returns every normalized candidate ranked according to preference', async () => {
+  it('enforces demo, trip access, and reservation permissions', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: demo } = createUser(testDb, { email: 'demo@trek.app' });
+    const { user: stranger } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id, { start_date: '2026-12-03', end_date: '2026-12-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+    addTripMember(testDb, trip.id, demo.id);
+    addTripMember(testDb, trip.id, member.id);
+
+    process.env.DEMO_MODE = 'true';
+    await withHarness(demo.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('demo mode');
+    });
+    delete process.env.DEMO_MODE;
+
+    await withHarness(stranger.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('access denied');
+    });
+
+    savePermissions({ reservation_edit: 'trip_owner' });
+    await withHarness(member.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'create_transit_journey',
+        arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('permission');
+    });
+
+    expect(testDb.prepare("SELECT COUNT(*) AS count FROM reservations WHERE type = 'transit'").get()).toEqual({
+      count: 0,
+    });
+    expect(broadcastMock).not.toHaveBeenCalled();
+    expect(notifyBookingChangeMock).not.toHaveBeenCalled();
+  });
+
+  it('uses scheduled times when realtime stop times are unavailable', async () => {
     const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const mediumWalk = route({ legs: [{ ...route().legs[0], duration: 500 }, route().legs[1]] });
-    const longWalk = route({ legs: [{ ...route().legs[0], duration: 800 }, route().legs[1]] });
-    const shortWalk = route({ legs: [{ ...route().legs[0], duration: 100 }, route().legs[1]] });
-    transitMock.plan.mockResolvedValue({ itineraries: [mediumWalk, longWalk, shortWalk] });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const data = parseToolResult(
-        await h.client.callTool({
-          name: 'plan_transit_route',
-          arguments: { ...planArguments(trip.id, day.id), preference: 'less_walking' },
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+    const scheduledOnly = {
+      ...itinerary,
+      legs: itinerary.legs.map((leg) => ({
+        ...leg,
+        from: { ...leg.from, time: null, scheduledTime: leg.from.time },
+        to: { ...leg.to, time: null, scheduledTime: leg.to.time },
+      })),
+    };
+
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const result = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: scheduledOnly },
         }),
       ) as any;
-      expect(data.itineraries).toHaveLength(3);
-      expect(data.itineraries.map((item: any) => item.routeIndex)).toEqual([0, 1, 2]);
-      expect(data.itineraries.map((item: any) => item.walkSeconds)).toEqual([100, 500, 800]);
+      expect(result.reservation.reservation_time).toBe('2026-12-03T09:00');
+      const metadata = JSON.parse(result.reservation.metadata);
+      expect(metadata.transit.legs[1].from.time).toBe('09:05');
     });
   });
 
-  it('rejects an inaccessible trip before calling the provider', async () => {
-    const owner = createUser(testDb).user;
-    const stranger = createUser(testDb).user;
-    const { trip, day } = datedTrip(owner.id);
-    await withHarness(stranger.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Trip not found or access denied.');
-      expect(transitMock.plan).not.toHaveBeenCalled();
-    });
-  });
-
-  it('logs access-check failures without exposing internal details', async () => {
+  // The provider's response taxonomy is wider than the mode whitelist a caller may request:
+  // MOTIS's default TRANSIT expands to include AIRPLANE, ODM, RIDE_SHARING and OTHER. Norway's
+  // GTFS, for one, routes Trondheim → Ålesund over AIRPLANE legs. Those itineraries must survive
+  // the search and be persistable, exactly as they are in the web app.
+  it('accepts provider leg modes outside the requestable mode whitelist', async () => {
     const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    dbMock.canAccessTrip.mockImplementationOnce(() => {
-      throw providerError('database password appeared in an access-check stack', 500);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+    const flying = {
+      ...itinerary,
+      legs: itinerary.legs.map((leg) => (leg.mode === 'WALK' ? leg : { ...leg, mode: 'AIRPLANE' })),
+    };
+    planMock.mockResolvedValue({ itineraries: [flying] });
+
+    await withHarness(user.id, ['geo:read'], async (harness) => {
+      const routes = parseToolResult(
+        await harness.client.callTool({ name: 'search_transit_routes', arguments: { from, to } }),
+      ) as any;
+      expect(routes.itineraries).toHaveLength(1);
+      expect(routes.itineraries[0].legs[1].mode).toBe('AIRPLANE');
+      expect(routes.dropped).toBe(0);
     });
 
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Failed to plan transit route.');
-      expect((result.content[0] as any).text).not.toContain('database password');
-      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit route planning failed:', expect.any(Error));
-      expect(transitMock.plan).not.toHaveBeenCalled();
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const result = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: flying },
+        }),
+      ) as any;
+      expect(result.reservation.type).toBe('transit');
+      const metadata = JSON.parse(result.reservation.metadata);
+      expect(metadata.transit.legs[1].mode).toBe('AIRPLANE');
     });
   });
 
-  it('rejects a day from another trip', async () => {
+  it('reports how many provider itineraries failed validation', async () => {
     const { user } = createUser(testDb);
-    const first = datedTrip(user.id);
-    const second = datedTrip(user.id);
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'plan_transit_route',
-        arguments: planArguments(first.trip.id, second.day.id),
+    const walkOnly = { ...itinerary, legs: [itinerary.legs[0]] };
+    planMock.mockResolvedValue({ itineraries: [itinerary, walkOnly] });
+
+    await withHarness(user.id, ['geo:read'], async (harness) => {
+      const routes = parseToolResult(
+        await harness.client.callTool({ name: 'search_transit_routes', arguments: { from, to } }),
+      ) as any;
+      expect(routes.itineraries).toHaveLength(1);
+      expect(routes.dropped).toBe(1);
+    });
+  });
+
+  it('registers update_transit_journey with reservations scope and creates preserve leg distance', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
+      expect(names).toContain('update_transit_journey');
+    });
+    // Create path stores leg distance
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
+        }),
+      ) as any;
+      const metadata = JSON.parse(createResult.reservation.metadata);
+      expect(metadata.transit.legs[1].distance).toBe(5000);
+    });
+  });
+
+  it('update_transit_journey replaces route data and preserves title', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
+        }),
+      ) as any;
+      const reservationId = createResult.reservation.id;
+
+      const updatedItinerary = {
+        ...itinerary,
+        startTime: '2026-12-03T01:00:00Z',
+        endTime: '2026-12-03T02:00:00Z',
+        duration: 3600,
+        legs: itinerary.legs.map((leg, i) =>
+          i === 0
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T01:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T01:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 3000,
+                distance: 8000,
+                from: { ...leg.from, time: '2026-12-03T01:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:00:00Z' },
+              },
+        ),
+      };
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: {
+          tripId: trip.id,
+          reservationId,
+          dayId: day.id,
+          from: { ...from, name: 'Namba Upd' },
+          to: { ...to, name: 'Umeda Upd' },
+          itinerary: updatedItinerary,
+        },
+      });
+      expect(raw.isError).toBeFalsy();
+      const updateResult = parseToolResult(raw) as any;
+      expect(updateResult.reservation.id).toBe(reservationId);
+      expect(updateResult.reservation.type).toBe('transit');
+      expect(updateResult.reservation.title).toBe('Namba → Umeda');
+      const meta = JSON.parse(updateResult.reservation.metadata);
+      expect(meta.transit.legs[1].distance).toBe(8000);
+      expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'reservation:updated', expect.anything());
+      expect(notifyBookingChangeMock).toHaveBeenCalledWith(trip.id, user.id, expect.any(String), 'transit');
+    });
+  });
+
+  it('update_transit_journey preserves unrelated metadata', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
+        }),
+      ) as any;
+      const reservationId = createResult.reservation.id;
+
+      const current = testDb.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId) as any;
+      const currentMeta = JSON.parse(current.metadata);
+      currentMeta.plugin_extension = { custom_ref: 'abc-123' };
+      testDb
+        .prepare('UPDATE reservations SET metadata = ? WHERE id = ?')
+        .run(JSON.stringify(currentMeta), reservationId);
+
+      const updatedItinerary = {
+        ...itinerary,
+        startTime: '2026-12-03T02:00:00Z',
+        endTime: '2026-12-03T02:30:00Z',
+        duration: 1800,
+        legs: itinerary.legs.map((leg, i) =>
+          i === 0
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T02:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 1200,
+                distance: 5000,
+                from: { ...leg.from, time: '2026-12-03T02:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:30:00Z' },
+              },
+        ),
+      };
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from, to, itinerary: updatedItinerary },
+      });
+      expect(raw.isError).toBeFalsy();
+      const updateResult = parseToolResult(raw) as any;
+      const meta = JSON.parse(updateResult.reservation.metadata);
+      expect(meta.plugin_extension).toEqual({ custom_ref: 'abc-123' });
+      expect(meta.transit.legs[1].distance).toBe(5000);
+    });
+  });
+
+  it('update_transit_journey enforces permissions and transit type', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: stranger } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id, { start_date: '2026-12-03', end_date: '2026-12-03' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ?').get(trip.id) as any;
+
+    await withHarness(stranger.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId: 999, dayId: day.id, from, to, itinerary },
       });
       expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Day does not belong to this trip.');
+      expect((result.content[0] as any).text).toContain('access denied');
     });
-  });
 
-  it('rejects a day without a date', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const day = createDay(testDb, trip.id);
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('The selected day has no date.');
-    });
-  });
+    const { reservation } = await import('../../../src/services/reservationService').then((m) =>
+      m.createReservation(trip.id, {
+        title: 'Not transit',
+        type: 'flight',
+        status: 'confirmed',
+        day_id: day.id,
+      }),
+    );
 
-  it('rejects a saved place from another trip', async () => {
-    const { user } = createUser(testDb);
-    const first = datedTrip(user.id);
-    const second = datedTrip(user.id);
-    const place = createPlace(testDb, second.trip.id);
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'plan_transit_route',
-        arguments: { ...planArguments(first.trip.id, first.day.id), from: { placeId: place.id } },
+    await withHarness(owner.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId: reservation.id, dayId: day.id, from, to, itinerary },
       });
       expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Place does not belong to this trip');
+      expect((result.content[0] as any).text).toContain('not a transit');
     });
-  });
 
-  it('rejects invalid local time and empty modes during input validation', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    await withHarness(user.id, ['places:read'], async (h) => {
-      for (const patch of [{ time: '9:00' }, { modes: [] }]) {
-        const result = await h.client.callTool({
-          name: 'plan_transit_route',
-          arguments: { ...planArguments(trip.id, day.id), ...patch },
-        });
-        expect(result.isError).toBe(true);
-      }
-      expect(transitMock.plan).not.toHaveBeenCalled();
-    });
-  });
+    const { reservation: transitRes } = await import('../../../src/services/reservationService').then((m) =>
+      m.createReservation(trip.id, {
+        title: 'Transit',
+        type: 'transit',
+        status: 'confirmed',
+        day_id: day.id,
+      }),
+    );
 
-  it('returns an empty provider itinerary list as a successful response', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    transitMock.plan.mockResolvedValue({ itineraries: [] });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
-      expect(result.isError).not.toBe(true);
-      expect((parseToolResult(result) as any).itineraries).toEqual([]);
-    });
-  });
-
-  it('returns the provider error message as an MCP error', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    transitMock.plan.mockRejectedValue(providerError('Transit planner unavailable', 502));
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Transit planner unavailable');
-      expect(errorSpy).not.toHaveBeenCalled();
-    });
-    errorSpy.mockRestore();
-  });
-
-  it('logs unexpected planning failures without exposing internal details', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    transitMock.plan.mockRejectedValue(new Error('database password appeared in an internal stack'));
-    await withHarness(user.id, ['places:read'], async (h) => {
-      const result = await h.client.callTool({ name: 'plan_transit_route', arguments: planArguments(trip.id, day.id) });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Failed to plan transit route.');
-      expect((result.content[0] as any).text).not.toContain('database password');
-      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit route planning failed:', expect.any(Error));
-    });
-    errorSpy.mockRestore();
-  });
-
-  it('rate-limits the 61st plan call before making another provider call', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    transitMock.plan.mockResolvedValue({ itineraries: [] });
-    await withHarness(user.id, ['places:read'], async (h) => {
-      for (let index = 0; index < 60; index += 1) {
-        const result = await h.client.callTool({
-          name: 'plan_transit_route',
-          arguments: planArguments(trip.id, day.id),
-        });
-        expect(result.isError).not.toBe(true);
-      }
-      const limited = await h.client.callTool({
-        name: 'plan_transit_route',
-        arguments: planArguments(trip.id, day.id),
+    savePermissions({ reservation_edit: 'trip_owner' });
+    await withHarness(member.id, ['reservations:write'], async (harness) => {
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId: transitRes.id, dayId: day.id, from, to, itinerary },
       });
-      expect(limited.isError).toBe(true);
-      expect((limited.content[0] as any).text).toBe('Transit provider rate limit exceeded. Try again later.');
-      expect(transitMock.plan).toHaveBeenCalledTimes(60);
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toContain('access denied');
+    });
+
+    expect(broadcastMock).not.toHaveBeenCalledWith(trip.id, 'reservation:updated', expect.anything());
+    expect(notifyBookingChangeMock).not.toHaveBeenCalled();
+  });
+
+  it('update_transit_journey preserves generic fields (notes, status, confirmation, position)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+            notes: 'custom notes',
+          },
+        }),
+      ) as any;
+      const reservationId = createResult.reservation.id;
+      testDb
+        .prepare(
+          'UPDATE reservations SET status = ?, confirmation_number = ?, notes = ?, day_plan_position = ? WHERE id = ?',
+        )
+        .run('upcoming', 'ABC-123', 'preserved notes', 42.5, reservationId);
+
+      const updatedItinerary = {
+        ...itinerary,
+        startTime: '2026-12-03T01:00:00Z',
+        endTime: '2026-12-03T02:00:00Z',
+        duration: 3600,
+        legs: itinerary.legs.map((leg, i) =>
+          i === 0
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T01:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T01:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 3000,
+                distance: 8000,
+                from: { ...leg.from, time: '2026-12-03T01:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:00:00Z' },
+              },
+        ),
+      };
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from, to, itinerary: updatedItinerary },
+      });
+      expect(raw.isError).toBeFalsy();
+      const updateResult = parseToolResult(raw) as any;
+      expect(updateResult.reservation.title).toBe('Namba → Umeda');
+      expect(updateResult.reservation.status).toBe('upcoming');
+      expect(updateResult.reservation.confirmation_number).toBe('ABC-123');
+      expect(updateResult.reservation.notes).toBe('preserved notes');
+      const row = testDb.prepare('SELECT day_plan_position FROM reservations WHERE id = ?').get(reservationId) as any;
+      expect(row.day_plan_position).toBe(42.5);
+      const meta = JSON.parse(updateResult.reservation.metadata);
+      expect(meta.transit.legs[1].distance).toBe(8000);
     });
   });
-});
 
-function writeArguments(tripId: number, dayId: number, overrides: Record<string, unknown> = {}) {
-  return {
-    tripId,
-    dayId,
-    from: { name: 'Station A', lat: 52.52, lng: 13.405 },
-    to: { name: 'Station B', lat: 52.5, lng: 13.4 },
-    itinerary: route(),
-    ...overrides,
-  };
-}
-
-describe('MCP transit write-tool registration', () => {
-  it('registers write tools for reservations:write independently from read tools', async () => {
+  it('registers exactly four transit tools with full scopes and no legacy names', async () => {
     const { user } = createUser(testDb);
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const tools = (await h.client.listTools()).tools;
-      const names = tools.map((tool) => tool.name);
-      expect(names).toContain('create_transit_route');
-      expect(names).toContain('update_transit_route');
-      expect(names).not.toContain('search_transit_stops');
+    await withHarness(user.id, null, async (harness) => {
+      const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
+      const transitNames = names.filter((n) => n.startsWith('search_transit') || n.includes('transit_'));
+      expect(transitNames).toHaveLength(4);
+      expect(transitNames).toContain('search_transit_stops');
+      expect(transitNames).toContain('search_transit_routes');
+      expect(transitNames).toContain('create_transit_journey');
+      expect(transitNames).toContain('update_transit_journey');
       expect(names).not.toContain('plan_transit_route');
-
-      for (const name of ['create_transit_route', 'update_transit_route']) {
-        const tool = tools.find((candidate) => candidate.name === name)!;
-        const schema = tool.inputSchema as any;
-        expect(schema.properties).not.toHaveProperty('status');
-        expect(schema.properties).not.toHaveProperty('booking');
-        expect(schema.properties).not.toHaveProperty('ticket');
-        expect(schema.properties).not.toHaveProperty('price');
-        expect(tool.annotations?.readOnlyHint).toBe(false);
-        expect(tool.annotations?.idempotentHint).toBe(name === 'update_transit_route');
-      }
-    });
-  });
-
-  it('registers write tools for static full access but not reservations:read', async () => {
-    const { user } = createUser(testDb);
-    await withHarness(user.id, null, async (h) => {
-      const names = (await h.client.listTools()).tools.map((tool) => tool.name);
-      expect(names).toContain('create_transit_route');
-      expect(names).toContain('update_transit_route');
-    });
-    await withHarness(user.id, ['reservations:read'], async (h) => {
-      const names = (await h.client.listTools()).tools.map((tool) => tool.name);
       expect(names).not.toContain('create_transit_route');
       expect(names).not.toContain('update_transit_route');
     });
   });
-});
 
-describe('Tool: create_transit_route', () => {
-  it('creates a selected itinerary without contacting Transitous', async () => {
+  it('places:read scope denies transit tools', async () => {
     const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
-    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const data = parseToolResult(
-        await h.client.callTool({
-          name: 'create_transit_route',
-          arguments: writeArguments(trip.id, day.id, {
-            from: { name: 'Hotel', lat: 35.689, lng: 139.692 },
-            to: { name: 'Temple', lat: 35.7148, lng: 139.7967 },
-            itinerary: route({
-              startTime: '2026-10-02T00:00:00.000Z',
-              endTime: '2026-10-02T00:30:00.000Z',
-            }),
-          }),
+    await withHarness(user.id, ['places:read'], async (harness) => {
+      const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
+      expect(names).not.toContain('search_transit_stops');
+      expect(names).not.toContain('search_transit_routes');
+      expect(names).not.toContain('create_transit_journey');
+      expect(names).not.toContain('update_transit_journey');
+    });
+  });
+
+  it('update_transit_journey merges legacy string metadata', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
-      expect(data.reservation.type).toBe('transit');
-      expect(data.reservation.status).toBe('confirmed');
-      expect(transitMock.plan).not.toHaveBeenCalled();
-      expect(transitMock.geocode).not.toHaveBeenCalled();
-      expect(broadcastMock).toHaveBeenCalledWith(
-        trip.id,
-        'reservation:created',
-        expect.objectContaining({ _source: 'mcp' }),
-      );
+      const reservationId = createResult.reservation.id;
+      testDb
+        .prepare('UPDATE reservations SET metadata = ? WHERE id = ?')
+        .run(JSON.stringify({ transit: { provider: 'transitous' }, legacy_field: 'keep-me' }), reservationId);
+
+      const updatedItinerary = {
+        ...itinerary,
+        startTime: '2026-12-03T01:00:00Z',
+        endTime: '2026-12-03T02:00:00Z',
+        duration: 3600,
+        legs: itinerary.legs.map((leg, i) =>
+          i === 0
+            ? {
+                ...leg,
+                duration: 600,
+                distance: 600,
+                from: { ...leg.from, time: '2026-12-03T01:00:00Z' },
+                to: { ...leg.to, time: '2026-12-03T01:10:00Z' },
+              }
+            : {
+                ...leg,
+                duration: 3000,
+                distance: 8000,
+                from: { ...leg.from, time: '2026-12-03T01:10:00Z' },
+                to: { ...leg.to, time: '2026-12-03T02:00:00Z' },
+              },
+        ),
+      };
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from, to, itinerary: updatedItinerary },
+      });
+      expect(raw.isError).toBeFalsy();
+      const updateResult = parseToolResult(raw) as any;
+      const meta = JSON.parse(updateResult.reservation.metadata);
+      expect(meta.legacy_field).toBe('keep-me');
+      expect(meta.transit.legs[1].distance).toBe(8000);
     });
   });
 
-  it('uses explicit title and notes overrides', async () => {
+  it('update_transit_journey rejects invalid dayId from a different trip', async () => {
     const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const data = parseToolResult(
-        await h.client.callTool({
-          name: 'create_transit_route',
-          arguments: writeArguments(trip.id, day.id, { title: '  Morning metro  ', notes: 'Window side' }),
+    const { user: otherUser } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const otherTrip = createTrip(testDb, otherUser.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    const otherDay = testDb
+      .prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?')
+      .get(otherTrip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
-      expect(data.reservation.title).toBe('Morning metro');
-      expect(data.reservation.notes).toBe('Window side');
-    });
-  });
+      const reservationId = createResult.reservation.id;
 
-  it('rejects demo mode before mutation', async () => {
-    const { user } = createUser(testDb, { email: 'demo@trek.app' });
-    const { trip, day } = datedTrip(user.id);
-    process.env.DEMO_MODE = 'true';
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(trip.id, day.id),
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: otherDay.id, from, to, itinerary },
       });
       expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Write operations are disabled in demo mode.');
+      expect((result.content[0] as any).text).toContain('Day does not belong');
     });
-    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
   });
 
-  it('rejects an inaccessible trip before mutation', async () => {
-    const owner = createUser(testDb).user;
-    const outsider = createUser(testDb).user;
-    const { trip, day } = datedTrip(owner.id);
-    await withHarness(outsider.id, ['reservations:write'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(trip.id, day.id),
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Trip not found or access denied.');
-    });
-    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
-  });
-
-  it('rejects reservation_edit permission before mutation', async () => {
-    const owner = createUser(testDb).user;
-    const member = createUser(testDb).user;
-    const { trip, day } = datedTrip(owner.id);
-    addTripMember(testDb, trip.id, member.id);
-    testDb.prepare("INSERT INTO app_settings (key, value) VALUES ('perm_reservation_edit', 'trip_owner')").run();
-    invalidatePermissionsCache();
-    await withHarness(member.id, ['reservations:write'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(trip.id, day.id),
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('You do not have permission to perform this action on this trip.');
-    });
-    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
-  });
-
-  it('rejects a foreign day and malformed itinerary without database mutation', async () => {
+  it('update_transit_journey handles DB failure without broadcasting', async () => {
     const { user } = createUser(testDb);
-    const first = datedTrip(user.id);
-    const second = datedTrip(user.id);
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const foreignDay = await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(first.trip.id, second.day.id),
-      });
-      expect(foreignDay.isError).toBe(true);
-      expect((foreignDay.content[0] as any).text).toBe('Day does not belong to this trip.');
-
-      const malformed = await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(first.trip.id, first.day.id, { itinerary: { ...route(), legs: [] } }),
-      });
-      expect(malformed.isError).toBe(true);
-    });
-    expect(testDb.prepare('SELECT COUNT(*) count FROM reservations').get()).toEqual({ count: 0 });
-    expect(broadcastMock).not.toHaveBeenCalled();
-  });
-
-  it('logs unexpected write failures and returns a generic MCP error', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    testDb.exec(
-      "CREATE TRIGGER fail_transit_insert BEFORE INSERT ON reservations BEGIN SELECT RAISE(ABORT, 'database password leaked'); END",
-    );
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(trip.id, day.id),
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Failed to create automated transit route.');
-      expect((result.content[0] as any).text).not.toContain('database password');
-      expect(errorSpy).toHaveBeenCalledWith('[MCP] transit route creation failed:', expect.any(Error));
-      expect(broadcastMock).not.toHaveBeenCalled();
-    });
-    testDb.exec('DROP TRIGGER fail_transit_insert');
-    errorSpy.mockRestore();
-  });
-});
-
-describe('Tool: update_transit_route', () => {
-  it('updates route-derived data while preserving title and notes', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
-    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const created = parseToolResult(
-        await h.client.callTool({
-          name: 'create_transit_route',
-          arguments: writeArguments(trip.id, day.id, { title: 'Custom title', notes: 'Custom note' }),
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
         }),
       ) as any;
+      const reservationId = createResult.reservation.id;
+
+      const reservationModule = await import('../../../src/services/reservationService');
+      const spy = vi.spyOn(reservationModule, 'updateReservation').mockImplementationOnce(() => {
+        throw new Error('DB connection lost');
+      });
+
       broadcastMock.mockClear();
-      const updated = parseToolResult(
-        await h.client.callTool({
-          name: 'update_transit_route',
-          arguments: writeArguments(trip.id, day.id, {
-            reservationId: created.reservation.id,
-            from: { name: 'C', lat: 52.51, lng: 13.41 },
-            to: { name: 'D', lat: 52.49, lng: 13.39 },
-            itinerary: route({ endTime: '2026-10-02T08:45:00.000Z' }),
-          }),
-        }),
-      ) as any;
-      expect(updated.reservation.title).toBe('Custom title');
-      expect(updated.reservation.notes).toBe('Custom note');
-      expect(updated.reservation.endpoints[0].name).toBe('C');
-      expect(transitMock.plan).not.toHaveBeenCalled();
-      expect(transitMock.geocode).not.toHaveBeenCalled();
-      expect(broadcastMock).toHaveBeenCalledWith(
-        trip.id,
-        'reservation:updated',
-        expect.objectContaining({ _source: 'mcp' }),
-      );
-    });
-  });
+      notifyBookingChangeMock.mockClear();
 
-  it('applies explicit title and empty-notes overrides', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const created = parseToolResult(
-        await h.client.callTool({
-          name: 'create_transit_route',
-          arguments: writeArguments(trip.id, day.id, { title: 'Old', notes: 'Remove me' }),
-        }),
-      ) as any;
-      const updated = parseToolResult(
-        await h.client.callTool({
-          name: 'update_transit_route',
-          arguments: writeArguments(trip.id, day.id, {
-            reservationId: created.reservation.id,
-            title: '  New title  ',
-            notes: '',
-          }),
-        }),
-      ) as any;
-      expect(updated.reservation.title).toBe('New title');
-      expect(updated.reservation.notes).toBeNull();
-    });
-  });
-
-  it('rejects a non-transit target before mutation', async () => {
-    const { user } = createUser(testDb);
-    const { trip, day } = datedTrip(user.id);
-    const manual = createReservation(testDb, trip.id, { title: 'Manual train', type: 'train', day_id: day.id });
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const result = await h.client.callTool({
-        name: 'update_transit_route',
-        arguments: writeArguments(trip.id, day.id, { reservationId: manual.id }),
+      const result = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from, to, itinerary },
       });
       expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Target reservation is not an automated transit route');
-    });
-    expect(testDb.prepare('SELECT title, type FROM reservations WHERE id = ?').get(manual.id)).toEqual({
-      title: 'Manual train',
-      type: 'train',
-    });
-    expect(broadcastMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects a foreign day before changing an automated route', async () => {
-    const { user } = createUser(testDb);
-    const first = datedTrip(user.id);
-    const second = datedTrip(user.id);
-    await withHarness(user.id, ['reservations:write'], async (h) => {
-      const created = parseToolResult(
-        await h.client.callTool({
-          name: 'create_transit_route',
-          arguments: writeArguments(first.trip.id, first.day.id, { title: 'Unchanged' }),
-        }),
-      ) as any;
-      broadcastMock.mockClear();
-      const result = await h.client.callTool({
-        name: 'update_transit_route',
-        arguments: writeArguments(first.trip.id, second.day.id, { reservationId: created.reservation.id }),
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as any).text).toBe('Day does not belong to this trip.');
-      expect(testDb.prepare('SELECT title FROM reservations WHERE id = ?').get(created.reservation.id)).toEqual({
-        title: 'Unchanged',
-      });
+      expect((result.content[0] as any).text).toBe('Failed to update transit journey.');
       expect(broadcastMock).not.toHaveBeenCalled();
+      expect(notifyBookingChangeMock).not.toHaveBeenCalled();
+
+      spy.mockRestore();
     });
   });
-});
 
-describe('automated and manual transit coexistence', () => {
-  it('keeps manual train creation independent from automated transit creation', async () => {
+  it('update_transit_journey makes no provider calls', async () => {
     const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id, { start_date: '2026-10-02', end_date: '2026-10-03' });
-    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').get(trip.id) as any;
-    await withHarness(user.id, null, async (h) => {
-      await h.client.callTool({
-        name: 'create_transport',
-        arguments: {
-          tripId: trip.id,
-          type: 'train',
-          title: 'Manual night train',
-          start_day_id: day.id,
-          endpoints: [
-            { role: 'from', sequence: 0, name: 'Manual A', lat: 52.52, lng: 13.405 },
-            { role: 'to', sequence: 1, name: 'Manual B', lat: 50.06, lng: 19.94 },
-          ],
-        },
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const createResult = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
+        }),
+      ) as any;
+      const reservationId = createResult.reservation.id;
+
+      geocodeMock.mockClear();
+      planMock.mockClear();
+
+      const raw = await harness.client.callTool({
+        name: 'update_transit_journey',
+        arguments: { tripId: trip.id, reservationId, dayId: day.id, from, to, itinerary },
       });
-      await h.client.callTool({
-        name: 'create_transit_route',
-        arguments: writeArguments(trip.id, day.id),
-      });
+      expect(raw.isError).toBeFalsy();
+      expect(geocodeMock).not.toHaveBeenCalled();
+      expect(planMock).not.toHaveBeenCalled();
     });
-    const rows = testDb.prepare('SELECT title, type FROM reservations WHERE trip_id = ? ORDER BY id').all(trip.id);
-    expect(rows).toEqual([
-      { title: 'Manual night train', type: 'train' },
-      { title: 'Station A → Station B', type: 'transit' },
-    ]);
+  });
+
+  it('create and update tools use TOOL_ANNOTATIONS_WRITE annotations', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const tools = (await harness.client.listTools()).tools;
+      for (const name of ['create_transit_journey', 'update_transit_journey']) {
+        const tool = tools.find((t) => t.name === name);
+        expect(tool, `expected ${name} to be registered`).toBeDefined();
+        expect(tool!.annotations?.readOnlyHint).toBe(false);
+        expect(tool!.annotations?.destructiveHint).toBe(false);
+        expect(tool!.annotations?.idempotentHint).toBe(true);
+        expect(tool!.annotations?.openWorldHint).toBe(false);
+      }
+    });
   });
 });

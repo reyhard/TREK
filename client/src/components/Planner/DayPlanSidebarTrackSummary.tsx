@@ -1,10 +1,10 @@
-import { Bike, Car, Clock3, Footprints } from 'lucide-react'
-import type { TrackMovementPart } from '../../utils/dayMovementPlan'
-import { formatDuration, formatRouteDistance } from '../Map/RouteCalculator'
+import { Bike, Car, Clock3, Footprints } from 'lucide-react';
+import type { TrackMovementPart } from '../../utils/dayMovementPlan';
+import { formatDuration, formatRouteDistance } from '../Map/RouteCalculator';
 
 export function DayPlanSidebarTrackSummary({ track }: { track: TrackMovementPart }) {
-  const Icon = track.mode === 'cycling' ? Bike : track.mode === 'driving' ? Car : Footprints
-  const source = track.durationSource === 'poi-times' ? 'Scheduled trail time' : 'Estimated trail time'
+  const Icon = track.mode === 'cycling' ? Bike : track.mode === 'driving' ? Car : Footprints;
+  const source = track.durationSource === 'poi-times' ? 'Scheduled trail time' : 'Estimated trail time';
 
   return (
     <div
@@ -27,5 +27,5 @@ export function DayPlanSidebarTrackSummary({ track }: { track: TrackMovementPart
       <span aria-hidden>·</span>
       <span>{formatRouteDistance(track.distance)}</span>
     </div>
-  )
+  );
 }

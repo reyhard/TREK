@@ -120,7 +120,6 @@ export function applyStagedPluginTrees(): string[] {
       swapContents(live, staged);
       applied.push(label);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(`[plugins] failed to apply staged ${label} restore:`, err);
     }
   }
@@ -144,7 +143,6 @@ export async function applyStagedRestoreNow(): Promise<boolean> {
     await applier();
     return true;
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[plugins] immediate staged-restore apply failed; will retry on next boot:', err);
     return false;
   }

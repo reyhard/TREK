@@ -1,6 +1,6 @@
 services:
   app:
-    image: mauriceboe/trek:latest
+    image: mauriceboe/TREK:latest
     container_name: trek
     read_only: true
     security_opt:
@@ -21,6 +21,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-} # Recommended. Generate with: openssl rand -hex 32. If unset, falls back to data/.jwt_secret (existing installs) or auto-generates a key (fresh installs).
       - TZ=${TZ:-UTC} # Timezone for logs, reminders and scheduled tasks (e.g. Europe/Berlin)
       - LOG_LEVEL=${LOG_LEVEL:-info} # info = concise user actions; debug = verbose admin-level details
+#      - TREK_WIKI_DIR=/app/wiki # Where the in-app Help pages (/help) read their content from. Leave unset: the image ships the wiki at /app/wiki and finds it automatically. Only set this to serve your own docs, mounted into the container. If the path does not exist, Help falls back to fetching the public GitHub wiki (needs outbound network, and tracks the latest release rather than your version).
 #      - DEFAULT_LANGUAGE=en # Default language on the login page for users with no saved preference. Browser/OS language is auto-detected first; this is the fallback. Supported: de, en, es, fr, hu, nl, br, cs, pl, ru, zh, zh-TW, it, ar
 #      - SESSION_DURATION=30d # How long users stay logged in (trek_session JWT + cookie maxAge). Accepts: 1h | 12h | 7d | 30d | 90d. Default: 24h
 #      - SESSION_DURATION_REMEMBER=30d # Session length when "Remember me" is ticked at login: longer-lived JWT + persistent cookie that survives browser restarts. Same format as SESSION_DURATION. Default: 30d
@@ -42,10 +43,49 @@ services:
 #      - OIDC_DISCOVERY_URL= # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik)
 #      - ADMIN_EMAIL=admin@trek.local # Initial admin e-mail — only used on first boot when no users exist
 #      - ADMIN_PASSWORD=changeme      # Initial admin password — only used on first boot when no users exist
+#      - DEMO_MODE=false # Enable demo mode (hourly data resets)
+#      - DEMO_ADMIN_USER=admin # Username of the seeded demo admin (when DEMO_MODE=true)
+#      - DEMO_ADMIN_EMAIL=admin@trek.app # Email of the seeded demo admin
+#      - DEMO_ADMIN_PASS=admin12345 # Initial password for the seeded demo admin
+#      - WEBAUTHN_ORIGINS=https://trek.example.com # Comma-separated allowed WebAuthn origins. Defaults to APP_URL.
+#      - WEBAUTHN_RP_ID=trek.example.com # WebAuthn relying party ID (domain without scheme/port). Defaults to APP_URL hostname.
+#      - SMTP_HOST=smtp.example.com # SMTP server hostname for outbound email notifications.
+#      - SMTP_PORT=587 # SMTP server port.
+#      - SMTP_USER=trek@example.com # SMTP username.
+#      - SMTP_PASS=secret # SMTP password.
+#      - SMTP_FROM=TREK <trek@example.com> # SMTP from address.
+#      - SMTP_SKIP_TLS_VERIFY=false # Skip TLS cert validation for SMTP (self-signed certs).
 #      - MCP_RATE_LIMIT=300 # Max MCP API requests per user per minute (default: 300)
 #      - MCP_MAX_SESSION_PER_USER=20 # Max concurrent MCP sessions per user (default: 20)
+#      - MCP_SESSION_TTL=3600 # MCP session idle timeout in seconds (default: 3600)
+#      - MCP_SSE_KEEPALIVE=25 # SSE keep-alive interval in seconds (default: 25). Keeps reverse proxies from killing idle SSE streams.
+#      - IDEMPOTENCY_TTL_SECONDS=2592000 # TTL for X-Idempotency-Key entries (default: 2592000 / 30 days)
+#      - BACKUP_UPLOAD_LIMIT_MB=500 # Max compressed size (MB) of a backup upload for restore (default: 500). Raise if your backup (including uploads/) exceeds the limit. If behind a reverse proxy, also raise its upload limit (e.g. nginx client_max_body_size).
+#      - BACKUP_MAX_DECOMPRESSED_MB=5120 # Max decompressed size of a restore archive (default: 5120 MB)
+#      - TREK_API_DOCS_ENABLED=false # Serve Swagger UI / OpenAPI spec at /api/docs (default: false)
+#      - TRANSIT_API_URL=https://transitous.example.com # Transitous-compatible transit routing API (default: public Transitous endpoint)
 #      - KITINERARY_EXTRACTOR_PATH= # Optional. Full path to kitinerary-extractor binary. Auto-detected from PATH and /usr/lib/*/libexec/kf6/ when unset.
+#      - OVERPASS_URL= # Custom Overpass endpoint(s) for the map POI "explore" search, comma-separated. When set, REPLACES the bundled public mirrors. Point it at an internal/self-hosted Overpass instance when public mirrors are unreachable from your network. Non-http(s) entries are ignored.
+#      - OVERPASS_TIMEOUT_MS=12000 # Per-endpoint timeout (ms) for Overpass POI requests. Raise it for a slow self-hosted Overpass instance. (default: 12000)
+#      - OAUTH_HTTP_REDIRECT_HOSTS= # Comma-separated list of LAN hostnames allowed for HTTP OAuth redirect URIs. Default: only localhost/127.0.0.1/[::1].
+#      - TREK_PLUGINS_ENABLED=true # Kill switch for the entire plugin system. Set to false to disable plugins at runtime. Default: true.
+#      - TREK_PLUGINS_DIR= # Override the root directory for installed plugin code. Default: data/plugins.
+#      - TREK_PLUGINS_DATA_DIR= # Override the root directory for plugin-writable data. Default: data/plugins-data.
+#      - TREK_PLUGINS_DEV_LINK=1 # Enable dev-link for loading plugins from local directories. ONLY set in development. Default: off.
+#      - TREK_PLUGIN_PERMISSIONS=on # OS permission jail for plugin child processes. Set to 'off' to disable (not recommended). Default: on.
+#      - TREK_PLUGIN_ALLOW_PRIVATE_EGRESS=on # Permit plugin child processes to reach private/RFC-1918 targets. Set 'on' to allow; default (unset) blocks LAN/private-network addresses.
+#      - TREK_PLUGIN_REGISTRY_URL= # Override the plugin registry index URL. Default: GitHub TREK-Plugins main dist/index.json.
+#      - TREK_PLUGIN_RPC_BURST=60 # Per-plugin RPC burst allowance (calls before rate limiting kicks in). Default: 60.
+#      - TREK_PLUGIN_RPC_PER_SEC=20 # Per-plugin sustained RPC calls per second. Default: 20.
+#      - TREK_PLUGIN_RPC_INFLIGHT=16 # Max concurrent in-flight RPC calls per plugin. Default: 16.
+#      - TREK_PLUGIN_LOG_BURST=50 # Per-plugin log line burst allowance. Default: 50.
+#      - TREK_PLUGIN_LOG_PER_SEC=10 # Per-plugin sustained log lines per second. Default: 10.
+#      - TREK_PLUGIN_AI_PER_DAY=200 # Max AI broker calls per plugin per day. Default: 200.
+#      - TREK_PLUGIN_NOTIFY_PER_DAY=100 # Max notification sends per plugin per day. Default: 100.
+#      - TREK_PLUGIN_AUDIT_MAX_ROWS=20000 # Max audit log rows retained per plugin. Default: 20000.
+#      - TREK_PLUGIN_MAX_RSS_MB=300 # Max RSS memory per plugin child in MB. Default: 300.
 #      - UNSPLASH_ACCESS_KEY= # Optional. Unsplash Access Key for trip-cover / place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from (#1449). Free key at unsplash.com/developers. Can also be set per-admin in Admin > Settings; the env var overrides that.
+#      - TREK_PLACE_PHOTO_DIR= # Override directory for cached Google Places photo thumbnails. Default: uploads/photos/google. Primarily a test seam — you should not normally need to set this.
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

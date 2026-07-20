@@ -419,6 +419,14 @@ export interface PluginRequest {
    * providers; never Cookie/Authorization/session). Empty on authenticated routes.
    * Verify a provider signature against a secret you hold in `ctx.config`/`ctx.settings`. */
   headers: Record<string, string>;
+  /**
+   * The RAW request body, base64-encoded — set only on `auth:false` routes (webhooks),
+   * `undefined` on authenticated routes. This is what you must run an HMAC over: `body`
+   * above is the PARSED value, and re-serializing it will not reproduce the exact bytes
+   * the sender signed (key order, whitespace and unicode escaping all differ), so the
+   * signature won't match.
+   */
+  rawBodyBase64?: string | null;
   user: { id: number; username: string; isAdmin: boolean } | null;
 }
 export interface PluginResponse {
@@ -985,10 +993,18 @@ export function createPluginContext(
     },
     events: {
       // Fire-and-forget by contract, but the host CAN reject (undeclared event name,
-      // rate-limit) — swallow it, otherwise the detached rejection crashes the child
-      // and terminally disables the plugin over one bad emit.
+      // rate-limit). The rejection must not escape — a detached rejection crashes the child
+      // and terminally disables the plugin over one bad emit — but swallowing it silently
+      // left an author with no way to discover that `emits` was missing from the manifest.
+      // Surface it on the plugin's own log stream instead.
       emit: (name, payload) => {
-        t.rpc('events.emit', { event: name, payload }).catch(() => {});
+        t.rpc('events.emit', { event: name, payload }).catch((e: unknown) => {
+          t.emit('log', {
+            level: 'warn',
+            msg: `events.emit("${name}") was rejected by the host: ${e instanceof Error ? e.message : String(e)}`,
+            meta: { event: name },
+          });
+        });
       },
     },
   };

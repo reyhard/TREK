@@ -1,14 +1,14 @@
 // FE-COMP-COLDETAIL-001 to FE-COMP-COLDETAIL-010
-import React from 'react';
-import { render, screen } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
-import { server } from '../../../tests/helpers/msw/server';
-import { useAuthStore } from '../../store/authStore';
-import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser } from '../../../tests/helpers/factories';
 import type { CollectionPlace } from '@trek/shared';
+import { http, HttpResponse } from 'msw';
+import React from 'react';
+import { buildUser } from '../../../tests/helpers/factories';
+import { server } from '../../../tests/helpers/msw/server';
+import { render, screen } from '../../../tests/helpers/render';
+import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useTranslation } from '../../i18n/TranslationContext';
+import { useAuthStore } from '../../store/authStore';
 import CollectionPlaceDetail from './CollectionPlaceDetail';
 
 // The component takes `t` as a PROP (not from context), so wrap it in a tiny
@@ -57,11 +57,7 @@ beforeEach(() => {
   seedStore(useAuthStore, { user: buildUser(), placesPhotosEnabled: false });
   // The detail sheet asks the maps provider for a cover photo on mount when a
   // place carries no image of its own — stub it so nothing hits the network.
-  server.use(
-    http.get('/api/maps/place-photo/:id', () =>
-      HttpResponse.json({ photoUrl: null, attribution: null }),
-    ),
-  );
+  server.use(http.get('/api/maps/place-photo/:id', () => HttpResponse.json({ photoUrl: null, attribution: null })));
 });
 
 describe('CollectionPlaceDetail', () => {

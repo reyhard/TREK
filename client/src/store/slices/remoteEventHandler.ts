@@ -1,7 +1,8 @@
 import type { StoreApi } from 'zustand'
 import type { TripStoreState } from '../tripStore'
-import type { Assignment, Place, Day, DayNote, PackingItem, TodoItem, BudgetItem, BudgetItemMember, Reservation, Trip, TripFile, WebSocketEvent } from '../../types'
+import type { Assignment, Place, Day, DayNote, PackingItem, TodoItem, BudgetItem, BudgetItemMember, Reservation, Trip, TripFile, Accommodation, WebSocketEvent } from '../../types'
 import { offlineDb } from '../../db/offlineDb'
+import { parseStoredConnections } from '../../utils/connectionsVisibility'
 
 type SetState = StoreApi<TripStoreState>['setState']
 type GetState = StoreApi<TripStoreState>['getState']
@@ -119,6 +120,27 @@ function writeToDexie(
         case 'reservation:deleted':
           await offlineDb.reservations.delete(payload.reservationId as number)
           break
+        case 'reservation:positions': {
+          const posPayload = payload as { positions: { id: number; day_plan_position: number }[] }
+          if (!Array.isArray(posPayload.positions)) break
+          const ids = posPayload.positions.map(p => p.id)
+          const current = state.reservations.filter(r => ids.includes(r.id))
+          if (current.length > 0) await offlineDb.reservations.bulkPut(current)
+          break
+        }
+
+        // ── Accommodations ───────────────────────────────────────────────────
+        case 'accommodation:created':
+        case 'accommodation:updated':
+          if (payload.accommodation) {
+            await offlineDb.accommodations.put(payload.accommodation as Accommodation)
+          }
+          break
+        case 'accommodation:deleted':
+          if (payload.accommodationId) {
+            await offlineDb.accommodations.delete(payload.accommodationId as number)
+          }
+          break
 
         // ── Trip ─────────────────────────────────────────────────────────────
         case 'trip:updated':
@@ -163,6 +185,10 @@ async function _writeDayToDb(dayId: number, state: TripStoreState): Promise<void
  */
 export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocketEvent): void {
   const { type, ...payload } = event
+
+  // Snapshot before set(): the trip:updated case below replaces state.trip, so a
+  // date-change check made after it would compare the new trip against itself.
+  const prevTrip = get().trip
 
   set(state => {
     switch (type) {
@@ -424,14 +450,47 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
       case 'reservation:created':
         if (state.reservations.some(r => r.id === (payload.reservation as Reservation).id)) return {}
         return { reservations: [payload.reservation as Reservation, ...state.reservations] }
-      case 'reservation:updated':
+      case 'reservation:updated': {
+        const incoming = payload.reservation as Reservation
         return {
-          reservations: state.reservations.map(r => r.id === (payload.reservation as Reservation).id ? payload.reservation as Reservation : r),
+          reservations: state.reservations.map(r => {
+            if (r.id !== incoming.id) return r
+            const mergedDayPositions = incoming.day_positions != null
+              ? incoming.day_positions
+              : r.day_positions
+            return { ...r, ...incoming, day_positions: mergedDayPositions }
+          }),
         }
+      }
+      case 'reservation:positions': {
+        const positions = payload.positions as { id: number; day_plan_position: number }[]
+        if (!Array.isArray(positions)) return {}
+        const dayId = payload.day_id as string | number | undefined
+        const posMap = new Map(positions.map(p => [p.id, p.day_plan_position]))
+        return {
+          reservations: state.reservations.map(r => {
+            const pos = posMap.get(r.id)
+            if (pos === undefined) return r
+            if (dayId != null) {
+              const dayKey = String(dayId)
+              const nextDayPositions = { ...(r.day_positions ?? {}), [dayKey]: pos }
+              return { ...r, day_positions: nextDayPositions }
+            }
+            return { ...r, day_plan_position: pos }
+          }),
+        }
+      }
       case 'reservation:deleted':
         return {
           reservations: state.reservations.filter(r => r.id !== payload.reservationId),
         }
+
+      // Accommodations
+      case 'accommodation:created':
+      case 'accommodation:updated':
+      case 'accommodation:deleted':
+        window.dispatchEvent(new CustomEvent('accommodations:refresh'))
+        return {}
 
       // Trip
       case 'trip:updated':
@@ -460,6 +519,28 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
     }
   })
 
+  // When a reservation is deleted remotely, remove its ID from the trip's
+  // stored route-visibility preference so the map never references a stale id,
+  // and dispatch a synchronous event so in-memory visibility state is updated.
+  if (type === 'reservation:deleted') {
+    const tripId = get().trip?.id
+    const deletedId = payload.reservationId as number
+    if (tripId != null && typeof window !== 'undefined') {
+      const key = `trek:visible-connections:${tripId}`
+      try {
+        const raw = window.localStorage.getItem(key)
+        if (raw) {
+          const stored = parseStoredConnections(raw)
+          if (stored) {
+            const filtered = stored.ids.filter(id => id !== deletedId)
+            window.localStorage.setItem(key, JSON.stringify({ ...stored, ids: filtered }))
+          }
+        }
+      } catch { /* non-fatal */ }
+      window.dispatchEvent(new CustomEvent('visibility:stale-connection', { detail: { tripId, reservationId: deletedId } }))
+    }
+  }
+
   // A reorder/insert re-pins dates and re-stamps booking times server-side, so
   // pull the authoritative days + reservations for collaborators.
   if (type === 'day:reordered') {
@@ -467,6 +548,20 @@ export function handleRemoteEvent(set: SetState, get: GetState, event: WebSocket
     if (tripId) {
       get().refreshDays(tripId)
       get().loadReservations(tripId)
+    }
+  }
+
+  // A trip date-range change re-dates day rows and re-anchors bookings and
+  // accommodations server-side (#1288), so pull the authoritative days +
+  // reservations and tell the planner to reload accommodations (they live in
+  // page-local state, not this store).
+  if (type === 'trip:updated') {
+    const updated = payload.trip as Trip
+    if (prevTrip && updated.id === prevTrip.id
+      && (updated.start_date !== prevTrip.start_date || updated.end_date !== prevTrip.end_date)) {
+      get().refreshDays(updated.id)
+      get().loadReservations(updated.id)
+      window.dispatchEvent(new CustomEvent('accommodations:refresh'))
     }
   }
 

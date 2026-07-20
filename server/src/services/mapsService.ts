@@ -80,7 +80,7 @@ interface GooglePlaceDetails extends GooglePlaceResult {
 // and throttled harder (see #1309). When the instance URL is configured we append it;
 // getAppUrl()'s bare http://localhost fallback isn't a useful identifier, so we drop it.
 export function buildUserAgent(instanceUrl: string | undefined): string {
-  const base = 'TREK Travel Planner (https://github.com/mauriceboe/TREK)';
+  const base = 'TREK Travel Planner (https://github.com/liketrek/TREK)';
   if (instanceUrl && !instanceUrl.startsWith('http://localhost')) return `${base}; ${instanceUrl}`;
   return base;
 }

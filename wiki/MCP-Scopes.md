@@ -14,7 +14,7 @@ TREK defines 27 scopes across 13 groups.
 | | `trips:write` | Create, update, and delete trips, days, day notes, and accommodations; manage members; duplicate trips |
 | | `trips:delete` | Permanently delete entire trips (irreversible) |
 | | `trips:share` | Create, update, and revoke public share links for trips |
-| **Places** | `places:read` | Read places, day assignments, tags, and categories; real-world place and transit-stop discovery |
+| **Places** | `places:read` | Read places, day assignments, tags, and categories; real-world place discovery |
 | | `places:write` | Create, update, and delete places, assignments, and tags |
 | **Atlas** | `atlas:read` | Read visited countries, regions, and bucket list |
 | | `atlas:write` | Mark countries and regions visited, manage bucket list |
@@ -32,7 +32,7 @@ TREK defines 27 scopes across 13 groups.
 | | `notifications:write` | Mark notifications as read or unread (individually or all at once) |
 | **Vacation** | `vacay:read` | Read vacation planning data, entries, and stats |
 | | `vacay:write` | Create and manage vacation entries, holidays, and team plans |
-| **Geo** | `geo:read` | Search locations, resolve map URLs, and reverse-geocode coordinates |
+| **Geo** | `geo:read` | Search locations and public transit routes, resolve map URLs, and reverse-geocode coordinates |
 | **Weather** | `weather:read` | Fetch weather forecasts for trip locations and dates |
 | **Journey** | `journey:read` | Read journeys, entries, and contributor list |
 | | `journey:write` | Create, update, and delete journeys and their entries |

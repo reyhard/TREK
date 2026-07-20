@@ -1,9 +1,49 @@
 import { create } from 'zustand'
 import { settingsApi } from '../api/client'
-import type { Settings } from '../types'
+import type { Settings, DistanceUnit } from '../types'
 import { DEFAULT_APPEARANCE } from '@trek/shared'
 import { getApiErrorMessage } from '../types'
 import { SUPPORTED_LANGUAGE_CODES } from '../i18n/supportedLanguages'
+
+const VALID_TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const
+const VALID_DISTANCE_UNITS: DistanceUnit[] = ['metric', 'imperial']
+const VALID_TIME_FORMATS = ['24h', '12h'] as const
+
+export function normalizeSettings(raw: Partial<Settings>): Settings {
+  const out = { ...DEFAULT_SETTINGS, ...raw }
+
+  // Old string-based dark_mode: convert 'dark'/'light' to boolean, preserve 'auto'/'system'
+  if (typeof out.dark_mode === 'string') {
+    if (out.dark_mode !== 'auto' && out.dark_mode !== 'system') {
+      out.dark_mode = out.dark_mode === 'dark' || out.dark_mode === 'true'
+    }
+  }
+  if (out.dark_mode === null || out.dark_mode === undefined) {
+    out.dark_mode = DEFAULT_SETTINGS.dark_mode
+  }
+
+  // Validate temperature_unit
+  if (!VALID_TEMPERATURE_UNITS.includes(out.temperature_unit as typeof VALID_TEMPERATURE_UNITS[number])) {
+    out.temperature_unit = DEFAULT_SETTINGS.temperature_unit
+  }
+
+  // Validate distance_unit
+  if (!VALID_DISTANCE_UNITS.includes(out.distance_unit as DistanceUnit)) {
+    out.distance_unit = DEFAULT_SETTINGS.distance_unit
+  }
+
+  // Validate time_format
+  if (!VALID_TIME_FORMATS.includes(out.time_format as typeof VALID_TIME_FORMATS[number])) {
+    out.time_format = DEFAULT_SETTINGS.time_format
+  }
+
+  // Security-sensitive defaults
+  if (out.blur_booking_codes === undefined || out.blur_booking_codes === null) {
+    out.blur_booking_codes = false
+  }
+
+  return out
+}
 
 interface SettingsState {
   settings: Settings
@@ -21,42 +61,49 @@ interface SettingsState {
 export const hasStoredLanguage = (): boolean =>
   typeof localStorage !== 'undefined' && !!localStorage.getItem('app_language')
 
+// The effective client-side defaults for a fresh instance. The server sends no value for
+// a setting an admin hasn't defaulted (see settingsService.getAdminUserDefaults), so these
+// are what a brand-new user actually sees. Keep them internally consistent — one
+// measurement system, not °F alongside kilometres — and note that DisplaySettingsTab
+// imports these same values for its fallbacks, so the store default and the UI fallback
+// can't drift apart again.
+export const DEFAULT_SETTINGS: Settings = {
+  map_tile_url: '',
+  dark_mode: false,
+  // Empty = no personal display currency, so Costs falls back to the trip's own.
+  default_currency: '',
+  language: localStorage.getItem('app_language') || 'en',
+  temperature_unit: 'celsius',
+  distance_unit: 'metric',
+  time_format: '24h',
+  show_place_description: false,
+  optimize_from_accommodation: true,
+  map_provider: 'leaflet',
+  map_poi_pill_enabled: true,
+  mapbox_access_token: '',
+  mapbox_style: 'mapbox://styles/mapbox/standard',
+  maplibre_style: '',
+  mapbox_3d_enabled: true,
+  mapbox_quality_mode: false,
+  dashboard_fx_from: 'EUR',
+  dashboard_fx_to: 'USD',
+  appearance: DEFAULT_APPEARANCE,
+  // dashboard_timezones is intentionally left unset so the widget can tell "never
+  // chosen" (fall back to home + defaults) from an explicitly emptied list.
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  settings: {
-    map_tile_url: '',
-    default_lat: 48.8566,
-    default_lng: 2.3522,
-    default_zoom: 10,
-    dark_mode: false,
-    default_currency: 'USD',
-    language: localStorage.getItem('app_language') || 'en',
-    temperature_unit: 'fahrenheit',
-    distance_unit: 'metric',
-    time_format: '12h',
-    show_place_description: false,
-    optimize_from_accommodation: true,
-    map_provider: 'leaflet',
-    map_poi_pill_enabled: true,
-    mapbox_access_token: '',
-    mapbox_style: 'mapbox://styles/mapbox/standard',
-    maplibre_style: '',
-    mapbox_3d_enabled: true,
-    mapbox_quality_mode: false,
-    dashboard_fx_from: 'EUR',
-    dashboard_fx_to: 'USD',
-    appearance: DEFAULT_APPEARANCE,
-    // dashboard_timezones is intentionally left unset so the widget can tell "never
-    // chosen" (fall back to home + defaults) from an explicitly emptied list.
-  },
+  settings: { ...DEFAULT_SETTINGS },
   isLoaded: false,
 
   loadSettings: async () => {
     try {
       const data = await settingsApi.get()
-      set((state) => ({
-        settings: { ...state.settings, ...data.settings },
+      const normalized = normalizeSettings(data.settings || {})
+      set({
+        settings: normalized,
         isLoaded: true,
-      }))
+      })
     } catch (err: unknown) {
       set({ isLoaded: true })
       console.error('Failed to load settings:', err)

@@ -1,5 +1,5 @@
 import { db, canAccessTrip } from '../../db/database';
-import { listBudgetItems } from '../../services/budgetService';
+import { listBudgetItems, rebaseTripCurrency } from '../../services/budgetService';
 import { listDays, listAccommodations } from '../../services/dayService';
 import { listFiles } from '../../services/fileService';
 import { listItems as listPackingItems } from '../../services/packingService';
@@ -58,7 +58,11 @@ export class TripsService {
     return tripSvc.getTripOwner(tripId);
   }
 
-  update(tripId: string, userId: number, body: Parameters<typeof tripSvc.updateTrip>[2], role: string) {
+  async update(tripId: string, userId: number, body: Parameters<typeof tripSvc.updateTrip>[2], role: string) {
+    // Re-anchor the budget while the outgoing currency is still on the trip row,
+    // otherwise the frozen FX rates and the currency-less expenses that inherit the
+    // trip's base are left pointing at a currency that no longer exists (#1543).
+    await rebaseTripCurrency(tripId, body.currency);
     return tripSvc.updateTrip(tripId, userId, body, role);
   }
 

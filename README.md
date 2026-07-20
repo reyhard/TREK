@@ -20,7 +20,7 @@ A self-hosted, real-time collaborative travel planner — with maps, budgets, pa
 
 <a href="https://demo.liketrek.com"><img alt="Demo" src="https://img.shields.io/badge/Demo-try-111827?style=for-the-badge" /></a>
 &nbsp;
-<a href="https://hub.docker.com/r/mauriceboe/trek"><img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge" /></a>
+<a href="https://hub.docker.com/r/mauriceboe/TREK"><img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge" /></a>
 &nbsp;
 <a href="https://discord.gg/NhZBDSd4qW"><img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=for-the-badge" /></a>
 &nbsp;
@@ -31,9 +31,9 @@ A self-hosted, real-time collaborative travel planner — with maps, budgets, pa
 <a href="https://www.buymeacoffee.com/mauriceboe"><img alt="BMAC" src="https://img.shields.io/badge/BMAC-support-FFDD00?style=for-the-badge" /></a>
 <br />
 <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL_v3-6B7280?style=flat-square" /></a>
-<a href="https://github.com/mauriceboe/TREK/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/mauriceboe/TREK?include_prereleases&style=flat-square&color=6B7280" /></a>
-<a href="https://hub.docker.com/r/mauriceboe/trek"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/mauriceboe/trek?style=flat-square&color=6B7280" /></a>
-<a href="https://github.com/mauriceboe/TREK"><img alt="Stars" src="https://img.shields.io/github/stars/mauriceboe/TREK?style=flat-square&color=6B7280" /></a>
+<a href="https://github.com/liketrek/TREK/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/liketrek/TREK?include_prereleases&style=flat-square&color=6B7280" /></a>
+<a href="https://hub.docker.com/r/mauriceboe/TREK"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/mauriceboe/TREK?style=flat-square&color=6B7280" /></a>
+<a href="https://github.com/liketrek/TREK"><img alt="Stars" src="https://img.shields.io/github/stars/liketrek/TREK?style=flat-square&color=6B7280" /></a>
 
 </div>
 
@@ -41,7 +41,7 @@ A self-hosted, real-time collaborative travel planner — with maps, budgets, pa
 
 <div align="center">
 
-<img src="https://github.com/mauriceboe/trek-media/releases/download/readme-assets/TREK1.gif" alt="TREK — 60-second tour" width="100%" />
+<img src="https://github.com/liketrek/TREK-media/releases/download/readme-assets/TREK1.gif" alt="TREK — 60-second tour" width="100%" />
 
 </div>
 
@@ -176,7 +176,7 @@ A self-hosted, real-time collaborative travel planner — with maps, budgets, pa
 ```bash
 ENCRYPTION_KEY=$(openssl rand -hex 32) docker run -d -p 3000:3000 \
   -e ENCRYPTION_KEY=$ENCRYPTION_KEY \
-  -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/trek
+  -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/TREK
 ```
 
 Open `http://localhost:3000`. On first boot TREK seeds an admin account — if you set `ADMIN_EMAIL`/`ADMIN_PASSWORD` those are used, otherwise the credentials are printed to the container log (`docker logs trek`).
@@ -217,7 +217,7 @@ Real-time sync via WebSocket (`ws`). Backend on NestJS 11. State with Zustand. A
 ```yaml
 services:
   app:
-    image: mauriceboe/trek:latest
+    image: mauriceboe/TREK:latest
     container_name: trek
     read_only: true
     security_opt:
@@ -280,7 +280,7 @@ helm repo update
 helm install trek trek/trek
 ```
 
-See [`charts/README.md`](https://github.com/mauriceboe/TREK/blob/main/charts/README.md) for values.
+See [`charts/README.md`](https://github.com/liketrek/TREK/blob/main/charts/README.md) for values.
 
 <h2 id="install-as-app-pwa">Install as App (PWA)</h2>
 
@@ -305,9 +305,9 @@ docker compose pull && docker compose up -d
 **Docker run** — reuse the original volume paths:
 
 ```bash
-docker pull mauriceboe/trek
+docker pull mauriceboe/TREK
 docker rm -f trek
-docker run -d --name trek -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/trek
+docker run -d --name trek -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/TREK
 ```
 
 > Not sure which paths you used? `docker inspect trek --format '{{json .Mounts}}'` before removing the container.
@@ -330,6 +330,8 @@ The script creates a timestamped DB backup before making changes and prompts for
 <h2 id="reverse-proxy">Reverse Proxy</h2>
 
 For production, put TREK behind a TLS-terminating reverse proxy. TREK uses WebSockets for real-time sync, so the proxy **must** support WebSocket upgrades on `/ws`.
+
+If you use the MCP addon, the proxy must also pass the `Mcp-Session-Id` header through in both directions on `/mcp` — Nginx and Caddy do this by default, but a proxy that strips it makes every tool call open a new session instead of reusing one. See the [Reverse Proxy wiki page](https://github.com/liketrek/TREK/wiki/Reverse-Proxy) for details.
 
 <details>
 <summary>Nginx</summary>
@@ -368,6 +370,19 @@ server {
         proxy_set_header Host $host;
         proxy_read_timeout 86400;
     }
+
+    # Only needed if you use the MCP addon. Responses are Server-Sent Events,
+    # so buffering must be off or tool results arrive late.
+    location /mcp {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
 
@@ -403,6 +418,7 @@ Caddy handles TLS and WebSockets automatically.
 | `ENCRYPTION_KEY` | At-rest encryption key for stored secrets (API keys, MFA, SMTP, OIDC). Recommended: generate with `openssl rand -hex 32`. If unset, falls back to `data/.jwt_secret` (existing installs) or auto-generates a key (fresh installs). | Auto |
 | `TZ` | Timezone for logs, reminders and cron jobs (e.g. `Europe/Berlin`) | `UTC` |
 | `LOG_LEVEL` | `info` = concise user actions, `debug` = verbose details | `info` |
+| `TREK_WIKI_DIR` | Where the in-app Help pages (`/help`) read their content from. TREK ships its wiki and serves it from disk, so Help always matches the version you are running — you should not need to set this. Point it at your own directory to serve custom docs. If the path does not exist, Help falls back to fetching the public GitHub wiki (needs outbound network, and tracks the latest release). | bundled `wiki/` |
 | `DEFAULT_LANGUAGE` | Default language on the login page for users with no saved preference. Browser/OS language is auto-detected first; this is the fallback. Supported: `de`, `en`, `es`, `fr`, `hu`, `nl`, `br`, `cs`, `pl`, `ru`, `zh`, `zh-TW`, `it`, `ar`, `id`, `tr`, `ja`, `ko`, `uk`, `gr` | `en` |
 | `ALLOWED_ORIGINS` | Comma-separated origins for CORS and email links | same-origin |
 | `FORCE_HTTPS` | Optional. When `true`: 301-redirects HTTP to HTTPS, sends HSTS, adds CSP `upgrade-insecure-requests`, forces the session cookie `secure` flag. Useful behind a TLS-terminating reverse proxy. Requires `TRUST_PROXY`. | `false` |
@@ -423,14 +439,54 @@ Caddy handles TLS and WebSockets automatically.
 | `OIDC_ADMIN_VALUE` | Value of the OIDC claim that grants admin role | — |
 | `OIDC_SCOPE` | Space-separated OIDC scopes. **Fully replaces** the default — always include `openid email profile`. | `openid email profile` |
 | `OIDC_DISCOVERY_URL` | Override the auto-constructed OIDC discovery endpoint (e.g. Authentik: `.../application/o/trek/.well-known/openid-configuration`) | — |
+| `OAUTH_HTTP_REDIRECT_HOSTS` | Comma-separated list of LAN hostnames allowed for OAuth redirect URIs over plain HTTP (default: only `localhost`/`127.0.0.1`/[::1]). Extend when OIDC runs on a LAN hostname without HTTPS. | — |
 | **Initial setup** | | |
 | `ADMIN_EMAIL` | Email for the first admin on initial boot. Must be set together with `ADMIN_PASSWORD`. If either is omitted a random password is printed to the server log. No effect once a user exists. | `admin@trek.local` |
 | `ADMIN_PASSWORD` | Password for the first admin on initial boot. Pairs with `ADMIN_EMAIL`. | random |
 | **Other** | | |
 | `DEMO_MODE` | Enable demo mode (hourly data resets) | `false` |
+| `DEMO_ADMIN_USER` | Username of the seeded demo admin account (when `DEMO_MODE=true`) | `admin` |
+| `DEMO_ADMIN_EMAIL` | Email of the seeded demo admin account (when `DEMO_MODE=true`) | `admin@trek.app` |
+| `DEMO_ADMIN_PASS` | Initial password for the seeded demo admin (when `DEMO_MODE=true`) | `admin12345` |
 | `UNSPLASH_ACCESS_KEY` | Optional Unsplash Access Key for trip-cover and place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from. Get a free key at [unsplash.com/developers](https://unsplash.com/developers). Overrides any per-admin key set in Admin > Settings (where it can also be configured instead). | — |
 | `MCP_RATE_LIMIT` | Max MCP API requests per user per minute | `300` |
-| `MCP_MAX_SESSION_PER_USER` | Max concurrent MCP sessions per user | `20` |
+| `MCP_MAX_SESSION_PER_USER` | Max concurrent MCP sessions per user. At the cap, the least-recently-active session is closed to make room | `20` |
+| `MCP_SESSION_TTL` | MCP session idle timeout in seconds | `3600` |
+| `MCP_SSE_KEEPALIVE` | SSE keep-alive interval in seconds (`0` = off). Keeps reverse proxies from killing idle SSE streams between tool calls | `25` |
+| `TRANSIT_API_URL` | Base URL for a Transitous-compatible public-transit routing API. When set, overrides the default public endpoint. Point it at your own Transitous instance for locked-down egress | auto |
+| `KITINERARY_EXTRACTOR_PATH` | Full path to the `kitinerary-extractor` binary. Auto-detected from PATH when unset | auto |
+| `OVERPASS_URL` | Custom Overpass API endpoint(s) for the map POI "explore" search, comma-separated. Replaces the bundled public mirrors — point it at an internal/self-hosted Overpass instance when public mirrors are unreachable from your network. Non-http(s) entries are ignored | bundled public mirrors |
+| `OVERPASS_TIMEOUT_MS` | Per-endpoint timeout (ms) for Overpass POI requests. Raise it for a slow self-hosted Overpass instance | `12000` |
+| `BACKUP_UPLOAD_LIMIT_MB` | Max compressed size (MB) of a backup archive you can upload when restoring. Raise it if your backup exceeds 500 MB. If behind a reverse proxy, also raise its upload limit (e.g. nginx client_max_body_size) | `500` |
+| `BACKUP_MAX_DECOMPRESSED_MB` | Upper bound on total decompressed size of a restore archive | `5120` (5 GB) |
+| `IDEMPOTENCY_TTL_SECONDS` | TTL for `X-Idempotency-Key` entries in the database | `2592000` (30 days) |
+| `TREK_API_DOCS_ENABLED` | Serve Swagger UI / OpenAPI spec at `/api/docs` | `false` |
+| `TREK_PLACE_PHOTO_DIR` | Override directory for cached Google Places photo thumbnails | `uploads/photos/google` |
+| `WEBAUTHN_ORIGINS` | Comma-separated list of allowed WebAuthn origins for passkey authentication. Defaults to `APP_URL` when unset | auto |
+| `WEBAUTHN_RP_ID` | WebAuthn relying party ID (usually the domain without scheme or port). Defaults to the hostname when unset | auto |
+| `SMTP_HOST` | SMTP server hostname for outbound email notifications. Configurable in Admin > Settings; env var overrides | — |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USER` | SMTP username | — |
+| `SMTP_PASS` | SMTP password | — |
+| `SMTP_FROM` | From-address for outbound email | — |
+| `SMTP_SKIP_TLS_VERIFY` | Set `true` to skip TLS certificate validation (e.g. self-signed SMTP certs) | `false` |
+| **Plugin system** | | |
+| `TREK_PLUGINS_ENABLED` | Kill switch for the entire plugin system | `true` |
+| `TREK_PLUGINS_DIR` | Root directory for installed plugin code | `data/plugins` |
+| `TREK_PLUGINS_DATA_DIR` | Root directory for plugin-writable data | `data/plugins-data` |
+| `TREK_PLUGINS_DEV_LINK` | Enable dev-link for loading plugins from local build dirs (`1` = on, development only) | `off` |
+| `TREK_PLUGIN_PERMISSIONS` | OS permission jail for plugin child processes. Set `'off'` to disable | `on` |
+| `TREK_PLUGIN_ALLOW_PRIVATE_EGRESS` | Permit plugins to reach private/RFC-1918 network targets (sibling containers). Set `'on'` to allow | — |
+| `TREK_PLUGIN_REGISTRY_URL` | Override the plugin registry index URL | GitHub TREK-Plugins main `dist/index.json` |
+| `TREK_PLUGIN_RPC_BURST` | Per-plugin RPC burst allowance | `60` |
+| `TREK_PLUGIN_RPC_PER_SEC` | Per-plugin sustained RPC calls/sec | `20` |
+| `TREK_PLUGIN_RPC_INFLIGHT` | Max concurrent in-flight RPC calls per plugin | `16` |
+| `TREK_PLUGIN_LOG_BURST` | Per-plugin log burst allowance | `50` |
+| `TREK_PLUGIN_LOG_PER_SEC` | Per-plugin sustained log lines/sec | `10` |
+| `TREK_PLUGIN_AI_PER_DAY` | Max AI broker calls per plugin per day | `200` |
+| `TREK_PLUGIN_NOTIFY_PER_DAY` | Max notification sends per plugin per day | `100` |
+| `TREK_PLUGIN_AUDIT_MAX_ROWS` | Max audit log rows retained per plugin | `20000` |
+| `TREK_PLUGIN_MAX_RSS_MB` | Max RSS memory per plugin child process in MB | `300` |
 
 </details>
 

@@ -9,6 +9,7 @@ import {
   canRead,
   canDeleteTrips,
   canShareTrips,
+  canShareJourneys,
   ALL_SCOPES,
   SCOPE_INFO,
 } from '../../../src/mcp/scopes';
@@ -260,5 +261,105 @@ describe('canShareTrips', () => {
 
   it('returns false for empty scopes array', () => {
     expect(canShareTrips([])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// canShareJourneys
+// ---------------------------------------------------------------------------
+
+describe('canShareJourneys', () => {
+  it('returns true when scopes is null (full access)', () => {
+    expect(canShareJourneys(null)).toBe(true);
+  });
+
+  it('returns true when journey:share is present', () => {
+    expect(canShareJourneys(['journey:share'])).toBe(true);
+  });
+
+  it('returns false when only journey:read is present', () => {
+    expect(canShareJourneys(['journey:read'])).toBe(false);
+  });
+
+  it('returns false when only journey:write is present', () => {
+    expect(canShareJourneys(['journey:write'])).toBe(false);
+  });
+
+  it('returns false for empty scopes array', () => {
+    expect(canShareJourneys([])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plugin scope validation — grammar ^plugin:([a-z][a-z0-9-]{2,39}):(read|write)$
+// ---------------------------------------------------------------------------
+
+describe('validateScopes with plugin scopes', () => {
+  it('SCOP-PLUGIN-001: accepts valid plugin:read and plugin:write scopes', () => {
+    const result = validateScopes(['plugin:mymap:read', 'plugin:weather-io:write']);
+    expect(result.valid).toBe(true);
+    expect(result.invalid).toEqual([]);
+  });
+
+  it('SCOP-PLUGIN-002: mixes static scopes with valid plugin scopes', () => {
+    const result = validateScopes(['trips:read', 'plugin:mymap:read', 'budget:write']);
+    expect(result.valid).toBe(true);
+    expect(result.invalid).toEqual([]);
+  });
+
+  it('SCOP-PLUGIN-003: rejects malformed plugin scopes (underscore in id)', () => {
+    const result = validateScopes(['plugin:bad_id:read']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain('plugin:bad_id:read');
+  });
+
+  it('SCOP-PLUGIN-004: rejects plugin scopes with invalid access level', () => {
+    const result = validateScopes(['plugin:app:delete']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain('plugin:app:delete');
+  });
+
+  it('SCOP-PLUGIN-005: rejects plugin scopes with too-short plugin id (less than 3 chars)', () => {
+    const result = validateScopes(['plugin:ab:read']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain('plugin:ab:read');
+  });
+
+  it('SCOP-PLUGIN-006: rejects plugin scopes with too-long plugin id (more than 40 chars)', () => {
+    const id41 = 'a'.repeat(41);
+    const scope = `plugin:${id41}:read`;
+    const result = validateScopes([scope]);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain(scope);
+  });
+
+  it('SCOP-PLUGIN-007: accepts 3-char minimum valid plugin id', () => {
+    const result = validateScopes(['plugin:abc:read']);
+    expect(result.valid).toBe(true);
+  });
+
+  it('SCOP-PLUGIN-008: accepts 40-char maximum valid plugin id', () => {
+    const id40 = 'a'.repeat(40);
+    const scope = `plugin:${id40}:write`;
+    const result = validateScopes([scope]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('SCOP-PLUGIN-009: rejects plugin scopes with uppercase in id', () => {
+    const result = validateScopes(['plugin:MyPlugin:read']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain('plugin:MyPlugin:read');
+  });
+
+  it('SCOP-PLUGIN-010: rejects plugin scopes starting with number in id', () => {
+    const result = validateScopes(['plugin:2plugin:read']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain('plugin:2plugin:read');
+  });
+
+  it('SCOP-PLUGIN-011: rejects completely invalid scopes while accepting plugin scopes', () => {
+    const result = validateScopes(['plugin:mymap:read', 'totally:invalid']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toEqual(['totally:invalid']);
   });
 });

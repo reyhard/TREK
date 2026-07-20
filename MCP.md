@@ -153,6 +153,7 @@ that match your granted scopes for that session.
 - `list_trips` and `get_trip_summary` are **always available** regardless of scopes — they are navigation tools.
 - Static tokens and web session JWTs have full access to all tools (equivalent to all scopes).
 - Addon-gated tools (Atlas, Collab, Vacay, Journey) require both the relevant scope **and** the addon to be enabled.
+- OAuth clients created before this version that were granted only `places:read` now also need `geo:read` to access transit-stop and transit-route search tools (`search_transit_stops`, `search_transit_routes`). Edit the client's scopes in **Settings > Integrations > MCP > OAuth Clients** to add `geo:read`.
 
 ---
 
@@ -324,15 +325,15 @@ Transport bookings (flights, trains, cars, cruises) support multi-stop `endpoint
 
 | Tool | Scope | Description |
 |---|---|---|
-| `search_transit_stops` | `places:read` | Search Transitous/MOTIS stop and station data. Use when route endpoint coordinates are unknown. |
-| `plan_transit_route` | `places:read` | Plan up to eight public-transit itineraries for a dated trip day, with depart-at/arrive-by time, mode filters, maximum transfers, and ranking preference. Returns all candidates; the agent selects one. |
-| `create_transit_route` | `reservations:write` | Save one complete selected itinerary as an automated `transit` entry. Does not call Transitous. |
-| `update_transit_route` | `reservations:write` | Replace the route data of an existing automated `transit` entry while preserving title and notes unless explicitly overridden. Does not call Transitous. |
+| `search_transit_stops` | `geo:read` | Search Transitous/MOTIS stop and station data. Use when route endpoint coordinates are unknown. |
+| `search_transit_routes` | `geo:read` | Search scheduled public-transit routes via Transitous between two coordinates. Returns itineraries that can be passed unchanged to `create_transit_journey`. `dropped` counts provider itineraries that failed validation. |
+| `create_transit_journey` | `reservations:write` | Add one itinerary returned by `search_transit_routes` to a trip day as a first-class automated public-transit journey. Does not call Transitous. |
+| `update_transit_journey` | `reservations:write` | Replace the route data of an existing automated transit journey while preserving title and notes unless explicitly overridden. Does not call Transitous. |
 
 1. Call `search_transit_stops` when coordinates are unknown.
-2. Call `plan_transit_route` with a dated trip day and local `HH:mm` time.
+2. Call `search_transit_routes` with coordinates and optional filters.
 3. Compare every returned itinerary; TREK does not automatically select one.
-4. Pass one complete returned itinerary to `create_transit_route` or `update_transit_route`.
+4. Pass one complete returned itinerary to `create_transit_journey` or `update_transit_journey`.
 
 Do not fabricate a Transitous itinerary. When Transitous cannot find a train or the journey comes from a ticket/manual timetable, use `create_transport` with `type: "train"` instead.
 

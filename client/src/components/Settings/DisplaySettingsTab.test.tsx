@@ -1,20 +1,18 @@
 // FE-COMP-DISPLAY-001 to FE-COMP-DISPLAY-027
-import { render, screen } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { buildSettings, buildUser } from '../../../tests/helpers/factories';
 import { server } from '../../../tests/helpers/msw/server';
+import { render, screen, within } from '../../../tests/helpers/render';
+import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser, buildSettings } from '../../../tests/helpers/factories';
-import DisplaySettingsTab from './DisplaySettingsTab';
 import { ToastContainer } from '../shared/Toast';
+import DisplaySettingsTab from './DisplaySettingsTab';
 
 beforeEach(() => {
   resetAllStores();
-  server.use(
-    http.put('/api/settings', async () => HttpResponse.json({ success: true })),
-  );
+  server.use(http.put('/api/settings', async () => HttpResponse.json({ success: true })));
   seedStore(useAuthStore, { user: buildUser(), isAuthenticated: true });
   seedStore(useSettingsStore, { settings: buildSettings({ dark_mode: 'light', language: 'en' }) });
 });
@@ -66,8 +64,11 @@ describe('DisplaySettingsTab', () => {
     render(<DisplaySettingsTab />);
     // Multiple elements contain "English" (desktop grid button + mobile dropdown trigger).
     // The desktop grid button is the one with the active border style.
-    const englishMatches = screen.getAllByText('English').map(el => el.closest('button')!).filter(Boolean);
-    const activeBtn = englishMatches.find(btn => (btn.style.border || '').includes('var(--text-primary)'));
+    const englishMatches = screen
+      .getAllByText('English')
+      .map((el) => el.closest('button')!)
+      .filter(Boolean);
+    const activeBtn = englishMatches.find((btn) => (btn.style.border || '').includes('var(--text-primary)'));
     expect(activeBtn).toBeDefined();
   });
 
@@ -127,16 +128,48 @@ describe('DisplaySettingsTab', () => {
   it('FE-COMP-DISPLAY-025: blur booking codes On button is active when blur_booking_codes is true', () => {
     seedStore(useSettingsStore, { settings: buildSettings({ blur_booking_codes: true }) });
     render(<DisplaySettingsTab />);
-    const onButtons = screen.getAllByText(/^On$/i);
-    const blurOnBtn = onButtons[1].closest('button')!;
+    const block = screen.getByText(/blur booking codes/i).closest('div')!;
+    const blurOnBtn = within(block).getByText(/^On$/i).closest('button')!;
     expect(blurOnBtn.style.border).toContain('var(--text-primary)');
+  });
+
+  it('FE-COMP-DISPLAY-030: shows Always show booking routes next to Booking route labels', () => {
+    render(<DisplaySettingsTab />);
+    const bookingLabels = screen.getByText(/booking route labels/i);
+    const alwaysShow = screen.getByText(/always show booking routes/i);
+    expect(alwaysShow).toBeInTheDocument();
+    // Adjacent siblings within the Travel & Map section: alwaysShow's block
+    // immediately follows bookingLabels' block.
+    expect(bookingLabels.closest('div')!.nextElementSibling).toBe(alwaysShow.closest('div'));
+  });
+
+  it('FE-COMP-DISPLAY-031: always-show-routes Off button is active by default (unset)', () => {
+    render(<DisplaySettingsTab />);
+    const block = screen.getByText(/always show booking routes/i).closest('div')!;
+    const offBtn = within(block).getByText(/^Off$/i).closest('button')!;
+    expect(offBtn.style.border).toContain('var(--text-primary)');
+  });
+
+  it('FE-COMP-DISPLAY-032: clicking On for always-show-routes calls updateSetting with map_always_show_routes true', async () => {
+    const user = userEvent.setup();
+    const updateSetting = vi.fn().mockResolvedValue(undefined);
+    seedStore(useSettingsStore, { settings: buildSettings(), updateSetting });
+    render(<DisplaySettingsTab />);
+    const block = screen.getByText(/always show booking routes/i).closest('div')!;
+    await user.click(within(block).getByText(/^On$/i));
+    expect(updateSetting).toHaveBeenCalledWith('map_always_show_routes', true);
   });
 
   it('FE-COMP-DISPLAY-026: updateSetting failure shows toast error', async () => {
     const user = userEvent.setup();
     const updateSetting = vi.fn().mockRejectedValue(new Error('Server error'));
     seedStore(useSettingsStore, { settings: buildSettings({ temperature_unit: 'celsius' }), updateSetting });
-    render(<><ToastContainer /><DisplaySettingsTab /></>);
+    render(
+      <>
+        <ToastContainer />
+        <DisplaySettingsTab />
+      </>
+    );
     await user.click(screen.getByText('°F Fahrenheit'));
     await screen.findByText('Server error');
   });

@@ -16,13 +16,14 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-import { render, screen } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
-import { useAuthStore } from '../../store/authStore';
-import { useSettingsStore } from '../../store/settingsStore';
-import { useAddonStore } from '../../store/addonStore';
+import { buildSettings, buildUser } from '../../../tests/helpers/factories';
+import { render, screen } from '../../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser, buildSettings } from '../../../tests/helpers/factories';
+import { useAddonStore } from '../../store/addonStore';
+import { useAuthStore } from '../../store/authStore';
+import { usePluginStore } from '../../store/pluginStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import BottomNav from './BottomNav';
 
 const currentUser = buildUser({ id: 1, username: 'testuser', email: 'test@example.com' });
@@ -112,5 +113,22 @@ describe('BottomNav', () => {
     render(<BottomNav />, { initialEntries: ['/trips/42'] });
     await user.click(screen.getByRole('button', { name: 'Add expense' }));
     expect(mockNavigate).toHaveBeenCalledWith('/trips/42?create=expense');
+  });
+
+  it('FE-COMP-BOTTOMNAV-011: page plugin renders the icon its manifest declares', () => {
+    seedStore(usePluginStore, {
+      plugins: [{ id: 'trip-doctor', name: 'Trip Doctor', type: 'page', icon: 'Stethoscope' }],
+    });
+    const { container } = render(<BottomNav />);
+    expect(screen.getByText('Trip Doctor')).toBeInTheDocument();
+    expect(container.querySelector('.lucide-stethoscope')).not.toBeNull();
+  });
+
+  it('FE-COMP-BOTTOMNAV-012: page plugin with an unknown icon falls back to Blocks', () => {
+    seedStore(usePluginStore, {
+      plugins: [{ id: 'bogus', name: 'Bogus', type: 'page', icon: 'NotAnIcon' }],
+    });
+    const { container } = render(<BottomNav />);
+    expect(container.querySelector('.lucide-blocks')).not.toBeNull();
   });
 });

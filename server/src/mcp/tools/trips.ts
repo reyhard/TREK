@@ -2,6 +2,7 @@ import { ADDON_IDS } from '../../addons';
 import { canAccessTrip } from '../../db/database';
 import { isAddonEnabled, getCollabFeatures } from '../../services/adminService';
 import { isDemoUser } from '../../services/authService';
+import { rebaseTripCurrency } from '../../services/budgetService';
 import { countMessages, listPolls } from '../../services/collabService';
 import { createOrUpdateShareLink, getShareLink, deleteShareLink } from '../../services/shareService';
 import { listItems as listTodoItems } from '../../services/todoService';
@@ -121,10 +122,26 @@ export function registerTripTools(
           currency: z.string().length(3).optional(),
           is_archived: z.boolean().optional().describe('Archive (true) or unarchive (false) the trip'),
           cover_image: z.string().optional().describe('Cover image path, e.g. /uploads/covers/abc.jpg'),
+          date_shift_mode: z
+            .enum(['keep_bookings', 'shift_all'])
+            .optional()
+            .describe(
+              'When changing dates: keep_bookings (default) keeps dated reservations/accommodations on their dates while day plans move; shift_all moves the whole itinerary, bookings included',
+            ),
         },
         annotations: TOOL_ANNOTATIONS_WRITE,
       },
-      async ({ tripId, title, description, start_date, end_date, currency, is_archived, cover_image }) => {
+      async ({
+        tripId,
+        title,
+        description,
+        start_date,
+        end_date,
+        currency,
+        is_archived,
+        cover_image,
+        date_shift_mode,
+      }) => {
         if (isDemoUser(userId)) return demoDenied();
         if (!canAccessTrip(tripId, userId)) return noAccess();
         if (!hasTripPermission('trip_edit', tripId, userId)) return permissionDenied();
@@ -144,10 +161,12 @@ export function registerTripTools(
               isError: true,
             };
         }
+        // Re-anchor the budget before the trip row moves off the old currency (#1543).
+        await rebaseTripCurrency(tripId, currency);
         const { updatedTrip } = updateTrip(
           tripId,
           userId,
-          { title, description, start_date, end_date, currency, is_archived, cover_image },
+          { title, description, start_date, end_date, currency, is_archived, cover_image, date_shift_mode },
           'user',
         );
         safeBroadcast(tripId, 'trip:updated', { trip: updatedTrip });

@@ -34,6 +34,7 @@ const { resv } = vi.hoisted(() => ({
     getReservation: vi.fn(),
     updateReservation: vi.fn(),
     deleteReservation: vi.fn(),
+    notifyBookingChange: vi.fn(),
   },
 }));
 vi.mock('../../../src/services/reservationService', () => resv);

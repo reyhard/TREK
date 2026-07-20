@@ -1,4 +1,5 @@
 import { TripsService } from '../../../src/nest/trips/trips.service';
+import { rebaseTripCurrency } from '../../../src/services/budgetService';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -42,7 +43,10 @@ vi.mock('../../../src/services/dayService', () => ({ listDays: () => ({ days: [1
 vi.mock('../../../src/services/placeService', () => ({ listPlaces: () => [] }));
 vi.mock('../../../src/services/packingService', () => ({ listItems: () => [] }));
 vi.mock('../../../src/services/todoService', () => ({ listItems: () => [] }));
-vi.mock('../../../src/services/budgetService', () => ({ listBudgetItems: () => [] }));
+vi.mock('../../../src/services/budgetService', () => ({
+  listBudgetItems: () => [],
+  rebaseTripCurrency: vi.fn(async () => {}),
+}));
 vi.mock('../../../src/services/reservationService', () => ({ listReservations: () => [] }));
 vi.mock('../../../src/services/fileService', () => ({ listFiles: () => [] }));
 
@@ -52,7 +56,7 @@ function svc() {
 beforeEach(() => vi.clearAllMocks());
 
 describe('TripsService (wrapper delegation + bundle/copy/notify helpers)', () => {
-  it('delegates the simple wrappers to tripService', () => {
+  it('delegates the simple wrappers to tripService', async () => {
     const s = svc();
     s.list(1, 0);
     expect(tripSvc.listTrips).toHaveBeenCalledWith(1, 0);
@@ -64,8 +68,10 @@ describe('TripsService (wrapper delegation + bundle/copy/notify helpers)', () =>
     expect(tripSvc.getTripRaw).toHaveBeenCalledWith('9');
     s.getOwner('9');
     expect(tripSvc.getTripOwner).toHaveBeenCalledWith('9');
-    s.update('9', 1, {} as never, 'user');
+    // update() first re-anchors the budget to any incoming currency, so it is async now.
+    await s.update('9', 1, {} as never, 'user');
     expect(tripSvc.updateTrip).toHaveBeenCalledWith('9', 1, {}, 'user');
+    expect(rebaseTripCurrency).toHaveBeenCalledWith('9', undefined);
     s.remove('9', 1, 'user');
     expect(tripSvc.deleteTrip).toHaveBeenCalledWith('9', 1, 'user');
     s.deleteOldCover('/old.jpg');
@@ -90,6 +96,23 @@ describe('TripsService (wrapper delegation + bundle/copy/notify helpers)', () =>
     expect(tripSvc.deleteGuest).toHaveBeenCalledWith('9', 7);
     s.exportICS('9');
     expect(tripSvc.exportICS).toHaveBeenCalledWith('9');
+  });
+
+  it('re-anchors the budget before the trip row leaves its old currency (#1543)', async () => {
+    const order: string[] = [];
+    (rebaseTripCurrency as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      order.push('rebase');
+    });
+    (tripSvc.updateTrip as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      order.push('update');
+      return {} as never;
+    });
+
+    await svc().update('9', 1, { currency: 'RUB' } as never, 'user');
+
+    // The rebase reads the outgoing currency off the trip row, so it has to run first.
+    expect(rebaseTripCurrency).toHaveBeenCalledWith('9', 'RUB');
+    expect(order).toEqual(['rebase', 'update']);
   });
 
   it('canAccessTrip delegates to the db helper', () => {

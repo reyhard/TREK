@@ -1,11 +1,13 @@
+import { getClientIp } from '../../services/auditLog';
 import { AdminGuard } from '../auth/admin.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DependencyCycleError } from './dependencies';
 import { devLinkEnabled } from './dev-link';
 import { pluginsEnabled } from './kill-switch';
 import { PluginRuntimeService, PluginConsentRequired, PluginDependencyError } from './plugin-runtime.service';
 import { PluginsService } from './plugins.service';
-import { PluginRegistryService } from './registry/registry.service';
+import { PluginRegistryService, RegistryError } from './registry/registry.service';
 import {
   Body,
   Controller,
@@ -17,11 +19,34 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+
+import type { Request } from 'express';
+
+/**
+ * Flatten a registry/install failure into the error envelope — CARRYING THE CODE.
+ *
+ * The code is the whole point: the admin UI offers the re-trust override only for
+ * SIGNATURE_KEY_CHANGED, and it must read that from a field, not by string-matching the
+ * message. Drop the code here and the client is left guessing from prose, which sooner
+ * or later means offering "re-trust" on a signature that simply doesn't verify.
+ * TrekExceptionFilter passes a `{ error, code }` body through verbatim.
+ *
+ * A missing plugin is a 404, not a 400 — the request was well-formed, the thing just
+ * isn't there. Only `assertRetrustable` raises NOT_FOUND, so this is scoped to /retrust:
+ * install's "not in registry" carries no code and update throws a plain Error, and both
+ * keep their existing 400.
+ */
+function registryFailure(e: unknown, fallback: string): HttpException {
+  const code = e instanceof RegistryError ? e.code : undefined;
+  const error = e instanceof Error ? e.message : fallback;
+  return new HttpException(code ? { error, code } : { error }, code === 'NOT_FOUND' ? 404 : 400);
+}
 
 /**
  * /api/admin/plugins — admin-only plugin control surface (#plugins).
@@ -71,7 +96,7 @@ export class PluginsController {
       if (body.withDependencies) return await this.registry.installWithDependencies(body.id, body.constraint);
       return await this.registry.install(body.id, { version: body.version, constraint: body.constraint });
     } catch (e) {
-      throw new HttpException({ error: e instanceof Error ? e.message : 'install failed' }, 400);
+      throw registryFailure(e, 'install failed');
     }
   }
 
@@ -85,7 +110,7 @@ export class PluginsController {
     try {
       return await this.runtime.sideload(file.buffer);
     } catch (e) {
-      throw new HttpException({ error: e instanceof Error ? e.message : 'upload failed' }, 400);
+      throw registryFailure(e, 'upload failed'); // carries TREK_VERSION_INCOMPATIBLE
     }
   }
 
@@ -104,7 +129,7 @@ export class PluginsController {
     try {
       return await this.runtime.link(dir);
     } catch (e) {
-      throw new HttpException({ error: e instanceof Error ? e.message : 'link failed' }, 400);
+      throw registryFailure(e, 'link failed'); // carries TREK_VERSION_INCOMPATIBLE
     }
   }
 
@@ -210,7 +235,40 @@ export class PluginsController {
     try {
       return await this.runtime.update(id);
     } catch (e) {
-      throw new HttpException({ error: e instanceof Error ? e.message : 'update failed' }, 400);
+      throw registryFailure(e, 'update failed');
+    }
+  }
+
+  /**
+   * Re-trust a plugin whose author signing key ROTATED, and update it in the same call.
+   *
+   * This is the ONLY override of a signature refusal that exists, and it exists only for
+   * a changed key: a rotation has a benign explanation, a signature that doesn't verify
+   * does not. The scoping is enforced in the service (`assertRetrustable`), not by this
+   * route and not by the UI — calling this directly on a plugin with an INVALID signature
+   * is refused.
+   *
+   * `publicKey` is the full key the admin was SHOWN, echoed back so the server can refuse
+   * if the registry entry has been re-keyed again since the dialog rendered.
+   */
+  @Post(':id/retrust')
+  @HttpCode(200)
+  async retrust(
+    @Param('id') id: string,
+    @Body() body: { version?: string; publicKey?: string },
+    @CurrentUser() user: { id: number },
+    @Req() req: Request,
+  ) {
+    if (!pluginsEnabled()) throw new HttpException({ error: 'Plugins are disabled by server configuration' }, 503);
+    if (!body?.version) throw new HttpException({ error: 'version is required' }, 400);
+    if (!body?.publicKey) throw new HttpException({ error: 'publicKey is required' }, 400);
+    try {
+      return await this.runtime.retrust(id, body.version, body.publicKey, {
+        userId: user?.id ?? null,
+        ip: getClientIp(req),
+      });
+    } catch (e) {
+      throw registryFailure(e, 'retrust failed');
     }
   }
 

@@ -1,6 +1,6 @@
 
 image:
-  repository: mauriceboe/trek
+  repository: liketrek/TREK
   # tag: latest
   pullPolicy: IfNotPresent
 
@@ -24,6 +24,12 @@ env:
   # Timezone for logs, reminders, and cron jobs (e.g. Europe/Berlin).
   # LOG_LEVEL: "info"
   # "info" = concise user actions, "debug" = verbose details.
+  # TREK_WIKI_DIR: "/app/wiki"
+  # Where the in-app Help pages (/help) read their content from. Leave unset: the
+  # image ships the wiki at /app/wiki and finds it automatically, so Help matches
+  # the version you are running. Only set this to serve your own docs from a mounted
+  # volume. If the path does not exist, Help falls back to fetching the public GitHub
+  # wiki, which needs egress and tracks the latest release rather than your version.
   # DEFAULT_LANGUAGE: "en"
   # Default language on the login page for users with no saved preference.
   # Browser/OS language is auto-detected first; this is the fallback when no match is found.
@@ -68,16 +74,88 @@ env:
   # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik).
   # DEMO_MODE: "false"
   # Enable demo mode (hourly data resets).
+  # DEMO_ADMIN_USER: "admin"
+  # Username of the seeded demo admin (when DEMO_MODE=true). Default: admin.
+  # DEMO_ADMIN_EMAIL: "admin@trek.app"
+  # Email of the seeded demo admin (when DEMO_MODE=true). Default: admin@trek.app.
+  # DEMO_ADMIN_PASS: "admin12345"
+  # Initial password for the seeded demo admin (when DEMO_MODE=true). Default: admin12345.
+  # TRANSIT_API_URL: "https://transitous.example.com"
+  # Transitous-compatible transit routing API (default: public Transitous endpoint).
+  # KITINERARY_EXTRACTOR_PATH: ""
+  # Full path to kitinerary-extractor binary. Auto-detected from PATH when unset.
+  # OAUTH_HTTP_REDIRECT_HOSTS: ""
+  # Comma-separated LAN hostnames allowed for HTTP OAuth redirect URIs (default: localhost/127.0.0.1/[::1]).
+  # WEBAUTHN_ORIGINS: "https://trek.example.com"
+  # Comma-separated allowed WebAuthn origins (defaults to APP_URL).
+  # WEBAUTHN_RP_ID: "trek.example.com"
+  # WebAuthn relying party ID (defaults to APP_URL hostname).
+  # SMTP_HOST: "smtp.example.com"
+  # SMTP server hostname for outbound email notifications.
+  # SMTP_PORT: "587"
+  # SMTP server port.
+  # SMTP_USER: "trek@example.com"
+  # SMTP username.
+  # SMTP_FROM: "TREK <trek@example.com>"
+  # SMTP from address.
+  # SMTP_SKIP_TLS_VERIFY: "false"
+  # Set true to skip TLS cert validation for SMTP.
+  # TREK_PLUGINS_ENABLED: "true"
+  # Kill switch for the plugin system (default: true).
+  # TREK_PLUGINS_DIR: ""
+  # Override installed plugin code root (default: data/plugins).
+  # TREK_PLUGINS_DATA_DIR: ""
+  # Override plugin writable data root (default: data/plugins-data).
+  # TREK_PLUGINS_DEV_LINK: ""
+  # Enable dev-link (set to "1" for local development only).
+  # TREK_PLUGIN_PERMISSIONS: "on"
+  # OS permission jail for plugin children (default: on).
+  # TREK_PLUGIN_ALLOW_PRIVATE_EGRESS: ""
+  # Permit plugin children to reach private/RFC-1918 targets. Set 'on' to allow; default blocks LAN/private-network addresses.
+  # TREK_PLUGIN_REGISTRY_URL: ""
+  # Override plugin registry index URL.
+  # TREK_PLUGIN_RPC_BURST: "60"
+  # Per-plugin RPC burst allowance (default: 60).
+  # TREK_PLUGIN_RPC_PER_SEC: "20"
+  # Per-plugin sustained RPC calls/sec (default: 20).
+  # TREK_PLUGIN_RPC_INFLIGHT: "16"
+  # Max concurrent in-flight RPC calls per plugin (default: 16).
+  # TREK_PLUGIN_LOG_BURST: "50"
+  # Per-plugin log burst allowance (default: 50).
+  # TREK_PLUGIN_LOG_PER_SEC: "10"
+  # Per-plugin sustained log lines/sec (default: 10).
+  # TREK_PLUGIN_AI_PER_DAY: "200"
+  # Max AI broker calls per plugin per day (default: 200).
+  # TREK_PLUGIN_NOTIFY_PER_DAY: "100"
+  # Max notification sends per plugin per day (default: 100).
+  # TREK_PLUGIN_AUDIT_MAX_ROWS: "20000"
+  # Max audit log rows retained per plugin (default: 20000).
+  # TREK_PLUGIN_MAX_RSS_MB: "300"
+  # Max RSS memory per plugin child in MB (default: 300).
   # MCP_RATE_LIMIT: "300"
   # Max MCP API requests per user per minute. Defaults to 300.
   # MCP_MAX_SESSION_PER_USER: "20"
   # Max concurrent MCP sessions per user. Defaults to 20.
+  # MCP_SESSION_TTL: "3600"
+  # MCP session idle timeout in seconds. Defaults to 3600 (1 hour).
+  # MCP_SSE_KEEPALIVE: "25"
+  # SSE keep-alive interval in seconds (0 = off). Defaults to 25. Keeps reverse proxies from killing idle SSE streams between tool calls.
+  # IDEMPOTENCY_TTL_SECONDS: "2592000"
+  # TTL for X-Idempotency-Key entries (default: 2592000 / 30 days).
+  # BACKUP_UPLOAD_LIMIT_MB: "500"
+  # Max compressed size (MB) of a backup upload for restore (default: 500). Raise if your backup (including uploads/) exceeds the limit. If behind a reverse proxy, also raise its upload limit.
+  # BACKUP_MAX_DECOMPRESSED_MB: "5120"
+  # Max decompressed size of a restore archive (default: 5120 MB / 5 GB).
+  # TREK_API_DOCS_ENABLED: "false"
+  # Serve Swagger UI / OpenAPI spec at /api/docs (default: false).
   # OVERPASS_URL: ""
   # Custom Overpass endpoint(s) for the map POI "explore" search, comma-separated. When set, REPLACES the bundled
   # public mirrors — point it at an internal/self-hosted Overpass instance when the public mirrors are unreachable
   # from the cluster (e.g. locked-down egress). Non-http(s) entries are ignored.
   # OVERPASS_TIMEOUT_MS: "12000"
   # Per-endpoint timeout (ms) for Overpass POI requests. Raise it for a slow self-hosted Overpass instance. Defaults to 12000.
+  # TREK_PLACE_PHOTO_DIR: ""
+  # Override directory for cached Google Places photo thumbnails. Default: uploads/photos/google. Primarily a test seam — you should not normally need to set this.
 
 
 # Secret environment variables stored in a Kubernetes Secret.
@@ -97,6 +175,8 @@ secretEnv:
   ADMIN_PASSWORD: ""
   # OIDC client secret — set together with env.OIDC_ISSUER and env.OIDC_CLIENT_ID.
   OIDC_CLIENT_SECRET: ""
+  # SMTP password — set together with env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER.
+  SMTP_PASS: ""
   # Optional Unsplash Access Key for trip-cover and place-image search.
   # Without one, TREK uses Unsplash's unauthenticated endpoint, which some
   # datacenter/VPS IPs (including many Kubernetes clusters) are blocked from.

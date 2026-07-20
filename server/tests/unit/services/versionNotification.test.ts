@@ -42,7 +42,7 @@ function mockGitHubLatest(tagName: string, ok = true): void {
     'fetch',
     vi.fn().mockResolvedValue({
       ok,
-      json: async () => ({ tag_name: tagName, html_url: `https://github.com/mauriceboe/TREK/releases/tag/${tagName}` }),
+      json: async () => ({ tag_name: tagName, html_url: `https://github.com/liketrek/TREK/releases/tag/${tagName}` }),
     }),
   );
 }

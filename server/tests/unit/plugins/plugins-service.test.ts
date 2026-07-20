@@ -14,7 +14,8 @@ const { testDb } = vi.hoisted(() => {
   db.exec(`CREATE TABLE plugins (
     id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT, icon TEXT, version TEXT,
     status TEXT, enabled INTEGER DEFAULT 0, last_error TEXT, reviewed_at TEXT, source_repo TEXT, config TEXT DEFAULT '{}', permissions TEXT DEFAULT '[]', capabilities TEXT DEFAULT '{}', dependencies TEXT DEFAULT '{}', operator_egress INTEGER DEFAULT 0, updated_at TEXT,
-    sort_order INTEGER DEFAULT 0);
+    author_pubkey TEXT, update_block_code TEXT, update_block_detail TEXT, update_block_version TEXT,
+    trek_range TEXT, sort_order INTEGER DEFAULT 0);
     CREATE TABLE plugin_settings_fields (plugin_id TEXT, field_key TEXT, scope TEXT, secret INTEGER);
     CREATE TABLE plugin_error_log (id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id TEXT, level TEXT, message TEXT, ts TEXT DEFAULT '2026-01-01');`);
   return { testDb: db };
@@ -58,6 +59,73 @@ describe('PluginsService.list', () => {
     const out = new PluginsService().list();
     expect(out.enabled).toBe(false);
     expect(out.plugins).toEqual([]);
+  });
+
+  // The four trust states an admin can be in. `signed` derives from the TOFU-pinned
+  // author key; sideloaded/dev-linked derive from source_repo — so they are NOT
+  // mutually exclusive in the data, and a sideloaded plugin legitimately reports
+  // signed:false. The UI's precedence rule (source badge wins) depends on that being
+  // reported honestly rather than papered over here.
+  describe('signature status', () => {
+    const insert = (id: string, sourceRepo: string | null, pubkey: string | null) =>
+      testDb
+        .prepare(
+          'INSERT INTO plugins (id, name, type, status, version, source_repo, author_pubkey) VALUES (?,?,?,?,?,?,?)',
+        )
+        .run(id, id, 'widget', 'inactive', '1.0.0', sourceRepo, pubkey);
+
+    it('reports signed + a display fingerprint for a registry plugin with a pinned key', () => {
+      const key = 'RWTvBn0aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd';
+      insert('signed-one', 'acme/signed-one', key);
+
+      const p = new PluginsService().list().plugins[0];
+      expect(p.signed).toBe(true);
+      // Short head…tail, for eyeballing against what the author reads out over the
+      // phone. NOT a confidentiality measure — the key is public, and the re-trust
+      // round-trip deliberately carries it in full.
+      expect(p.keyFingerprint).toBe(`${key.slice(0, 8)}…${key.slice(-8)}`);
+    });
+
+    it('reports unsigned for a registry plugin with no pinned key', () => {
+      insert('plain', 'acme/plain', null);
+      const p = new PluginsService().list().plugins[0];
+      expect(p.signed).toBe(false);
+      expect(p.keyFingerprint).toBeNull();
+    });
+
+    it('reports unsigned for a sideloaded and a dev-linked plugin (they carry no key)', () => {
+      insert('uploaded', 'local:upload', null);
+      insert('linked', 'local:link', null);
+      const plugins = new PluginsService().list().plugins;
+      expect(plugins.map((p) => [p.id, p.signed, p.source_repo])).toEqual([
+        ['linked', false, 'local:link'],
+        ['uploaded', false, 'local:upload'],
+      ]);
+    });
+
+    it('surfaces a recorded update block, and reports none when there is none', () => {
+      insert('blocked', 'acme/blocked', 'RWTvBn0aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd');
+      insert('fine', 'acme/fine', null);
+      testDb
+        .prepare(
+          'UPDATE plugins SET update_block_code = ?, update_block_detail = ?, update_block_version = ? WHERE id = ?',
+        )
+        .run('SIGNATURE_KEY_CHANGED', 'the key changed', '2.0.0', 'blocked');
+
+      const byId = Object.fromEntries(new PluginsService().list().plugins.map((p) => [p.id, p]));
+      expect(byId.blocked.updateBlock).toEqual({
+        code: 'SIGNATURE_KEY_CHANGED',
+        detail: 'the key changed',
+        version: '2.0.0',
+      });
+      expect(byId.fine.updateBlock).toBeNull();
+    });
+
+    it('never leaks the raw pinned key into the list response (only the fingerprint)', () => {
+      insert('signed-one', 'acme/signed-one', 'RWTvBn0aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd');
+      const p = new PluginsService().list().plugins[0] as Record<string, unknown>;
+      expect(p.author_pubkey).toBeUndefined();
+    });
   });
 
   it('controller delegates to the service', () => {
@@ -110,6 +178,23 @@ describe('PluginsFeedController (client feed)', () => {
       .run();
     process.env.TREK_PLUGINS_ENABLED = 'true';
     expect(new PluginsFeedController().list().plugins.find((p) => p.id === 'd')?.slot).toBe('day-detail');
+  });
+
+  it('exposes settingsUi only when the capability is exactly true', () => {
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, type, icon, status, capabilities) VALUES ('su','S','widget','Box','active','{\"settingsUi\":true}')",
+      )
+      .run();
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, type, icon, status, capabilities) VALUES ('no','N','widget','Box','active','{\"settingsUi\":\"yes\"}')",
+      )
+      .run();
+    process.env.TREK_PLUGINS_ENABLED = 'true';
+    const out = new PluginsFeedController().list();
+    expect(out.plugins.find((p) => p.id === 'su')?.settingsUi).toBe(true);
+    expect(out.plugins.find((p) => p.id === 'no')?.settingsUi).toBeUndefined();
   });
 
   it('exposes the reservation-detail slot (a booking-card widget must not fall back to the dashboard)', () => {
@@ -247,5 +332,85 @@ describe('PluginsService error log', () => {
     expect(svc.errors('p')).toEqual([{ ts: '2026-01-01', level: 'error', message: 'boom' }]);
     svc.clearErrors('p');
     expect(svc.errors('p')).toEqual([]);
+  });
+});
+
+describe('PluginRuntimeService oauthResources', () => {
+  function plugin(id: string, opts: { status?: string; enabled?: number; trekRange?: string }) {
+    testDb
+      .prepare(
+        'INSERT OR REPLACE INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        id,
+        id,
+        id,
+        opts.status ?? 'inactive',
+        opts.enabled ?? 0,
+        opts.trekRange ?? null,
+        '1.0.0',
+        '[]',
+        '{}',
+        '{}',
+        'widget',
+      );
+  }
+
+  function active(id: string, trekRange?: string) {
+    plugin(id, { status: 'active', enabled: 1, trekRange });
+  }
+  function inactive(id: string) {
+    plugin(id, { status: 'inactive', enabled: 0 });
+  }
+
+  beforeEach(() => {
+    testDb.exec('DELETE FROM plugins');
+  });
+  afterAll(() => {
+    delete process.env.APP_VERSION;
+  });
+
+  it('returns only active, enabled plugins that are host-compatible', async () => {
+    process.env.APP_VERSION = '3.4.0';
+    active('weather', '>=3.2.0 <4.0.0');
+    active('import', '>=3.0.0 <5.0.0');
+    inactive('old-import');
+    active('too-new', '>=4.0.0');
+
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    const resources = rt.oauthResources();
+
+    expect(resources).toHaveLength(2);
+    expect(resources.map((r: { id: string }) => r.id).sort()).toEqual(['import', 'weather']);
+    expect(resources.every((r: { uri: string }) => r.uri.startsWith('http') || r.uri.startsWith('https'))).toBe(true);
+  });
+
+  it('excludes a plugin that is disabled even if status is active', async () => {
+    process.env.APP_VERSION = '3.4.0';
+    testDb
+      .prepare(
+        "INSERT INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES ('disabled-one','d','','active',0,'>=3.2.0 <4.0.0','1.0.0','[]','{}','{}','widget')",
+      )
+      .run();
+
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    expect(rt.oauthResources()).toHaveLength(0);
+  });
+
+  it('excludes an incompatible plugin (host outside declared range)', async () => {
+    process.env.APP_VERSION = '3.4.0';
+    active('too-low', '>=1.0.0 <2.0.0');
+
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    expect(rt.oauthResources()).toHaveLength(0);
+  });
+
+  it('returns empty when no plugins are active', async () => {
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    expect(rt.oauthResources()).toEqual([]);
   });
 });

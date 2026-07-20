@@ -113,7 +113,17 @@ export class PluginOAuthService {
 
     const verifier = b64url(crypto.randomBytes(32));
     const challenge = b64url(crypto.createHash('sha256').update(verifier).digest());
-    const state = b64url(crypto.randomBytes(24));
+    // Nonce for replay defence and a config fingerprint so the callback can
+    // detect that the admin changed the provider credentials mid-flow. Both are
+    // baked into the state value the provider echoes back — no schema change.
+    const nonce = crypto.randomBytes(16);
+    const configFingerprint = crypto
+      .createHash('sha256')
+      .update(`${cfg.authorizeUrl}|${cfg.tokenUrl}|${cfg.clientId}`)
+      .digest()
+      .subarray(0, 16);
+    const stateRand = crypto.randomBytes(24);
+    const state = b64url(Buffer.concat([nonce, configFingerprint, stateRand]));
 
     // Drop this user's stale states for the plugin, then store the fresh one.
     db.prepare('DELETE FROM plugin_oauth_state WHERE plugin_id = ? AND user_id = ?').run(pluginId, userId);
@@ -144,6 +154,12 @@ export class PluginOAuthService {
     }
     db.prepare('DELETE FROM plugin_oauth_state WHERE state = ?').run(state); // single-use
 
+    // Validate the provider config fingerprint baked into the state at startConnect.
+    // If the admin changed the client credentials / endpoints while the flow was in
+    // flight the token exchange would succeed with one config and be stored under
+    // another — or worse, the callback URL could be pointing at a different service.
+    this.validateProviderBinding(pluginId, state);
+
     const cfg = this.providerConfig(pluginId);
     if (!cfg) throw new Error('OAuth is not configured for this plugin');
 
@@ -154,6 +170,34 @@ export class PluginOAuthService {
       code_verifier: row.verifier,
     });
     this.storeToken(pluginId, userId, token, nowMs);
+  }
+
+  /**
+   * Unpack the composite state produced by startConnect and verify that the
+   * provider config it was minted with still matches the current one. The state
+   * is: nonce(16) || configFingerprint(16) || stateRand(24) — all base64url.
+   * A mismatch means the admin changed the client credentials / endpoints after
+   * the connect button was clicked, and the flow must be restarted.
+   */
+  private validateProviderBinding(pluginId: string, stateB64: string): void {
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(stateB64, 'base64');
+    } catch {
+      throw new Error('malformed OAuth state');
+    }
+    if (buf.length < 56) throw new Error('invalid OAuth state format');
+    const origFingerprint = buf.subarray(16, 32);
+    const cfg = this.providerConfig(pluginId);
+    if (!cfg) throw new Error('OAuth is not configured for this plugin');
+    const currentFingerprint = crypto
+      .createHash('sha256')
+      .update(`${cfg.authorizeUrl}|${cfg.tokenUrl}|${cfg.clientId}`)
+      .digest()
+      .subarray(0, 16);
+    if (!crypto.timingSafeEqual(origFingerprint, currentFingerprint)) {
+      throw new Error('OAuth provider configuration changed — please restart the connection flow');
+    }
   }
 
   /** A valid access token for the acting user, refreshing it if it is expiring. Null when

@@ -98,6 +98,7 @@ import {
 } from '../../../services/packingService';
 import { checkPermission } from '../../../services/permissions';
 import { createPlace, updatePlace, deletePlace } from '../../../services/placeService';
+import { notifyBookingChange } from '../../../services/reservationService';
 import { listTags, createTag, updateTag, deleteTag, getTagByIdAndUser } from '../../../services/tagService';
 import {
   listItems as listTodosSvc,
@@ -121,7 +122,6 @@ import {
   toggleCompanyHoliday as vacayToggleCompanyHolidaySvc,
 } from '../../../services/vacayService';
 import { getWeather } from '../../../services/weatherService';
-import type { User } from '../../../types';
 import { broadcast, broadcastToUser } from '../../../websocket';
 import { BudgetService } from '../../budget/budget.service';
 import { createLlmClient } from '../../llm-parse/llm-client.factory';
@@ -155,16 +155,11 @@ function canEditTripAs(action: string, tripId: number, userId: number): boolean 
 // Reused for costs.create so a plugin write frozen-FX and members/payers logic
 // matches a normal web-app budget write exactly (it has no injected deps).
 const budgetSvc = new BudgetService();
-// Same idea for reservations: the Nest service (no injected deps) encapsulates the
-// accommodation/budget-sync/notification side effects 1:1 with the REST controller.
 const reservationsSvc = new ReservationsService();
-
 // The booking notification the REST controller sends after a create/update/delete
-// (services/notificationService via reservationsSvc). Needs the acting User; a plugin
-// only holds the id, so hydrate it host-side. Fire-and-forget — never blocks the write.
+// is fire-and-forget, so it never blocks the plugin write.
 function notifyBooking(actingUserId: number, tripId: number, booking: string, type: string): void {
-  const actor = db.prepare('SELECT * FROM users WHERE id = ?').get(actingUserId) as User | undefined;
-  if (actor) reservationsSvc.notifyBookingChange(String(tripId), actor, booking, type);
+  notifyBookingChange(tripId, actingUserId, booking, type);
 }
 
 // A subsystem read is refused when its addon is off — parity with the app, where a

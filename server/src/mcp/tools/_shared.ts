@@ -19,6 +19,11 @@ export const TOOL_ANNOTATIONS_READONLY = {
   openWorldHint: false,
 } as const;
 
+export const TOOL_ANNOTATIONS_OPEN_WORLD_READONLY = {
+  ...TOOL_ANNOTATIONS_READONLY,
+  openWorldHint: true,
+} as const;
+
 export const TOOL_ANNOTATIONS_WRITE = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -38,6 +43,11 @@ export const TOOL_ANNOTATIONS_NON_IDEMPOTENT = {
   destructiveHint: false,
   idempotentHint: false,
   openWorldHint: false,
+} as const;
+
+export const TOOL_ANNOTATIONS_OPEN_WORLD_NON_IDEMPOTENT = {
+  ...TOOL_ANNOTATIONS_NON_IDEMPOTENT,
+  openWorldHint: true,
 } as const;
 
 export function demoDenied() {
