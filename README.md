@@ -439,6 +439,7 @@ Caddy handles TLS and WebSockets automatically.
 | `OIDC_ADMIN_VALUE` | Value of the OIDC claim that grants admin role | — |
 | `OIDC_SCOPE` | Space-separated OIDC scopes. **Fully replaces** the default — always include `openid email profile`. | `openid email profile` |
 | `OIDC_DISCOVERY_URL` | Override the auto-constructed OIDC discovery endpoint (e.g. Authentik: `.../application/o/trek/.well-known/openid-configuration`) | — |
+| `OAUTH_HTTP_REDIRECT_HOSTS` | Comma-separated list of LAN hostnames allowed for OAuth redirect URIs over plain HTTP (default: only `localhost`/`127.0.0.1`/[::1]). Extend when OIDC runs on a LAN hostname without HTTPS. | — |
 | **Initial setup** | | |
 | `ADMIN_EMAIL` | Email for the first admin on initial boot. Must be set together with `ADMIN_PASSWORD`. If either is omitted a random password is printed to the server log. No effect once a user exists. | `admin@trek.local` |
 | `ADMIN_PASSWORD` | Password for the first admin on initial boot. Pairs with `ADMIN_EMAIL`. | random |
@@ -459,6 +460,23 @@ Caddy handles TLS and WebSockets automatically.
 | `SMTP_PASS` | SMTP password | — |
 | `SMTP_FROM` | From-address for outbound email | — |
 | `SMTP_SKIP_TLS_VERIFY` | Set `true` to skip TLS certificate validation (e.g. self-signed SMTP certs) | `false` |
+| **Plugin system** | | |
+| `TREK_PLUGINS_ENABLED` | Kill switch for the entire plugin system | `true` |
+| `TREK_PLUGINS_DIR` | Root directory for installed plugin code | `data/plugins` |
+| `TREK_PLUGINS_DATA_DIR` | Root directory for plugin-writable data | `data/plugins-data` |
+| `TREK_PLUGINS_DEV_LINK` | Enable dev-link for loading plugins from local build dirs (`1` = on, development only) | `off` |
+| `TREK_PLUGIN_PERMISSIONS` | OS permission jail for plugin child processes. Set `'off'` to disable | `on` |
+| `TREK_PLUGIN_ALLOW_PRIVATE_EGRESS` | Permit plugins to reach private/RFC-1918 network targets (sibling containers). Set `'on'` to allow | — |
+| `TREK_PLUGIN_REGISTRY_URL` | Override the plugin registry index URL | GitHub TREK-Plugins main `dist/index.json` |
+| `TREK_PLUGIN_RPC_BURST` | Per-plugin RPC burst allowance | `60` |
+| `TREK_PLUGIN_RPC_PER_SEC` | Per-plugin sustained RPC calls/sec | `20` |
+| `TREK_PLUGIN_RPC_INFLIGHT` | Max concurrent in-flight RPC calls per plugin | `16` |
+| `TREK_PLUGIN_LOG_BURST` | Per-plugin log burst allowance | `50` |
+| `TREK_PLUGIN_LOG_PER_SEC` | Per-plugin sustained log lines/sec | `10` |
+| `TREK_PLUGIN_AI_PER_DAY` | Max AI broker calls per plugin per day | `200` |
+| `TREK_PLUGIN_NOTIFY_PER_DAY` | Max notification sends per plugin per day | `100` |
+| `TREK_PLUGIN_AUDIT_MAX_ROWS` | Max audit log rows retained per plugin | `20000` |
+| `TREK_PLUGIN_MAX_RSS_MB` | Max RSS memory per plugin child process in MB | `300` |
 
 </details>
 
