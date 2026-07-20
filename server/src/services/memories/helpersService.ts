@@ -1,10 +1,9 @@
-import { canAccessTrip, db } from '../../db/database';
-import { safeFetch, SsrfBlockedError } from '../../utils/ssrfGuard';
-import { decrypt_api_key } from '../apiKeyCrypto';
-
-import { Response } from 'express';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
+import { Response } from 'express';
+import { canAccessTrip, db } from '../../db/database';
+import { safeFetch, SsrfBlockedError, type SafeFetchOptions } from '../../utils/ssrfGuard';
+import { decrypt_api_key } from '../apiKeyCrypto';
 
 // helpers for handling return types
 
@@ -283,9 +282,10 @@ export async function pipeAsset(
   headers?: Record<string, string>,
   signal?: AbortSignal,
   defaultCacheControl?: string,
+  fetchOptions?: SafeFetchOptions,
 ): Promise<void> {
   try {
-    const resp = await safeFetch(url, { headers, signal: signal as any });
+    const resp = await safeFetch(url, { headers, signal: signal as any }, fetchOptions);
 
     response.status(resp.status);
     if (resp.headers.get('content-type')) response.set('Content-Type', resp.headers.get('content-type') as string);
@@ -296,12 +296,8 @@ export async function pipeAsset(
     } else if (defaultCacheControl) {
       response.set('Cache-Control', defaultCacheControl);
     }
-    if (resp.headers.get('content-length'))
-      response.set('Content-Length', resp.headers.get('content-length') as string);
-    if (resp.headers.get('content-disposition'))
-      response.set('Content-Disposition', resp.headers.get('content-disposition') as string);
-    // Pass byte-range metadata through so a <video> can seek (#823). Upstream
-    // returns 206 + Content-Range when the caller forwarded a Range header.
+    if (resp.headers.get('content-length')) response.set('Content-Length', resp.headers.get('content-length') as string);
+    if (resp.headers.get('content-disposition')) response.set('Content-Disposition', resp.headers.get('content-disposition') as string);
     if (resp.headers.get('accept-ranges')) response.set('Accept-Ranges', resp.headers.get('accept-ranges') as string);
     if (resp.headers.get('content-range')) response.set('Content-Range', resp.headers.get('content-range') as string);
 
@@ -318,6 +314,7 @@ export async function pipeAsset(
     if (error instanceof SsrfBlockedError) {
       response.status(400).json({ error: error.message });
     } else {
+      console.error('pipeAsset: upstream fetch failed:', error);
       response.status(500).json({ error: 'Failed to fetch asset' });
     }
   }
