@@ -79,3 +79,15 @@ data:
   {{- if .Values.env.OVERPASS_TIMEOUT_MS }}
   OVERPASS_TIMEOUT_MS: {{ .Values.env.OVERPASS_TIMEOUT_MS | quote }}
   {{- end }}
+  {{- if .Values.env.DEFAULT_LANGUAGE }}
+  DEFAULT_LANGUAGE: {{ .Values.env.DEFAULT_LANGUAGE | quote }}
+  {{- end }}
+  {{- if .Values.env.MCP_MAX_SESSION_PER_USER }}
+  MCP_MAX_SESSION_PER_USER: {{ .Values.env.MCP_MAX_SESSION_PER_USER | quote }}
+  {{- end }}
+  {{- if .Values.env.MCP_SESSION_TTL }}
+  MCP_SESSION_TTL: {{ .Values.env.MCP_SESSION_TTL | quote }}
+  {{- end }}
+  {{- if .Values.env.MCP_SSE_KEEPALIVE }}
+  MCP_SSE_KEEPALIVE: {{ .Values.env.MCP_SSE_KEEPALIVE | quote }}
+  {{- end }}

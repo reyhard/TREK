@@ -78,6 +78,10 @@ env:
   # Max MCP API requests per user per minute. Defaults to 300.
   # MCP_MAX_SESSION_PER_USER: "20"
   # Max concurrent MCP sessions per user. Defaults to 20.
+  # MCP_SESSION_TTL: "3600"
+  # MCP session idle timeout in seconds. Defaults to 3600 (1 hour).
+  # MCP_SSE_KEEPALIVE: "25"
+  # SSE keep-alive interval in seconds (0 = off). Defaults to 25. Keeps reverse proxies from killing idle SSE streams between tool calls.
   # OVERPASS_URL: ""
   # Custom Overpass endpoint(s) for the map POI "explore" search, comma-separated. When set, REPLACES the bundled
   # public mirrors — point it at an internal/self-hosted Overpass instance when the public mirrors are unreachable

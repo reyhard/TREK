@@ -153,6 +153,7 @@ that match your granted scopes for that session.
 - `list_trips` and `get_trip_summary` are **always available** regardless of scopes — they are navigation tools.
 - Static tokens and web session JWTs have full access to all tools (equivalent to all scopes).
 - Addon-gated tools (Atlas, Collab, Vacay, Journey) require both the relevant scope **and** the addon to be enabled.
+- OAuth clients created before this version that were granted only `places:read` now also need `geo:read` to access transit-stop and transit-route search tools (`search_transit_stops`, `search_transit_routes`). Edit the client's scopes in **Settings > Integrations > MCP > OAuth Clients** to add `geo:read`.
 
 ---
 

@@ -447,6 +447,18 @@ Caddy handles TLS and WebSockets automatically.
 | `UNSPLASH_ACCESS_KEY` | Optional Unsplash Access Key for trip-cover and place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from. Get a free key at [unsplash.com/developers](https://unsplash.com/developers). Overrides any per-admin key set in Admin > Settings (where it can also be configured instead). | — |
 | `MCP_RATE_LIMIT` | Max MCP API requests per user per minute | `300` |
 | `MCP_MAX_SESSION_PER_USER` | Max concurrent MCP sessions per user. At the cap, the least-recently-active session is closed to make room | `20` |
+| `MCP_SESSION_TTL` | MCP session idle timeout in seconds | `3600` |
+| `MCP_SSE_KEEPALIVE` | SSE keep-alive interval in seconds (`0` = off). Keeps reverse proxies from killing idle SSE streams between tool calls | `25` |
+| `TRANSIT_API_URL` | Base URL for a Transitous-compatible public-transit routing API. When set, overrides the default public endpoint. Point it at your own Transitous instance for locked-down egress | auto |
+| `KITINERARY_EXTRACTOR_PATH` | Full path to the `kitinerary-extractor` binary. Auto-detected from PATH when unset | auto |
+| `WEBAUTHN_ORIGINS` | Comma-separated list of allowed WebAuthn origins for passkey authentication. Defaults to `APP_URL` when unset | auto |
+| `WEBAUTHN_RP_ID` | WebAuthn relying party ID (usually the domain without scheme or port). Defaults to the hostname when unset | auto |
+| `SMTP_HOST` | SMTP server hostname for outbound email notifications. Configurable in Admin > Settings; env var overrides | — |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USER` | SMTP username | — |
+| `SMTP_PASS` | SMTP password | — |
+| `SMTP_FROM` | From-address for outbound email | — |
+| `SMTP_SKIP_TLS_VERIFY` | Set `true` to skip TLS certificate validation (e.g. self-signed SMTP certs) | `false` |
 
 </details>
 
