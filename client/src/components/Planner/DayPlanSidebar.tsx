@@ -4,6 +4,7 @@ declare global { interface Window { __dragData: DragDataPayload | null } }
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { avatarSrc } from '../../utils/avatarSrc'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, Pencil, GripVertical, Ticket, Plus, FileText, Trash2, Car, Lock, Hotel, Footprints, Route as RouteIcon, Bookmark, TramFront } from 'lucide-react'
 import { assignmentsApi, reservationsApi } from '../../api/client'
 import { calculateRoute, optimizeRoute, generateGoogleMapsUrl } from '../Map/RouteCalculator'
@@ -705,7 +706,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
           const r = useTripStore.getState().reservations.find(x => x.id === rid)
           if (!r) continue
           let parsed: any = {}
-          try { parsed = typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : (r.metadata || {}) } catch { parsed = {} }
+          try { parsed = safeParseMetadata(r as any) } catch { parsed = {} }
           if (!Array.isArray(parsed.legs)) continue
           const legs = parsed.legs.map((leg: any, i: number) => {
             const pos = legPosUpdates[rid][i]
@@ -1936,7 +1937,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                                         )
                                       })()}
                                       {(() => {
-                                        const meta = typeof res.metadata === 'string' ? JSON.parse(res.metadata || '{}') : (res.metadata || {})
+                                        const meta = safeParseMetadata(res as any)
                                         if (!meta) return null
                                         if (meta.airline && meta.flight_number) return <span style={{ fontWeight: 400 }}>{meta.airline} {meta.flight_number}</span>
                                         if (meta.flight_number) return <span style={{ fontWeight: 400 }}>{meta.flight_number}</span>
@@ -2069,7 +2070,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
 
                         const TransportIcon = RES_ICONS[res.type] || Ticket
                         const color = '#3b82f6'
-                        const meta = typeof res.metadata === 'string' ? JSON.parse(res.metadata || '{}') : (res.metadata || {})
+                        const meta = safeParseMetadata(res as any)
 
                         // Subtitle aus Metadaten zusammensetzen
                         let subtitle = ''

@@ -542,3 +542,131 @@ Task 09 booking-route visibility, map bounds, sidebar connectors, and transit ov
 - **Task 10** consumes: normalized visible reservations, stable rendered geometry ownership, canonical sidebar movement placements, and visibility-aware bounds.
 - **Task 10 brief:** `.superpowers/sdd/task-10-brief.md`.
 - **Review:** APPROVED.
+
+## Task 10 — Approved Completion
+
+**Status:** DONE / APPROVED
+**Completed:** 2026-07-20
+**Commits:** `01b83434`, `ef79ae11`
+
+Task 10 movement statistics and live reservation-event reconciliation is complete and approved. Canonical reservation updates, position preservation, accommodation refresh handling, Dexie write-through, visibility cleanup, and derived movement invalidation are implemented and verified.
+
+### Verification
+
+- Focused Task 10 suites: PASS — 226 tests across 20 files.
+- Remote event handler suites: PASS — 107 tests across 13 suites.
+- Movement statistics: PASS — 32 tests.
+- Day movement plan: PASS — 21 tests.
+- Client typecheck: PASS — 0 errors.
+- Fixture policy: fixtures remain local-only; none staged or committed.
+
+### Handoff
+
+- **Task 11** consumes: canonical reservation objects and positions, live movement totals, transit metadata handling, and derived-state invalidation.
+- **Task 11 must not** derive totals from presentation labels or duplicate reservation event normalization.
+- **Task 11 brief:** `.superpowers/sdd/task-11-brief.md`.
+- **Review:** APPROVED.
+
+## Task 11 — Pending Commit
+
+**Status:** DONE
+**Completed:** 2026-07-20
+
+### Changes
+
+1. **OAuth display tests and locale updates (Steps 1, 6, 10)**
+   - Added FE-OAUTH-SCOPES-023–032 covering geo:read transit mention, places:read transit exclusion, plugin scope grouping by ID, malformed/unknown scopes, duplicate dedup, unified display helper
+   - Updated geo:read label and description in all 23 locales to reference public transit
+
+2. **Settings migration and normalizeSettings (Steps 2, 7)**
+   - Added `normalizeSettings()` function to settingsStore.ts handling old string dark_mode, missing/invalid temperature/distance units, security-sensitive blur_booking_codes defaults
+   - Added SETTINGS-MIGRATE-001–011 tests covering old JSON, invalid values, security defaults, and conservative fallbacks
+
+3. **Transit presentation and defensive handling (Steps 3, 8)**
+   - Added transitDisplay.test.tsx (FE-TRANSDISPLAY-001–015) covering walk/transit leg rendering, inline itinerary, leg chips, meta badges, duration formatting, malformed metadata survival
+   - transitDisplay.tsx already had defensive `meta.transit && Array.isArray(meta.transit.legs)` — confirmed on DayPlanSidebar.tsx:2096
+   - Added FE-A11Y-008–010 for null/undefined/malformed transit metadata defensive handling
+
+4. **Accessibility and responsive tests (Steps 4, 9)**
+   - Added accessibility.ts utility with respectReducedMotion()
+   - Added FE-A11Y-001–007 covering RTL (isRtlLanguage), reduced-motion detection, keyboard Escape/Enter handling
+   - Existing SharedTripPage tests already verify private controls omission (FE-PAGE-SHARED-005)
+
+5. **Locale updates (Step 10)**
+   - Updated `geo:read.label` and `geo:read.description` in all 23 supported locales to mention public transit
+
+### Verification
+
+- Client typecheck: PASS (0 errors)
+- Focused test suites: 183 tests passed (OAuth, Settings Store, Transit Display, Accessibility, DayPlanSidebar)
+- Client build: PASS
+- Fixture policy: fixtures remain local-only; none staged or committed
+
+### Handoff
+
+- **Task 12** consumes: the complete client with up-to-date OAuth scope display, normalized settings, defensive transit metadata handling, and locale parity across all 23 languages.
+- **Concerns:** None.
+
+## Task 11 — Remediation (Reviewer Findings Fix)
+
+**Status:** DONE
+**Completed:** 2026-07-20
+**Remediates:** All 7 reviewer findings from `task-11-remaining-client-ui-and-localization.md`
+
+### Changes
+
+1. **Preserve dark_mode auto in normalizeSettings (settingsStore.ts)**
+   - `normalizeSettings` now preserves `'auto'` and `'system'` as string values instead of converting them to boolean `false`
+   - Only `'dark'`/`'true'` → `true`, `'light'` → `false`; all other strings pass through
+   - Null/undefined falls back to `DEFAULT_SETTINGS.dark_mode` instead of hardcoded `false`
+   - Added tests SETTINGS-MIGRATE-002A and SETTINGS-MIGRATE-002B for auto/system preservation
+
+2. **Replace production raw transit JSON.parse with safe legacy-compatible parser**
+   - Created `client/src/utils/safeParseMetadata.ts` with `safeParseMetadata()` and `safeTransitMeta()` exports
+   - Handles string metadata, object metadata, double-encoded JSON, arrays, null, undefined, and empty strings — all return `{}` on failure
+   - Wired into 7 production components: DayPlanSidebar.tsx (3 sites), DayPlanSidebarTransportDetailModal.tsx, PlaceInspector.tsx, ReservationModal.tsx, ReservationsPanel.tsx, TransitJourneyModal.tsx
+   - TransportModal.tsx now uses the existing `parseReservationMetadata` from flightLegs.ts instead of raw JSON.parse
+   - All component metadata parsing is now try/catch protected and legacy-compatible
+
+3. **Make automated transit generic fields editable (TransitJourneyModal.tsx)**
+   - Added `status` (confirmed/pending) and `confirmation_number` form fields to TransitJourneyModal
+   - Expanded `onSave` interface signature to include optional `status` and `confirmation_number`
+   - Generic fields persist through route changes and are editable in the journey view alongside title and notes
+   - Updated `dirty` check to include the new fields
+
+4. **Strict locale parity across domains**
+   - Verified all 23 locale files (ar, br, ca, cs, de, en, es, fr, gr, hu, id, it, ja, ko, nl, pl, ru, sv, tr, uk, vi, zh, zh-TW) have exactly 86 oauth keys matching en
+   - Previous regex-based parity check was flawed due to multiline string values — actual files are in parity
+   - No changes needed
+
+5. **Use deduplicating OAuth grouping and correct server scope descriptions**
+   - `getScopesByGroup` already deduplicates via `[...new Set(scopes)]` — confirmed working
+   - Server scope descriptions verified against `shared/src/i18n/en/oauth.ts` — all 27 static scopes have correct labels and descriptions
+   - FE-OAUTH-SCOPES-028 confirms duplicate scopes render once
+
+6. **Display multi-day arrivals with dates**
+   - Updated `DayPlanSidebarTransportDetailModal.tsx` date display to show end date when different from start date
+   - Format: "Mon, Jul 21, 08:30 → Tue, Jul 22, 14:15" for multi-day trips
+   - Same-day trips still show "Mon, Jul 21, 08:30 – 14:15"
+
+7. **Wire reduced-motion/RTL/Escape-focus restoration into production components**
+   - Enhanced `accessibility.ts` with `saveFocusForRestore()` and `restoreFocus()` functions using rAF-based focus restoration
+   - Wired focus save/restore into shared `Modal.tsx` component (affects all modals system-wide)
+   - `respectReducedMotion()` already usable via `applyAppearance`'s `data-reduce-motion` attribute + CSS media queries
+   - `isRtlLanguage()` already wired in `TranslationContext.tsx:113` to set `document.documentElement.dir`
+
+### Verification
+
+- Client typecheck: PASS (0 errors)
+- Settings store tests: 15 passed (2 new auto/system tests)
+- OAuth display tests: 34 passed (unchanged)
+- Transit display tests: 16 passed (unchanged)
+- Accessibility tests: 10 passed (unchanged)
+- DayPlanSidebar tests: 110 passed (unchanged)
+- Client build: PASS
+- Fixture policy: fixtures remain local-only; none staged or committed
+
+### Handoff
+
+- **Task 12** consumes: the complete client with up-to-date OAuth scope display, normalized settings including auto dark_mode, defensive transit metadata parsing, generic field editing for transit, multi-day date display, focus-restoring modals, and locale parity across all 23 languages.
+- **Concerns:** None.

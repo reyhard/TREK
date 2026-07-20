@@ -16,6 +16,7 @@ import { useSaveToCollectionStore } from '../../store/saveToCollectionStore'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useToast } from '../shared/Toast'
 import { useTranslation, translateApiError } from '../../i18n'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 import { usePluginStore } from '../../store/pluginStore'
 import PluginFrame from '../Plugins/PluginFrame'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
@@ -23,6 +24,7 @@ import type { CollectionStatus } from '@trek/shared'
 import { splitReservationDateTime, formatTime, formatMoney } from '../../utils/formatters'
 import { useTripStore } from '../../store/tripStore'
 import { formatDistance, formatElevation } from '../../utils/units'
+import { parseTrackGeometry } from '../../utils/trackGeometry'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 import { getOpenStreetMapUrlForPlace } from './placeOpenStreetMap'
 
@@ -147,6 +149,7 @@ export default function PlaceInspector({
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
   leftWidth = 0, rightWidth = 0,
+  canReposition, isRepositioning, onStartReposition, onCancelReposition,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
 }: PlaceInspectorProps) {
   // Plugins that declared a place-detail slot mount at the bottom of this panel,
@@ -802,7 +805,7 @@ function PlaceReservationParticipants({ selectedAssignmentId, reservations, assi
                       </div>
                       {res.notes && <div className="collab-note-md text-content-faint" style={{ padding: '0 10px 6px', fontSize: 'calc(10px * var(--fs-scale-caption, 1))', lineHeight: 1.4, wordBreak: 'break-word', overflowWrap: 'anywhere' }}><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{res.notes}</Markdown></div>}
                       {(() => {
-                        const meta = typeof res.metadata === 'string' ? JSON.parse(res.metadata || '{}') : (res.metadata || {})
+                        const meta = safeParseMetadata(res as any)
                         if (!meta || Object.keys(meta).length === 0) return null
                         const parts: string[] = []
                         if (meta.airline && meta.flight_number) parts.push(`${meta.airline} ${meta.flight_number}`)

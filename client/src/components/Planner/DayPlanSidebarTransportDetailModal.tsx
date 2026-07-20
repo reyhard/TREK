@@ -6,6 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useTripStore } from '../../store/tripStore'
 import { formatTime, splitReservationDateTime } from '../../utils/formatters'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 import { RES_ICONS, TRANSPORT_DETAIL_COLORS } from './DayPlanSidebar.constants'
 import type { Reservation } from '../../types'
 
@@ -41,7 +42,7 @@ export function DayPlanSidebarTransportDetailModal({
           const TransportIcon = RES_ICONS[res.type] || Ticket
           const TRANSPORT_COLORS = TRANSPORT_DETAIL_COLORS
           const color = TRANSPORT_COLORS[res.type] || 'var(--text-muted)'
-          const meta = typeof res.metadata === 'string' ? JSON.parse(res.metadata || '{}') : (res.metadata || {})
+          const meta = safeParseMetadata(res as any)
 
           const detailFields = []
           if (res.type === 'flight') {
@@ -73,16 +74,27 @@ export function DayPlanSidebarTransportDetailModal({
                   <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', marginTop: 2 }}>
                     {(() => {
                       const { date, time } = splitReservationDateTime(res.reservation_time)
-                      const { time: endTime } = splitReservationDateTime(res.reservation_end_time)
-                      const dateStr = date
-                        ? new Date(date + 'T00:00:00Z').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+                      const { date: endDate, time: endTime } = splitReservationDateTime(res.reservation_end_time)
+                      const formatDateShort = (d: string | null) => d
+                        ? new Date(d + 'T00:00:00Z').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
                         : ''
+                      const dateStr = formatDateShort(date)
+                      const endDateStr = formatDateShort(endDate)
                       const timeStr = time ? formatTime(time, locale, timeFormat) : ''
-                      const endStr = endTime ? formatTime(endTime, locale, timeFormat) : ''
+                      const endTimeStr = endTime ? formatTime(endTime, locale, timeFormat) : ''
                       const parts: string[] = []
-                      if (dateStr) parts.push(dateStr)
-                      if (timeStr) parts.push(timeStr + (endStr ? ` – ${endStr}` : ''))
-                      return parts.join(', ')
+                      // Show start date + time, then end date (if different) + end time
+                      const hasStart = dateStr || timeStr
+                      const hasEnd = endDateStr && endDateStr !== dateStr
+                      if (hasStart) parts.push(`${dateStr}${timeStr ? (dateStr ? ', ' : '') + timeStr : ''}${hasEnd ? '' : ''}`)
+                      if (hasEnd) {
+                        parts.push(`→ ${endDateStr}${endTimeStr ? ', ' + endTimeStr : ''}`)
+                      } else if (endTimeStr && timeStr) {
+                        parts[0] = `${dateStr}, ${timeStr} – ${endTimeStr}`
+                      } else if (endTimeStr) {
+                        parts[0] = `${dateStr ? dateStr + ', ' : ''}${timeStr || ''} – ${endTimeStr}`
+                      }
+                      return parts.join(' ')
                     })()}
                   </div>
                 </div>

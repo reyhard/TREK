@@ -12,12 +12,14 @@ const VALID_TIME_FORMATS = ['24h', '12h'] as const
 export function normalizeSettings(raw: Partial<Settings>): Settings {
   const out = { ...DEFAULT_SETTINGS, ...raw }
 
-  // Old string-based dark_mode ('light'/'dark'/'system') → boolean
+  // Old string-based dark_mode: convert 'dark'/'light' to boolean, preserve 'auto'/'system'
   if (typeof out.dark_mode === 'string') {
-    out.dark_mode = out.dark_mode === 'dark' || out.dark_mode === 'true'
+    if (out.dark_mode !== 'auto' && out.dark_mode !== 'system') {
+      out.dark_mode = out.dark_mode === 'dark' || out.dark_mode === 'true'
+    }
   }
   if (out.dark_mode === null || out.dark_mode === undefined) {
-    out.dark_mode = false
+    out.dark_mode = DEFAULT_SETTINGS.dark_mode
   }
 
   // Validate temperature_unit

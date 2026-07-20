@@ -22,6 +22,7 @@ import { usePluginViewContributions, PluginCardFooter } from '../Plugins/PluginC
 import { usePluginStore, type ActivePlugin } from '../../store/pluginStore'
 import PluginFrame from '../Plugins/PluginFrame'
 import { splitReservationDateTime, formatTime } from '../../utils/formatters'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 
 interface AssignmentLookupEntry {
   dayNumber: number
@@ -317,7 +318,7 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
 
         {/* Type-specific metadata */}
         {(() => {
-          const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : (r.metadata || {})
+          const meta = safeParseMetadata(r as any)
           if (!meta || Object.keys(meta).length === 0) return null
           const hasEndpoints = (r.endpoints || []).some(e => e.role === 'from') && (r.endpoints || []).some(e => e.role === 'to')
           const cells: { label: string; value: string }[] = []

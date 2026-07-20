@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { X } from 'lucide-react'
+import { saveFocusForRestore, restoreFocus } from '../../utils/accessibility'
 
 const sizeClasses: Record<string, string> = {
   sm: 'max-w-sm',
@@ -36,12 +37,14 @@ export default function Modal({
 
   useEffect(() => {
     if (isOpen) {
+      saveFocusForRestore()
       document.addEventListener('keydown', handleEsc)
       document.body.style.overflow = 'hidden'
     }
     return () => {
       document.removeEventListener('keydown', handleEsc)
       document.body.style.overflow = ''
+      restoreFocus()
     }
   }, [isOpen, handleEsc])
 

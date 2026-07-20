@@ -207,9 +207,7 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
     // On a review-import, seed the booking's Files with the parsed source document.
     setPendingFiles(!reservation && prefill?._sourceFiles ? prefill._sourceFiles : [])
     if (src) {
-      const meta = typeof src.metadata === 'string'
-        ? JSON.parse(src.metadata || '{}')
-        : (src.metadata || {})
+      const meta = parseReservationMetadata(src as any)
       const eps = src.endpoints || []
       const from = eps.find(e => e.role === 'from')
       const to = eps.find(e => e.role === 'to')

@@ -13,6 +13,7 @@ import { CustomDatePicker } from '../shared/CustomDateTimePicker'
 import CustomTimePicker from '../shared/CustomTimePicker'
 import { openFile } from '../../utils/fileDownload'
 import { resolveDayId } from '../../utils/formatters'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 import type { Day, Place, Reservation, TripFile, AssignmentsMap, Accommodation, BudgetItem } from '../../types'
 import { BookingCostsSection } from './BookingCostsSection'
 import type { BookingExpenseRequest } from './BookingCostsSection.types'
@@ -116,7 +117,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     }
 
     if (reservation) {
-      const meta = typeof reservation.metadata === 'string' ? JSON.parse(reservation.metadata || '{}') : (reservation.metadata || {})
+      const meta = safeParseMetadata(reservation as any)
       const rawEnd = reservation.reservation_end_time || ''
       let endDate = ''
       let endTime = rawEnd

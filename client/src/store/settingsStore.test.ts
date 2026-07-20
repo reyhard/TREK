@@ -29,9 +29,19 @@ describe('settings migration', () => {
     expect(old2.dark_mode).toBe(true)
   })
 
-  it('SETTINGS-MIGRATE-002: null dark_mode falls back to false', () => {
+  it('SETTINGS-MIGRATE-002: null dark_mode falls back to DEFAULT_SETTINGS.dark_mode', () => {
     const result = normalizeSettings({ dark_mode: null } as unknown as Partial<Settings>)
-    expect(result.dark_mode).toBe(false)
+    expect(result.dark_mode).toBe(DEFAULT_SETTINGS.dark_mode)
+  })
+
+  it('SETTINGS-MIGRATE-002A: dark_mode auto is preserved as string', () => {
+    const result = normalizeSettings({ dark_mode: 'auto' } as unknown as Partial<Settings>)
+    expect(result.dark_mode).toBe('auto')
+  })
+
+  it('SETTINGS-MIGRATE-002B: dark_mode system is preserved as string', () => {
+    const result = normalizeSettings({ dark_mode: 'system' } as unknown as Partial<Settings>)
+    expect(result.dark_mode).toBe('system')
   })
 
   it('SETTINGS-MIGRATE-003: missing temperature_unit falls back to celsius', () => {
