@@ -11,11 +11,12 @@ import { getCategoryIcon, CATEGORY_ICON_MAP } from '../shared/categoryIcons'
 import ReservationOverlay from './ReservationOverlay'
 import { PluginMapMarkers } from './MapPluginMarkers'
 import { useTransportRoutes } from '../../hooks/useTransportRoutes'
-import { visibleRouteReservations } from '../../utils/reservationRoutes'
+import { visibleRouteReservations, visibleReservationEndpointPoints } from '../../utils/reservationRoutes'
 import type { Reservation } from '../../types'
 import { POI_CATEGORY_BY_KEY, type Poi } from './poiCategories'
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../../constants/mapDefaults'
 import { computeMapViewport, TILE_SIZE_RASTER, type ViewportPadding } from '../../utils/mapViewport'
+import type { MapViewProps } from './MapView.types'
 
 function categoryIconSvg(iconName: string | null | undefined, size: number): string {
   const IconComponent = (iconName && CATEGORY_ICON_MAP[iconName]) || CATEGORY_ICON_MAP['MapPin']
@@ -45,14 +46,16 @@ function escAttr(s) {
 
 const iconCache = new Map<string, L.DivIcon>()
 
-function createPlaceIcon(place, orderNumbers, isSelected) {
-  const cacheKey = `${place.id}:${isSelected}:${place.image_url || ''}:${place.category_color || ''}:${place.category_icon || ''}:${orderNumbers?.join(',') || ''}`
+function createPlaceIcon(place, orderNumbers, isSelected, isRepositioning = false) {
+  const cacheKey = `${place.id}:${isSelected}:${isRepositioning}:${place.image_url || ''}:${place.category_color || ''}:${place.category_icon || ''}:${orderNumbers?.join(',') || ''}`
   const cached = iconCache.get(cacheKey)
   if (cached) return cached
   const size = isSelected ? 44 : 36
   const borderColor = isSelected ? '#111827' : (place.category_color || 'white')
   const borderWidth = isSelected ? 3 : 2.5
-  const shadow = isSelected
+  const shadow = isRepositioning
+    ? '0 0 0 4px rgba(59,130,246,0.35), 0 6px 18px rgba(0,0,0,0.35)'
+    : isSelected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
     : '0 2px 8px rgba(0,0,0,0.22)'
   const bgColor = place.category_color || '#6b7280'
@@ -82,7 +85,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
       className: '',
       html: `<div style="
         width:${size}px;height:${size}px;
-        cursor:pointer;position:relative;
+        cursor:${isRepositioning ? 'grabbing' : 'pointer'};position:relative;
       ">
         <div style="
           width:${size}px;height:${size}px;border-radius:50%;
@@ -110,7 +113,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
       box-shadow:${shadow};
       background:${bgColor};
       display:flex;align-items:center;justify-content:center;
-      cursor:pointer;position:relative;
+      cursor:${isRepositioning ? 'grabbing' : 'pointer'};position:relative;
       will-change:transform;contain:layout style;
     ">
       ${categoryIconSvg(place.category_icon, isSelected ? 18 : 15)}
@@ -246,9 +249,10 @@ interface BoundsControllerProps {
   paddingOpts: L.FitBoundsOptions
   /** The map was built already framed on these places, so the opening fit has nothing to do. */
   framedOnMount?: boolean
+  reservationEndpointCoords?: [number, number][]
 }
 
-function BoundsController({ places, routeCoords, fitKey, paddingOpts, hasDayDetail, framedOnMount = false }: BoundsControllerProps) {
+function BoundsController({ places, routeCoords, fitKey, paddingOpts, hasDayDetail, framedOnMount = false, reservationEndpointCoords = [] }: BoundsControllerProps) {
   const map = useMap()
   const prevFitKey = useRef(-1)
   const awaitingRoute = useRef(false)
@@ -267,22 +271,21 @@ function BoundsController({ places, routeCoords, fitKey, paddingOpts, hasDayDeta
     } catch {}
   }, [map, paddingOpts, hasDayDetail])
 
+  const placeCoords = useMemo(() => places.map(p => [p.lat, p.lng] as [number, number]), [places])
+
   // New fitKey (initial trip fit or a day selection): fit to the destinations now
   // and arm a one-shot re-fit for when the route arrives.
   useEffect(() => {
     if (fitKey === prevFitKey.current) return
     prevFitKey.current = fitKey
     awaitingRoute.current = false
-    if (places.length === 0) return
-    // The map opened framed on these very places — re-fitting would only re-do that, and its
-    // maxZoom would overrule the gentler zoom a single place opens at. Later fits (picking a
-    // day) still run.
+    if (places.length === 0 && reservationEndpointCoords.length === 0) return
     if (!fitRan.current && framedOnMount) {
       fitRan.current = true
       return
     }
     fitRan.current = true
-    fitTo(places.map(p => [p.lat, p.lng] as [number, number]))
+    fitTo([...placeCoords, ...reservationEndpointCoords])
     awaitingRoute.current = true
   }, [fitKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -291,7 +294,7 @@ function BoundsController({ places, routeCoords, fitKey, paddingOpts, hasDayDeta
   useEffect(() => {
     if (!awaitingRoute.current || routeCoords.length === 0) return
     awaitingRoute.current = false
-    fitTo([...places.map(p => [p.lat, p.lng] as [number, number]), ...routeCoords])
+    fitTo([...placeCoords, ...routeCoords, ...reservationEndpointCoords])
   }, [routeCoords]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return null
@@ -418,23 +421,43 @@ interface MemoMarkerProps {
   onClickPlace: (id: number) => void
   onHover: (place: any, x: number, y: number) => void
   onHoverOut: () => void
+  isRepositioning?: boolean
+  onMoveStart?: (id: number) => void
+  onMoveEnd?: (id: number, coordinates: { lat: number; lng: number }) => void
 }
 
 const MemoMarker = memo(function MemoMarker({
   place, isSelected, orderNumbers, photoUrl, onClickPlace, onHover, onHoverOut,
+  isRepositioning = false, onMoveStart, onMoveEnd,
 }: MemoMarkerProps) {
-  const icon = createPlaceIcon({ ...place, image_url: photoUrl }, orderNumbers, isSelected)
+  const icon = createPlaceIcon({ ...place, image_url: photoUrl }, orderNumbers, isSelected, isRepositioning)
+  const suppressClickUntilRef = useRef(0)
+  const stablePositionRef = useRef<[number, number]>([place.lat, place.lng])
+  if (!isRepositioning) stablePositionRef.current = [place.lat, place.lng]
   return (
     <Marker
-      position={[place.lat, place.lng]}
+      position={isRepositioning ? stablePositionRef.current : [place.lat, place.lng]}
       icon={icon}
+      draggable={isRepositioning}
       eventHandlers={{
-        click: () => onClickPlace(place.id),
+        click: () => {
+          if (Date.now() < suppressClickUntilRef.current) return
+          onClickPlace(place.id)
+        },
         mouseover: (e: any) => onHover(place, e.originalEvent.clientX, e.originalEvent.clientY),
         mousemove: (e: any) => onHover(place, e.originalEvent.clientX, e.originalEvent.clientY),
         mouseout: onHoverOut,
+        dragstart: () => {
+          onHoverOut()
+          onMoveStart?.(place.id)
+        },
+        dragend: (event: any) => {
+          suppressClickUntilRef.current = Date.now() + 350
+          const { lat, lng } = event.target.getLatLng()
+          onMoveEnd?.(place.id, { lat, lng })
+        },
       }}
-      zIndexOffset={isSelected ? 1000 : 0}
+      zIndexOffset={isRepositioning ? 2000 : isSelected ? 1000 : 0}
     />
   )
 })
@@ -447,6 +470,10 @@ export const MapView = memo(function MapView({
   selectedPlaceId = null,
   hoverDisabled = false,
   onMarkerClick,
+  repositionPlaceId = null,
+  canRepositionPlaces = false,
+  onPlaceRepositionStart,
+  onPlaceRepositionEnd,
   onMapClick,
   onMapContextMenu = null,
   center = DEFAULT_MAP_CENTER,
@@ -467,7 +494,7 @@ export const MapView = memo(function MapView({
   onPoiClick,
   onViewportChange,
   tripId,
-}: any) {
+}: MapViewProps) {
   const poiMarkers = useMemo(() => (pois as Poi[]).map((poi: Poi) => (
     <Marker
       key={`poi-${poi.osm_id}`}
@@ -484,8 +511,12 @@ export const MapView = memo(function MapView({
   ), [reservations, visibleConnectionIds, showTransitRoutes])
   // Real road geometry for car/bus/taxi/bicycle bookings (straight line until it loads/if it fails).
   const transportRoutes = useTransportRoutes(visibleReservations)
-  // Dynamic padding: account for sidebars + bottom inspector + day detail panel
-  // The chrome overlaying the map (side panels, day detail). Kept as a plain box so both the
+  const reservationEndpointCoords = useMemo<[number, number][]>(() =>
+    visibleReservationEndpointPoints(reservations, { visibleConnectionIds, showTransitRoutes })
+      .map(p => [p.lat!, p.lng!] as [number, number]),
+    [reservations, visibleConnectionIds, showTransitRoutes],
+  )
+  // Dynamic padding: account for sidebars + bottom inspector + day detail panel  // The chrome overlaying the map (side panels, day detail). Kept as a plain box so both the
   // Leaflet fit options and the opening-camera maths can read the same numbers.
   const paddingBox = useMemo((): ViewportPadding => {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
@@ -509,7 +540,8 @@ export const MapView = memo(function MapView({
   // camera belongs to the user. `framed` is false when no place has coordinates (a new trip),
   // and then the caller's center/zoom stands.
   const [initialView] = useState(() => {
-    const framed = computeMapViewport(dayPlaces.length > 0 ? dayPlaces : places, {
+    const endpointPoints = visibleReservationEndpointPoints(reservations, { visibleConnectionIds, showTransitRoutes })
+    const framed = computeMapViewport([...(dayPlaces.length > 0 ? dayPlaces : places), ...endpointPoints], {
       tileSize: TILE_SIZE_RASTER,
       padding: paddingBox,
     })
@@ -635,6 +667,7 @@ export const MapView = memo(function MapView({
 
   const markers = useMemo(() => places.map((place) => {
     const isSelected = place.id === selectedPlaceId
+    const isRepositioning = canRepositionPlaces && isSelected && place.id === repositionPlaceId
     const pck = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
     const photoUrl = (pck && photoUrls[pck]) || place.image_url || null
     const orderNumbers = dayOrderMap[place.id] ?? null
@@ -648,9 +681,25 @@ export const MapView = memo(function MapView({
         onClickPlace={handleMarkerClick}
         onHover={handleMarkerHover}
         onHoverOut={handleMarkerHoverOut}
+        isRepositioning={isRepositioning}
+        onMoveStart={onPlaceRepositionStart}
+        onMoveEnd={onPlaceRepositionEnd}
       />
     )
-  }), [places, selectedPlaceId, dayOrderMap, photoUrls, handleMarkerClick, handleMarkerHover, handleMarkerHoverOut])
+  }), [places, selectedPlaceId, repositionPlaceId, canRepositionPlaces, dayOrderMap, photoUrls, handleMarkerClick, handleMarkerHover, handleMarkerHoverOut, onPlaceRepositionStart, onPlaceRepositionEnd])
+
+  const activeRepositionPlaceId = canRepositionPlaces && selectedPlaceId === repositionPlaceId
+    ? repositionPlaceId
+    : null
+
+  const clusteredMarkers = useMemo(
+    () => markers.filter(marker => marker.props.place.id !== activeRepositionPlaceId),
+    [markers, activeRepositionPlaceId],
+  )
+  const repositionMarker = useMemo(
+    () => activeRepositionPlaceId != null ? markers.find(marker => marker.props.place.id === activeRepositionPlaceId) : null,
+    [markers, activeRepositionPlaceId],
+  )
 
   const gpxPolylines = useMemo(() => places.flatMap(place => {
     if (!place.route_geometry) return []
@@ -704,7 +753,7 @@ export const MapView = memo(function MapView({
       />
 
       <MapController center={center} zoom={zoom} />
-      <BoundsController places={dayPlaces.length > 0 ? dayPlaces : places} routeCoords={dayPlaces.length > 0 ? routeCoords : []} fitKey={fitKey} paddingOpts={paddingOpts} hasDayDetail={hasDayDetail} framedOnMount={initialView.framed} />
+      <BoundsController places={dayPlaces.length > 0 ? dayPlaces : places} routeCoords={dayPlaces.length > 0 ? routeCoords : []} fitKey={fitKey} paddingOpts={paddingOpts} hasDayDetail={hasDayDetail} framedOnMount={initialView.framed} reservationEndpointCoords={reservationEndpointCoords} />
       <SelectionController places={places} selectedPlaceId={selectedPlaceId} dayPlaces={dayPlaces} paddingOpts={paddingOpts} />
       <MapClickHandler onClick={onMapClick} />
       <MapContextMenuHandler onContextMenu={onMapContextMenu} />
@@ -724,8 +773,9 @@ export const MapView = memo(function MapView({
         animate={false}
         iconCreateFunction={clusterIconCreateFunction}
       >
-        {markers}
+        {clusteredMarkers}
       </MarkerClusterGroup>
+      {repositionMarker}
 
       {/* Apple-Maps style: darker-blue casing under a bright-blue core, rounded. */}
       {route && route.length > 0 && route.flatMap((seg, i) => seg.length > 1 ? [

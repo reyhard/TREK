@@ -12,7 +12,7 @@ import { isStandardFamily, supportsCustom3d, wantsTerrain, addCustom3dBuildings,
 import { attachLocationMarker, type LocationMarkerHandle } from './locationMarkerMapbox'
 import { ReservationMapboxOverlay } from './reservationsMapbox'
 import { useTransportRoutes } from '../../hooks/useTransportRoutes'
-import { visibleRouteReservations } from '../../utils/reservationRoutes'
+import { visibleRouteReservations, visibleReservationEndpointPoints } from '../../utils/reservationRoutes'
 import { MAPBOX_DEFAULT_STYLE, styleForActiveProvider, basemapLanguage, type GlMapProvider } from './glProviders'
 import LocationButton from './LocationButton'
 import { useGeolocation } from '../../hooks/useGeolocation'
@@ -104,11 +104,13 @@ interface Props {
   onPlaceRepositionEnd?: (placeId: number, coordinates: { lat: number; lng: number }) => void
 }
 
-function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean): HTMLDivElement {
+function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean, repositioning = false): HTMLDivElement {
   const size = selected ? 44 : 36
   const borderColor = selected ? '#111827' : (place.category_color || 'white')
   const borderWidth = selected ? 3 : 2.5
-  const shadow = selected
+  const shadow = repositioning
+    ? '0 0 0 4px rgba(59,130,246,0.35), 0 6px 18px rgba(0,0,0,0.35)'
+    : selected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
     : '0 2px 8px rgba(0,0,0,0.22)'
   const bgColor = place.category_color || '#6b7280'
@@ -145,7 +147,8 @@ function createMarkerElement(place: Place & { category_color?: string; category_
   // canvas container. The result looks exactly like "markers drift as the
   // map zooms" because each marker's transform is then applied relative
   // to its stacked slot, not to the map viewport.
-  wrap.style.cssText = `width:${outer}px;height:${outer}px;cursor:pointer;`
+  wrap.style.cssText = `width:${outer}px;height:${outer}px;cursor:${repositioning ? 'grabbing' : 'pointer'};`
+  wrap.dataset.repositioning = String(repositioning)
 
   const hasPhoto = photoUrl && (photoUrl.startsWith('data:') || photoUrl.startsWith('/api/maps/place-photo/'))
   if (hasPhoto) {
@@ -220,6 +223,10 @@ export function MapViewGL({
   onViewportChange,
   glProvider = 'mapbox-gl',
   onMapReady,
+  repositionPlaceId = null,
+  canRepositionPlaces = false,
+  onPlaceRepositionStart,
+  onPlaceRepositionEnd,
 }: Props) {
   const rawMapboxStyle = useSettingsStore(s => s.settings.mapbox_style || MAPBOX_DEFAULT_STYLE)
   const rawMaplibreStyle = useSettingsStore(s => s.settings.maplibre_style || '')
@@ -261,6 +268,11 @@ export function MapViewGL({
   const mapRef = useRef<any | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<Map<number, any>>(new Map())
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markerCleanupRef = useRef<Map<number, () => void>>(new Map())
+  const suppressMarkerClickUntilRef = useRef<Map<number, number>>(new Map())
+  const onRepositionRefs = useRef({ start: onPlaceRepositionStart, end: onPlaceRepositionEnd })
+  onRepositionRefs.current = { start: onPlaceRepositionStart, end: onPlaceRepositionEnd }
   const locationMarkerRef = useRef<LocationMarkerHandle | null>(null)
   const reservationOverlayRef = useRef<ReservationMapboxOverlay | null>(null)
   // Refs so the reservation overlay always sees the latest callback /
@@ -757,16 +769,17 @@ export function MapViewGL({
     // mouseleave, which would otherwise leave the popup orphaned on the map.
     popupRef.current?.remove()
     const validPlaces = places.filter(hasValidCoords)
+    const activeRepositionId = canRepositionPlaces && selectedPlaceId === repositionPlaceId ? repositionPlaceId : null
 
     const reconcileMarkers = (visiblePlaces: PlaceWithCoords[]) => {
       const ids = new Set(visiblePlaces.map(p => p.id))
 
       markersRef.current.forEach((marker, id) => {
         if (!ids.has(id)) {
+          markerCleanupRef.current.get(id)?.()
+          markerCleanupRef.current.delete(id)
           marker.remove()
           markersRef.current.delete(id)
-          // Removing a marker under the cursor (e.g. it just got clustered) never
-          // fires mouseleave, so drop its tooltip here to avoid orphaning it.
           if (hoverIdRef.current === id) { hoverIdRef.current = null; setHoverPlace(null); setHoverPos(null) }
         }
       })
@@ -776,9 +789,13 @@ export function MapViewGL({
         const pck = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
         const photoUrl = (pck && photoUrls[pck]) || place.image_url || null
         const selected = place.id === selectedPlaceId
-        const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected)
+        const repositioning = place.id === activeRepositionId
+        const existing = markersRef.current.get(place.id)
+        if (existing && repositioning && existing.__trekRepositioning === true) return
+        const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected, repositioning)
         el.addEventListener('click', (ev) => {
           ev.stopPropagation()
+          if (Date.now() < (suppressMarkerClickUntilRef.current.get(place.id) ?? 0)) return
           // Clear the card right away — the flyTo that follows moves the marker
           // out from under the cursor and mouseleave never fires (#1404).
           hoverIdRef.current = null
@@ -804,16 +821,35 @@ export function MapViewGL({
         })
         // Recreate marker each time rather than patching internal state —
         // mapbox-gl's internal _element bookkeeping breaks under DOM swaps.
-        const existing = markersRef.current.get(place.id)
-        if (existing) existing.remove()
-        // Default (viewport-aligned) anchors keep the marker parallel to the
-        // screen so its pixel centre lines up with the route line at any
-        // pitch. Tried `pitchAlignment: 'map'` to snap markers onto terrain,
-        // but it rotates the element by the pitch angle and visually offsets
-        // the anchor by ~100px at 45° tilt, which caused the observed drift.
-        const m = new gl.Marker({ element: el, anchor: 'center' })
+        if (existing) {
+          markerCleanupRef.current.get(place.id)?.()
+          markerCleanupRef.current.delete(place.id)
+          existing.remove()
+        }
+        const m = new gl.Marker({ element: el, anchor: 'center', draggable: repositioning })
           .setLngLat([place.lng, place.lat])
           .addTo(map)
+        m.__trekRepositioning = repositioning
+        if (repositioning) {
+          const handleDragStart = () => {
+            popupRef.current?.remove()
+            hoverIdRef.current = null
+            setHoverPlace(null)
+            setHoverPos(null)
+            onRepositionRefs.current.start?.(place.id)
+          }
+          const handleDragEnd = () => {
+            suppressMarkerClickUntilRef.current.set(place.id, Date.now() + 350)
+            const { lat, lng } = m.getLngLat()
+            onRepositionRefs.current.end?.(place.id, { lat, lng })
+          }
+          m.on('dragstart', handleDragStart)
+          m.on('dragend', handleDragEnd)
+          markerCleanupRef.current.set(place.id, () => {
+            m.off('dragstart', handleDragStart)
+            m.off('dragend', handleDragEnd)
+          })
+        }
         markersRef.current.set(place.id, m)
       })
     }
@@ -826,7 +862,9 @@ export function MapViewGL({
       return
     }
 
-    source.setData(buildPlaceClusterData(places) as any)
+    source.setData(buildPlaceClusterData(
+      activeRepositionId ? places.filter(p => p.id !== activeRepositionId) : places,
+    ) as any)
     const placesById = new Map<number, PlaceWithCoords>(validPlaces.map(place => [place.id, place]))
     let raf: number | null = null
     const runReconcile = () => {
@@ -842,6 +880,12 @@ export function MapViewGL({
         if (!place) continue
         seen.add(id)
         visiblePlaces.push(place)
+      }
+      if (activeRepositionId != null) {
+        const repositionPlace = placesById.get(activeRepositionId)
+        if (repositionPlace) {
+          visiblePlaces.push(repositionPlace)
+        }
       }
       reconcileMarkers(visiblePlaces)
     }
@@ -864,7 +908,7 @@ export function MapViewGL({
       map.off('zoomend', scheduleReconcile)
       map.off('idle', scheduleReconcile)
     }
-  }, [places, selectedPlaceId, dayOrderMap, photoUrls, mapReady, glProvider])
+  }, [places, selectedPlaceId, repositionPlaceId, canRepositionPlaces, dayOrderMap, photoUrls, mapReady, glProvider])
 
   // Reconcile OSM "explore" POI markers (imperative, kept separate from the
   // planned-place markers so they don't cluster or get confused with them).
@@ -936,6 +980,11 @@ export function MapViewGL({
   const visibleReservations = useMemo(() => (
     visibleRouteReservations(reservations, { visibleConnectionIds, showTransitRoutes })
   ), [reservations, visibleConnectionIds, showTransitRoutes])
+  const reservationEndpointCoords = useMemo<[number, number][]>(() =>
+    visibleReservationEndpointPoints(reservations, { visibleConnectionIds, showTransitRoutes })
+      .map(p => [p.lat!, p.lng!] as [number, number]),
+    [reservations, visibleConnectionIds, showTransitRoutes],
+  )
   // Real road geometry for car/bus/taxi/bicycle bookings (straight line until it loads/if it fails).
   const transportRoutes = useTransportRoutes(visibleReservations)
 
@@ -1002,7 +1051,8 @@ export function MapViewGL({
     }
     const target = dayPlaces.length > 0 ? dayPlaces : places
     const markerPoints = target.filter(hasValidCoords).map(p => [p.lat, p.lng] as [number, number])
-    const fitPoints = routeCoords.length > 0 ? [...routeCoords, ...markerPoints] : markerPoints
+    const allPoints = [...markerPoints, ...reservationEndpointCoords]
+    const fitPoints = routeCoords.length > 0 ? [...routeCoords, ...allPoints] : allPoints
     if (fitPoints.length === 0) return
     const bounds = new gl.LngLatBounds()
     fitPoints.forEach(([lat, lng]) => bounds.extend([lng, lat]))

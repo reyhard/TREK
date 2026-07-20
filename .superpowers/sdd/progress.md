@@ -444,3 +444,80 @@ These fork-specific files exist in the tree but are not imported by the post-mer
 - **Task 03** consumes: merge commit `68fe32c7` and `server/tests/fixtures/pre-upstream-3.4-fork.*`.
 - **Tasks 04-12** consume: this conflict ledger (merge-tree conflicts + auto-merged inventory) for semantic resolution guidance.
 - Install commands: `npm ci && npm --prefix plugin-sdk ci && npm run build --workspace=shared`
+
+## Task 07 — Approved Completion
+
+**Status:** DONE / APPROVED
+**Completed:** 2026-07-20
+**Commits:** `2dad7fe9`, `ea08df9b`
+
+Task 07 plugin runtime, OAuth broker, MCP proxy, SDK, and egress reconciliation is approved. The remediation commit addressed OAuth state/provider binding, active and compatible resource filtering, permission reconciliation and runtime reloads, SDK request parity, and focused OAuth/resource tests.
+
+### Verification
+
+- Server typecheck: PASS (0 errors)
+- Plugin unit/integration tests: PASS (48 files, 717 tests)
+- Plugin-SDK tests: PASS (227/235 tests; 11/12 files)
+- Plugin-SDK build: PASS
+- Plugin-SDK pack dry run: PASS
+- Fixture policy: fixtures remain local-only; none staged or committed
+
+### Handoff
+
+- **Task 08** consumes: the approved Task 07 state and the Day Movement Plan / OSRM reconciliation brief at `.superpowers/sdd/task-08-brief.md`.
+
+## Task 08 — Approved Completion
+
+**Status:** DONE / APPROVED
+**Completed:** 2026-07-20
+**Commits:** `9c11cfa6`, `c4f834f9`
+
+Task 08 day movement planning and OSRM resolution is complete and review approved. The canonical movement parts, grouped OSRM resolution, fallback/abort behavior, track metrics, stable connector placement, and visibility-independent route calculation are ready for Task 09.
+
+### Handoff
+
+- **Task 09** consumes: canonical movement parts, stable movement-part keys, connector metrics, and route-calculation behavior from commits `9c11cfa6` and `c4f834f9`.
+- **Review:** APPROVED.
+- **Fixture policy:** fixtures remain local-only; none staged or committed.
+
+## Task 09 — Reviewer Findings Fix (In Progress)
+
+### Completed: 2026-07-20
+
+### Changes
+
+1. **Restore reposition behavior and tests in MapView and MapViewGL**
+   - Restored `repositionPlaceId`, `canRepositionPlaces`, `onPlaceRepositionStart`, `onPlaceRepositionEnd` props with full drag/reposition implementation
+   - Reposition marker styled with blue glow shadow, grabbing cursor, draggable=true
+   - Reposition marker excluded from MarkerClusterGroup in Leaflet and cluster source data in GL
+   - Drag start clears hover tooltip, drag end emits coordinates with 350ms click suppression
+   - Restored 3 reposition tests in MapView.test.tsx (FE-COMP-MAPVIEW-021/022/023)
+   - Restored 2 reposition tests in MapViewGL.test.tsx (FE-COMP-MAPVIEWGL-014/015)
+
+2. **Deduplicate stored/toggled visibility IDs**
+   - `parseStoredConnections` now deduplicates IDs on parse (both legacy arrays and tagged objects)
+   - `toggleConnectionId` deduplicates on both add and remove paths
+   - Added 5 deduplication tests in connectionsVisibility.test.ts
+
+3. **Include visible booking route endpoints in Leaflet and GL bounds**
+   - Added `visibleReservationEndpointPoints()` to reservationRoutes.ts extracting GeoPointish from visible reservations
+   - Updated MapView initial viewport computation to include visible reservation endpoints
+   - Updated MapView BoundsController to include reservation endpoint coords in fitBounds
+   - Updated MapViewGL fitBounds to include reservation endpoint coords
+   - Added 5 tests for visibleReservationEndpointPoints including non-finite and zero-coordinate handling
+
+4. **Recompute bounds on visibility changes**
+   - Added useEffect in useTripPlanner that bumps fitKey when visibleConnections ID set changes
+   - Uses sorted JSON comparison to detect actual changes, avoiding initial load re-trigger
+
+### Verification
+- Typecheck: 0 new errors (only pre-existing Task 10 errors in dayMovementPlan.test.ts)
+- Unit tests: 104 passed (connectionsVisibility, mapViewport, reservationRoutes, MapView, MapViewGL)
+- Sidebar tests: 122 passed (DayPlanSidebar, DayPlanSidebarRouteConnector)
+- Integration test: 35 passed (useRouteCalculation)
+- Total: 266 tests passed across 8 test files
+- Fixture policy: fixtures remain local-only; none staged or committed
+
+### Handoff
+- **Task 10** consumes: canonical reservations, geometry ownership, sidebar connectors with reposition support, and visibility-aware bounds from this commit.
+- **Concerns:** None.

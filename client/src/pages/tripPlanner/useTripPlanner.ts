@@ -288,6 +288,16 @@ export function useTripPlanner() {
   const toggleAllConnections = useCallback(() => {
     setStoredConnections(prev => flipAllConnectionsMode(prev, alwaysShowRoutesDefault))
   }, [alwaysShowRoutesDefault])
+
+  const visibleConnectionsRef = useRef(visibleConnections)
+  useEffect(() => {
+    const prev = visibleConnectionsRef.current
+    visibleConnectionsRef.current = visibleConnections
+    const prevStr = JSON.stringify(prev.sort())
+    const nextStr = JSON.stringify([...visibleConnections].sort())
+    if (prevStr !== nextStr) setFitKey(k => k + 1)
+  }, [visibleConnections])
+
   const [mapTransportDetail, setMapTransportDetail] = useState<Reservation | null>(null)
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)

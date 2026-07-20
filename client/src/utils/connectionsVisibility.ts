@@ -34,14 +34,14 @@ export function parseStoredConnections(raw: string | null): StoredConnections | 
   } catch {
     return null
   }
-  if (isNumberArray(parsed)) return { mode: 'only', ids: parsed }
+  if (isNumberArray(parsed)) return { mode: 'only', ids: [...new Set(parsed)] }
   if (
     parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
     ((parsed as { mode?: unknown }).mode === 'only' || (parsed as { mode?: unknown }).mode === 'all-except') &&
     isNumberArray((parsed as { ids?: unknown }).ids)
   ) {
     const obj = parsed as { mode: ConnectionsMode; ids: number[] }
-    return { mode: obj.mode, ids: obj.ids }
+    return { mode: obj.mode, ids: [...new Set(obj.ids)] }
   }
   return null
 }
@@ -72,8 +72,8 @@ export function resolveVisibleConnectionIds(effective: StoredConnections, routab
  */
 export function toggleConnectionId(stored: StoredConnections | null, alwaysShowRoutesDefault: boolean, id: number): StoredConnections {
   const base = resolveEffectiveConnections(stored, alwaysShowRoutesDefault)
-  const ids = base.ids.includes(id) ? base.ids.filter(x => x !== id) : [...base.ids, id]
-  return { mode: base.mode, ids }
+  if (base.ids.includes(id)) return { mode: base.mode, ids: [...new Set(base.ids.filter(x => x !== id))] }
+  return { mode: base.mode, ids: [...new Set([...base.ids, id])] }
 }
 
 /**

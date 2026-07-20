@@ -134,9 +134,63 @@ describe('MapView', () => {
     expect(onMarkerClick).toHaveBeenCalledWith(42)
   })
 
-  // Reposition tests (FE-COMP-MAPVIEW-021/022) removed — reposition is not in Task 09 scope.
+  it('FE-COMP-MAPVIEW-021: only the active reposition marker is draggable and stays outside clustering', () => {
+    const places = [
+      buildMapPlace({ id: 1, lat: 48.8584, lng: 2.2945 }),
+      buildMapPlace({ id: 2, lat: 48.86, lng: 2.337 }),
+    ]
 
-  // FE-COMP-MAPVIEW-023 removed — POI draggable guard not in Task 09 scope.
+    render(<MapView places={places} selectedPlaceId={2} repositionPlaceId={2} canRepositionPlaces />)
+
+    const clusteredMarkers = within(screen.getByTestId('cluster-group')).getAllByTestId('marker')
+    expect(clusteredMarkers).toHaveLength(1)
+    expect(clusteredMarkers[0]).toHaveAttribute('data-draggable', 'false')
+    const active = screen.getAllByTestId('marker').find(marker => marker.dataset.lat === '48.86')
+    expect(active).toHaveAttribute('data-draggable', 'true')
+    expect(active).toHaveAttribute('data-z-index', '2000')
+  })
+
+  it('FE-COMP-MAPVIEW-022: drag start clears hover and drag end emits coordinates without a follow-up marker click', async () => {
+    const onMarkerClick = vi.fn()
+    const onPlaceRepositionStart = vi.fn()
+    const onPlaceRepositionEnd = vi.fn()
+    render(
+      <MapView
+        places={[buildMapPlace({ id: 7, name: 'Movable', lat: 48.8584, lng: 2.2945 })]}
+        selectedPlaceId={7}
+        repositionPlaceId={7}
+        canRepositionPlaces
+        onMarkerClick={onMarkerClick}
+        onPlaceRepositionStart={onPlaceRepositionStart}
+        onPlaceRepositionEnd={onPlaceRepositionEnd}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('marker-hover-trigger'))
+    expect(screen.getByTestId('tooltip')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('marker-drag-start'))
+    expect(screen.queryByTestId('tooltip')).toBeNull()
+    expect(onPlaceRepositionStart).toHaveBeenCalledWith(7)
+
+    fireEvent.click(screen.getByTestId('marker-drag-end'))
+    expect(onPlaceRepositionEnd).toHaveBeenCalledWith(7, { lat: 48.9, lng: 2.4 })
+    fireEvent.click(screen.getByTestId('marker'))
+    expect(onMarkerClick).not.toHaveBeenCalled()
+  })
+
+  it('FE-COMP-MAPVIEW-023: Explore POI markers never become draggable', () => {
+    render(
+      <MapView
+        places={[buildMapPlace({ id: 1, lat: 48.8584, lng: 2.2945 })]}
+        pois={[{ osm_id: 'node/1', name: 'Explore result', lat: 48.86, lng: 2.3, category: 'food' }]}
+        repositionPlaceId={1}
+        selectedPlaceId={1}
+        canRepositionPlaces
+      />,
+    )
+    const poiMarker = screen.getAllByTestId('marker').find(marker => marker.dataset.lat === '48.86')
+    expect(poiMarker).toHaveAttribute('data-draggable', 'false')
+  })
 
   it('FE-COMP-MAPVIEW-004: tooltip shows place name', async () => {
     const user = userEvent.setup()

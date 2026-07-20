@@ -111,3 +111,23 @@ describe('toggleAllConnections', () => {
     expect(toggleAllConnections(null, false)).toEqual({ mode: 'all-except', ids: [] })
   })
 })
+
+describe('deduplication', () => {
+  it('parseStoredConnections deduplicates legacy-array ids', () => {
+    expect(parseStoredConnections('[1,2,2,3,1]')).toEqual({ mode: 'only', ids: [1, 2, 3] })
+  })
+
+  it('parseStoredConnections deduplicates tagged-object ids', () => {
+    expect(parseStoredConnections('{"mode":"only","ids":[5,5,6,6]}')).toEqual({ mode: 'only', ids: [5, 6] })
+    expect(parseStoredConnections('{"mode":"all-except","ids":[7,8,7]}')).toEqual({ mode: 'all-except', ids: [7, 8] })
+  })
+
+  it('toggleConnectionId preserves id uniqueness on add', () => {
+    expect(toggleConnectionId({ mode: 'only', ids: [1, 1, 2] }, false, 2)).toEqual({ mode: 'only', ids: [1] })
+    expect(toggleConnectionId({ mode: 'only', ids: [1, 1] }, false, 3)).toEqual({ mode: 'only', ids: [1, 3] })
+  })
+
+  it('toggleConnectionId adds a unique id when the stored ids already contain duplicates', () => {
+    expect(toggleConnectionId({ mode: 'only', ids: [1, 1, 2] }, false, 3)).toEqual({ mode: 'only', ids: [1, 2, 3] })
+  })
+})

@@ -1,4 +1,5 @@
 import type { Reservation } from '../types'
+import type { GeoPointish } from './mapViewport'
 
 /** A reservation is routable on the map once it has at least two ordered endpoints (from/to/stop). */
 export function isRoutableReservation(r: Pick<Reservation, 'endpoints'>): boolean {
@@ -20,4 +21,17 @@ export function visibleRouteReservations(reservations: Reservation[], options: R
     (r.type === 'transit' && showTransitRoutes) ||
     set.has(r.id)
   )
+}
+
+export function visibleReservationEndpointPoints(reservations: Reservation[], options: RouteVisibilityOptions): GeoPointish[] {
+  const points: GeoPointish[] = []
+  const visible = visibleRouteReservations(reservations, options)
+  for (const r of visible) {
+    for (const ep of r.endpoints || []) {
+      if (ep.lat != null && ep.lng != null && Number.isFinite(ep.lat) && Number.isFinite(ep.lng)) {
+        points.push({ lat: ep.lat, lng: ep.lng })
+      }
+    }
+  }
+  return points
 }
