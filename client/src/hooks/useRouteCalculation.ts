@@ -197,8 +197,8 @@ export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: nu
   }, [])
 
   return {
-    route,
-    routeSegments,
+    route: enabled ? route : null,
+    routeSegments: enabled ? routeSegments : [],
     movementParts,
     routeEligibility,
     routeInfo,

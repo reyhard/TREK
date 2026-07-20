@@ -883,12 +883,62 @@ describe('useRouteCalculation', () => {
     expect(callsBefore).toBeGreaterThanOrEqual(1);
 
     useSettingsStore.setState((state) => ({
-      settings: { ...state.settings, distance_unit: 'miles' as const },
+      settings: { ...state.settings, distance_unit: 'imperial' as const },
     }));
     await act(async () => {});
 
     expect((calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
   });
 
+  it('FE-HOOK-ROUTE-023: toggling enabled off hides rendered route without re-fetching OSRM', async () => {
+    const a = buildPlace({ lat: 10, lng: 10 });
+    const b = buildPlace({ lat: 20, lng: 20 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: a }),
+      buildAssignment({ day_id: 5, order_index: 1, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, b], days: [{ id: 5 }] } as any);
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useRouteCalculation(store, 5, enabled),
+      { initialProps: { enabled: true as boolean } },
+    );
+    await act(async () => {});
+    expect(result.current.route).not.toBeNull();
+    const callsAtVisible = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => rerender({ enabled: false }));
+    expect(result.current.route).toBeNull();
+    expect(result.current.routeSegments).toEqual([]);
+    expect((calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAtVisible);
+  });
+
+  it('FE-HOOK-ROUTE-024: toggling enabled on restores route without re-fetching OSRM', async () => {
+    const a = buildPlace({ lat: 10, lng: 10 });
+    const b = buildPlace({ lat: 20, lng: 20 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: a }),
+      buildAssignment({ day_id: 5, order_index: 1, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({ assignments: store.assignments, places: [a, b], days: [{ id: 5 }] } as any);
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useRouteCalculation(store, 5, enabled),
+      { initialProps: { enabled: true as boolean } },
+    );
+    await act(async () => {});
+    expect(result.current.route).not.toBeNull();
+    const routeAfterCompute = result.current.route;
+    const callsAfterCompute = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => rerender({ enabled: false }));
+    expect(result.current.route).toBeNull();
+
+    await act(async () => rerender({ enabled: true }));
+    expect(result.current.route).toEqual(routeAfterCompute);
+    expect((calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterCompute);
+  });
 
 });
