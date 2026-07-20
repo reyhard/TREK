@@ -318,3 +318,59 @@ describe('PluginsService error log', () => {
     expect(svc.errors('p')).toEqual([]);
   });
 });
+
+describe('PluginRuntimeService oauthResources', () => {
+  function plugin(id: string, opts: { status?: string; enabled?: number; trekRange?: string }) {
+    testDb.prepare(
+      'INSERT OR REPLACE INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    ).run(id, id, id, opts.status ?? 'inactive', opts.enabled ?? 0, opts.trekRange ?? null, '1.0.0', '[]', '{}', '{}', 'widget');
+  }
+
+  function active(id: string, trekRange?: string) { plugin(id, { status: 'active', enabled: 1, trekRange }); }
+  function inactive(id: string) { plugin(id, { status: 'inactive', enabled: 0 }); }
+
+  beforeEach(() => { testDb.exec('DELETE FROM plugins'); });
+  afterAll(() => { delete process.env.APP_VERSION; });
+
+  it('returns only active, enabled plugins that are host-compatible', async () => {
+    process.env.APP_VERSION = '3.4.0';
+    active('weather', '>=3.2.0 <4.0.0');
+    active('import', '>=3.0.0 <5.0.0');
+    inactive('old-import');
+    active('too-new', '>=4.0.0');
+
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    const resources = rt.oauthResources();
+
+    expect(resources).toHaveLength(2);
+    expect(resources.map((r: { id: string }) => r.id).sort()).toEqual(['import', 'weather']);
+    expect(resources.every((r: { uri: string }) => r.uri.startsWith('http') || r.uri.startsWith('https'))).toBe(true);
+  });
+
+  it('excludes a plugin that is disabled even if status is active', async () => {
+    process.env.APP_VERSION = '3.4.0';
+    testDb.prepare(
+      "INSERT INTO plugins (id, name, description, status, enabled, trek_range, version, permissions, capabilities, config, type) VALUES ('disabled-one','d','','active',0,'>=3.2.0 <4.0.0','1.0.0','[]','{}','{}','widget')",
+    ).run();
+
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    expect(rt.oauthResources()).toHaveLength(0);
+  });
+
+  it('excludes an incompatible plugin (host outside declared range)', async () => {
+    process.env.APP_VERSION = '3.4.0';
+    active('too-low', '>=1.0.0 <2.0.0');
+
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    expect(rt.oauthResources()).toHaveLength(0);
+  });
+
+  it('returns empty when no plugins are active', async () => {
+    const mod = await import('../../../src/nest/plugins/plugin-runtime.service');
+    const rt = new mod.PluginRuntimeService();
+    expect(rt.oauthResources()).toEqual([]);
+  });
+});

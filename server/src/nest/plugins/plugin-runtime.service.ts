@@ -408,9 +408,43 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     return toDisable;
   }
 
-  /** Re-scan the plugins volume on demand (admin action). */
+  /** Re-scan the plugins volume on demand (admin action).
+   * After discovery, reconcile: prune granted_permissions that were removed from
+   * the manifest, and reload any active child whose manifest changed. */
   rescan(): { discovered: string[]; skipped: string[] } {
-    return discoverPlugins(db);
+    const result = discoverPlugins(db);
+    for (const id of result.discovered) {
+      this.reconcilePermissions(id);
+      if (this.supervisor.isActive(id)) void this.reloadActive(id);
+    }
+    return result;
+  }
+
+  /** Prune granted_permissions that the manifest no longer declares. Called after
+   * discovery picks up a manifest change (permission removed or narrowed). */
+  private reconcilePermissions(id: string): void {
+    const row = db.prepare('SELECT permissions, granted_permissions FROM plugins WHERE id = ?').get(id) as
+      | { permissions: string; granted_permissions: string }
+      | undefined;
+    if (!row) return;
+    const declared = parseArray(row.permissions).filter(isKnownPermission);
+    const granted = parseArray(row.granted_permissions);
+    const valid = granted.filter((p) => declared.includes(p));
+    if (valid.length < granted.length) {
+      db.prepare('UPDATE plugins SET granted_permissions = ? WHERE id = ?').run(JSON.stringify(valid), id);
+    }
+  }
+
+  /** Reload an active child so it picks up the latest code/manifest. Idempotent:
+   * deactivates then re-activates at the current grant level (consentWiden=false). */
+  private async reloadActive(id: string): Promise<void> {
+    try {
+      await this.supervisor.disable(id);
+      await this.activate(id);
+    } catch {
+      // If the reload fails (e.g. dependency missing), leave it stopped — the
+      // deactivate call already persisted the inactive status.
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -908,8 +942,10 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     return this.supervisor.routesOf(id);
   }
   oauthResources(): Array<{ id: string; uri: string; name: string; description: string | null }> {
-    return (db.prepare('SELECT id, name, description FROM plugins ORDER BY sort_order, name').all() as Array<{ id: string; name: string; description: string | null }>)
-      .map((r) => ({ id: r.id, uri: pluginResourceUri(r.id), ...r }));
+    const rows = db.prepare('SELECT id, name, description, status, enabled, trek_range FROM plugins ORDER BY sort_order, name').all() as Array<{ id: string; name: string; description: string | null; status: string; enabled: number; trek_range: string | null }>;
+    return rows
+      .filter((r) => r.status === 'active' && r.enabled === 1 && hostSatisfies(r.trek_range))
+      .map((r) => ({ id: r.id, uri: pluginResourceUri(r.id), name: r.name, description: r.description }));
   }
 
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
