@@ -43,6 +43,7 @@ services:
 #      - OIDC_DISCOVERY_URL= # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik)
 #      - ADMIN_EMAIL=admin@trek.local # Initial admin e-mail — only used on first boot when no users exist
 #      - ADMIN_PASSWORD=changeme      # Initial admin password — only used on first boot when no users exist
+#      - DEMO_MODE=false # Enable demo mode (hourly data resets)
 #      - DEMO_ADMIN_USER=admin # Username of the seeded demo admin (when DEMO_MODE=true)
 #      - DEMO_ADMIN_EMAIL=admin@trek.app # Email of the seeded demo admin
 #      - DEMO_ADMIN_PASS=admin12345 # Initial password for the seeded demo admin
@@ -59,10 +60,13 @@ services:
 #      - MCP_SESSION_TTL=3600 # MCP session idle timeout in seconds (default: 3600)
 #      - MCP_SSE_KEEPALIVE=25 # SSE keep-alive interval in seconds (default: 25). Keeps reverse proxies from killing idle SSE streams.
 #      - IDEMPOTENCY_TTL_SECONDS=2592000 # TTL for X-Idempotency-Key entries (default: 2592000 / 30 days)
+#      - BACKUP_UPLOAD_LIMIT_MB=500 # Max compressed size (MB) of a backup upload for restore (default: 500). Raise if your backup (including uploads/) exceeds the limit. If behind a reverse proxy, also raise its upload limit (e.g. nginx client_max_body_size).
 #      - BACKUP_MAX_DECOMPRESSED_MB=5120 # Max decompressed size of a restore archive (default: 5120 MB)
 #      - TREK_API_DOCS_ENABLED=false # Serve Swagger UI / OpenAPI spec at /api/docs (default: false)
 #      - TRANSIT_API_URL=https://transitous.example.com # Transitous-compatible transit routing API (default: public Transitous endpoint)
 #      - KITINERARY_EXTRACTOR_PATH= # Optional. Full path to kitinerary-extractor binary. Auto-detected from PATH and /usr/lib/*/libexec/kf6/ when unset.
+#      - OVERPASS_URL= # Custom Overpass endpoint(s) for the map POI "explore" search, comma-separated. When set, REPLACES the bundled public mirrors. Point it at an internal/self-hosted Overpass instance when public mirrors are unreachable from your network. Non-http(s) entries are ignored.
+#      - OVERPASS_TIMEOUT_MS=12000 # Per-endpoint timeout (ms) for Overpass POI requests. Raise it for a slow self-hosted Overpass instance. (default: 12000)
 #      - OAUTH_HTTP_REDIRECT_HOSTS= # Comma-separated list of LAN hostnames allowed for HTTP OAuth redirect URIs. Default: only localhost/127.0.0.1/[::1].
 #      - TREK_PLUGINS_ENABLED=true # Kill switch for the entire plugin system. Set to false to disable plugins at runtime. Default: true.
 #      - TREK_PLUGINS_DIR= # Override the root directory for installed plugin code. Default: data/plugins.

@@ -455,6 +455,9 @@ Caddy handles TLS and WebSockets automatically.
 | `MCP_SSE_KEEPALIVE` | SSE keep-alive interval in seconds (`0` = off). Keeps reverse proxies from killing idle SSE streams between tool calls | `25` |
 | `TRANSIT_API_URL` | Base URL for a Transitous-compatible public-transit routing API. When set, overrides the default public endpoint. Point it at your own Transitous instance for locked-down egress | auto |
 | `KITINERARY_EXTRACTOR_PATH` | Full path to the `kitinerary-extractor` binary. Auto-detected from PATH when unset | auto |
+| `OVERPASS_URL` | Custom Overpass API endpoint(s) for the map POI "explore" search, comma-separated. Replaces the bundled public mirrors — point it at an internal/self-hosted Overpass instance when public mirrors are unreachable from your network. Non-http(s) entries are ignored | bundled public mirrors |
+| `OVERPASS_TIMEOUT_MS` | Per-endpoint timeout (ms) for Overpass POI requests. Raise it for a slow self-hosted Overpass instance | `12000` |
+| `BACKUP_UPLOAD_LIMIT_MB` | Max compressed size (MB) of a backup archive you can upload when restoring. Raise it if your backup exceeds 500 MB. If behind a reverse proxy, also raise its upload limit (e.g. nginx client_max_body_size) | `500` |
 | `BACKUP_MAX_DECOMPRESSED_MB` | Upper bound on total decompressed size of a restore archive | `5120` (5 GB) |
 | `IDEMPOTENCY_TTL_SECONDS` | TTL for `X-Idempotency-Key` entries in the database | `2592000` (30 days) |
 | `TREK_API_DOCS_ENABLED` | Serve Swagger UI / OpenAPI spec at `/api/docs` | `false` |

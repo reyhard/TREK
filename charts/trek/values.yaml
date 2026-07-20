@@ -142,6 +142,8 @@ env:
   # SSE keep-alive interval in seconds (0 = off). Defaults to 25. Keeps reverse proxies from killing idle SSE streams between tool calls.
   # IDEMPOTENCY_TTL_SECONDS: "2592000"
   # TTL for X-Idempotency-Key entries (default: 2592000 / 30 days).
+  # BACKUP_UPLOAD_LIMIT_MB: "500"
+  # Max compressed size (MB) of a backup upload for restore (default: 500). Raise if your backup (including uploads/) exceeds the limit. If behind a reverse proxy, also raise its upload limit.
   # BACKUP_MAX_DECOMPRESSED_MB: "5120"
   # Max decompressed size of a restore archive (default: 5120 MB / 5 GB).
   # TREK_API_DOCS_ENABLED: "false"

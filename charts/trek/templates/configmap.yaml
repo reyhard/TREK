@@ -181,6 +181,9 @@ data:
   {{- if .Values.env.IDEMPOTENCY_TTL_SECONDS }}
   IDEMPOTENCY_TTL_SECONDS: {{ .Values.env.IDEMPOTENCY_TTL_SECONDS | quote }}
   {{- end }}
+  {{- if .Values.env.BACKUP_UPLOAD_LIMIT_MB }}
+  BACKUP_UPLOAD_LIMIT_MB: {{ .Values.env.BACKUP_UPLOAD_LIMIT_MB | quote }}
+  {{- end }}
   {{- if .Values.env.BACKUP_MAX_DECOMPRESSED_MB }}
   BACKUP_MAX_DECOMPRESSED_MB: {{ .Values.env.BACKUP_MAX_DECOMPRESSED_MB | quote }}
   {{- end }}
