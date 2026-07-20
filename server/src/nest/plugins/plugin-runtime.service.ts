@@ -30,6 +30,7 @@ import { isAddonEnabled } from '../../services/adminService';
 import type { PluginDependency } from './install/manifest';
 import type { VersionMismatch, PluginDepRow } from './dependencies';
 import { parseDependencies, disabledRequiredAddons, resolveDependencyState, enableOrder, findDependentsTransitive, DependencyCycleError } from './dependencies';
+import { pluginResourceUri } from '../../services/oauthResources';
 
 const HTTP_OUTBOUND = 'http:outbound:';
 
@@ -906,6 +907,11 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
   routesOf(id: string): PluginRouteInfo[] {
     return this.supervisor.routesOf(id);
   }
+  oauthResources(): Array<{ id: string; uri: string; name: string; description: string | null }> {
+    return (db.prepare('SELECT id, name, description FROM plugins ORDER BY sort_order, name').all() as Array<{ id: string; name: string; description: string | null }>)
+      .map((r) => ({ id: r.id, uri: pluginResourceUri(r.id), ...r }));
+  }
+
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
     return this.supervisor.invoke(id, method, params, { actingUserId });
   }

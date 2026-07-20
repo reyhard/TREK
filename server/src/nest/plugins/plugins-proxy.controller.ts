@@ -124,7 +124,7 @@ export class PluginsProxyController {
           res.status(403).json({ error: 'OAuth scope required', code: 'OAUTH_SCOPE_REQUIRED' });
           return;
         }
-        user = { id: info.user.id, username: info.user.username, is_admin: info.user.role === 'admin' };
+        user = { id: info.user.id, username: info.user.username, role: info.user.role === 'admin' ? 'admin' : 'user' };
       } else {
         const token = extractToken(req);
         const loaded = token ? verifyJwtAndLoadUser(token) : null;
