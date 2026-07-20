@@ -2,6 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useRouteCalculation } from '../../../src/hooks/useRouteCalculation';
 import { useTripStore } from '../../../src/store/tripStore';
+import { useSettingsStore } from '../../../src/store/settingsStore';
 import { buildAssignment, buildPlace } from '../../helpers/factories';
 import type { TripStoreState } from '../../../src/store/tripStore';
 import type { RouteSegment } from '../../../src/types';
@@ -860,4 +861,34 @@ describe('useRouteCalculation', () => {
       expect.objectContaining({ placement: { kind: 'after-reservation', reservationId: 9 } }),
     ]);
   });
+
+  it('FE-HOOK-ROUTE-022: changing distance unit does not re-fetch OSRM route', async () => {
+    const a = buildPlace({ lat: 48.86, lng: 2.35 });
+    const b = buildPlace({ lat: 51.51, lng: -0.13 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: a }),
+      buildAssignment({ day_id: 5, order_index: 1, place: b }),
+    ];
+    const store = { assignments: { '5': assignments } } as unknown as TripStoreState;
+    useTripStore.setState({
+      assignments: store.assignments,
+      places: [a, b], reservations: [], days: [{ id: 5, day_number: 1 }],
+    } as any);
+    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockClear();
+
+    renderHook(() => useRouteCalculation(store, 5));
+    await act(async () => {});
+
+    const callsBefore = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(callsBefore).toBeGreaterThanOrEqual(1);
+
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, distance_unit: 'miles' as const },
+    }));
+    await act(async () => {});
+
+    expect((calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
+  });
+
+
 });
