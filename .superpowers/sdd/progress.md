@@ -670,3 +670,52 @@ Task 10 movement statistics and live reservation-event reconciliation is complet
 
 - **Task 12** consumes: the complete client with up-to-date OAuth scope display, normalized settings including auto dark_mode, defensive transit metadata parsing, generic field editing for transit, multi-day date display, focus-restoring modals, and locale parity across all 23 languages.
 - **Concerns:** None.
+
+## Task 12 — Packaging, Deployment Configuration, and Documentation
+
+**Status:** DONE
+**Completed:** 2026-07-20
+
+### Changes
+
+1. **Deployment surface env vars — docker-compose.yml**
+   - Added WebAuthn (`WEBAUTHN_ORIGINS`, `WEBAUTHN_RP_ID`)
+   - Added SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SKIP_TLS_VERIFY`)
+   - Added plugin controls (`TREK_PLUGINS_ENABLED`, `TREK_PLUGINS_DIR`, `TREK_PLUGINS_DATA_DIR`, `TREK_PLUGINS_DEV_LINK`, `TREK_PLUGIN_PERMISSIONS`, `TREK_PLUGIN_REGISTRY_URL`)
+   - Added plugin RPC limits (`TREK_PLUGIN_RPC_BURST`, `TREK_PLUGIN_RPC_PER_SEC`, `TREK_PLUGIN_RPC_INFLIGHT`)
+   - Added plugin log limits (`TREK_PLUGIN_LOG_BURST`, `TREK_PLUGIN_LOG_PER_SEC`)
+   - Added plugin broker budgets (`TREK_PLUGIN_AI_PER_DAY`, `TREK_PLUGIN_NOTIFY_PER_DAY`)
+   - Added plugin audit/Max RSS (`TREK_PLUGIN_AUDIT_MAX_ROWS`, `TREK_PLUGIN_MAX_RSS_MB`)
+   - Added `OAUTH_HTTP_REDIRECT_HOSTS`
+
+2. **Helm chart — values.yaml**
+   - Added `TRANSIT_API_URL`, `KITINERARY_EXTRACTOR_PATH`, `OAUTH_HTTP_REDIRECT_HOSTS`
+   - Added WebAuthn, SMTP env entries (with `SMTP_PASS` in `secretEnv`)
+   - Added all plugin env vars from the docker-compose.yml additions
+
+3. **Helm chart — ConfigMap template (configmap.yaml)**
+   - Added conditional template rendering entries for every new `values.yaml` env var
+   - Pattern matches existing Helm chart conventions (`{{- if .Values.env.X }}` / `{{ .Values.env.X | quote }}`)
+
+4. **server/.env.example**
+   - Added `OAUTH_HTTP_REDIRECT_HOSTS`
+   - Added all plugin env vars (`TREK_PLUGINS_ENABLED` through `TREK_PLUGIN_MAX_RSS_MB`)
+
+5. **Scope description reconciliation**
+   - `server/src/mcp/scopes.ts:51`: removed "or transit stops" from `places:read` description — transit-stop and route search require `geo:read`
+   - `wiki/MCP-Scopes.md:17`: removed "and transit-stop" from `places:read` description — same correction
+
+### Verification
+
+- docker-compose.yml syntax: PASS (`docker compose config --quiet`)
+- Server typecheck: PASS
+- Client typecheck: PASS
+- All environment variables from active source code documented in .env.example
+- Deployment surfaces (Compose + Helm) expose all runtime configuration
+- Wiki scope documentation matches source code descriptions
+- Fixture policy: fixtures remain local-only; none staged or committed
+
+### Handoff
+
+- **Task 13** consumes: complete Task 12 state with reconciled deployment configuration, environment inventory, and corrected scope documentation.
+- **Concerns:** None.

@@ -48,7 +48,7 @@ export const SCOPE_INFO: Record<Scope, ScopeInfo> = {
   'trips:write':         { label: 'Edit trips & itineraries',   description: 'Create and update trips, days, notes, and manage members',              group: 'Trips' },
   'trips:delete':        { label: 'Delete trips',               description: 'Permanently delete entire trips — this action is irreversible',          group: 'Trips' },
   'trips:share':         { label: 'Manage share links',         description: 'Create, update, and revoke public share links for trips',               group: 'Trips' },
-  'places:read':         { label: 'View places & discover locations', description: 'Read trip places, assignments, tags, categories, and search real-world places or transit stops', group: 'Places' },
+  'places:read':         { label: 'View places & discover locations', description: 'Read trip places, assignments, tags, categories, and search real-world places', group: 'Places' },
   'places:write':        { label: 'Manage places',              description: 'Create, update, and delete places, assignments, and tags',              group: 'Places' },
   'atlas:read':          { label: 'View Atlas',                 description: 'Read visited countries, regions, and bucket list',                      group: 'Atlas' },
   'atlas:write':         { label: 'Manage Atlas',               description: 'Mark countries and regions visited, manage bucket list',                group: 'Atlas' },

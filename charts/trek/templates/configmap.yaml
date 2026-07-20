@@ -70,6 +70,81 @@ data:
   {{- if .Values.env.DEMO_MODE }}
   DEMO_MODE: {{ .Values.env.DEMO_MODE | quote }}
   {{- end }}
+  {{- if .Values.env.TRANSIT_API_URL }}
+  TRANSIT_API_URL: {{ .Values.env.TRANSIT_API_URL | quote }}
+  {{- end }}
+  {{- if .Values.env.KITINERARY_EXTRACTOR_PATH }}
+  KITINERARY_EXTRACTOR_PATH: {{ .Values.env.KITINERARY_EXTRACTOR_PATH | quote }}
+  {{- end }}
+  {{- if .Values.env.OAUTH_HTTP_REDIRECT_HOSTS }}
+  OAUTH_HTTP_REDIRECT_HOSTS: {{ .Values.env.OAUTH_HTTP_REDIRECT_HOSTS | quote }}
+  {{- end }}
+  {{- if .Values.env.WEBAUTHN_ORIGINS }}
+  WEBAUTHN_ORIGINS: {{ .Values.env.WEBAUTHN_ORIGINS | quote }}
+  {{- end }}
+  {{- if .Values.env.WEBAUTHN_RP_ID }}
+  WEBAUTHN_RP_ID: {{ .Values.env.WEBAUTHN_RP_ID | quote }}
+  {{- end }}
+  {{- if .Values.env.SMTP_HOST }}
+  SMTP_HOST: {{ .Values.env.SMTP_HOST | quote }}
+  {{- end }}
+  {{- if .Values.env.SMTP_PORT }}
+  SMTP_PORT: {{ .Values.env.SMTP_PORT | quote }}
+  {{- end }}
+  {{- if .Values.env.SMTP_USER }}
+  SMTP_USER: {{ .Values.env.SMTP_USER | quote }}
+  {{- end }}
+  {{- if .Values.env.SMTP_FROM }}
+  SMTP_FROM: {{ .Values.env.SMTP_FROM | quote }}
+  {{- end }}
+  {{- if .Values.env.SMTP_SKIP_TLS_VERIFY }}
+  SMTP_SKIP_TLS_VERIFY: {{ .Values.env.SMTP_SKIP_TLS_VERIFY | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGINS_ENABLED }}
+  TREK_PLUGINS_ENABLED: {{ .Values.env.TREK_PLUGINS_ENABLED | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGINS_DIR }}
+  TREK_PLUGINS_DIR: {{ .Values.env.TREK_PLUGINS_DIR | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGINS_DATA_DIR }}
+  TREK_PLUGINS_DATA_DIR: {{ .Values.env.TREK_PLUGINS_DATA_DIR | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGINS_DEV_LINK }}
+  TREK_PLUGINS_DEV_LINK: {{ .Values.env.TREK_PLUGINS_DEV_LINK | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_PERMISSIONS }}
+  TREK_PLUGIN_PERMISSIONS: {{ .Values.env.TREK_PLUGIN_PERMISSIONS | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_REGISTRY_URL }}
+  TREK_PLUGIN_REGISTRY_URL: {{ .Values.env.TREK_PLUGIN_REGISTRY_URL | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_RPC_BURST }}
+  TREK_PLUGIN_RPC_BURST: {{ .Values.env.TREK_PLUGIN_RPC_BURST | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_RPC_PER_SEC }}
+  TREK_PLUGIN_RPC_PER_SEC: {{ .Values.env.TREK_PLUGIN_RPC_PER_SEC | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_RPC_INFLIGHT }}
+  TREK_PLUGIN_RPC_INFLIGHT: {{ .Values.env.TREK_PLUGIN_RPC_INFLIGHT | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_LOG_BURST }}
+  TREK_PLUGIN_LOG_BURST: {{ .Values.env.TREK_PLUGIN_LOG_BURST | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_LOG_PER_SEC }}
+  TREK_PLUGIN_LOG_PER_SEC: {{ .Values.env.TREK_PLUGIN_LOG_PER_SEC | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_AI_PER_DAY }}
+  TREK_PLUGIN_AI_PER_DAY: {{ .Values.env.TREK_PLUGIN_AI_PER_DAY | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_NOTIFY_PER_DAY }}
+  TREK_PLUGIN_NOTIFY_PER_DAY: {{ .Values.env.TREK_PLUGIN_NOTIFY_PER_DAY | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_AUDIT_MAX_ROWS }}
+  TREK_PLUGIN_AUDIT_MAX_ROWS: {{ .Values.env.TREK_PLUGIN_AUDIT_MAX_ROWS | quote }}
+  {{- end }}
+  {{- if .Values.env.TREK_PLUGIN_MAX_RSS_MB }}
+  TREK_PLUGIN_MAX_RSS_MB: {{ .Values.env.TREK_PLUGIN_MAX_RSS_MB | quote }}
+  {{- end }}
   {{- if .Values.env.MCP_RATE_LIMIT }}
   MCP_RATE_LIMIT: {{ .Values.env.MCP_RATE_LIMIT | quote }}
   {{- end }}

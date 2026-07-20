@@ -74,6 +74,56 @@ env:
   # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik).
   # DEMO_MODE: "false"
   # Enable demo mode (hourly data resets).
+  # TRANSIT_API_URL: "https://transitous.example.com"
+  # Transitous-compatible transit routing API (default: public Transitous endpoint).
+  # KITINERARY_EXTRACTOR_PATH: ""
+  # Full path to kitinerary-extractor binary. Auto-detected from PATH when unset.
+  # OAUTH_HTTP_REDIRECT_HOSTS: ""
+  # Comma-separated LAN hostnames allowed for HTTP OAuth redirect URIs (default: localhost/127.0.0.1/[::1]).
+  # WEBAUTHN_ORIGINS: "https://trek.example.com"
+  # Comma-separated allowed WebAuthn origins (defaults to APP_URL).
+  # WEBAUTHN_RP_ID: "trek.example.com"
+  # WebAuthn relying party ID (defaults to APP_URL hostname).
+  # SMTP_HOST: "smtp.example.com"
+  # SMTP server hostname for outbound email notifications.
+  # SMTP_PORT: "587"
+  # SMTP server port.
+  # SMTP_USER: "trek@example.com"
+  # SMTP username.
+  # SMTP_FROM: "TREK <trek@example.com>"
+  # SMTP from address.
+  # SMTP_SKIP_TLS_VERIFY: "false"
+  # Set true to skip TLS cert validation for SMTP.
+  # TREK_PLUGINS_ENABLED: "true"
+  # Kill switch for the plugin system (default: true).
+  # TREK_PLUGINS_DIR: ""
+  # Override installed plugin code root (default: data/plugins).
+  # TREK_PLUGINS_DATA_DIR: ""
+  # Override plugin writable data root (default: data/plugins-data).
+  # TREK_PLUGINS_DEV_LINK: ""
+  # Enable dev-link (set to "1" for local development only).
+  # TREK_PLUGIN_PERMISSIONS: "on"
+  # OS permission jail for plugin children (default: on).
+  # TREK_PLUGIN_REGISTRY_URL: ""
+  # Override plugin registry index URL.
+  # TREK_PLUGIN_RPC_BURST: "60"
+  # Per-plugin RPC burst allowance (default: 60).
+  # TREK_PLUGIN_RPC_PER_SEC: "20"
+  # Per-plugin sustained RPC calls/sec (default: 20).
+  # TREK_PLUGIN_RPC_INFLIGHT: "16"
+  # Max concurrent in-flight RPC calls per plugin (default: 16).
+  # TREK_PLUGIN_LOG_BURST: "50"
+  # Per-plugin log burst allowance (default: 50).
+  # TREK_PLUGIN_LOG_PER_SEC: "10"
+  # Per-plugin sustained log lines/sec (default: 10).
+  # TREK_PLUGIN_AI_PER_DAY: "200"
+  # Max AI broker calls per plugin per day (default: 200).
+  # TREK_PLUGIN_NOTIFY_PER_DAY: "100"
+  # Max notification sends per plugin per day (default: 100).
+  # TREK_PLUGIN_AUDIT_MAX_ROWS: "20000"
+  # Max audit log rows retained per plugin (default: 20000).
+  # TREK_PLUGIN_MAX_RSS_MB: "300"
+  # Max RSS memory per plugin child in MB (default: 300).
   # MCP_RATE_LIMIT: "300"
   # Max MCP API requests per user per minute. Defaults to 300.
   # MCP_MAX_SESSION_PER_USER: "20"
@@ -107,6 +157,8 @@ secretEnv:
   ADMIN_PASSWORD: ""
   # OIDC client secret — set together with env.OIDC_ISSUER and env.OIDC_CLIENT_ID.
   OIDC_CLIENT_SECRET: ""
+  # SMTP password — set together with env.SMTP_HOST, env.SMTP_PORT, env.SMTP_USER.
+  SMTP_PASS: ""
   # Optional Unsplash Access Key for trip-cover and place-image search.
   # Without one, TREK uses Unsplash's unauthenticated endpoint, which some
   # datacenter/VPS IPs (including many Kubernetes clusters) are blocked from.
