@@ -521,3 +521,24 @@ Task 08 day movement planning and OSRM resolution is complete and review approve
 ### Handoff
 - **Task 10** consumes: canonical reservations, geometry ownership, sidebar connectors with reposition support, and visibility-aware bounds from this commit.
 - **Concerns:** None.
+
+## Task 09 — Approved Completion
+
+**Status:** DONE / APPROVED
+**Completed:** 2026-07-20
+**Commits:** `5d3385bc`, `75edfe25`
+
+Task 09 booking-route visibility, map bounds, sidebar connectors, and transit overlay reconciliation is complete and approved. The remediation commits restore the required map/sidebar type contracts, correct the sidebar route mock, preserve visibility-independent OSRM behavior, and retain canonical reservation geometry ownership.
+
+### Verification
+
+- Focused client suites: PASS — 251 tests across 8 files.
+- Route-calculation integration suite: PASS — 35 tests.
+- Client typecheck: no new errors; 13 pre-existing Task 10 fixture errors remain in `dayMovementPlan.test.ts`.
+- Fixture policy: fixtures remain local-only; none staged or committed.
+
+### Handoff
+
+- **Task 10** consumes: normalized visible reservations, stable rendered geometry ownership, canonical sidebar movement placements, and visibility-aware bounds.
+- **Task 10 brief:** `.superpowers/sdd/task-10-brief.md`.
+- **Review:** APPROVED.
