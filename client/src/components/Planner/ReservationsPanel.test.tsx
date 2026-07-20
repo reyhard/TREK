@@ -462,4 +462,33 @@ describe('ReservationsPanel', () => {
     const text = document.body.textContent || '';
     expect(text.indexOf('Mid flight')).toBeLessThan(text.indexOf('Hotel stay'));
   });
+
+  it('FE-PLANNER-RESP-046: transit journey card survives malformed metadata (safeParseMetadata)', () => {
+    const res = buildReservation({
+      id: 501,
+      title: 'Malformed Transit',
+      type: 'transit',
+      status: 'confirmed',
+      reservation_time: '2025-06-01T10:00:00',
+      metadata: '{{{not valid json',
+    } as any);
+    render(<ReservationsPanel {...defaultProps} reservations={[res]} />);
+    // Transit card renders without crashing
+    expect(screen.getByText('Malformed Transit')).toBeInTheDocument();
+    // No crash — falling through to transit-absent render path
+    expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  });
+
+  it('FE-PLANNER-RESP-047: transit journey card with null metadata renders without crash', () => {
+    const res = buildReservation({
+      id: 502,
+      title: 'Null Meta Transit',
+      type: 'transit',
+      status: 'confirmed',
+      reservation_time: '2025-06-01T10:30:00',
+      metadata: null,
+    } as any);
+    render(<ReservationsPanel {...defaultProps} reservations={[res]} />);
+    expect(screen.getByText('Null Meta Transit')).toBeInTheDocument();
+  });
 });

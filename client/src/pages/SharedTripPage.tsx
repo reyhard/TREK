@@ -28,6 +28,7 @@ import { isDayInAccommodationRange } from '../utils/dayOrder';
 import { getFlightLegs, getTrainLegs } from '../utils/flightLegs';
 import { splitReservationDateTime } from '../utils/formatters';
 import { computeMapViewport, TILE_SIZE_RASTER } from '../utils/mapViewport';
+import { safeParseMetadata } from '../utils/safeParseMetadata';
 import { useSharedTrip } from './sharedTrip/useSharedTrip';
 
 const TRANSPORT_ICONS = { flight: Plane, train: Train, bus: Bus, car: Car, cruise: Ship };
@@ -524,8 +525,7 @@ export default function SharedTripPage() {
                           if (item.type === 'transport') {
                             const r = item.data;
                             const TIcon = TRANSPORT_ICONS[r.type] || Ticket;
-                            const meta =
-                              typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : r.metadata || {};
+                            const meta = safeParseMetadata(r as any);
                             const time = splitReservationDateTime(r.reservation_time).time ?? '';
                             const endTime = splitReservationDateTime(r.reservation_end_time).time ?? '';
                             let sub = '';
@@ -739,7 +739,7 @@ export default function SharedTripPage() {
         {activeTab === 'bookings' && (reservations || []).length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(reservations || []).map((r: any) => {
-              const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : r.metadata || {};
+              const meta = safeParseMetadata(r as any);
               const TIcon = TRANSPORT_ICONS[r.type] || Ticket;
               const { date: rDate, time: rTime } = splitReservationDateTime(r.reservation_time);
               const time = rTime ?? '';

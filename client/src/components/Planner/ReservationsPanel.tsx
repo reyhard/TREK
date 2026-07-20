@@ -532,7 +532,7 @@ function TransitJourneyCard({ r, days, onOpen, onDelete, canEdit, tripId, contri
   const { t, locale } = useTranslation()
   const timeFormat = useSettingsStore(st => st.settings.time_format) || '24h'
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const meta = typeof r.metadata === 'string' ? (() => { try { return JSON.parse(r.metadata || '{}') } catch { return {} } })() : (r.metadata || {})
+  const meta = safeParseMetadata(r as any)
   const transit = meta.transit && Array.isArray(meta.transit.legs) ? meta.transit : null
   const { date, time } = splitReservationDateTime(r.reservation_time)
   const { time: endTime } = splitReservationDateTime(r.reservation_end_time)

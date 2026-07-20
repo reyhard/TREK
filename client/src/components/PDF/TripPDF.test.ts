@@ -514,4 +514,22 @@ describe('downloadTripPDF', () => {
     await expect(downloadTripPDF(minimalArgs)).resolves.not.toThrow()
     expect(getIframe()!.srcdoc).not.toContain('class="plugin-sections')
   })
+
+  it('FE-COMP-TRIPPDF-023: survives malformed reservation metadata (safeParseMetadata)', async () => {
+    const malformedReservations = [
+      { id: 500, title: 'Bad JSON Flight', type: 'flight', day_id: 10, reservation_time: '2025-06-01T09:00:00', metadata: '{{{malformed' },
+      { id: 501, title: 'Null Meta', type: 'train', day_id: 10, reservation_time: '2025-06-01T10:00:00', metadata: null },
+      { id: 502, title: 'Array Meta', type: 'bus', day_id: 10, reservation_time: '2025-06-01T11:00:00', metadata: '[1,2,3]' },
+      { id: 503, title: 'String-Not-Object', type: 'car', day_id: 10, reservation_time: null, metadata: '"just a string"' },
+    ] as any[]
+    await expect(downloadTripPDF({ ...richArgs, reservations: [...richArgs.reservations, ...malformedReservations] })).resolves.not.toThrow()
+    const srcdoc = getIframe()!.srcdoc
+    // All reservation titles must appear — no crash from malformed metadata.
+    expect(srcdoc).toContain('Bad JSON Flight')
+    expect(srcdoc).toContain('Null Meta')
+    expect(srcdoc).toContain('Array Meta')
+    expect(srcdoc).toContain('String-Not-Object')
+    // Legitimate reservation still renders its metadata correctly.
+    expect(srcdoc).toContain('Air Italia · AI123')
+  })
 })

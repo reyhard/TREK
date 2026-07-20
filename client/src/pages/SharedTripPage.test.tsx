@@ -572,4 +572,84 @@ describe('SharedTripPage', () => {
       await waitFor(() => expect(screen.getAllByText(/125\.00 NZD/).length).toBeGreaterThan(0));
     });
   });
+
+  describe('FE-PAGE-SHARED-021: bookings tab survives malformed reservation metadata (safeParseMetadata)', () => {
+    it('renders reservations with malformed metadata without crashing', async () => {
+      server.use(
+        http.get('/api/shared/:token', ({ params }) => {
+          if (params.token !== 'malformed-meta-token') return;
+          return HttpResponse.json({
+            trip: { id: 1, title: 'Shared Paris Trip', start_date: '2026-07-01', end_date: '2026-07-05' },
+            days: [],
+            assignments: {},
+            dayNotes: {},
+            places: [],
+            reservations: [
+              { id: 1, title: 'Broken Flight', type: 'flight', status: 'confirmed', reservation_time: '2026-07-01T10:00:00', metadata: 'not valid json {{{' },
+              { id: 2, title: 'Null Meta Hotel', type: 'hotel', status: 'pending', reservation_time: null, metadata: null },
+              { id: 3, title: 'Array Meta', type: 'train', status: 'confirmed', reservation_time: null, metadata: '[1,2,3]' },
+              { id: 4, title: 'Valid Train', type: 'train', status: 'confirmed', reservation_time: null, metadata: '{"train_number":"ICE123","platform":"5"}' },
+            ],
+            accommodations: [],
+            packing: [],
+            budget: [],
+            categories: [],
+            permissions: { share_bookings: true, share_packing: false, share_budget: false, share_collab: false },
+            collab: [],
+          });
+        }),
+      );
+
+      renderSharedTrip('malformed-meta-token');
+
+      await waitFor(() => expect(screen.getByText('Shared Paris Trip')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /bookings/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Broken Flight')).toBeInTheDocument();
+        expect(screen.getByText('Null Meta Hotel')).toBeInTheDocument();
+        expect(screen.getByText('Array Meta')).toBeInTheDocument();
+        expect(screen.getByText('Valid Train')).toBeInTheDocument();
+      });
+
+      // All reservations rendered; no crash from malformed metadata
+    });
+  });
+
+  describe('FE-PAGE-SHARED-022: day plan tab survives malformed reservation metadata (safeParseMetadata)', () => {
+    it('renders the plan tab without crashing when reservations have malformed metadata', async () => {
+      const day1 = { id: 101, trip_id: 1, day_number: 1, date: '2026-07-01', title: 'Day One', notes: null };
+      server.use(
+        http.get('/api/shared/:token', ({ params }) => {
+          if (params.token !== 'plan-malformed-token') return;
+          return HttpResponse.json({
+            trip: { id: 1, title: 'Shared Paris Trip', start_date: '2026-07-01', end_date: '2026-07-05' },
+            days: [day1],
+            assignments: { '101': [] },
+            dayNotes: {},
+            places: [],
+            reservations: [
+              { id: 1, title: 'Bad Flight', type: 'flight', status: 'confirmed', day_id: 101, reservation_time: '2026-07-01T08:00:00', metadata: '{{{bad json' },
+              { id: 2, title: 'Good Train', type: 'train', status: 'confirmed', day_id: 101, reservation_time: '2026-07-01T12:00:00', metadata: '{"train_number":"ICE","platform":"5"}' },
+            ],
+            accommodations: [],
+            packing: [],
+            budget: [],
+            categories: [],
+            permissions: { share_map: true, share_bookings: true, share_packing: false, share_budget: false, share_collab: false },
+            collab: [],
+          });
+        }),
+      );
+
+      renderSharedTrip('plan-malformed-token');
+
+      // Wait for the trip title to appear (data loaded, page rendered)
+      await waitFor(() => expect(screen.getByText('Shared Paris Trip')).toBeInTheDocument());
+
+      // The Plan tab is active by default. The page rendered without crashing
+      // despite reservations with malformed metadata present in the data.
+      expect(screen.getByText('Day One')).toBeInTheDocument();
+    });
+  });
 });

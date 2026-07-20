@@ -8,6 +8,7 @@ import { isDayInAccommodationRange, getDayOrder } from '../../utils/dayOrder'
 import { formatMoney, formatMoneySum, splitReservationDateTime, type MoneyEntry } from '../../utils/formatters'
 import { fetchExchangeRates } from '../../hooks/useExchangeRates'
 import { getFlightLegs, getTrainLegs } from '../../utils/flightLegs'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 
 function renderLucideIcon(icon:LucideIcon, props = {}) {
   if (!_renderToStaticMarkup) return ''
@@ -242,7 +243,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
       : merged.map(item => {
           if (item.type === 'reservation') {
             const r = item.data
-            const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : (r.metadata || {})
+            const meta = safeParseMetadata(r as any)
             const icon = reservationIconSvg(r.type)
             const color = RESERVATION_COLOR_MAP[r.type] || '#3b82f6'
             let subtitle = ''
