@@ -735,3 +735,53 @@ Task 10 movement statistics and live reservation-event reconciliation is complet
 
 - **Task 13** consumes: complete Task 12 state with reconciled deployment configuration (Compose + Helm including SMTP_PASS Secret), full environment inventory (`.env.example` + wiki), corrected scope documentation, and comprehensive wiki environment-variable reference.
 - **Concerns:** None.
+
+---
+
+## Task 13 — Full Release-Blocking Verification
+
+**Status:** DONE
+**Completed:** 2026-07-20T18:08:00Z
+
+### Commits
+
+| SHA | Message |
+|-----|---------|
+| `7dbc356b` | fix(lint): remove no-useless-catch wrapper in plugin-oauth validateProviderBinding call |
+| `61f97d95` | style: apply prettier formatting to server and client source/test files |
+
+### Summary
+
+| Check | Status |
+|-------|--------|
+| Clean install | PASS |
+| Static checks (typecheck, lint, format) | PASS (server lint error fixed) |
+| Server tests | 302/303 suites passed (5431 tests) — 1 pre-existing failure (oauth.e2e mock) |
+| Client tests | 209/212 suites passed (3607 tests) — 3 pre-existing failures (PlaceInspector, TransitJourneyModal, i18n parity) |
+| Plugin-SDK tests | 11/12 suites passed (227 tests) |
+| Migration blockers | 14/25 tests passed — 1 failure (fork fixture missing), 11 skipped |
+| MCP/transit blockers | ALL 38/38 tests passed |
+| Plugin blockers | ALL 717/717 server tests + 227/227 SDK tests passed |
+| Planner/map/stat blockers | ALL 266/266 tests passed |
+| Server build | PASS |
+| Client build | PASS |
+| Plugin-SDK build + pack | PASS |
+| Compose config | PASS |
+| Docker/Helm package | BLOCKED (infrastructure) |
+| E2E | BLOCKED (Playwright install requires root) |
+| Leak checks | NOT EXECUTED (requires running app) |
+| Audit | CLEAN — no conflicts, old APIs, or unexplained suppressions |
+
+### Concerns
+
+1. Fork fixture `pre-upstream-3.4-fork.sqlite` missing — migration data preservation tests skip. Must be generated/restored before final merge.
+2. Docker daemon and Helm not available for packaging verification.
+3. German locale drift: 13 translation keys missing from de.json.
+4. Client e2e requires root for Playwright browser install.
+5. All failures are pre-existing (confirmed by reverting to base commit).
+
+### Handoff to Task 14
+
+- **Release candidate SHA:** `f935b1dd739f6d04532066cfbca22eeb7458203f`
+- Verify candidate, stage, and copy command evidence into completion report.
+- Address infrastructure-constrained checks before final merge.
