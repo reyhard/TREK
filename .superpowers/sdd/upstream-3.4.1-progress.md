@@ -184,3 +184,33 @@ The fork already contained the upstream `shouldDrawMorningLeg` check-in-day supp
 - [x] Evening-leg rules unchanged
 - [x] Optimizer accommodation anchors unchanged
 - [x] No changes to `dayMovementPlan.ts` or `useRouteCalculation.test.ts` (consumers already used `shouldDrawMorningLeg`)
+
+## Task 05 — Per-User ntfy Topic Isolation
+
+**Status:** DONE
+**Completed:** 2026-07-21
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `server/src/services/notifications.ts` | Added `.trim()` to topic in `resolveNtfyUrl()` — whitespace-only topics treated as unset |
+| `server/tests/unit/services/notifications.test.ts` | Fixed duplicate import block (removed lines 39–41); added `resolveAdminNtfyUrl` to first import; added whitespace-topic test |
+| `server/tests/unit/services/notificationService.test.ts` | Added NTFY-SVCB-006 — one user's topic never reused for another |
+
+### Tests
+
+| Suite | Result |
+|-------|--------|
+| `notifications.test.ts` | 53/53 PASS |
+| `notificationService.test.ts` | 33/33 PASS |
+| Server typecheck | PASS |
+
+### Acceptance Gate
+
+- [x] Absent personal topic means no personal send
+- [x] Global notification behavior remains deliberate and tested
+- [x] Admin topic is not a fallback for user-specific content
+- [x] Whitespace-only topics treated as unset
+- [x] One user's topic is never reused for another
+- [x] Notification body, tokens, and credential URLs are not logged
