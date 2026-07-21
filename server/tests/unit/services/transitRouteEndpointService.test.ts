@@ -194,4 +194,50 @@ describe('updateTransitRouteEndpoints', () => {
         .all(reservationId),
     ).toEqual(before);
   });
+
+  it('updates both from and to endpoints simultaneously', () => {
+    const { trip, reservationId } = seedTransit();
+    const newFrom = { name: 'New Origin', lat: 35.0, lng: 135.5 };
+    const newTo = { name: 'New Destination', lat: 35.5, lng: 136.0 };
+
+    const updated = updateTransitRouteEndpoints(reservationId, trip.id, {
+      from: newFrom,
+      to: newTo,
+    });
+
+    expect(updated.endpoints.find((endpoint: any) => endpoint.role === 'from')).toMatchObject(newFrom);
+    expect(updated.endpoints.find((endpoint: any) => endpoint.role === 'to')).toMatchObject(newTo);
+
+    const dbFrom = testDb
+      .prepare("SELECT name, lat, lng FROM reservation_endpoints WHERE reservation_id = ? AND role = 'from'")
+      .get(reservationId) as any;
+    const dbTo = testDb
+      .prepare("SELECT name, lat, lng FROM reservation_endpoints WHERE reservation_id = ? AND role = 'to'")
+      .get(reservationId) as any;
+    expect(dbFrom).toMatchObject(newFrom);
+    expect(dbTo).toMatchObject(newTo);
+  });
+
+  it('rejects update when there are duplicate rows for the same role', () => {
+    const { trip, reservationId } = seedTransit();
+    testDb
+      .prepare(
+        "INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, code, lat, lng, timezone, local_date, local_time) VALUES (?, 'from', 99, 'Duplicate', NULL, 0, 0, NULL, NULL, NULL)",
+      )
+      .run(reservationId);
+    const before = testDb
+      .prepare("SELECT name FROM reservation_endpoints WHERE reservation_id = ? AND role = 'from' ORDER BY sequence")
+      .all(reservationId);
+
+    expect(() =>
+      updateTransitRouteEndpoints(reservationId, trip.id, {
+        from: { name: 'Should fail', lat: 35, lng: 135 },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'ENDPOINT_STRUCTURE_INVALID' }));
+
+    const after = testDb
+      .prepare("SELECT name FROM reservation_endpoints WHERE reservation_id = ? AND role = 'from' ORDER BY sequence")
+      .all(reservationId);
+    expect(after).toEqual(before);
+  });
 });

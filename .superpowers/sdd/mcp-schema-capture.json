@@ -38,8 +38,7 @@
           "name",
           "lat",
           "lng"
-        ],
-        "additionalProperties": false
+        ]
       },
       "to": {
         "type": "object",
@@ -64,15 +63,13 @@
           "name",
           "lat",
           "lng"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     "required": [
       "tripId",
       "reservationId"
-    ],
-    "additionalProperties": false
+    ]
   },
   "annotations": {
     "readOnlyHint": false,

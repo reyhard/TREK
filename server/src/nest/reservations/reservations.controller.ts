@@ -1,4 +1,5 @@
 import { pushReservationToAirtrail } from '../../services/airtrail/airtrailSync';
+import { isDemoEmail } from '../../services/demo';
 import { TransitRouteEndpointUpdateError } from '../../services/transitRouteEndpointService';
 import type { User } from '../../types';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -106,6 +107,9 @@ export class ReservationsController {
     @Body() body: TransitRouteEndpointsUpdateRequest,
     @Headers('x-socket-id') socketId?: string,
   ) {
+    if (process.env.DEMO_MODE?.toLowerCase() === 'true' && isDemoEmail(user.email)) {
+      throw new HttpException({ error: 'Write operations are disabled in demo mode.' }, 403);
+    }
     const trip = this.requireTrip(tripId, user);
     this.requireEdit(trip, user);
 

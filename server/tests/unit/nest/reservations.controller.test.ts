@@ -6,6 +6,9 @@ import { HttpException } from '@nestjs/common';
 
 import { describe, it, expect, vi } from 'vitest';
 
+const { isDemoEmail } = vi.hoisted(() => ({ isDemoEmail: vi.fn(() => false) }));
+vi.mock('../../../src/services/demo', () => ({ isDemoEmail }));
+
 const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
 const trip = { id: 5, user_id: 1 };
 
@@ -171,6 +174,21 @@ describe('ReservationsController (parity with the legacy /api/trips/:tripId/rese
     const body = {
       from: { name: 'Keihan Fushimi-Inari Station', lat: 34.9685211, lng: 135.7691251 },
     };
+
+    afterEach(() => {
+      delete process.env.DEMO_MODE;
+    });
+
+    it('403 for demo user in demo mode', () => {
+      process.env.DEMO_MODE = 'true';
+      isDemoEmail.mockReturnValueOnce(true);
+      expect(
+        thrown(() => new ReservationsController(makeService()).updateTransitEndpoints(user, '5', '9', body)),
+      ).toEqual({
+        status: 403,
+        body: { error: 'Write operations are disabled in demo mode.' },
+      });
+    });
 
     it('requires reservation edit permission', () => {
       const svc = makeService({ canEdit: vi.fn().mockReturnValue(false) });

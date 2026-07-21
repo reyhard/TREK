@@ -1178,4 +1178,68 @@ describe('MCP transit tools', () => {
       }
     });
   });
+
+  it('update_transit_route_endpoints listTools schema has correct shape', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const tools = (await harness.client.listTools()).tools;
+      const tool = tools.find((t) => t.name === 'update_transit_route_endpoints')!;
+      expect(tool).toBeDefined();
+      expect(tool.description).toContain('map-only origin and/or destination');
+      expect(tool.inputSchema).toBeDefined();
+      const s = tool.inputSchema as Record<string, unknown>;
+
+      expect(s.type).toBe('object');
+
+      const props = s.properties as Record<string, unknown>;
+      expect(props.tripId).toMatchObject({ type: 'integer', exclusiveMinimum: 0 });
+      expect(props.reservationId).toMatchObject({ type: 'integer', exclusiveMinimum: 0 });
+
+      for (const key of ['from', 'to']) {
+        const ep = props[key] as Record<string, unknown>;
+        expect(ep).toBeDefined();
+        expect(ep.type).toBe('object');
+        const epProps = ep.properties as Record<string, unknown>;
+        expect(epProps.name).toMatchObject({ type: 'string', minLength: 1, maxLength: 300 });
+        expect(epProps.lat).toMatchObject({ type: 'number', minimum: -90, maximum: 90 });
+        expect(epProps.lng).toMatchObject({ type: 'number', minimum: -180, maximum: 180 });
+        expect(ep.required).toEqual(['name', 'lat', 'lng']);
+      }
+
+      expect(s.required).toEqual(['tripId', 'reservationId']);
+
+      expect(tool.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+    });
+  });
+
+  it('update_transit_route_endpoints listTools schema can be exported as JSON', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const tools = (await harness.client.listTools()).tools;
+      const tool = tools.find((t) => t.name === 'update_transit_route_endpoints')!;
+      const s = tool.inputSchema as Record<string, unknown>;
+      const out = {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: {
+          $schema: 'http://json-schema.org/draft-07/schema#',
+          ...s,
+        },
+        annotations: tool.annotations,
+      };
+      // The test proves the schema is serializable and matches expected shape.
+      // The artifact at .superpowers/sdd/mcp-schema-capture.json should be
+      // regenerated from this runtime output, not from a standalone converter.
+      const json = JSON.stringify(out, null, 2);
+      expect(json).toContain('update_transit_route_endpoints');
+      expect(json).toContain('map-only origin');
+      expect(json).toContain('exclusiveMinimum');
+      expect(json).toContain('minLength');
+    });
+  });
 });
