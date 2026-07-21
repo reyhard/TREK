@@ -93,7 +93,8 @@ export class NotificationsController {
     const resolvedTopic = topic || userCfg?.topic || undefined;
     const resolvedServer = server || userCfg?.server || adminCfg.server || undefined;
     // Reuse the saved token when the request sends null, empty, or the masked placeholder.
-    const resolvedToken = token && token !== MASKED ? token : (userCfg?.token ?? adminCfg.token ?? null);
+    // NEVER fall back to admin token — that token belongs to the admin's server, not the user's.
+    const resolvedToken = token && token !== MASKED ? token : (userCfg?.token ?? null);
 
     if (!resolvedTopic) {
       throw new HttpException({ error: 'No ntfy topic configured' }, 400);

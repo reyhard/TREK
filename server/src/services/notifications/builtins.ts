@@ -12,6 +12,7 @@ import {
   getUserNtfyConfig,
   getAdminNtfyConfig,
   resolveNtfyUrl,
+  resolveAdminNtfyUrl,
 } from '../notifications';
 import { registerChannel, type ChannelMessage, type ExternalChannel } from './channelRegistry';
 
@@ -94,7 +95,7 @@ const ntfyChannel: ExternalChannel = {
     const adminCfg = getAdminNtfyConfig();
     const url = resolveNtfyUrl(adminCfg, userCfg);
     if (!url) return false;
-    return sendNtfy(url, userCfg?.token ?? adminCfg.token, {
+    return sendNtfy(url, userCfg?.token ?? null, {
       event: msg.event,
       title: msg.title,
       body: msg.body,
@@ -103,7 +104,7 @@ const ntfyChannel: ExternalChannel = {
   },
   async sendGlobal(msg: ChannelMessage) {
     const adminCfg = getAdminNtfyConfig();
-    const url = resolveNtfyUrl(adminCfg, null);
+    const url = resolveAdminNtfyUrl(adminCfg);
     if (!url) return false;
     return sendNtfy(url, adminCfg.token, { event: msg.event, title: msg.title, body: msg.body, link: msg.url });
   },

@@ -288,6 +288,67 @@ describe('TransitSearchPanel', () => {
     expect(transitApiMock.plan.mock.calls[0][0]).toMatchObject({ arriveBy: true, time: '2025-06-01T08:00:00.000Z' });
   });
 
+  it('FE-PLANNER-TRANSIT-009: arrive-by lists the latest-arriving itinerary first', async () => {
+    const user = userEvent.setup();
+    // MOTIS returns arrive-by results ascending, deadline-adjacent last (#1479).
+    const later = { ...ITINERARY, startTime: '2025-06-01T07:10:00Z', endTime: '2025-06-01T07:40:00Z' };
+    transitApiMock.plan.mockResolvedValueOnce({ itineraries: [ITINERARY, later] });
+    render(<TransitSearchPanel {...makeProps()} />);
+    await pickFromAndTo(user);
+    await user.click(screen.getByRole('button', { name: 'Arrive' }));
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await screen.findByText(/09:10 – 09:40/);
+    const cards = screen.getAllByText(/–/).filter((el) => el.textContent?.match(/\d{2}:\d{2} – \d{2}:\d{2}/));
+    // The itinerary arriving closest to the requested arrival time leads.
+    expect(cards[0].textContent).toContain('09:40');
+    expect(cards[1].textContent).toContain('09:00');
+  });
+
+  it('FE-PLANNER-TRANSIT-010: depart-at preserves provider ordering', async () => {
+    const user = userEvent.setup();
+    const early = {
+      ...ITINERARY,
+      startTime: '2026-10-02T06:00:00.000Z',
+      endTime: '2026-10-02T07:00:00.000Z',
+    };
+    const deadlineAdjacent = {
+      ...ITINERARY,
+      startTime: '2026-10-02T07:30:00.000Z',
+      endTime: '2026-10-02T08:45:00.000Z',
+    };
+    transitApiMock.plan.mockResolvedValueOnce({ itineraries: [early, deadlineAdjacent] });
+    render(
+      <TransitSearchPanel
+        {...makeProps({ day: buildDay({ id: 10, trip_id: 1, date: '2026-10-02', title: 'Berlin' }) })}
+      />
+    );
+    await pickFromAndTo(user);
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await screen.findByText(/08:00 – 09:00/);
+    const cards = screen.getAllByText(/–/).filter((el) => el.textContent?.match(/\d{2}:\d{2} – \d{2}:\d{2}/));
+    expect(cards[0].textContent).toContain('08:00');
+    expect(cards[1].textContent).toContain('09:30');
+  });
+
+  it('FE-PLANNER-TRANSIT-011: arrive-by with equal endTime retains provider order', async () => {
+    const user = userEvent.setup();
+    const first = { ...ITINERARY, startTime: '2026-10-02T06:00:00.000Z', endTime: '2026-10-02T07:00:00.000Z' };
+    const second = { ...ITINERARY, startTime: '2026-10-02T06:30:00.000Z', endTime: '2026-10-02T07:00:00.000Z' };
+    transitApiMock.plan.mockResolvedValueOnce({ itineraries: [first, second] });
+    render(
+      <TransitSearchPanel
+        {...makeProps({ day: buildDay({ id: 10, trip_id: 1, date: '2026-10-02', title: 'Berlin' }) })}
+      />
+    );
+    await pickFromAndTo(user);
+    await user.click(screen.getByRole('button', { name: 'Arrive' }));
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await screen.findByText(/08:00 – 09:00/);
+    const cards = screen.getAllByText(/–/).filter((el) => el.textContent?.match(/\d{2}:\d{2} – \d{2}:\d{2}/));
+    expect(cards[0].textContent).toContain('08:00');
+    expect(cards[1].textContent).toContain('08:30');
+  });
+
   it('FE-PLANNER-TRANSIT-006: swap exchanges from and to', async () => {
     const user = userEvent.setup();
     render(<TransitSearchPanel {...makeProps()} />);

@@ -172,19 +172,27 @@ describe('shouldDrawMorningLeg', () => {
     expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: '10:00' })).toBe(false)
   })
 
+  it('suppresses the morning leg when the first stop time is before check-in boundary (#1465)', () => {
+    const bookends = { morning: into({ check_in: '14:00' }), morningIsSleptHere: false }
+    expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: null })).toBe(false)
+    expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: '13:59' })).toBe(false)
+    expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: '14:00' })).toBe(true)
+    expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: '15:00' })).toBe(true)
+  })
+
   it('draws on a check-in day when the first place is at/after check-in (loop preserved)', () => {
     const bookends = { morning: into({ check_in: '15:00' }), morningIsSleptHere: false }
     expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: '19:00' })).toBe(true)
     expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: '15:00' })).toBe(true)
   })
 
-  it('DRAWS on a check-in day when time info is missing (home-base default, no over-suppression)', () => {
-    // Without a comparable place time or hotel check-in time, the arrival day stays a
-    // home-base loop — only a place provably before check-in suppresses the leg.
+  it('does NOT draw on a check-in day when time info is missing (#1597)', () => {
+    // An un-timed first place on an arrival day ("Home" before driving out) cannot prove
+    // you were at the hotel yet, so no hotel → first-stop leg — mirroring the evening rule.
     const bookends = { morning: into({ check_in: '15:00' }), morningIsSleptHere: false }
-    expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: null })).toBe(true)
+    expect(shouldDrawMorningLeg(bookends, checkInDay, { isPlace: true, time: null })).toBe(false)
     const noCheckIn = { morning: into({ check_in: null }), morningIsSleptHere: false }
-    expect(shouldDrawMorningLeg(noCheckIn, checkInDay, { isPlace: true, time: '19:00' })).toBe(true)
+    expect(shouldDrawMorningLeg(noCheckIn, checkInDay, { isPlace: true, time: '19:00' })).toBe(false)
   })
 
   it('does NOT draw on a check-in day for a transport arrival (not a place, #1321)', () => {

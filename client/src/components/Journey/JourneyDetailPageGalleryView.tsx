@@ -222,10 +222,10 @@ export function GalleryView({
                 <div className="absolute left-1.5 top-1.5">
                   <span className="flex items-center gap-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[8px] font-medium text-white backdrop-blur">
                     <RefreshCw size={7} />
-                    {photo.provider === 'immich'
-                      ? 'Immich'
-                      : photo.provider === 'synology'
-                        ? 'Synology'
+                    {photo.provider === 'synologyphotos'
+                      ? 'Synology Photos'
+                      : photo.provider === 'immich'
+                        ? 'Immich'
                         : photo.provider}
                   </span>
                 </div>

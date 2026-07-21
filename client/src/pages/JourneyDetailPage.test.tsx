@@ -2161,8 +2161,10 @@ describe('JourneyDetailPage', () => {
   });
 
   // ── FE-PAGE-JOURNEYDETAIL-093 ──────────────────────────────────────────
-  describe('FE-PAGE-JOURNEYDETAIL-093: Gallery shows Synology badge for synology photos', () => {
-    it('renders "Synology" badge on photos from synology provider', async () => {
+  describe('FE-PAGE-JOURNEYDETAIL-093: Gallery shows Synology badge for synologyphotos photos', () => {
+    // The real provider id is 'synologyphotos' (see server ADDON_IDS/seeds);
+    // this previously used 'synology', which masked the raw-id badge bug (#1611).
+    it('renders "Synology Photos" badge, not the raw provider id', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
       const synologyEntry = {
@@ -2172,9 +2174,9 @@ describe('JourneyDetailPage', () => {
             id: 201,
             entry_id: 10,
             photo_id: 201,
-            provider: 'synology',
+            provider: 'synologyphotos',
             file_path: null,
-            asset_id: 'syn-456',
+            asset_id: '456_cachekey',
             owner_id: 1,
             thumbnail_path: null,
             caption: null,
@@ -2194,9 +2196,9 @@ describe('JourneyDetailPage', () => {
             id: 201,
             journey_id: 1,
             photo_id: 201,
-            provider: 'synology',
+            provider: 'synologyphotos',
             file_path: null,
-            asset_id: 'syn-456',
+            asset_id: '456_cachekey',
             owner_id: 1,
             thumbnail_path: null,
             caption: null,
@@ -2221,7 +2223,8 @@ describe('JourneyDetailPage', () => {
         expect(screen.getByText(/1 photos/i)).toBeInTheDocument();
       });
 
-      expect(screen.getByText('Synology')).toBeInTheDocument();
+      expect(screen.getByText('Synology Photos')).toBeInTheDocument();
+      expect(screen.queryByText('synologyphotos')).not.toBeInTheDocument();
     });
   });
 
