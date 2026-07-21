@@ -118,6 +118,21 @@ function tzAt(lat: number, lng: number): string {
   }
 }
 
+/** Order itineraries so arrive-by shows latest arrival first; depart-at is unchanged. */
+function orderTransitItineraries(
+  itineraries: TransitItinerary[],
+  arriveBy: boolean,
+): TransitItinerary[] {
+  if (!arriveBy) return itineraries;
+  return itineraries
+    .map((itinerary, index) => ({ itinerary, index }))
+    .sort((a, b) => {
+      const delta = Date.parse(b.itinerary.endTime) - Date.parse(a.itinerary.endTime);
+      return Number.isFinite(delta) && delta !== 0 ? delta : a.index - b.index;
+    })
+    .map(({ itinerary }) => itinerary);
+}
+
 /** 'YYYY-MM-DD' + 'HH:mm' in an IANA zone → UTC ISO string. */
 function localToUtcIso(dateStr: string, timeStr: string, tz: string): string {
   const naive = Date.parse(`${dateStr}T${timeStr}:00Z`);
@@ -735,8 +750,7 @@ export default function TransitSearchPanel({
       // MOTIS returns arrive-by results ascending with the deadline-adjacent
       // connection last (#1479) — flip so the itinerary arriving closest to the
       // requested time leads the list, mirroring depart-by.
-      if (arriveBy) cleaned.sort((a, b) => Date.parse(b.endTime) - Date.parse(a.endTime));
-      setItineraries(cleaned);
+      setItineraries(orderTransitItineraries(cleaned, arriveBy));
     } catch {
       toast.error(t('transit.searchError'));
       setItineraries([]);
