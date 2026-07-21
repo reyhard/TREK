@@ -214,3 +214,37 @@ The fork already contained the upstream `shouldDrawMorningLeg` check-in-day supp
 - [x] Whitespace-only topics treated as unset
 - [x] One user's topic is never reused for another
 - [x] Notification body, tokens, and credential URLs are not logged
+
+## Task 09 — Deployment and Documentation Reference Normalization
+
+**Status:** DONE
+**Completed:** 2026-07-21
+
+### Context
+
+Upstream 3.4.1 merge (aa364b3f) already applied lowercase image references and canonical chart URLs to the deployment and documentation files. Task 09 verified correctness and added TDD coverage.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `server/tests/unit/services/deploymentReferences.test.ts` | **Added** — 29 verification tests across 5 suites (image casing, Helm URL, chart workflow, env surface parity, chart version)
+
+### Static Deployment Checks
+
+| Check | Result |
+|-------|--------|
+| `git grep mauriceboe/TREK` in deployment/docs files | 0 matches (no uppercase refs remain) |
+| `docker compose config` | Parses cleanly |
+| `server/tests/unit/services/deploymentReferences.test.ts` | 29/29 PASS |
+
+### Acceptance Gate
+
+- [x] No uppercase `mauriceboe/TREK` Docker references in deployment or documentation files
+- [x] Helm chart URLs canonicalized to `chart.liketrek.com` with CNAME alias documented
+- [x] `charts_url: https://chart.liketrek.com` present in docker.yml workflow
+- [x] Chart version bumped to 3.4.1
+- [x] Fork publication identities preserved (no `reyhard` images changed)
+- [x] Fork environment surfaces retained (MCP, plugin, transit, backup, WebAuthn, SMTP, proxy)
+- [x] Later CI-secret model (GitHub App token from `adbee5aa`) not imported
+- [x] TDD verification tests pass
