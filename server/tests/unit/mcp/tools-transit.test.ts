@@ -1242,4 +1242,47 @@ describe('MCP transit tools', () => {
       expect(json).toContain('minLength');
     });
   });
+
+  it('update_transit_route_endpoints listTools schema omits additionalProperties at runtime', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const tools = (await harness.client.listTools()).tools;
+      const tool = tools.find((t) => t.name === 'update_transit_route_endpoints')!;
+      const props = (tool.inputSchema as Record<string, unknown>).properties as Record<string, unknown>;
+
+      for (const key of ['from', 'to']) {
+        const ep = props[key] as Record<string, unknown>;
+        expect(ep).not.toHaveProperty('additionalProperties');
+      }
+
+      // Also verify the top-level object schema does not claim additionalProperties
+      expect((tool.inputSchema as Record<string, unknown>)).not.toHaveProperty('additionalProperties');
+    });
+  });
+
+  it('update_transit_route_endpoints listTools from/to sub-schemas match checked-in artifact', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const tools = (await harness.client.listTools()).tools;
+      const tool = tools.find((t) => t.name === 'update_transit_route_endpoints')!;
+      const props = (tool.inputSchema as Record<string, unknown>).properties as Record<string, unknown>;
+
+      const fs = require('fs');
+      const path = require('path');
+      const artifactPath = path.resolve(__dirname, '../../../../.superpowers/sdd/mcp-schema-capture.json');
+      const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8'));
+      const artifactProps = artifact.inputSchema.properties;
+
+      for (const key of ['from', 'to'] as const) {
+        const runtimeEp = props[key] as Record<string, unknown>;
+        const artifactEp = artifactProps[key] as Record<string, unknown>;
+
+        expect(runtimeEp.type).toBe(artifactEp.type);
+        expect(runtimeEp.required).toEqual(artifactEp.required);
+        expect(runtimeEp.properties).toEqual(artifactEp.properties);
+        expect(runtimeEp).not.toHaveProperty('additionalProperties');
+        expect(artifactEp).not.toHaveProperty('additionalProperties');
+      }
+    });
+  });
 });

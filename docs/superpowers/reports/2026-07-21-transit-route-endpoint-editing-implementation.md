@@ -16,7 +16,7 @@ The result was that fixing a wrong map pin required either re-searching the rout
 | Branch | `feat/transit-route-endpoints` |
 | Worktree path | `/opt/trek/TREK/.worktrees/feat/transit-route-endpoints` |
 | Base commit | `e6309321` `feat(places): add route_geometry, coordinate validation, and zero-coord flyTo fix` |
-| HEAD | `9c3dd2f3` `docs(report): correct stale failure counts, HEAD ref, and file-list scope in task-8 report and implementation report` |
+| HEAD | `4f8dc77e` `fix(review): add demo-user guard to REST transit endpoint, add service/MCP/schema tests, correct schema provenance and report` |
 
 ## Files changed (feature implementation — non-exhaustive; excludes R8 fix additions)
 

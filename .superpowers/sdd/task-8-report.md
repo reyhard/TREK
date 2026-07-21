@@ -93,7 +93,7 @@ Key schema properties as returned by `listTools`:
 - `inputSchema.type`: `"object"`
 - `inputSchema.properties.tripId`: `{ type: "integer", exclusiveMinimum: 0, maximum: 9007199254740991 }`
 - `inputSchema.properties.reservationId`: same shape as tripId
-- `inputSchema.properties.from`/`to`: `{ type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 300 }, lat: { type: "number", minimum: -90, maximum: 90 }, lng: { type: "number", minimum: -180, maximum: 180 } }, required: ["name", "lat", "lng"], additionalProperties: false }`
+- `inputSchema.properties.from`/`to`: `{ type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 300 }, lat: { type: "number", minimum: -90, maximum: 90 }, lng: { type: "number", minimum: -180, maximum: 180 } }, required: ["name", "lat", "lng"] }` — note the runtime `listTools` output omits `additionalProperties` entirely (the SDK's internal `zod-to-json-schema` conversion does not emit it for plain `z.object()`; handler-side Zod validation is the authoritative mechanism)
 - `inputSchema.required`: `["tripId", "reservationId"]`
 - `annotations`: `{ readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }`
 - At-least-one constraint is not expressible in JSON Schema draft-07; enforced via `.refine()` in the handler.
