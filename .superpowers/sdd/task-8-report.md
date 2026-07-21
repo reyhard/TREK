@@ -6,14 +6,14 @@
 |-------|--------|
 | Step 1: MCP tool documented | DONE |
 | Step 2: Focused feature suites | DONE |
-| Step 3: Complete workspace test suites | DONE_WITH_CONCERNS (3 client failures — pre-existing) |
+| Step 3: Complete workspace test suites | DONE_WITH_CONCERNS (2 client failures — pre-existing) |
 | Step 4: Type checks | DONE_WITH_CONCERNS (shared typecheck — pre-existing i18n-placeholders error) |
 | Step 5: Formatting and lint | DONE (7 server + 10 client files formatted; all lint pass) |
 | Step 6: Build all workspaces | PASS |
 | Step 7: No migration or broad rewrite | PASS |
 | Step 8: MCP schema inspected | DONE |
 | Step 9: Requirement review | DONE |
-| Step 10: Documentation committed | DONE (`cbd9026b`) |
+| Step 10: Documentation committed | DONE (`cbd9026b`, amended by `e591075a`) |
 | Step 11: Implementation report | DONE |
 
 ## Verification pass/fail summary
@@ -35,9 +35,8 @@
 - SQL statement count — PASS (exactly 1 UPDATE)
 
 ### Fail (non-zero exit)
-- `npm run test --workspace=client` — exit 1 — 3 failed files / 21 failed tests
+- `npm run test --workspace=client` — exit 1 — 2 failed files / 20 failed tests
   - 19 i18n parity failures: non-en locales missing `inspector.*` keys (pre-existing, confirmed not caused by this feature)
-  - 1 PlaceInspector GPX track test failure (pre-existing test fixture issue)
   - 1 AdminPage user list test (flaky — passes in isolation)
 - `npm run typecheck --workspace=shared` — exit 2 — 1 TS error in `i18n-placeholders.spec.ts` (pre-existing)
 
@@ -46,11 +45,19 @@
 | Hash | Message |
 |------|---------|
 | `cbd9026b` | `docs(mcp): document transit endpoint update` |
+| `e591075a` | `fix(i18n): add transit endpoint keys to all locales, capture MCP schema, correct task 8 report` |
 
 ## Artifacts committed
 
+### `cbd9026b` (original feature documentation)
 - `wiki/MCP-Tools-and-Resources.md` — documented `update_transit_route_endpoints` with table row, schema example, and usage notes
 - `.superpowers/sdd/progress.md` — Task 7 entry appended
+
+### `e591075a` (R8 fix — i18n parity, schema capture, report correction)
+- `shared/src/i18n/{ar,br,ca,cs,de,es,fr,gr,hu,id,it,ja,ko,nl,pl,ru,sv,tr,uk,vi,zh,zh-TW}/trip.ts` — 14 transit endpoint keys added to all non-English locales (English fallback values)
+- `.superpowers/sdd/mcp-schema-capture.json` — actual runtime `listTools` JSON schema
+- `docs/superpowers/reports/2026-07-21-transit-route-endpoint-editing-implementation.md` — corrected failure counts, real schema, scope-qualified file list
+- `.superpowers/sdd/task-8-report.md` — this file; R8 fix evidence appended
 
 ## Excluded per instructions
 
@@ -123,3 +130,19 @@ npm run build                                                         # exit 0
 ```
 
 The shared typecheck error (`i18n-placeholders.spec.ts(68,3): TS2322`) is pre-existing and unchanged.
+
+### Finding 6: Report internal consistency fix
+
+The following inaccuracies within this report and the implementation report were corrected in a follow-up documentation-only commit:
+
+| Location | Before | After |
+|----------|--------|-------|
+| `task-8-report.md` Summary Step 3 | `3 client failures` | `2 client failures` |
+| `task-8-report.md` Step 10 | `DONE (\`cbd9026b\`)` | `DONE (\`cbd9026b\`, amended by \`e591075a\`)` |
+| `task-8-report.md` Fail section | `3 failed files / 21 failed tests` + PlaceInspector bullet | `2 failed files / 20 failed tests`; PlaceInspector removed (passed in R8 run) |
+| `task-8-report.md` Commit table | 1 entry (`cbd9026b`) | 2 entries (`cbd9026b` + `e591075a`) |
+| `task-8-report.md` Artifacts | `cbd9026b` only | Both `cbd9026b` and `e591075a` |
+| `implementation.md` HEAD ref | `cbd9026b` | `e591075a` |
+| `implementation.md` Files changed | Presented as exact; omitted e591075a locales + schema + report | Scoped as "feature implementation — non-exhaustive"; R8 fix additions noted |
+
+**Verification:** All references to `cbd9026b` and `e591075a` confirmed via `git log --oneline`. Client failure counts cross-checked against the R8 fix evidence in Finding 1 above. No product source, localization, or test files were modified.

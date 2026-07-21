@@ -16,9 +16,11 @@ The result was that fixing a wrong map pin required either re-searching the rout
 | Branch | `feat/transit-route-endpoints` |
 | Worktree path | `/opt/trek/TREK/.worktrees/feat/transit-route-endpoints` |
 | Base commit | `e6309321` `feat(places): add route_geometry, coordinate validation, and zero-coord flyTo fix` |
-| HEAD | `cbd9026b` `docs(mcp): document transit endpoint update` |
+| HEAD | `e591075a` `fix(i18n): add transit endpoint keys to all locales, capture MCP schema, correct task 8 report` |
 
-## Files changed
+## Files changed (feature implementation — non-exhaustive; excludes R8 fix additions)
+
+The list below covers the original feature source files (scope of commits `cbd9026b` and earlier feature commits). The subsequent R8 fix commit `e591075a` additionally touched 22 non-English locale `trip.ts` files, `.superpowers/sdd/mcp-schema-capture.json`, updated this report, and updated `.superpowers/sdd/task-8-report.md`. For the full file set, see `git log --oneline --name-only e591075a`.
 
 ```
 shared/src/reservation/reservation.schema.ts
