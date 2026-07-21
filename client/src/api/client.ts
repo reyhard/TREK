@@ -44,6 +44,8 @@ import {
   type BookingImportPreviewResponse,
   type BookingImportConfirmResponse,
   type BookingImportMode,
+  type TransitRouteEndpointsUpdateRequest,
+  type TransitRouteEndpointsUpdateResponse,
 } from '@trek/shared'
 import { getSocketId } from './websocket'
 import { probeNow } from '../sync/connectivity'
@@ -870,6 +872,14 @@ export const reservationsApi = {
   create: (tripId: number | string, data: ReservationCreateRequest) => apiClient.post(`/trips/${tripId}/reservations`, data).then(r => r.data),
   update: (tripId: number | string, id: number, data: ReservationUpdateRequest) => apiClient.put(`/trips/${tripId}/reservations/${id}`, data).then(r => r.data),
   delete: (tripId: number | string, id: number) => apiClient.delete(`/trips/${tripId}/reservations/${id}`).then(r => r.data),
+  updateTransitRouteEndpoints: (
+    tripId: number | string,
+    id: number,
+    data: TransitRouteEndpointsUpdateRequest,
+  ): Promise<TransitRouteEndpointsUpdateResponse> =>
+    apiClient
+      .put(`/trips/${tripId}/reservations/${id}/transit-endpoints`, data)
+      .then((response) => response.data as TransitRouteEndpointsUpdateResponse),
   updatePositions: (tripId: number | string, positions: { id: number; day_plan_position: number }[], dayId?: number) => apiClient.put(`/trips/${tripId}/reservations/positions`, { positions, day_id: dayId }).then(r => r.data),
   importBookingPreview: (tripId: number | string, files: File[], mode: BookingImportMode = 'no-ai'): Promise<BookingImportPreviewResponse> => {
     const fd = new FormData()

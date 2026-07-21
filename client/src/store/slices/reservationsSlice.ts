@@ -3,6 +3,7 @@ import { reservationRepo } from '../../repo/reservationRepo'
 import type { StoreApi } from 'zustand'
 import type { TripStoreState } from '../tripStore'
 import type { Reservation } from '../../types'
+import type { TransitRouteEndpointsUpdateRequest } from '@trek/shared'
 import { getApiErrorMessage } from '../../types'
 
 type SetState = StoreApi<TripStoreState>['setState']
@@ -12,6 +13,11 @@ export interface ReservationsSlice {
   loadReservations: (tripId: number | string) => Promise<void>
   addReservation: (tripId: number | string, data: Partial<Reservation> & { title: string }) => Promise<Reservation>
   updateReservation: (tripId: number | string, id: number, data: Partial<Reservation>) => Promise<Reservation>
+  updateTransitRouteEndpoints: (
+    tripId: number | string,
+    id: number,
+    data: TransitRouteEndpointsUpdateRequest,
+  ) => Promise<Reservation>
   toggleReservationStatus: (tripId: number | string, id: number) => Promise<void>
   deleteReservation: (tripId: number | string, id: number) => Promise<void>
 }
@@ -45,6 +51,20 @@ export const createReservationsSlice = (set: SetState, get: GetState): Reservati
       return result.reservation
     } catch (err: unknown) {
       throw new Error(getApiErrorMessage(err, 'Error updating reservation'))
+    }
+  },
+
+  updateTransitRouteEndpoints: async (tripId, id, data) => {
+    try {
+      const result = await reservationsApi.updateTransitRouteEndpoints(tripId, id, data)
+      set((state) => ({
+        reservations: state.reservations.map((reservation) =>
+          reservation.id === id ? result.reservation : reservation,
+        ),
+      }))
+      return result.reservation
+    } catch (err: unknown) {
+      throw new Error(getApiErrorMessage(err, 'Error updating transit route endpoints'))
     }
   },
 
