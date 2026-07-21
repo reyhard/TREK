@@ -60,7 +60,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Управление планами отпуска',
   'oauth.scope.vacay:write.description': 'Создание и управление записями отпуска, праздниками и командными планами',
   'oauth.scope.geo:read.label': 'Карты, геокодирование и общественный транспорт',
-  'oauth.scope.geo:read.description': 'Поиск мест, разрешение URL карт, обратное геокодирование координат и поиск маршрутов общественного транспорта',
+  'oauth.scope.geo:read.description':
+    'Поиск мест, разрешение URL карт, обратное геокодирование координат и поиск маршрутов общественного транспорта',
   'oauth.scope.weather:read.label': 'Прогнозы погоды',
   'oauth.scope.weather:read.description': 'Получение прогнозов погоды для мест и дат поездки',
   'oauth.scope.journey:read.label': 'Просмотр путешествий',

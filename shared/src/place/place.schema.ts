@@ -117,7 +117,12 @@ export type AssignmentPlace = z.infer<typeof assignmentPlaceSchema>;
 export const placeCreateRequestSchema = open.and(z.object({ name: z.string().min(1) }));
 export type PlaceCreateRequest = z.infer<typeof placeCreateRequestSchema>;
 
-export const placeUpdateRequestSchema = open;
+export const placeUpdateRequestSchema = open.and(
+  z.object({
+    lat: latitudeSchema.optional(),
+    lng: longitudeSchema.optional(),
+  })
+);
 export type PlaceUpdateRequest = z.infer<typeof placeUpdateRequestSchema>;
 
 export const placeBulkDeleteRequestSchema = z.object({

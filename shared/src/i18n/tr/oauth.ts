@@ -62,7 +62,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Tatil planlarını yönet',
   'oauth.scope.vacay:write.description': 'Tatil kayıtlarını, resmi tatilleri ve ekip planlarını oluştur ve yönet',
   'oauth.scope.geo:read.label': 'Haritalar, coğrafi kodlama ve toplu taşıma',
-  'oauth.scope.geo:read.description': "Konum ara, harita URL'lerini çöz, koordinatları ters coğrafi kodla ve toplu taşıma rotalarını ara",
+  'oauth.scope.geo:read.description':
+    "Konum ara, harita URL'lerini çöz, koordinatları ters coğrafi kodla ve toplu taşıma rotalarını ara",
   'oauth.scope.weather:read.label': 'Hava durumu tahminleri',
   'oauth.scope.weather:read.description': 'Seyahat konumları ve tarihleri için hava durumu tahminlerini getir',
   'oauth.scope.journey:read.label': "Journey'leri görüntüle",

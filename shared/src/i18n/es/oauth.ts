@@ -59,7 +59,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Gestionar planes de vacaciones',
   'oauth.scope.vacay:write.description': 'Crear y gestionar entradas de vacaciones, festivos y planes de equipo',
   'oauth.scope.geo:read.label': 'Mapas, geocodificación y transporte público',
-  'oauth.scope.geo:read.description': 'Buscar lugares, resolver URLs de mapa, geocodificar coordenadas y buscar rutas de transporte público',
+  'oauth.scope.geo:read.description':
+    'Buscar lugares, resolver URLs de mapa, geocodificar coordenadas y buscar rutas de transporte público',
   'oauth.scope.weather:read.label': 'Previsiones meteorológicas',
   'oauth.scope.weather:read.description': 'Obtener previsiones meteorológicas para lugares y fechas del viaje',
   'oauth.scope.journey:read.label': 'Ver travesías',

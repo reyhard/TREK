@@ -101,9 +101,11 @@ const dashboard: TranslationStrings = {
   'dashboard.dateShiftTitle': 'New start date',
   'dashboard.dateShiftIntro': 'You changed when this trip starts. How should your plans follow the new dates?',
   'dashboard.dateShiftKeepBookings': 'Keep bookings on their dates',
-  'dashboard.dateShiftKeepBookingsDesc': 'Day plans move with the new dates, while reservations and accommodations stay on their original dates as long as those are still part of the trip.',
+  'dashboard.dateShiftKeepBookingsDesc':
+    'Day plans move with the new dates, while reservations and accommodations stay on their original dates as long as those are still part of the trip.',
   'dashboard.dateShiftAll': 'Shift everything',
-  'dashboard.dateShiftAllDesc': 'The entire itinerary moves with the new dates, including reservations and accommodations.',
+  'dashboard.dateShiftAllDesc':
+    'The entire itinerary moves with the new dates, including reservations and accommodations.',
   'dashboard.dateShiftHint': 'Tip: to shift only part of your itinerary, use "Add day" in the planner instead.',
   'dashboard.greeting.morning': 'Good morning,',
   'dashboard.greeting.afternoon': 'Good afternoon,',

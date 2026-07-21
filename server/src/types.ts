@@ -75,6 +75,7 @@ export interface Place {
   website?: string | null;
   phone?: string | null;
   transport_mode?: string;
+  route_geometry?: string | null;
   created_at?: string;
   updated_at?: string;
 }

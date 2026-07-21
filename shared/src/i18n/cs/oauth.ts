@@ -59,7 +59,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Spravovat plány dovolené',
   'oauth.scope.vacay:write.description': 'Vytvářet a spravovat záznamy dovolené, svátky a týmové plány',
   'oauth.scope.geo:read.label': 'Mapy, geokódování a veřejná doprava',
-  'oauth.scope.geo:read.description': 'Vyhledávat místa, řešit URL map, zpětně geokódovat souřadnice a vyhledávat trasy MHD',
+  'oauth.scope.geo:read.description':
+    'Vyhledávat místa, řešit URL map, zpětně geokódovat souřadnice a vyhledávat trasy MHD',
   'oauth.scope.weather:read.label': 'Předpovědi počasí',
   'oauth.scope.weather:read.description': 'Získávat předpovědi počasí pro místa a data výletu',
   'oauth.scope.journey:read.label': 'Zobrazit cestovní deníky',

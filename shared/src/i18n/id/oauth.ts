@@ -59,7 +59,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Kelola rencana liburan',
   'oauth.scope.vacay:write.description': 'Buat dan kelola entri liburan, hari libur, dan rencana tim',
   'oauth.scope.geo:read.label': 'Peta, geokoding & transportasi umum',
-  'oauth.scope.geo:read.description': 'Cari lokasi, selesaikan URL peta, geokode terbalik koordinat, dan cari rute transportasi umum',
+  'oauth.scope.geo:read.description':
+    'Cari lokasi, selesaikan URL peta, geokode terbalik koordinat, dan cari rute transportasi umum',
   'oauth.scope.weather:read.label': 'Prakiraan cuaca',
   'oauth.scope.weather:read.description': 'Ambil prakiraan cuaca untuk lokasi dan tanggal perjalanan',
   'oauth.scope.journey:read.label': 'Lihat Journey',

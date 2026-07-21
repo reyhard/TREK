@@ -61,7 +61,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Szabadságtervek kezelése',
   'oauth.scope.vacay:write.description': 'Szabadságbejegyzések, ünnepnapok és csapattervek létrehozása és kezelése',
   'oauth.scope.geo:read.label': 'Térképek, geokódolás és tömegközlekedés',
-  'oauth.scope.geo:read.description': 'Helyek keresése, térkép URL-ek feloldása, koordináták fordított geokódolása és tömegközlekedési útvonalak keresése',
+  'oauth.scope.geo:read.description':
+    'Helyek keresése, térkép URL-ek feloldása, koordináták fordított geokódolása és tömegközlekedési útvonalak keresése',
   'oauth.scope.weather:read.label': 'Időjárás-előrejelzések',
   'oauth.scope.weather:read.description': 'Időjárás-előrejelzések lekérése az utazási helyszínekre és dátumokra',
   'oauth.scope.journey:read.label': 'Útinaplók megtekintése',

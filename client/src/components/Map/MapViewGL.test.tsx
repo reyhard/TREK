@@ -450,6 +450,15 @@ describe('MapViewGL', () => {
     expect(clusterData.features).toHaveLength(0);
   });
 
+  it('FE-COMP-MAPVIEWGL-016: flies to a selected place at zero coordinates', async () => {
+    const place = buildMapPlace({ id: 10, lat: 0, lng: 0 });
+    render(<MapViewGL places={[place]} selectedPlaceId={place.id} glProvider="maplibre-gl" />);
+
+    await act(async () => {});
+
+    expect(glMap.flyTo).toHaveBeenCalledWith(expect.objectContaining({ center: [0, 0] }));
+  });
+
   function touchEvent(type: string, touches: Array<{ clientX: number; clientY: number }>) {
     const ev = new Event(type, { bubbles: true });
     Object.defineProperty(ev, 'touches', { value: touches });

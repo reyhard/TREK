@@ -22,7 +22,7 @@ import { resetTestDb } from '../../helpers/test-db';
 
 import fs from 'fs';
 import path from 'path';
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
 
@@ -193,6 +193,26 @@ describe('createPlace (service)', () => {
     const place = svcCreatePlace(String(trip.id), { name: 'My Place' }) as any;
     const row = testDb.prepare('SELECT trip_id FROM places WHERE id = ?').get(place.id) as any;
     expect(row.trip_id).toBe(trip.id);
+  });
+
+  it('preserves route geometry when plugins create and update route places', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const initialGeometry = '[[35.1,139.1],[35.2,139.2]]';
+    const updatedGeometry = '[[35.1,139.1],[35.3,139.3]]';
+
+    const created = svcCreatePlace(String(trip.id), {
+      name: 'Mountain trail',
+      lat: 35.1,
+      lng: 139.1,
+      route_geometry: initialGeometry,
+    }) as any;
+    expect(created.route_geometry).toBe(initialGeometry);
+
+    const updated = updatePlace(String(trip.id), String(created.id), {
+      route_geometry: updatedGeometry,
+    }) as any;
+    expect(updated.route_geometry).toBe(updatedGeometry);
   });
 });
 

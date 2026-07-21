@@ -59,7 +59,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Zarządzaj planami urlopowymi',
   'oauth.scope.vacay:write.description': 'Twórz i zarządzaj wpisami urlopowymi, świętami i planami zespołu',
   'oauth.scope.geo:read.label': 'Mapy, geokodowanie i transport publiczny',
-  'oauth.scope.geo:read.description': 'Wyszukuj miejsca, rozwiązuj adresy URL map, odwrotnie geokoduj współrzędne i wyszukuj trasy transportu publicznego',
+  'oauth.scope.geo:read.description':
+    'Wyszukuj miejsca, rozwiązuj adresy URL map, odwrotnie geokoduj współrzędne i wyszukuj trasy transportu publicznego',
   'oauth.scope.weather:read.label': 'Prognozy pogody',
   'oauth.scope.weather:read.description': 'Pobieraj prognozy pogody dla miejsc i dat podróży',
   'oauth.scope.journey:read.label': 'Przeglądaj dzienniki podróży',

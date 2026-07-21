@@ -94,7 +94,8 @@ const dashboard: TranslationStrings = {
   'dashboard.dateShiftAll': 'Alles verschieben',
   'dashboard.dateShiftAllDesc':
     'Der gesamte Reiseplan wandert mit den neuen Daten, einschließlich Reservierungen und Unterkünften.',
-  'dashboard.dateShiftHint': 'Tipp: Um nur einen Teil deines Reiseplans zu verschieben, nutze stattdessen "Tag hinzufügen" im Planer.',
+  'dashboard.dateShiftHint':
+    'Tipp: Um nur einen Teil deines Reiseplans zu verschieben, nutze stattdessen "Tag hinzufügen" im Planer.',
   'dashboard.greeting.morning': 'Guten Morgen,',
   'dashboard.greeting.afternoon': 'Guten Tag,',
   'dashboard.greeting.evening': 'Guten Abend,',

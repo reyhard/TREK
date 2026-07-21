@@ -148,6 +148,7 @@ export function createPlace(
     website?: string;
     phone?: string;
     transport_mode?: string;
+    route_geometry?: string;
     tags?: number[];
   },
 ) {
@@ -171,6 +172,7 @@ export function createPlace(
     website,
     phone,
     transport_mode,
+    route_geometry,
     tags = [],
   } = body;
 
@@ -179,8 +181,9 @@ export function createPlace(
       `
     INSERT INTO places (trip_id, name, description, lat, lng, address, category_id, price, currency,
       place_time, end_time,
-      duration_minutes, notes, image_url, google_place_id, google_ftid, osm_id, website, phone, transport_mode)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      duration_minutes, notes, image_url, google_place_id, google_ftid, osm_id, website, phone,
+      transport_mode, route_geometry)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     )
     .run(
@@ -204,6 +207,7 @@ export function createPlace(
       website || null,
       phone || null,
       transport_mode || 'walking',
+      route_geometry || null,
     );
 
   const placeId = result.lastInsertRowid;
@@ -255,6 +259,7 @@ export function updatePlace(
     website?: string;
     phone?: string;
     transport_mode?: string;
+    route_geometry?: string;
     tags?: number[];
   },
   ifMatch?: string,
@@ -291,6 +296,7 @@ export function updatePlace(
     website,
     phone,
     transport_mode,
+    route_geometry,
     tags,
   } = body;
 
@@ -316,6 +322,7 @@ export function updatePlace(
       website = ?,
       phone = ?,
       transport_mode = COALESCE(?, transport_mode),
+      route_geometry = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `,
@@ -339,6 +346,7 @@ export function updatePlace(
     website !== undefined ? website : existingPlace.website,
     phone !== undefined ? phone : existingPlace.phone,
     transport_mode || null,
+    route_geometry !== undefined ? route_geometry : existingPlace.route_geometry,
     placeId,
   );
 

@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../../constants/mapDefaults';
+import { isValidPlaceCoordinates } from '@trek/shared';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { useTransportRoutes } from '../../hooks/useTransportRoutes';
 import { fetchPhoto, getAllThumbs, getCached, isLoading, onThumbReady } from '../../services/photoService';
@@ -51,7 +52,7 @@ const PLACE_UNCLUSTERED_LAYER_ID = 'trip-place-unclustered-hit';
 type PlaceWithCoords = Place & { lat: number; lng: number };
 
 function hasValidCoords(place: Place): place is PlaceWithCoords {
-  return place.lat != null && place.lng != null && Number.isFinite(place.lat) && Number.isFinite(place.lng);
+  return isValidPlaceCoordinates(place);
 }
 
 function isValidCoordinate(coord: [number, number] | null | undefined): coord is [number, number] {
@@ -1180,7 +1181,7 @@ export function MapViewGL({
     const map = mapRef.current;
     if (!map || !selectedPlaceId) return;
     const target = places.find((p) => p.id === selectedPlaceId) || dayPlaces.find((p) => p.id === selectedPlaceId);
-    if (!target?.lat || !target?.lng) return;
+    if (!target || !hasValidCoords(target)) return;
     try {
       map.flyTo({
         center: [target.lng, target.lat],

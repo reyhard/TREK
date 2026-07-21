@@ -59,7 +59,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Manage vacation plans',
   'oauth.scope.vacay:write.description': 'Create and manage vacation entries, holidays, and team plans',
   'oauth.scope.geo:read.label': 'Maps, geocoding & transit',
-  'oauth.scope.geo:read.description': 'Search locations, resolve map URLs, reverse geocode coordinates, and search public transit routes',
+  'oauth.scope.geo:read.description':
+    'Search locations, resolve map URLs, reverse geocode coordinates, and search public transit routes',
   'oauth.scope.weather:read.label': 'Weather forecasts',
   'oauth.scope.weather:read.description': 'Fetch weather forecasts for trip locations and dates',
   'oauth.scope.journey:read.label': 'View journeys',

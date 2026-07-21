@@ -61,7 +61,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Vakantieplannen beheren',
   'oauth.scope.vacay:write.description': 'Vakantie-invoeren, feestdagen en teamplannen aanmaken en beheren',
   'oauth.scope.geo:read.label': 'Kaarten, geocodering & OV',
-  'oauth.scope.geo:read.description': "Locaties zoeken, kaart-URL's oplossen, coördinaten omgekeerd geocoderen en OV-routes doorzoeken",
+  'oauth.scope.geo:read.description':
+    "Locaties zoeken, kaart-URL's oplossen, coördinaten omgekeerd geocoderen en OV-routes doorzoeken",
   'oauth.scope.weather:read.label': 'Weersverwachtingen',
   'oauth.scope.weather:read.description': 'Weersverwachtingen ophalen voor reislocaties en -datums',
   'oauth.scope.journey:read.label': 'Reisverslagen bekijken',

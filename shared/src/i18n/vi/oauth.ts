@@ -60,7 +60,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.vacay:write.label': 'Quản lý kế hoạch kỳ nghỉ',
   'oauth.scope.vacay:write.description': 'Tạo và quản lý các mục nghỉ lễ, ngày lễ và kế hoạch nhóm',
   'oauth.scope.geo:read.label': 'Bản đồ, mã hóa địa lý & giao thông công cộng',
-  'oauth.scope.geo:read.description': 'Tìm kiếm vị trí, phân giải URL bản đồ, đảo ngược tọa độ mã địa lý và tìm kiếm tuyến giao thông công cộng',
+  'oauth.scope.geo:read.description':
+    'Tìm kiếm vị trí, phân giải URL bản đồ, đảo ngược tọa độ mã địa lý và tìm kiếm tuyến giao thông công cộng',
   'oauth.scope.weather:read.label': 'Dự báo thời tiết',
   'oauth.scope.weather:read.description': 'Tìm nạp dự báo thời tiết cho địa điểm và ngày của chuyến đi',
   'oauth.scope.journey:read.label': 'Xem hành trình',
