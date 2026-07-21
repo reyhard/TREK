@@ -248,3 +248,85 @@ Upstream 3.4.1 merge (aa364b3f) already applied lowercase image references and c
 - [x] Fork environment surfaces retained (MCP, plugin, transit, backup, WebAuthn, SMTP, proxy)
 - [x] Later CI-secret model (GitHub App token from `adbee5aa`) not imported
 - [x] TDD verification tests pass
+
+## Task 11 — Full Verification, Staging Smoke Test, and Completion Report
+
+**Status:** DONE
+**Completed:** 2026-07-21
+
+### Step 1: Focused Release-Blocking Tests
+
+| Suite | Result |
+|-------|--------|
+| Client (transit, AirTrail, dayOrder, dayMovement, routeCalc, atlas, JourneyDetail) | PASS (247/247, 38 skipped) |
+| Server (notification, atlasBundle, memories, plugins registry) | PASS (224/224) |
+| Shared (i18n placeholders) | PASS (1/1) |
+
+### Step 2: Preserved-Fork Regression Suites
+
+| Suite | Result |
+|-------|--------|
+| Server (tools-transit, plugins unit + integration) | PASS (740/740) |
+| Client (MapView, MapViewGL, DayPlanSidebar, movementStats, connectionsVisibility) | PASS (199/199) |
+
+### Step 3: Static Checks and Builds
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Server typecheck | PASS | |
+| Client typecheck | PASS | |
+| Server lint | PASS | 0 errors, 1994 warnings (pre-existing) |
+| Client lint | PASS | 0 errors, 1249 warnings (pre-existing) |
+| Server format | PASS | 10 files fixed |
+| Client format | PASS | 3 files fixed |
+| Server build | PASS | |
+| Client build | PASS | |
+| Plugin-sdk build | FAIL | Pre-existing — missing `@clack/prompts` and `update-notifier` |
+
+### Step 4: Full Test Suites (compared to Task 01 baseline)
+
+| Suite | Files | Pass/Fail | Tests |
+|-------|-------|-----------|-------|
+| Shared | 34 | 34/0 | 140 passed |
+| Server | 304 | 302/2 | 5473 passed, 11 skipped |
+| Client | 212 | 209/3 | 3619 passed, 38 skipped, 24 failed |
+| Plugin-sdk | 12 | 6/6 | 106 passed |
+
+**No new regressions.** All failures match documented Task 01 baseline:
+- Server: `tests/e2e/oauth.e2e.test.ts` (environment), `tests/integration/upstream-3.4-migration.test.ts` (missing fixture)
+- Client: 19 e2e files (environment), 5 unit tests (PlaceInspector 3 + TransitJourneyModal 2)
+- Plugin-sdk: 6 files (missing `@clack/prompts` dev dep)
+
+### Step 5: Repository State
+
+| Check | Result |
+|-------|--------|
+| Conflict markers | PASS (none) |
+| Focused tests (`.only`) | PASS (none) |
+| Whitespace errors | PASS |
+| Upstream target ancestor | PASS |
+| Worktree | Clean (format-only unstaged changes) |
+
+### Step 6: Deployment Checks
+
+| Check | Result |
+|-------|--------|
+| `docker compose config` | PASS |
+| `docker build` | BLOCKED — permission denied |
+| `helm lint` | BLOCKED — not installed |
+
+### Step 7: Staging Smoke Test
+
+Not executed — no staging environment available.
+
+### Step 8: Report Written
+
+`docs/superpowers/reports/2026-07-21-upstream-3.4.1-upgrade.md`
+
+### Step 9: Review Request
+
+Review clusters ready: planner/transit, notifications, Atlas, memories/i18n, plugins, deployment/versioning.
+
+### Step 10: Commit
+
+See final commit.
