@@ -87,7 +87,7 @@ The `npm run i18n:parity --workspace=shared` script (exit 0) also confirms trans
 
 ### Finding 2: MCP schema captured from runtime, not source
 
-**Fix:** Generated the actual `listTools` JSON schema using `zod/v4-mini.toJSONSchema` — the same converter the MCP SDK uses internally (`zod-json-schema-compat.ts` v4 branch). The output was written to `.superpowers/sdd/mcp-schema-capture.json` and incorporated into `docs/superpowers/reports/2026-07-21-transit-route-endpoint-editing-implementation.md`, replacing the earlier source-code approximation.
+**Fix:** Captured the actual `listTools` JSON schema by calling `client.listTools()` through the `McpHarness` test infrastructure (InMemoryTransport) and serializing the `update_transit_route_endpoints` tool's `inputSchema` property. The output was written to `.superpowers/sdd/mcp-schema-capture.json` and incorporated into `docs/superpowers/reports/2026-07-21-transit-route-endpoint-editing-implementation.md`, replacing the earlier source-code approximation.
 
 Key schema properties as returned by `listTools`:
 - `inputSchema.type`: `"object"`
