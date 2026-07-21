@@ -205,7 +205,10 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
             c.close();
           },
         }),
-        arrayBuffer: () => Promise.resolve(imageBytes.buffer.slice(imageBytes.byteOffset, imageBytes.byteOffset + imageBytes.byteLength)),
+        arrayBuffer: () =>
+          Promise.resolve(
+            imageBytes.buffer.slice(imageBytes.byteOffset, imageBytes.byteOffset + imageBytes.byteLength),
+          ),
       });
     }
 
@@ -1402,7 +1405,7 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
   // Earlier tests queue mock*Once responses on safeFetch that are not always
   // fully consumed — reset to the shared fake so they can't leak in here.
   beforeEach(async () => {
-    const guard = await import('../../src/utils/ssrfGuard') as any;
+    const guard = (await import('../../src/utils/ssrfGuard')) as any;
     vi.mocked(safeFetch).mockReset();
     vi.mocked(safeFetch).mockImplementation(guard.__fakeSynologyFetch);
   });
@@ -1418,23 +1421,21 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
     setSynologyCredentials(testDb, user.id, 'https://synology.example.com', 'admin', 'pass');
     testDb.prepare('UPDATE users SET synology_skip_ssl = ? WHERE id = ?').run(skipSsl, user.id);
     const assetId = uniqueAssetId();
-    const insert = testDb.prepare(
-      'INSERT INTO trek_photos (provider, asset_id, owner_id) VALUES (?, ?, ?)'
-    ).run('synologyphotos', assetId, user.id);
+    const insert = testDb
+      .prepare('INSERT INTO trek_photos (provider, asset_id, owner_id) VALUES (?, ?, ?)')
+      .run('synologyphotos', assetId, user.id);
     return { user, trekPhotoId: Number(insert.lastInsertRowid) };
   }
 
   function thumbnailFetchCalls() {
-    return vi.mocked(safeFetch).mock.calls.filter(call => String(call[0]).includes('SYNO.Foto.Thumbnail'));
+    return vi.mocked(safeFetch).mock.calls.filter((call) => String(call[0]).includes('SYNO.Foto.Thumbnail'));
   }
 
   it('SYNO-100 — thumbnail fetch passes rejectUnauthorized: false when skip-SSL is enabled', async () => {
     const { user, trekPhotoId } = createSynologyTrekPhoto(1);
     vi.mocked(safeFetch).mockClear();
 
-    const res = await request(app)
-      .get(`/api/photos/${trekPhotoId}/thumbnail`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/photos/${trekPhotoId}/thumbnail`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     const calls = thumbnailFetchCalls();
@@ -1448,9 +1449,7 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
     const { user, trekPhotoId } = createSynologyTrekPhoto(1);
     vi.mocked(safeFetch).mockClear();
 
-    const res = await request(app)
-      .get(`/api/photos/${trekPhotoId}/original`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/photos/${trekPhotoId}/original`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     const calls = thumbnailFetchCalls();
@@ -1464,9 +1463,7 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
     const { user, trekPhotoId } = createSynologyTrekPhoto(0);
     vi.mocked(safeFetch).mockClear();
 
-    const res = await request(app)
-      .get(`/api/photos/${trekPhotoId}/thumbnail`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/photos/${trekPhotoId}/thumbnail`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     const calls = thumbnailFetchCalls();
@@ -1480,9 +1477,7 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
     const { user, trekPhotoId } = createSynologyTrekPhoto(1);
     vi.mocked(safeFetch).mockClear();
 
-    const res = await request(app)
-      .get(`/api/photos/${trekPhotoId}/original`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/photos/${trekPhotoId}/original`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     const calls = thumbnailFetchCalls();
@@ -1496,9 +1491,7 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
     const { user, trekPhotoId } = createSynologyTrekPhoto(0);
     vi.mocked(safeFetch).mockClear();
 
-    const res = await request(app)
-      .get(`/api/photos/${trekPhotoId}/original`)
-      .set('Cookie', authCookie(user.id));
+    const res = await request(app).get(`/api/photos/${trekPhotoId}/original`).set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
     const calls = thumbnailFetchCalls();

@@ -1,9 +1,10 @@
-import { pipeline } from 'node:stream/promises';
-import { Readable } from 'node:stream';
-import { Response } from 'express';
 import { canAccessTrip, db } from '../../db/database';
 import { safeFetch, SsrfBlockedError, type SafeFetchOptions } from '../../utils/ssrfGuard';
 import { decrypt_api_key } from '../apiKeyCrypto';
+
+import { Response } from 'express';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 // helpers for handling return types
 
@@ -296,8 +297,10 @@ export async function pipeAsset(
     } else if (defaultCacheControl) {
       response.set('Cache-Control', defaultCacheControl);
     }
-    if (resp.headers.get('content-length')) response.set('Content-Length', resp.headers.get('content-length') as string);
-    if (resp.headers.get('content-disposition')) response.set('Content-Disposition', resp.headers.get('content-disposition') as string);
+    if (resp.headers.get('content-length'))
+      response.set('Content-Length', resp.headers.get('content-length') as string);
+    if (resp.headers.get('content-disposition'))
+      response.set('Content-Disposition', resp.headers.get('content-disposition') as string);
     if (resp.headers.get('accept-ranges')) response.set('Accept-Ranges', resp.headers.get('accept-ranges') as string);
     if (resp.headers.get('content-range')) response.set('Content-Range', resp.headers.get('content-range') as string);
 

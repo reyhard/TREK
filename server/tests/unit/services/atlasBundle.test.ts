@@ -20,7 +20,7 @@ describe('Atlas admin0 country bundle (#1609)', () => {
   }[];
 
   it('ATLAS-BUNDLE-003 — Kosovo ships with a resolvable ISO_A2', () => {
-    const kosovo = features.filter(f => f.properties.ADM0_A3 === 'XKX');
+    const kosovo = features.filter((f) => f.properties.ADM0_A3 === 'XKX');
     expect(kosovo.length, 'exactly one Kosovo feature').toBe(1);
     expect(kosovo[0].properties.ISO_A2).toBe('XK');
   });

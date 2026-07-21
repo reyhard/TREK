@@ -119,10 +119,7 @@ function tzAt(lat: number, lng: number): string {
 }
 
 /** Order itineraries so arrive-by shows latest arrival first; depart-at is unchanged. */
-function orderTransitItineraries(
-  itineraries: TransitItinerary[],
-  arriveBy: boolean,
-): TransitItinerary[] {
+function orderTransitItineraries(itineraries: TransitItinerary[], arriveBy: boolean): TransitItinerary[] {
   if (!arriveBy) return itineraries;
   return itineraries
     .map((itinerary, index) => ({ itinerary, index }))

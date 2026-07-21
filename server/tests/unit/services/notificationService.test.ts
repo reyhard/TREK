@@ -717,7 +717,13 @@ describe('send() — ntfy channel dispatch', () => {
     setNotificationChannels(testDb, 'ntfy');
 
     fetchMock.mockClear();
-    await send({ event: 'trip_invite', actorId: null, scope: 'user', targetId: user.id, params: { trip: 'Oslo', actor: 'Alice', invitee: 'Bob', tripId: '1' } });
+    await send({
+      event: 'trip_invite',
+      actorId: null,
+      scope: 'user',
+      targetId: user.id,
+      params: { trip: 'Oslo', actor: 'Alice', invitee: 'Bob', tripId: '1' },
+    });
 
     const ntfyCalls = fetchMock.mock.calls.filter(([url]: [string]) => url.includes('ntfy.sh'));
     expect(ntfyCalls.length).toBe(0);

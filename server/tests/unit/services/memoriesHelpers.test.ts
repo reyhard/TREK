@@ -248,11 +248,9 @@ describe('pipeAsset fetch options (#1611)', () => {
 
     await pipeAsset('https://example.com/asset', res, undefined, undefined, undefined, { rejectUnauthorized: false });
 
-    expect(mockSafeFetch).toHaveBeenCalledWith(
-      'https://example.com/asset',
-      expect.anything(),
-      { rejectUnauthorized: false },
-    );
+    expect(mockSafeFetch).toHaveBeenCalledWith('https://example.com/asset', expect.anything(), {
+      rejectUnauthorized: false,
+    });
   });
 
   it('MEM-HELPERS-022: omitting fetchOptions leaves safeFetch options undefined', async () => {
@@ -287,7 +285,8 @@ describe('pipeAsset fetch options (#1611)', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = mockResponse({ headersSent: false });
 
-    const assetUrl = 'https://nas.example.com/photo/webapi/entry.cgi?api=SYNO.Foto.Thumbnail&_sid=secret-session-123&id=42';
+    const assetUrl =
+      'https://nas.example.com/photo/webapi/entry.cgi?api=SYNO.Foto.Thumbnail&_sid=secret-session-123&id=42';
     await pipeAsset(assetUrl, res);
 
     expect(res.status).toHaveBeenCalledWith(500);

@@ -2169,20 +2169,46 @@ describe('JourneyDetailPage', () => {
 
       const synologyEntry = {
         ...mockJourneyDetail.entries[0],
-        photos: [{
-          id: 201, entry_id: 10, photo_id: 201, provider: 'synologyphotos', file_path: null,
-          asset_id: '456_cachekey', owner_id: 1, thumbnail_path: null,
-          caption: null, sort_order: 0, width: 800, height: 600, shared: 1, created_at: now,
-        }],
+        photos: [
+          {
+            id: 201,
+            entry_id: 10,
+            photo_id: 201,
+            provider: 'synologyphotos',
+            file_path: null,
+            asset_id: '456_cachekey',
+            owner_id: 1,
+            thumbnail_path: null,
+            caption: null,
+            sort_order: 0,
+            width: 800,
+            height: 600,
+            shared: 1,
+            created_at: now,
+          },
+        ],
       };
       setupDefaultHandlers({
         entries: [synologyEntry, mockJourneyDetail.entries[1]],
         stats: { entries: 2, photos: 1, places: 2 },
-        gallery: [{
-          id: 201, journey_id: 1, photo_id: 201, provider: 'synologyphotos', file_path: null,
-          asset_id: '456_cachekey', owner_id: 1, thumbnail_path: null,
-          caption: null, sort_order: 0, width: 800, height: 600, shared: 1, created_at: now,
-        }],
+        gallery: [
+          {
+            id: 201,
+            journey_id: 1,
+            photo_id: 201,
+            provider: 'synologyphotos',
+            file_path: null,
+            asset_id: '456_cachekey',
+            owner_id: 1,
+            thumbnail_path: null,
+            caption: null,
+            sort_order: 0,
+            width: 800,
+            height: 600,
+            shared: 1,
+            created_at: now,
+          },
+        ],
       });
 
       render(<JourneyDetailPage />);

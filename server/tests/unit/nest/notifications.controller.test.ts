@@ -114,7 +114,9 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
     it('NTFY-CTRL-001 — user with no token does NOT leak admin token on MASKED placeholder', async () => {
       const testNtfy = vi.fn().mockResolvedValue({ success: true });
       const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'user-topic', server: null, token: null });
-      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
+      const adminNtfyConfig = vi
+        .fn()
+        .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
       await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, undefined, undefined, MASKED);
       expect(testNtfy).toHaveBeenCalledWith({ topic: 'user-topic', server: 'https://admin-ntfy.example', token: null });
     });
@@ -124,17 +126,34 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
       const userNtfyConfig = vi
         .fn()
         .mockReturnValue({ topic: 'user-topic', server: null, token: 'user-personal-token' });
-      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
+      const adminNtfyConfig = vi
+        .fn()
+        .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
       await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, undefined, undefined, MASKED);
-      expect(testNtfy).toHaveBeenCalledWith({ topic: 'user-topic', server: 'https://admin-ntfy.example', token: 'user-personal-token' });
+      expect(testNtfy).toHaveBeenCalledWith({
+        topic: 'user-topic',
+        server: 'https://admin-ntfy.example',
+        token: 'user-personal-token',
+      });
     });
 
     it('NTFY-CTRL-003 — explicit token in body is used, not admin fallback', async () => {
       const testNtfy = vi.fn().mockResolvedValue({ success: true });
       const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'user-topic', server: null, token: null });
-      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
-      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, 'user-topic', undefined, 'explicit-body-token');
-      expect(testNtfy).toHaveBeenCalledWith({ topic: 'user-topic', server: 'https://admin-ntfy.example', token: 'explicit-body-token' });
+      const adminNtfyConfig = vi
+        .fn()
+        .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(
+        user,
+        'user-topic',
+        undefined,
+        'explicit-body-token',
+      );
+      expect(testNtfy).toHaveBeenCalledWith({
+        topic: 'user-topic',
+        server: 'https://admin-ntfy.example',
+        token: 'explicit-body-token',
+      });
     });
   });
 

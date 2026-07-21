@@ -397,7 +397,9 @@ describe('resolveNtfyUrl', () => {
 
 describe('resolveAdminNtfyUrl', () => {
   it('builds URL from admin topic and server', () => {
-    expect(resolveAdminNtfyUrl({ server: 'https://ntfy.example.com', topic: 'admin-topic', token: null })).toBe('https://ntfy.example.com/admin-topic');
+    expect(resolveAdminNtfyUrl({ server: 'https://ntfy.example.com', topic: 'admin-topic', token: null })).toBe(
+      'https://ntfy.example.com/admin-topic',
+    );
   });
 
   it('returns null when no admin topic', () => {
@@ -409,7 +411,9 @@ describe('resolveAdminNtfyUrl', () => {
   });
 
   it('strips trailing slash from server', () => {
-    expect(resolveAdminNtfyUrl({ server: 'https://ntfy.sh/', topic: 'alerts', token: null })).toBe('https://ntfy.sh/alerts');
+    expect(resolveAdminNtfyUrl({ server: 'https://ntfy.sh/', topic: 'alerts', token: null })).toBe(
+      'https://ntfy.sh/alerts',
+    );
   });
 });
 
