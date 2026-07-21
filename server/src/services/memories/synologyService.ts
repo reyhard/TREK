@@ -155,7 +155,7 @@ function _getSynologyCredentials(userId: number): ServiceResult<SynologyCredenti
     synology_url: user.data.synology_url,
     synology_username: user.data.synology_username,
     synology_password: password,
-    synology_skip_ssl: user.data.synology_skip_ssl !== 0,
+    synology_skip_ssl: user.data.synology_skip_ssl === 1,
   });
 }
 

@@ -62,26 +62,34 @@ const LOCALES: Record<string, TranslationStrings> = {
   'zh-TW': zhTW,
 };
 
-const PLACEHOLDER_RE = /\{[a-zA-Z0-9_]+\}/g;
+const PLACEHOLDER_RE = /\{([a-zA-Z0-9_]+)\}/g;
+
+function placeholders(value: string): string[] {
+  return [...value.matchAll(PLACEHOLDER_RE)].map((m) => m[1]).sort();
+}
 
 describe('i18n placeholder parity', () => {
-  it('every EN placeholder appears in each locale translation of the same key', () => {
+  it('every locale has the exact same placeholder set as EN for each key', () => {
     const violations: string[] = [];
 
     for (const [enKey, enValue] of Object.entries(en)) {
-      // A few catalog entries are structured data, not strings
-      // (e.g. packing.suggestions.items) — placeholders only apply to strings.
       if (typeof enValue !== 'string') continue;
-      const placeholders = enValue.match(PLACEHOLDER_RE);
-      if (!placeholders) continue;
+      const enPlaceholders = placeholders(enValue);
+      if (enPlaceholders.length === 0) continue;
 
       for (const [locale, catalog] of Object.entries(LOCALES)) {
         const translated = catalog[enKey];
-        if (typeof translated !== 'string') continue;
-        for (const placeholder of new Set(placeholders)) {
-          if (!translated.includes(placeholder)) {
-            violations.push(`${locale} ${enKey}: missing ${placeholder} in ${JSON.stringify(translated)}`);
+        if (typeof translated !== 'string') {
+          if (translated !== undefined) {
+            violations.push(`${locale} ${enKey}: non-string value ${JSON.stringify(translated)} (EN is string)`);
           }
+          continue;
+        }
+        const localePlaceholders = placeholders(translated);
+        if (JSON.stringify(localePlaceholders) !== JSON.stringify(enPlaceholders)) {
+          violations.push(
+            `${locale} ${enKey}: placeholder mismatch - EN=[${enPlaceholders}] locale=[${localePlaceholders}] in ${JSON.stringify(translated)}`,
+          );
         }
       }
     }

@@ -190,7 +190,7 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
       });
     }
 
-    // Thumbnail stream
+    // Thumbnail stream / bytes
     if (apiName === 'SYNO.Foto.Thumbnail') {
       if (!['sm', 'm', 'xl', 'preview'].includes(params.get('size') || ''))
         return Promise.reject(new Error(`Unexpected thumbnail size: ${params.get('size')}`));
@@ -205,6 +205,7 @@ vi.mock('../../src/utils/ssrfGuard', async () => {
             c.close();
           },
         }),
+        arrayBuffer: () => Promise.resolve(imageBytes.buffer.slice(imageBytes.byteOffset, imageBytes.byteOffset + imageBytes.byteLength)),
       });
     }
 
@@ -1459,12 +1460,44 @@ describe('Synology skip-SSL forwarding to image fetches (#1611)', () => {
     }
   });
 
-  it('SYNO-102 — image fetches verify TLS when skip-SSL is disabled', async () => {
+  it('SYNO-102 — thumbnail fetches verify TLS when skip-SSL is disabled', async () => {
     const { user, trekPhotoId } = createSynologyTrekPhoto(0);
     vi.mocked(safeFetch).mockClear();
 
     const res = await request(app)
       .get(`/api/photos/${trekPhotoId}/thumbnail`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    const calls = thumbnailFetchCalls();
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call[2]?.rejectUnauthorized ?? true).toBe(true);
+    }
+  });
+
+  it('SYNO-103 — original fetches pass rejectUnauthorized: false when skip-SSL is enabled', async () => {
+    const { user, trekPhotoId } = createSynologyTrekPhoto(1);
+    vi.mocked(safeFetch).mockClear();
+
+    const res = await request(app)
+      .get(`/api/photos/${trekPhotoId}/original`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    const calls = thumbnailFetchCalls();
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call[2]).toMatchObject({ rejectUnauthorized: false });
+    }
+  });
+
+  it('SYNO-104 — original fetches verify TLS when skip-SSL is disabled', async () => {
+    const { user, trekPhotoId } = createSynologyTrekPhoto(0);
+    vi.mocked(safeFetch).mockClear();
+
+    const res = await request(app)
+      .get(`/api/photos/${trekPhotoId}/original`)
       .set('Cookie', authCookie(user.id));
 
     expect(res.status).toBe(200);
