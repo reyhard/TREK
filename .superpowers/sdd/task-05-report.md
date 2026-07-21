@@ -9,7 +9,7 @@
 
 ```
 151d5934 fix(notifications): isolate per-user ntfy topics
-e3a500ad fix(notifications): remove admin token fallback from per-user ntfy sends, add TDD coverage for ntfy opt-out
+c8950368 fix(notifications): remove admin token fallback from per-user ntfy sends, add TDD coverage for ntfy opt-out
 ```
 
 ## What Was Done
@@ -64,13 +64,30 @@ When a personal send is skipped (no user topic), no log message is emitted — t
 - Admin ntfy token is set to a known value; user has topic but no token
 - Assert: ntfy send fires but the `Authorization` header is **absent** (admin token not leaked)
 
+#### 7c. Controller test-ntfy admin token leak — corrected
+
+**File:** `server/src/nest/notifications/notifications.controller.ts:96`
+
+**Problem:** The `test-ntfy` endpoint resolved `token` with `userCfg?.token ?? adminCfg.token ?? null`, leaking the admin's bearer token to a user's ntfy server/topic when the user had no personal token and sent the masked placeholder.
+
+**Fix:** Changed to `userCfg?.token ?? null`. The test-ntfy endpoint never transmits the admin token, even when the user has no saved token. Admin credentials are used only in explicitly admin-scoped paths (test-smtp, sendGlobal).
+
+**TDD coverage added** (`server/tests/unit/nest/notifications.controller.test.ts`):
+
+| Test ID | Description |
+|---------|-------------|
+| NTFY-CTRL-001 | User with no token does NOT leak admin token on MASKED placeholder |
+| NTFY-CTRL-002 | User with own saved token sends user token, not admin token |
+| NTFY-CTRL-003 | Explicit body token is used, not admin fallback |
+
 ## Tests
 
 | Suite | Count | Result |
 |-------|-------|--------|
 | `notifications.test.ts` | 53 | PASS |
 | `notificationService.test.ts` | 35 | PASS |
-| **Total** | **88** | **PASS** |
+| `notifications.controller.test.ts` | 25 | PASS |
+| **Total** | **113** | **PASS** |
 
 ## Commands and Results
 
@@ -79,16 +96,17 @@ npm --prefix server run typecheck
 # → exit 0, no output
 
 npm --prefix server test -- \
+  tests/unit/nest/notifications.controller.test.ts \
   tests/unit/services/notificationService.test.ts \
   tests/unit/services/notifications.test.ts
-# → 2 files, 88 tests, all passed
+# → 3 files, 113 tests, all passed
 ```
 
 ## Fixture Safety
 
 - No fixture files modified or staged
 - No `.sqlite` or JSON fixture files appear in `git status`
-- Only `server/src/services/notifications/builtins.ts` and `server/tests/unit/services/notificationService.test.ts` modified
+- Only `server/src/nest/notifications/notifications.controller.ts`, `server/tests/unit/nest/notifications.controller.test.ts`, and `.superpowers/sdd/task-05-report.md` modified
 
 ## Concerns
 
