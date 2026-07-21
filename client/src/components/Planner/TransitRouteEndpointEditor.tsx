@@ -1,7 +1,7 @@
-import { useTranslation } from '../../i18n';
-import type { ReservationEndpoint } from '../../types';
 import type { TransitRouteEndpointsUpdateRequest } from '@trek/shared';
 import { useState } from 'react';
+import { useTranslation } from '../../i18n';
+import type { ReservationEndpoint } from '../../types';
 
 interface EndpointFieldState {
   name: string;
@@ -50,7 +50,10 @@ function validateField(endpoint: EndpointFieldState): { name?: string; lat?: str
   return errors;
 }
 
-function isUnchanged(normalized: { name: string; lat: number; lng: number } | null, original: ReservationEndpoint): boolean {
+function isUnchanged(
+  normalized: { name: string; lat: number; lng: number } | null,
+  original: ReservationEndpoint
+): boolean {
   if (!normalized) return false;
   return normalized.name === original.name && normalized.lat === original.lat && normalized.lng === original.lng;
 }
@@ -71,7 +74,15 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
       className="bg-surface-tertiary"
       style={{ borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}
     >
-      <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+      <div
+        className="text-content-faint"
+        style={{
+          fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+        }}
+      >
         {label}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -82,7 +93,11 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
             aria-label={`${label} — Place or station label`}
             className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
           />
-          {errors.name && <div style={{ fontSize: 'calc(11px * var(--fs-scale-body, 1))', color: '#ef4444', marginTop: 3 }}>{errors.name}</div>}
+          {errors.name && (
+            <div style={{ fontSize: 'calc(11px * var(--fs-scale-body, 1))', color: '#ef4444', marginTop: 3 }}>
+              {errors.name}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: 1 }}>
@@ -93,7 +108,11 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
               placeholder="Latitude"
               className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
             />
-            {errors.lat && <div style={{ fontSize: 'calc(11px * var(--fs-scale-body, 1))', color: '#ef4444', marginTop: 3 }}>{errors.lat}</div>}
+            {errors.lat && (
+              <div style={{ fontSize: 'calc(11px * var(--fs-scale-body, 1))', color: '#ef4444', marginTop: 3 }}>
+                {errors.lat}
+              </div>
+            )}
           </div>
           <div style={{ flex: 1 }}>
             <input
@@ -103,7 +122,11 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
               placeholder="Longitude"
               className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
             />
-            {errors.lng && <div style={{ fontSize: 'calc(11px * var(--fs-scale-body, 1))', color: '#ef4444', marginTop: 3 }}>{errors.lng}</div>}
+            {errors.lng && (
+              <div style={{ fontSize: 'calc(11px * var(--fs-scale-body, 1))', color: '#ef4444', marginTop: 3 }}>
+                {errors.lng}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -111,12 +134,7 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
   );
 }
 
-export default function TransitRouteEndpointEditor({
-  from,
-  to,
-  onSave,
-  onCancel,
-}: TransitRouteEndpointEditorProps) {
+export default function TransitRouteEndpointEditor({ from, to, onSave, onCancel }: TransitRouteEndpointEditorProps) {
   const { t } = useTranslation();
   const [fromFields, setFromFields] = useState(() => buildFields(from));
   const [toFields, setToFields] = useState(() => buildFields(to));
@@ -128,8 +146,8 @@ export default function TransitRouteEndpointEditor({
   const normalizedFrom = normalize(fromFields);
   const normalizedTo = normalize(toFields);
   const hasChanges = !isUnchanged(normalizedFrom, from) || !isUnchanged(normalizedTo, to);
-  const hasErrors = !!fromErrors.name || !!fromErrors.lat || !!fromErrors.lng ||
-    !!toErrors.name || !!toErrors.lat || !!toErrors.lng;
+  const hasErrors =
+    !!fromErrors.name || !!fromErrors.lat || !!fromErrors.lng || !!toErrors.name || !!toErrors.lat || !!toErrors.lng;
   const canSave = hasChanges && !hasErrors && !saving;
 
   const handleSave = async () => {
@@ -166,9 +184,7 @@ export default function TransitRouteEndpointEditor({
           border: '1px solid var(--border-primary)',
         }}
       >
-        <div className="text-content-muted">
-          {t('transit.endpointMapOnlyHint')}
-        </div>
+        <div className="text-content-muted">{t('transit.endpointMapOnlyHint')}</div>
       </div>
 
       <EndpointCard
@@ -185,9 +201,7 @@ export default function TransitRouteEndpointEditor({
       />
 
       {saveError && (
-        <div style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', color: '#ef4444' }}>
-          {saveError}
-        </div>
+        <div style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', color: '#ef4444' }}>{saveError}</div>
       )}
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

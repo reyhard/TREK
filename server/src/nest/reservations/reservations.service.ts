@@ -164,11 +164,7 @@ export class ReservationsService {
     }
   }
 
-  updateTransitRouteEndpoints(
-    id: string,
-    tripId: string,
-    input: TransitRouteEndpointsUpdateRequest,
-  ) {
+  updateTransitRouteEndpoints(id: string, tripId: string, input: TransitRouteEndpointsUpdateRequest) {
     return updateTransitRouteEndpointsService(id, tripId, input);
   }
 

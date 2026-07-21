@@ -1,0 +1,240 @@
+# Inline Transit Route Endpoint Editing Implementation Report
+
+## Root cause
+
+Two limitations made it impossible to correct minor coordinate or label errors on an automated transit journey without unwanted side effects:
+
+1. **Itinerary-replacement only:** `update_transit_journey` required a full provider itinerary; there was no way to adjust only the map pin position.
+2. **Complete endpoint replacement only:** The legacy reservations endpoints could only be replaced wholesale; there was no atomic partial-update path for individual origin/destination coordinates and labels.
+
+The result was that fixing a wrong map pin required either re-searching the route (losing custom notes, status, and day-plan position) or editing the database directly.
+
+## Selected checkout
+
+| Item | Value |
+|------|-------|
+| Branch | `feat/transit-route-endpoints` |
+| Worktree path | `/opt/trek/TREK/.worktrees/feat/transit-route-endpoints` |
+| Base commit | `e6309321` `feat(places): add route_geometry, coordinate validation, and zero-coord flyTo fix` |
+| HEAD | `cbd9026b` `docs(mcp): document transit endpoint update` |
+
+## Files changed
+
+```
+shared/src/reservation/reservation.schema.ts
+shared/src/reservation/reservation.schema.test.ts
+shared/src/i18n/en/trip.ts
+server/src/services/transitRouteEndpointService.ts
+server/tests/unit/services/transitRouteEndpointService.test.ts
+server/src/nest/reservations/reservations.controller.ts
+server/src/nest/reservations/reservations.service.ts
+server/tests/unit/nest/reservations.controller.test.ts
+server/tests/unit/nest/reservations.service.test.ts
+server/src/mcp/tools/transit.ts
+server/tests/unit/mcp/tools-transit.test.ts
+client/src/api/client.ts
+client/src/store/slices/reservationsSlice.ts
+client/src/store/slices/reservationsSlice.test.ts
+client/src/components/Planner/TransitRouteEndpointEditor.tsx
+client/src/components/Planner/TransitRouteEndpointEditor.test.tsx
+client/src/components/Planner/TransitJourneyModal.tsx
+client/src/components/Planner/TransitJourneyModal.test.tsx
+client/src/pages/TripPlannerPage.tsx
+client/src/pages/TripPlannerPage.test.tsx
+client/src/components/Map/ReservationOverlay.test.tsx
+wiki/MCP-Tools-and-Resources.md
+.superpowers/sdd/progress.md
+```
+
+**Groups:**
+
+- **Shared contract:** `shared/src/reservation/reservation.schema.ts` (3 Zod schemas + types), `shared/src/reservation/reservation.schema.test.ts` (12 tests), `shared/src/i18n/en/trip.ts` (11 translation keys)
+- **Domain service:** `server/src/services/transitRouteEndpointService.ts` (atomic UPDATE via `db.transaction`, 6 test cases)
+- **REST API:** Nest controller + service delegates with permission gating and error mapping (18 test cases)
+- **MCP tool:** `server/src/mcp/tools/transit.ts` (tool registration + handler with shared-schema validation), 18 test cases
+- **Client API + store:** API client PUT call, store slice with optimistic replacement (1 test)
+- **UI editor:** `TransitRouteEndpointEditor.tsx` (form with coordinate validation, map-only hint), `TransitJourneyModal.tsx` integration (modal action + permission gate), `TripPlannerPage.tsx` wiring
+- **Map rendering:** `ReservationOverlay.test.tsx` (3 test cases locking marker/fallback-line/geometry independence)
+
+## Behavior delivered
+
+### REST endpoint
+
+`PUT /trips/:tripId/reservations/:id/transit-endpoints`
+
+- Accepts `{ from?: { name, lat, lng }, to?: { name, lat, lng } }` with at least one endpoint required
+- Validates via shared Zod schemas
+- Atomic UPDATE on `reservation_endpoints` table (both endpoints in a single transaction)
+- Preserves itinerary, legs, timing, geometry, metadata, stats, status, title, notes, day-plan position
+- No provider calls (Transitous), no walking-leg synthesis
+- Broadcasts `reservation:updated`; fires `notifyBookingChange`
+- Enforces `reservation_edit` permission; maps domain errors to HTTP 400/404/409
+
+### MCP tool
+
+`update_transit_route_endpoints`
+
+- Same contract via MCP with closed-world write annotations and idempotent semantics
+- At-least-one constraint enforced by shared-schema `.refine()` in the handler
+- Scope: `reservations:write`
+
+### UI/Store
+
+- `TransitRouteEndpointEditor` modal with lat/lng/name inputs, coordinate validation, and map-only disclaimer
+- Action button gated on `reservation_edit` permission
+- Store action calls API and replaces reservation in state
+- TripPlannerPage wires the action via `onUpdateEndpoints` callback
+
+### Marker and fallback-line semantics
+
+- Markers read edited coordinates from `reservation.endpoints`
+- No-geometry fallback arcs use edited coordinates
+- Provider encoded-polyline geometry remains independent (markers at endpoints, polylines at decoded coords)
+
+## Final MCP tool schema
+
+Captured from the actual runtime `listTools` JSON schema returned by the MCP server. Generated using the same `zod/v4-mini.toJSONSchema` converter that the MCP SDK uses internally (`zod-json-schema-compat.ts` v4 branch).
+
+```json
+{
+  "name": "update_transit_route_endpoints",
+  "description": "Correct the map-only origin and/or destination of an existing automated transit journey. Preserves the saved provider itinerary, legs, timing, geometry, statistics, metadata, status, title, notes, and day-plan position. Does not call Transitous or create walking legs.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tripId": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "reservationId": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "from": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+          "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+        },
+        "required": ["name", "lat", "lng"],
+        "additionalProperties": false
+      },
+      "to": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+          "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+        },
+        "required": ["name", "lat", "lng"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["tripId", "reservationId"],
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+Key properties:
+- required: `tripId`, `reservationId`
+- optional: `from`, `to`
+- `from`/`to` required fields: `name`, `lat`, `lng`
+- lat bounds: -90..90 (via `minimum`/`maximum`)
+- lng bounds: -180..180 (via `minimum`/`maximum`)
+- name length: 1..300 (via `minLength`/`maxLength`)
+- `.positive()` renders as `exclusiveMinimum: 0` in draft-07
+- `.finite()` and `.trim()` are not representable in JSON Schema
+- `.int()` is not captured in this draft-07 output
+- At-least-one constraint enforced via shared-schema `.refine()` in handler (not expressible in generated JSON schema)
+
+## Test results
+
+### Focused feature suites (Step 2)
+
+| Command | Exit | Files | Tests |
+|---------|------|-------|-------|
+| `npm run test --workspace=shared -- src/reservation/reservation.schema.test.ts` | 0 | 1 | 12 passed |
+| `npm run test --workspace=server -- transitRouteEndpointService reservations.service reservations.controller tools-transit` | 0 | 4 | 59 passed |
+| `npm run test --workspace=client -- reservationsSlice TransitRouteEndpointEditor TransitJourneyModal ReservationOverlay TripPlannerPage` | 0 | 5 | 89 passed |
+
+### Complete workspace test suites (Step 3)
+
+| Command | Exit | Files | Tests |
+|---------|------|-------|-------|
+| `npm run test --workspace=shared` | 0 | 35 | 153 passed |
+| `npm run test:unit --workspace=server` | 0 | 227 | 4102 passed |
+| `npm run test --workspace=client` | 1 | 2 failed / 213 passed (215) | 20 failed / 3649 passed / 39 skipped (3708) |
+
+**Client test failures — pre-existing, not caused by this feature (after R8 fix):**
+
+- `tests/unit/i18n/parity.test.ts` (19 test failures): Non-English locales missing `dayplan.movement.*` (4 keys) and `inspector.*` (9 keys) added by prior unrelated commits. All 14 `transit.endpoint*` keys introduced by this feature are now present in every locale. The feature-caused parity failures have been eliminated.
+- `src/pages/AdminPage.test.tsx` (1 failure, flaky): `FE-PAGE-ADMIN-003: User management list loads` - passes in isolation; fails under full suite load.
+
+**Note:** The `PlaceInspector.test.tsx` GPX track failure (FE-PLANNER-INSPECTOR-037) is a pre-existing fixture issue. It was listed as failing in the original Task 8 report (1 of 3) but in the R8 run it passed consistently; its status may be intermittent.
+
+### Type checks (Step 4)
+
+| Command | Exit | Result |
+|---------|------|--------|
+| `npm run typecheck --workspace=shared` | 2 | Pre-existing: `i18n-placeholders.spec.ts(68,3): error TS2322` |
+| `npm run typecheck --workspace=server` | 0 | PASS |
+| `npm run typecheck --workspace=client` | 0 | PASS |
+
+### Formatting and lint (Step 5)
+
+| Command | Exit | Result |
+|---------|------|--------|
+| `npm run format:check --workspace=shared` | 0 | PASS |
+| `npm run format:check --workspace=server` | 0 | PASS (7 files fixed) |
+| `npm run format:check --workspace=client` | 0 | PASS (10 files fixed) |
+| `npm exec --workspace=shared -- eslint "src/**/*.ts"` | 0 | PASS |
+| `npm run lint:check --workspace=server` | 0 | 0 errors, 2011 warnings |
+| `npm run lint:check --workspace=client` | 0 | 0 errors, 1273 warnings |
+| `npm run i18n:parity --workspace=shared` | 0 | Reports missing keys (exit 0) |
+
+### Build (Step 6)
+
+| Command | Exit | Result |
+|---------|------|--------|
+| `npm run build` | 0 | All workspaces built |
+
+## Compatibility
+
+- **No migration:** Zero schema or migration files touched.
+- **Unchanged legacy records:** Existing `reservation_endpoints` rows unaffected; only the targeted row(s) are updated.
+- **Preserved ordering:** Day-plan position, reservation_day_positions, and sequence within the day are untouched.
+
+## Known semantics
+
+- Moved pins are NOT connected to unchanged provider geometry. The fallback arc (drawn when the provider polyline is unavailable) does connect the moved endpoints, but the stored encoded polyline continues to show the original route.
+- No walking leg is synthesized when endpoints are moved apart — this is a map-pinning-only operation.
+- The `shared/src/place/place.schema.ts` trailing-comma diff is pre-existing and excluded from the feature scope.
+
+## Requirement checklist
+
+| Requirement | Evidence |
+|-------------|----------|
+| one endpoint can be updated | `update_transit_route_endpoints preserves all fields when updating only the origin` (MCP test) |
+| both endpoints update atomically | Service test wraps two `UPDATE` statements in `db.transaction`; rollback test verifies partial-failure atomicity |
+| invalid coordinates rejected | 9 rejection cases in schema tests + validation tests in service/MCP suites |
+| no itinerary required | `update_transit_route_endpoints` never calls Transitous; all MCP tests confirm no provider calls |
+| metadata/legs/stats/geometry unchanged | MCP test verifies `beforeMetadata` matches after update |
+| title/notes/status unchanged | MCP test verifies `title`, `notes`, `status` preserved |
+| day IDs/times/order unchanged | MCP test verifies `day_plan_position` and `reservation_day_positions` unchanged |
+| markers use edited coordinates | ReservationOverlay test `uses saved endpoint coordinates for markers` |
+| fallback line uses edited coordinates | ReservationOverlay test `no-geometry fallback line` asserts polyline at endpoint coords |
+| existing routes unchanged | ReservationOverlay test `renders an untouched route with its stored endpoint coordinates` |
+| REST and MCP permissions enforced | Controller test `403 when canEdit returns false`; MCP test `reservations:read scope denies transit tools` |
+| UI states map-only semantics | Editor displays `endpointMapOnlyHint` translation; button gated on `reservation_edit` |
+| no migration | `git diff --name-only -- server/src/db` returns nothing; `reservationService.ts` unchanged |

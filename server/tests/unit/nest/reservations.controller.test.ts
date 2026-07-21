@@ -1,7 +1,7 @@
 import { ReservationsController } from '../../../src/nest/reservations/reservations.controller';
 import type { ReservationsService } from '../../../src/nest/reservations/reservations.service';
-import type { User } from '../../../src/types';
 import { TransitRouteEndpointUpdateError } from '../../../src/services/transitRouteEndpointService';
+import type { User } from '../../../src/types';
 import { HttpException } from '@nestjs/common';
 
 import { describe, it, expect, vi } from 'vitest';
@@ -207,7 +207,11 @@ describe('ReservationsController (parity with the legacy /api/trips/:tripId/rese
       ['ENDPOINT_STRUCTURE_INVALID', 409],
     ] as const)('maps %s to HTTP %s', (code, status) => {
       const error = new TransitRouteEndpointUpdateError(code, `error:${code}`);
-      const svc = makeService({ updateTransitRouteEndpoints: vi.fn(() => { throw error; }) } as Partial<ReservationsService>);
+      const svc = makeService({
+        updateTransitRouteEndpoints: vi.fn(() => {
+          throw error;
+        }),
+      } as Partial<ReservationsService>);
       expect(thrown(() => new ReservationsController(svc).updateTransitEndpoints(user, '5', '9', body))).toEqual({
         status,
         body: { error: `error:${code}` },

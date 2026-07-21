@@ -1136,7 +1136,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 <div
                   role="status"
                   aria-live="polite"
-                  className="bg-surface-card border border-edge-secondary shadow-lg text-content"
+                  className="border border-edge-secondary bg-surface-card text-content shadow-lg"
                   style={{
                     position: 'fixed',
                     left: 16,

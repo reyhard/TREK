@@ -1021,12 +1021,12 @@ describe('MCP transit tools', () => {
         }),
       ) as any;
       const reservationId = createResult.reservation.id;
-      testDb.prepare(
-        'UPDATE reservations SET title = ?, notes = ?, status = ?, day_plan_position = ? WHERE id = ?',
-      ).run('Custom title', 'Custom note', 'pending', 8, reservationId);
-      testDb.prepare(
-        'INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)',
-      ).run(reservationId, day.id, 4);
+      testDb
+        .prepare('UPDATE reservations SET title = ?, notes = ?, status = ?, day_plan_position = ? WHERE id = ?')
+        .run('Custom title', 'Custom note', 'pending', 8, reservationId);
+      testDb
+        .prepare('INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)')
+        .run(reservationId, day.id, 4);
 
       const beforeReservation = testDb.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId);
       const beforePositions = testDb
@@ -1059,13 +1059,17 @@ describe('MCP transit tools', () => {
         lng: 135.7691251,
       });
       expect(testDb.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId)).toEqual(beforeReservation);
-      expect((testDb.prepare('SELECT metadata FROM reservations WHERE id = ?').get(reservationId) as any).metadata).toBe(beforeMetadata);
-      expect(testDb
-        .prepare('SELECT * FROM reservation_day_positions WHERE reservation_id = ?')
-        .all(reservationId)).toEqual(beforePositions);
-      expect(testDb
-        .prepare("SELECT * FROM reservation_endpoints WHERE reservation_id = ? AND role != 'from' ORDER BY sequence")
-        .all(reservationId)).toEqual(beforeToAndStops);
+      expect(
+        (testDb.prepare('SELECT metadata FROM reservations WHERE id = ?').get(reservationId) as any).metadata,
+      ).toBe(beforeMetadata);
+      expect(
+        testDb.prepare('SELECT * FROM reservation_day_positions WHERE reservation_id = ?').all(reservationId),
+      ).toEqual(beforePositions);
+      expect(
+        testDb
+          .prepare("SELECT * FROM reservation_endpoints WHERE reservation_id = ? AND role != 'from' ORDER BY sequence")
+          .all(reservationId),
+      ).toEqual(beforeToAndStops);
       expect(planMock).not.toHaveBeenCalled();
     });
   });
@@ -1116,7 +1120,11 @@ describe('MCP transit tools', () => {
 
     const manual = createReservation(testDb, trip.id, { title: 'Manual train', type: 'train', day_id: day.id });
     const wrongType = await (async () => {
-      const harness = await createMcpHarness({ userId: owner.id, scopes: ['reservations:write'], withResources: false });
+      const harness = await createMcpHarness({
+        userId: owner.id,
+        scopes: ['reservations:write'],
+        withResources: false,
+      });
       try {
         return await harness.client.callTool({
           name: 'update_transit_route_endpoints',
@@ -1134,7 +1142,11 @@ describe('MCP transit tools', () => {
     expect((wrongType.content[0] as any).text).toContain('not a transit journey');
 
     const denied = await (async () => {
-      const harness = await createMcpHarness({ userId: stranger.id, scopes: ['reservations:write'], withResources: false });
+      const harness = await createMcpHarness({
+        userId: stranger.id,
+        scopes: ['reservations:write'],
+        withResources: false,
+      });
       try {
         return await harness.client.callTool({
           name: 'update_transit_route_endpoints',

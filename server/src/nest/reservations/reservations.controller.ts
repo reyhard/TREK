@@ -112,21 +112,11 @@ export class ReservationsController {
     try {
       const reservation = this.reservations.updateTransitRouteEndpoints(id, tripId, body);
       this.reservations.broadcast(tripId, 'reservation:updated', { reservation }, socketId);
-      this.reservations.notifyBookingChange(
-        tripId,
-        user,
-        reservation.title,
-        reservation.type || 'transit',
-      );
+      this.reservations.notifyBookingChange(tripId, user, reservation.title, reservation.type || 'transit');
       return { reservation };
     } catch (err: unknown) {
       if (!(err instanceof TransitRouteEndpointUpdateError)) throw err;
-      const status =
-        err.code === 'RESERVATION_NOT_FOUND'
-          ? 404
-          : err.code === 'ENDPOINT_STRUCTURE_INVALID'
-            ? 409
-            : 400;
+      const status = err.code === 'RESERVATION_NOT_FOUND' ? 404 : err.code === 'ENDPOINT_STRUCTURE_INVALID' ? 409 : 400;
       throw new HttpException({ error: err.message }, status);
     }
   }

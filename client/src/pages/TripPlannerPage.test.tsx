@@ -6,12 +6,12 @@ import { buildAssignment, buildDay, buildPlace, buildTrip, buildUser } from '../
 import { server } from '../../tests/helpers/msw/server';
 import { act, fireEvent, render, screen, waitFor } from '../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../tests/helpers/store';
+import { placeRepo } from '../repo/placeRepo';
 import { useAuthStore } from '../store/authStore';
+import { usePermissionsStore } from '../store/permissionsStore';
 import { usePluginStore } from '../store/pluginStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTripStore } from '../store/tripStore';
-import { usePermissionsStore } from '../store/permissionsStore';
-import { placeRepo } from '../repo/placeRepo';
 import TripPlannerPage from './TripPlannerPage';
 
 vi.mock('../repo/placeRepo', () => ({
@@ -218,7 +218,7 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
                     return upd ? { ...ep, name: upd.name, lat: upd.lat, lng: upd.lng } : ep;
                   }),
                 }
-              : r,
+              : r
           ),
         } as any);
         return { reservation: {} };
@@ -1144,7 +1144,9 @@ describe('TripPlannerPage', () => {
       });
 
       expect(screen.queryByTestId('place-inspector')).toBeNull();
-      expect(screen.getByRole('status')).toHaveTextContent('Drag the marker to its new location. Press Escape to cancel.');
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Drag the marker to its new location. Press Escape to cancel.'
+      );
       expect(screen.getByRole('button', { name: 'Cancel repositioning' })).toBeInTheDocument();
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
@@ -1154,9 +1156,11 @@ describe('TripPlannerPage', () => {
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
       const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
       let resolveUpdate!: (value: { place: typeof place }) => void;
-      vi.mocked(placeRepo.update).mockReturnValue(new Promise((resolve) => {
-        resolveUpdate = resolve;
-      }));
+      vi.mocked(placeRepo.update).mockReturnValue(
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        })
+      );
       mockPlaceSelectionState.selectedPlaceId = place.id;
       seedTripStore({ id: 42 });
       seedStore(useTripStore, { places: [place] } as any);
@@ -2146,8 +2150,28 @@ describe('TripPlannerPage', () => {
         title: 'Test Transit',
         status: 'confirmed',
         endpoints: [
-          { role: 'from', sequence: 0, name: 'Old Origin', code: null, lat: 1, lng: 2, timezone: null, local_date: null, local_time: null },
-          { role: 'to', sequence: 1, name: 'Old Dest', code: null, lat: 3, lng: 4, timezone: null, local_date: null, local_time: null },
+          {
+            role: 'from',
+            sequence: 0,
+            name: 'Old Origin',
+            code: null,
+            lat: 1,
+            lng: 2,
+            timezone: null,
+            local_date: null,
+            local_time: null,
+          },
+          {
+            role: 'to',
+            sequence: 1,
+            name: 'Old Dest',
+            code: null,
+            lat: 3,
+            lng: 4,
+            timezone: null,
+            local_date: null,
+            local_time: null,
+          },
         ],
       };
 
@@ -2157,7 +2181,9 @@ describe('TripPlannerPage', () => {
 
       renderPlannerPage(42);
 
-      act(() => { vi.runAllTimers(); });
+      act(() => {
+        vi.runAllTimers();
+      });
       vi.useRealTimers();
 
       await waitFor(() => {
@@ -2186,7 +2212,9 @@ describe('TripPlannerPage', () => {
 
       // Reservation endpoints should be updated in the store
       expect(capturedTransitJourneyModalProps.current.reservation.endpoints[0]).toMatchObject({
-        name: 'Station', lat: 34.9685211, lng: 135.7691251,
+        name: 'Station',
+        lat: 34.9685211,
+        lng: 135.7691251,
       });
     });
   });

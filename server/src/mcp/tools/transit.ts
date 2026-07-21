@@ -33,11 +33,8 @@ import {
   TOOL_ANNOTATIONS_WRITE,
 } from './_shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { transitRouteEndpointInputSchema, transitRouteEndpointsUpdateRequestSchema } from '@trek/shared';
 
-import {
-  transitRouteEndpointInputSchema,
-  transitRouteEndpointsUpdateRequestSchema,
-} from '@trek/shared';
 import { z } from 'zod';
 
 const TRANSIT_RATE_WINDOW = 15 * 60 * 1000;

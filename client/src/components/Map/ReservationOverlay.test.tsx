@@ -1,6 +1,6 @@
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '../../../tests/helpers/render';
 import ReservationOverlay from './ReservationOverlay';
-import { describe, expect, it, vi } from 'vitest';
 
 const mapMock = {
   getZoom: () => 13,
@@ -18,11 +18,11 @@ const mapMock = {
 
 vi.mock('react-leaflet', () => ({
   Marker: ({ position, children }: any) => (
-    <div data-testid="marker" data-position={JSON.stringify(position)}>{children}</div>
+    <div data-testid="marker" data-position={JSON.stringify(position)}>
+      {children}
+    </div>
   ),
-  Polyline: ({ positions }: any) => (
-    <div data-testid="polyline" data-positions={JSON.stringify(positions)} />
-  ),
+  Polyline: ({ positions }: any) => <div data-testid="polyline" data-positions={JSON.stringify(positions)} />,
   Tooltip: ({ children }: any) => <div>{children}</div>,
   useMap: () => mapMock,
   useMapEvents: () => ({}),
@@ -46,14 +46,26 @@ describe('ReservationOverlay', () => {
       metadata: { transit: { legs: [] } },
       endpoints: [
         {
-          role: 'from', sequence: 0, name: 'Keihan Fushimi-Inari Station', code: null,
-          lat: 35.0, lng: 135.0, timezone: 'Asia/Tokyo',
-          local_date: null, local_time: null,
+          role: 'from',
+          sequence: 0,
+          name: 'Keihan Fushimi-Inari Station',
+          code: null,
+          lat: 35.0,
+          lng: 135.0,
+          timezone: 'Asia/Tokyo',
+          local_date: null,
+          local_time: null,
         },
         {
-          role: 'to', sequence: 1, name: 'Kiyomizu-dera', code: null,
-          lat: 37.5, lng: 138.0, timezone: 'Asia/Tokyo',
-          local_date: null, local_time: null,
+          role: 'to',
+          sequence: 1,
+          name: 'Kiyomizu-dera',
+          code: null,
+          lat: 37.5,
+          lng: 138.0,
+          timezone: 'Asia/Tokyo',
+          local_date: null,
+          local_time: null,
         },
       ],
     } as any;
@@ -80,21 +92,31 @@ describe('ReservationOverlay', () => {
       status: 'confirmed',
       metadata: {
         transit: {
-          legs: [
-            { geometry: encodedPolyline, geometry_precision: 6, line_color: '#ff0000', mode: 'RAIL' },
-          ],
+          legs: [{ geometry: encodedPolyline, geometry_precision: 6, line_color: '#ff0000', mode: 'RAIL' }],
         },
       },
       endpoints: [
         {
-          role: 'from', sequence: 0, name: 'Kyoto Station', code: null,
-          lat: 35.0, lng: 135.0, timezone: 'Asia/Tokyo',
-          local_date: null, local_time: null,
+          role: 'from',
+          sequence: 0,
+          name: 'Kyoto Station',
+          code: null,
+          lat: 35.0,
+          lng: 135.0,
+          timezone: 'Asia/Tokyo',
+          local_date: null,
+          local_time: null,
         },
         {
-          role: 'to', sequence: 1, name: 'Osaka Station', code: null,
-          lat: 37.0, lng: 138.0, timezone: 'Asia/Tokyo',
-          local_date: null, local_time: null,
+          role: 'to',
+          sequence: 1,
+          name: 'Osaka Station',
+          code: null,
+          lat: 37.0,
+          lng: 138.0,
+          timezone: 'Asia/Tokyo',
+          local_date: null,
+          local_time: null,
         },
       ],
     } as any;
@@ -128,14 +150,26 @@ describe('ReservationOverlay', () => {
       metadata: null,
       endpoints: [
         {
-          role: 'from', sequence: 0, name: 'Station A', code: null,
-          lat: 35.0, lng: 135.0, timezone: null,
-          local_date: null, local_time: null,
+          role: 'from',
+          sequence: 0,
+          name: 'Station A',
+          code: null,
+          lat: 35.0,
+          lng: 135.0,
+          timezone: null,
+          local_date: null,
+          local_time: null,
         },
         {
-          role: 'to', sequence: 1, name: 'Station B', code: null,
-          lat: 38.0, lng: 139.0, timezone: null,
-          local_date: null, local_time: null,
+          role: 'to',
+          sequence: 1,
+          name: 'Station B',
+          code: null,
+          lat: 38.0,
+          lng: 139.0,
+          timezone: null,
+          local_date: null,
+          local_time: null,
         },
       ],
     } as any;

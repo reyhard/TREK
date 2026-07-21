@@ -1,3 +1,4 @@
+import { isValidPlaceCoordinates } from '@trek/shared';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import maplibregl from 'maplibre-gl';
@@ -5,7 +6,6 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../../constants/mapDefaults';
-import { isValidPlaceCoordinates } from '@trek/shared';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { useTransportRoutes } from '../../hooks/useTransportRoutes';
 import { fetchPhoto, getAllThumbs, getCached, isLoading, onThumbReady } from '../../services/photoService';

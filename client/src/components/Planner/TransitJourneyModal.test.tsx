@@ -112,7 +112,12 @@ describe('TransitJourneyModal', () => {
     await user.type(screen.getByPlaceholderText(/notes/i), 'Take **coffee**');
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave).toHaveBeenCalledWith({ title: 'Zum Zoo', notes: 'Take **coffee**', status: 'confirmed', confirmation_number: null });
+    expect(onSave).toHaveBeenCalledWith({
+      title: 'Zum Zoo',
+      notes: 'Take **coffee**',
+      status: 'confirmed',
+      confirmation_number: null,
+    });
   });
 
   it('FE-PLANNER-TRANSITJOURNEY-006: status and confirmation fields are editable; notes support a markdown preview', async () => {
@@ -182,7 +187,10 @@ describe('TransitJourneyModal', () => {
   });
 
   it('does not offer endpoint editing when from or to is missing', () => {
-    const reservation = { ...makeReservation(), endpoints: makeReservation().endpoints.filter((endpoint: any) => endpoint.role !== 'to') };
+    const reservation = {
+      ...makeReservation(),
+      endpoints: makeReservation().endpoints.filter((endpoint: any) => endpoint.role !== 'to'),
+    };
     render(<TransitJourneyModal {...makeProps({ reservation })} />);
     expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
   });

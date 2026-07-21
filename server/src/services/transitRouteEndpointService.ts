@@ -1,11 +1,11 @@
+import { db } from '../db/database';
+import { getReservation, getReservationWithJoins } from './reservationService';
 import {
   transitRouteEndpointsUpdateRequestSchema,
   type Reservation,
   type TransitRouteEndpointInput,
   type TransitRouteEndpointsUpdateRequest,
 } from '@trek/shared';
-import { db } from '../db/database';
-import { getReservation, getReservationWithJoins } from './reservationService';
 
 export type TransitRouteEndpointUpdateErrorCode =
   | 'INVALID_INPUT'
@@ -49,24 +49,20 @@ export function updateTransitRouteEndpoints(
   const findEndpoint = db.prepare(
     'SELECT id FROM reservation_endpoints WHERE reservation_id = ? AND role = ? ORDER BY sequence',
   );
-  const updateEndpoint = db.prepare(
-    'UPDATE reservation_endpoints SET name = ?, lat = ?, lng = ? WHERE id = ?',
-  );
+  const updateEndpoint = db.prepare('UPDATE reservation_endpoints SET name = ?, lat = ?, lng = ? WHERE id = ?');
 
-  const transaction = db.transaction(
-    (updates: Array<[EndpointRole, TransitRouteEndpointInput]>) => {
-      for (const [role, endpoint] of updates) {
-        const rows = findEndpoint.all(reservationId, role) as Array<{ id: number }>;
-        if (rows.length !== 1) {
-          throw new TransitRouteEndpointUpdateError(
-            'ENDPOINT_STRUCTURE_INVALID',
-            `Transit journey must have exactly one ${role} endpoint.`,
-          );
-        }
-        updateEndpoint.run(endpoint.name, endpoint.lat, endpoint.lng, rows[0]!.id);
+  const transaction = db.transaction((updates: Array<[EndpointRole, TransitRouteEndpointInput]>) => {
+    for (const [role, endpoint] of updates) {
+      const rows = findEndpoint.all(reservationId, role) as Array<{ id: number }>;
+      if (rows.length !== 1) {
+        throw new TransitRouteEndpointUpdateError(
+          'ENDPOINT_STRUCTURE_INVALID',
+          `Transit journey must have exactly one ${role} endpoint.`,
+        );
       }
-    },
-  );
+      updateEndpoint.run(endpoint.name, endpoint.lat, endpoint.lng, rows[0]!.id);
+    }
+  });
 
   const updates: Array<[EndpointRole, TransitRouteEndpointInput]> = [];
   if (parsed.data.from) updates.push(['from', parsed.data.from]);

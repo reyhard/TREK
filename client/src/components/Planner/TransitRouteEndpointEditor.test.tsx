@@ -1,19 +1,31 @@
 import userEvent from '@testing-library/user-event';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '../../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useSettingsStore } from '../../store/settingsStore';
 import TransitRouteEndpointEditor from './TransitRouteEndpointEditor';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const from = {
-  role: 'from' as const, sequence: 0, name: 'Fushimi Inari', code: null,
-  lat: 34.967, lng: 135.773, timezone: 'Asia/Tokyo',
-  local_date: '2026-10-09', local_time: '09:00',
+  role: 'from' as const,
+  sequence: 0,
+  name: 'Fushimi Inari',
+  code: null,
+  lat: 34.967,
+  lng: 135.773,
+  timezone: 'Asia/Tokyo',
+  local_date: '2026-10-09',
+  local_time: '09:00',
 };
 const to = {
-  role: 'to' as const, sequence: 1, name: 'Kiyomizu-dera', code: null,
-  lat: 34.994, lng: 135.785, timezone: 'Asia/Tokyo',
-  local_date: '2026-10-09', local_time: '09:45',
+  role: 'to' as const,
+  sequence: 1,
+  name: 'Kiyomizu-dera',
+  code: null,
+  lat: 34.994,
+  lng: 135.785,
+  timezone: 'Asia/Tokyo',
+  local_date: '2026-10-09',
+  local_time: '09:45',
 };
 
 beforeEach(() => {
@@ -39,13 +51,15 @@ it('shows the map-only warning and submits only the changed origin', async () =>
   await user.type(originLng, '135.7691251');
   await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith({
-    from: {
-      name: 'Keihan Fushimi-Inari Station',
-      lat: 34.9685211,
-      lng: 135.7691251,
-    },
-  }));
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith({
+      from: {
+        name: 'Keihan Fushimi-Inari Station',
+        lat: 34.9685211,
+        lng: 135.7691251,
+      },
+    })
+  );
 });
 
 it('blocks invalid coordinates and unchanged values', async () => {

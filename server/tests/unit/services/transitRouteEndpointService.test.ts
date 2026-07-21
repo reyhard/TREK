@@ -7,6 +7,7 @@ import {
 } from '../../../src/services/transitRouteEndpointService';
 import { createTrip, createUser } from '../../helpers/factories';
 import { resetTestDb } from '../../helpers/test-db';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -56,26 +57,44 @@ function seedTransit() {
     },
     endpoints: [
       {
-        role: 'from', sequence: 0, name: 'Fushimi Inari', code: 'KH34',
-        lat: 34.967, lng: 135.773, timezone: 'Asia/Tokyo',
-        local_date: '2026-10-09', local_time: '09:00',
+        role: 'from',
+        sequence: 0,
+        name: 'Fushimi Inari',
+        code: 'KH34',
+        lat: 34.967,
+        lng: 135.773,
+        timezone: 'Asia/Tokyo',
+        local_date: '2026-10-09',
+        local_time: '09:00',
       },
       {
-        role: 'stop', sequence: 1, name: 'Gion-Shijo', code: 'KH39',
-        lat: 35.003, lng: 135.772, timezone: 'Asia/Tokyo',
-        local_date: '2026-10-09', local_time: '09:20',
+        role: 'stop',
+        sequence: 1,
+        name: 'Gion-Shijo',
+        code: 'KH39',
+        lat: 35.003,
+        lng: 135.772,
+        timezone: 'Asia/Tokyo',
+        local_date: '2026-10-09',
+        local_time: '09:20',
       },
       {
-        role: 'to', sequence: 2, name: 'Kiyomizu-dera', code: null,
-        lat: 34.994, lng: 135.785, timezone: 'Asia/Tokyo',
-        local_date: '2026-10-09', local_time: '09:45',
+        role: 'to',
+        sequence: 2,
+        name: 'Kiyomizu-dera',
+        code: null,
+        lat: 34.994,
+        lng: 135.785,
+        timezone: 'Asia/Tokyo',
+        local_date: '2026-10-09',
+        local_time: '09:45',
       },
     ],
   });
   testDb.prepare('UPDATE reservations SET day_plan_position = 7 WHERE id = ?').run(result.reservation.id);
-  testDb.prepare(
-    'INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)',
-  ).run(result.reservation.id, day.id, 3);
+  testDb
+    .prepare('INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)')
+    .run(result.reservation.id, day.id, 3);
   return { trip, day, reservationId: result.reservation.id };
 }
 
@@ -141,14 +160,18 @@ describe('updateTransitRouteEndpoints', () => {
 
   it('rejects missing and non-transit reservations', () => {
     const { trip } = seedTransit();
-    expect(() => updateTransitRouteEndpoints(999999, trip.id, {
-      from: { name: 'X', lat: 0, lng: 0 },
-    })).toThrowError(expect.objectContaining({ code: 'RESERVATION_NOT_FOUND' }));
+    expect(() =>
+      updateTransitRouteEndpoints(999999, trip.id, {
+        from: { name: 'X', lat: 0, lng: 0 },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'RESERVATION_NOT_FOUND' }));
 
     const manual = createReservation(trip.id, { title: 'Train', type: 'train' }).reservation;
-    expect(() => updateTransitRouteEndpoints(manual.id, trip.id, {
-      from: { name: 'X', lat: 0, lng: 0 },
-    })).toThrowError(expect.objectContaining({ code: 'NOT_TRANSIT' }));
+    expect(() =>
+      updateTransitRouteEndpoints(manual.id, trip.id, {
+        from: { name: 'X', lat: 0, lng: 0 },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'NOT_TRANSIT' }));
   });
 
   it('rolls back the first endpoint when the second requested role is missing', () => {
@@ -158,13 +181,17 @@ describe('updateTransitRouteEndpoints', () => {
       .prepare('SELECT * FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
       .all(reservationId);
 
-    expect(() => updateTransitRouteEndpoints(reservationId, trip.id, {
-      from: { name: 'Changed origin', lat: 34.9, lng: 135.7 },
-      to: { name: 'Missing destination', lat: 35, lng: 135.8 },
-    })).toThrowError(expect.objectContaining({ code: 'ENDPOINT_STRUCTURE_INVALID' }));
+    expect(() =>
+      updateTransitRouteEndpoints(reservationId, trip.id, {
+        from: { name: 'Changed origin', lat: 34.9, lng: 135.7 },
+        to: { name: 'Missing destination', lat: 35, lng: 135.8 },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'ENDPOINT_STRUCTURE_INVALID' }));
 
-    expect(testDb
-      .prepare('SELECT * FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
-      .all(reservationId)).toEqual(before);
+    expect(
+      testDb
+        .prepare('SELECT * FROM reservation_endpoints WHERE reservation_id = ? ORDER BY sequence')
+        .all(reservationId),
+    ).toEqual(before);
   });
 });
