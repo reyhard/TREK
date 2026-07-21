@@ -147,3 +147,40 @@ EXIT: 0
 - **Tasks 04–11** consume: the conflict ledger in `upstream-3.4.1-conflicts.md` for semantic resolution guidance.
 - Install commands: `npm ci && npm --prefix plugin-sdk ci && npm run build --workspace=shared`
 - Fixture policy: fixtures remain local-only and uncommitted; the pre-upstream-3.4-fork fixture is absent from this workspace (assigned to Task 03).
+
+## Task 04 — Check-In-Day Hotel Morning-Leg Policy
+
+**Status:** DONE
+**Completed:** 2026-07-21
+
+### Implementation
+
+The fork already contained the upstream `shouldDrawMorningLeg` check-in-day suppression logic (from the 3.4.1 merge). Task 04 added the planned test coverage:
+
+| File | Change |
+|------|--------|
+| `client/src/utils/dayOrder.test.ts` | Added `suppresses the morning leg when the first stop time is before check-in boundary (#1465)` — tests null, 13:59, 14:00, 15:00 with `check_in: '14:00'` |
+| `client/tests/unit/utils/dayMovementPlan.test.ts` | Added `check-in day morning-leg suppression` sub-suite (4 tests): untimed place → no hotel-top; timed at check-in → hotel-top; untimed track → no approach; timed-after track → hotel-top targets track-start |
+| `client/tests/unit/utils/dayMovementPlan.test.ts` | Fixed pre-existing **"uses track start/time for morning hotel"** — added `check_in: '09:00'` to hotel fixture (was missing, causing upstream 3.4.1 change to suppress the morning leg) |
+
+### Tests
+
+| Suite | Result |
+|-------|--------|
+| `dayOrder.test.ts` | 32/32 PASS |
+| `dayMovementPlan.test.ts` | 25/25 PASS |
+| `useRouteCalculation.test.ts` | 36/36 PASS |
+| Client typecheck | PASS |
+
+### Acceptance Gate
+
+- [x] Untimed phantom hotel leg suppressed on check-in day
+- [x] Place timed at/after check-in produces hotel-top connector
+- [x] Untimed track on check-in day suppresses hotel approach
+- [x] Track timed after check-in produces hotel-top connector targeting track-start
+- [x] All map/sidebar/export consumers agree (via unified movement plan)
+- [x] Track-aware routing remains intact
+- [x] Non-check-in-day morning routes unchanged
+- [x] Evening-leg rules unchanged
+- [x] Optimizer accommodation anchors unchanged
+- [x] No changes to `dayMovementPlan.ts` or `useRouteCalculation.test.ts` (consumers already used `shouldDrawMorningLeg`)
