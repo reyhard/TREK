@@ -176,6 +176,7 @@ interface PlaceInspectorProps {
   rightWidth?: number;
   canReposition?: boolean;
   isRepositioning?: boolean;
+  isRepositionSaving?: boolean;
   onStartReposition?: () => void;
   onCancelReposition?: () => void;
   // ── Collection-mode props ──
@@ -208,6 +209,7 @@ export default function PlaceInspector({
   rightWidth = 0,
   canReposition,
   isRepositioning,
+  isRepositionSaving,
   onStartReposition,
   onCancelReposition,
   collectionStatus,
@@ -449,6 +451,17 @@ export default function PlaceInspector({
             gap: 10,
           }}
         >
+          {isRepositioning && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="bg-surface-hover text-content"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '9px 12px' }}
+            >
+              <MapPin size={14} aria-hidden="true" />
+              <span>{isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}</span>
+            </div>
+          )}
           {/* Info-Chips — hidden on mobile, shown on desktop */}
           <div className="hidden sm:flex" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             {googleDetails?.rating &&
@@ -738,6 +751,32 @@ export default function PlaceInspector({
             />
           )}
           <div style={{ flex: 1 }} />
+          {mode === 'trip' &&
+            canReposition &&
+            !isRepositioning &&
+            place.lat != null &&
+            place.lng != null &&
+            Number.isFinite(Number(place.lat)) &&
+            Number.isFinite(Number(place.lng)) &&
+            onStartReposition && (
+              <ActionButton
+                onClick={onStartReposition}
+                variant="ghost"
+                icon={<MapPin size={13} />}
+                label={<span className="hidden sm:inline">{t('inspector.reposition')}</span>}
+                ariaLabel={t('inspector.reposition')}
+              />
+            )}
+          {mode === 'trip' && isRepositioning && onCancelReposition && (
+            <ActionButton
+              onClick={onCancelReposition}
+              variant="ghost"
+              icon={<X size={13} />}
+              label={<span className="hidden sm:inline">{t('inspector.cancelReposition')}</span>}
+              ariaLabel={t('inspector.cancelReposition')}
+              disabled={isRepositionSaving}
+            />
+          )}
           {mode === 'trip' && onEdit && (
             <ActionButton
               onClick={onEdit}
@@ -819,9 +858,11 @@ interface ActionButtonProps {
   variant: 'primary' | 'ghost' | 'danger';
   icon: React.ReactNode;
   label: React.ReactNode;
+  ariaLabel?: string;
+  disabled?: boolean;
 }
 
-export function ActionButton({ onClick, variant, icon, label }: ActionButtonProps) {
+export function ActionButton({ onClick, variant, icon, label, ariaLabel, disabled = false }: ActionButtonProps) {
   const base = {
     primary: {
       background: 'var(--accent)',
@@ -841,6 +882,8 @@ export function ActionButton({ onClick, variant, icon, label }: ActionButtonProp
   return (
     <button
       onClick={onClick}
+      aria-label={ariaLabel}
+      disabled={disabled}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -850,14 +893,17 @@ export function ActionButton({ onClick, variant, icon, label }: ActionButtonProp
         minHeight: 30,
         fontSize: 'calc(12px * var(--fs-scale-body, 1))',
         fontWeight: 500,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: 'inherit',
         transition: 'background 0.15s, opacity 0.15s',
         background: s.background,
         color: s.color,
         border: s.border,
+        opacity: disabled ? 0.55 : 1,
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = s.hoverBg)}
+      onMouseEnter={(e) => {
+        if (!disabled) e.currentTarget.style.background = s.hoverBg;
+      }}
       onMouseLeave={(e) => (e.currentTarget.style.background = s.background)}
     >
       {icon}

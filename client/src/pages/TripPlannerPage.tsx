@@ -308,6 +308,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
     selectedAssignmentId,
     setSelectedPlaceId,
     selectAssignment,
+    canEditPlaces,
+    repositionMode,
+    startPlaceReposition,
+    cancelPlaceReposition,
+    handlePlaceRepositionEnd,
     showDayDetail,
     setShowDayDetail,
     dayDetailCollapsed,
@@ -586,6 +591,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
               showTransitRoutes={routeShown}
               routeSegments={routeSegments}
               selectedPlaceId={selectedPlaceId}
+              repositionPlaceId={repositionMode.status === 'repositioning' ? repositionMode.placeId : null}
+              canRepositionPlaces={canEditPlaces}
+              onPlaceRepositionEnd={handlePlaceRepositionEnd}
               onMarkerClick={handleMarkerClick}
               onMapClick={handleMapClick}
               onMapContextMenu={handleMapContextMenu}
@@ -1078,7 +1086,10 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 selectedAssignmentId={selectedAssignmentId}
                 assignments={assignments}
                 reservations={reservations}
-                onClose={() => setSelectedPlaceId(null)}
+                onClose={() => {
+                  cancelPlaceReposition();
+                  setSelectedPlaceId(null);
+                }}
                 onEdit={() => openPlaceEditor(selectedPlace, selectedAssignmentId)}
                 onDelete={() => handleDeletePlace(selectedPlace.id)}
                 onAssignToDay={handleAssignToDay}
@@ -1108,6 +1119,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
                     toast.error(err instanceof Error ? err.message : t('common.unknownError'));
                   }
                 }}
+                canReposition={canEditPlaces}
+                isRepositioning={repositionMode.status !== 'idle' && repositionMode.placeId === selectedPlace.id}
+                isRepositionSaving={repositionMode.status === 'saving'}
+                onStartReposition={() => startPlaceReposition(selectedPlace)}
+                onCancelReposition={cancelPlaceReposition}
                 leftWidth={isMobile || window.innerWidth < 900 ? 0 : leftCollapsed ? 0 : leftWidth}
                 rightWidth={isMobile || window.innerWidth < 900 ? 0 : rightCollapsed ? 0 : rightWidth}
               />
@@ -1115,6 +1131,42 @@ export default function TripPlannerPage(): React.ReactElement | null {
 
             {selectedPlace &&
               isMobile &&
+              repositionMode.status === 'repositioning' &&
+              ReactDOM.createPortal(
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="bg-surface-card border border-edge-secondary shadow-lg text-content"
+                  style={{
+                    position: 'fixed',
+                    left: 16,
+                    right: 16,
+                    bottom: 'calc(var(--bottom-nav-h) + 16px)',
+                    zIndex: 9999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                  }}
+                >
+                  <span>{t('inspector.repositionInstructions')}</span>
+                  <button
+                    type="button"
+                    onClick={cancelPlaceReposition}
+                    className="bg-surface-tertiary text-content"
+                    style={{ border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', font: 'inherit' }}
+                  >
+                    {t('inspector.cancelReposition')}
+                  </button>
+                </div>,
+                document.body
+              )}
+
+            {selectedPlace &&
+              isMobile &&
+              repositionMode.status !== 'repositioning' &&
               ReactDOM.createPortal(
                 <div
                   className="bg-[rgba(0,0,0,0.3)]"
@@ -1127,7 +1179,10 @@ export default function TripPlannerPage(): React.ReactElement | null {
                     justifyContent: 'center',
                     paddingBottom: 'var(--bottom-nav-h)',
                   }}
-                  onClick={() => setSelectedPlaceId(null)}
+                  onClick={() => {
+                    cancelPlaceReposition();
+                    setSelectedPlaceId(null);
+                  }}
                 >
                   <div style={{ width: '100%', maxHeight: '85vh' }} onClick={(e) => e.stopPropagation()}>
                     <PlaceInspector
@@ -1138,7 +1193,10 @@ export default function TripPlannerPage(): React.ReactElement | null {
                       selectedAssignmentId={selectedAssignmentId}
                       assignments={assignments}
                       reservations={reservations}
-                      onClose={() => setSelectedPlaceId(null)}
+                      onClose={() => {
+                        cancelPlaceReposition();
+                        setSelectedPlaceId(null);
+                      }}
                       onEdit={() => {
                         openPlaceEditor(selectedPlace, selectedAssignmentId);
                         setSelectedPlaceId(null);
@@ -1174,6 +1232,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
                           toast.error(err instanceof Error ? err.message : t('common.unknownError'));
                         }
                       }}
+                      canReposition={canEditPlaces}
+                      isRepositioning={repositionMode.status === 'saving'}
+                      isRepositionSaving={repositionMode.status === 'saving'}
+                      onStartReposition={() => startPlaceReposition(selectedPlace)}
+                      onCancelReposition={cancelPlaceReposition}
                       leftWidth={0}
                       rightWidth={0}
                     />

@@ -10,7 +10,13 @@ import { useAuthStore } from '../store/authStore';
 import { usePluginStore } from '../store/pluginStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTripStore } from '../store/tripStore';
+import { usePermissionsStore } from '../store/permissionsStore';
+import { placeRepo } from '../repo/placeRepo';
 import TripPlannerPage from './TripPlannerPage';
+
+vi.mock('../repo/placeRepo', () => ({
+  placeRepo: { create: vi.fn(), update: vi.fn() },
+}));
 
 // Mock Leaflet-dependent components
 const capturedMapViewProps: { current: Record<string, any> } = { current: {} };
@@ -226,6 +232,10 @@ function renderPlannerPage(tripId: number | string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(placeRepo.create).mockReset();
+  vi.mocked(placeRepo.update).mockReset();
+  vi.mocked(placeRepo.create).mockResolvedValue({ place: buildPlace({ trip_id: 42 }) });
+  vi.mocked(placeRepo.update).mockResolvedValue({ place: buildPlace({ trip_id: 42 }) });
   resetAllStores();
   mockUseTripWebSocket.mockReset();
   mockSetSelectedPlaceId.mockReset();
@@ -856,6 +866,236 @@ describe('TripPlannerPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('map-view')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-024b: saved-place repositioning', () => {
+    it('persists one coordinate update after Inspector start and map drag end', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      vi.mocked(placeRepo.update).mockResolvedValue({ place });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function);
+      });
+
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+
+      expect(capturedMapViewProps.current.repositionPlaceId).toBe(place.id);
+      expect(capturedMapViewProps.current.onPlaceRepositionEnd).toBeInstanceOf(Function);
+
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd(place.id, { lat: 48.9, lng: 2.4 });
+      });
+
+      expect(placeRepo.update).toHaveBeenCalledTimes(1);
+      expect(placeRepo.update).toHaveBeenCalledWith(42, place.id, { lat: 48.9, lng: 2.4 });
+    });
+
+    it('does not arm map repositioning when place editing is denied', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+      seedStore(usePermissionsStore, { permissions: { place_edit: 'admin' } });
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(capturedPlaceInspectorProps.current.canReposition).toBe(false);
+      });
+      expect(capturedMapViewProps.current.canRepositionPlaces).toBe(false);
+      expect(placeRepo.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['invalid coordinates', { lat: 91, lng: 2.4 }],
+      ['unchanged coordinates', { lat: 48.8566, lng: 2.3522 }],
+    ])('does not persist %s after drag end', async (_label, coordinates) => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd(place.id, coordinates);
+      });
+
+      expect(placeRepo.update).not.toHaveBeenCalled();
+      expect(useTripStore.getState().places[0]).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+    });
+
+    it('cancels repositioning when Escape is pressed', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      expect(capturedMapViewProps.current.repositionPlaceId).toBe(place.id);
+
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 'Escape' });
+      });
+
+      expect(capturedMapViewProps.current.repositionPlaceId).toBeNull();
+      expect(placeRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('cancels repositioning when the selected place changes', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      const view = renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      expect(capturedMapViewProps.current.repositionPlaceId).toBe(place.id);
+
+      mockPlaceSelectionState.selectedPlaceId = 2;
+      view.rerender(
+        <Routes>
+          <Route path="/trips/:id" element={<TripPlannerPage />} />
+        </Routes>
+      );
+
+      await waitFor(() => expect(capturedMapViewProps.current.repositionPlaceId).toBeNull());
+      expect(placeRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('rolls back optimistic coordinates when persistence fails', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      vi.mocked(placeRepo.update).mockRejectedValue(new Error('offline'));
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd(place.id, { lat: 48.9, lng: 2.4 });
+      });
+
+      expect(placeRepo.update).toHaveBeenCalledTimes(1);
+      expect(useTripStore.getState().places[0]).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+    });
+
+    it('replaces the mobile Inspector with a cancellable drag instruction', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+
+      expect(screen.queryByTestId('place-inspector')).toBeNull();
+      expect(screen.getByRole('status')).toHaveTextContent('Drag the marker to its new location. Press Escape to cancel.');
+      expect(screen.getByRole('button', { name: 'Cancel repositioning' })).toBeInTheDocument();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+
+    it('keeps mobile Inspector details visible with inline saving state until coordinate persistence completes', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      let resolveUpdate!: (value: { place: typeof place }) => void;
+      vi.mocked(placeRepo.update).mockReturnValue(new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }));
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      act(() => {
+        void capturedMapViewProps.current.onPlaceRepositionEnd(place.id, { lat: 48.9, lng: 2.4 });
+      });
+
+      expect(screen.getByTestId('place-inspector')).toBeInTheDocument();
+      expect(capturedPlaceInspectorProps.current).toMatchObject({
+        isRepositioning: true,
+        isRepositionSaving: true,
+      });
+
+      await act(async () => {
+        resolveUpdate({ place });
+      });
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
   });
 

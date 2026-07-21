@@ -10,8 +10,9 @@ import { resolvePluginIcon } from '../../components/shared/PluginIcon'
 import { useTranslation, translateApiError } from '../../i18n'
 import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi, healthApi, airtrailApi, mapsApi, placesApi } from '../../api/client'
 import { parsedItemToDraft, isTransportItem, type BookingReviewDraft } from '../../components/Planner/parsedItemToDraft'
-import type { BookingImportPreviewItem } from '@trek/shared'
+import { isValidPlaceCoordinates, type BookingImportPreviewItem, type PlaceCoordinates } from '@trek/shared'
 import { accommodationRepo } from '../../repo/accommodationRepo'
+import { placeRepo } from '../../repo/placeRepo'
 import { offlineDb, getImportFiles, deleteImportFiles } from '../../db/offlineDb'
 import { isEffectivelyOffline } from '../../sync/networkMode'
 import { useBackgroundTasksStore } from '../../store/backgroundTasksStore'
@@ -33,6 +34,23 @@ import {
   toggleConnectionId, toggleAllConnections as flipAllConnectionsMode,
   type StoredConnections,
 } from '../../utils/connectionsVisibility'
+
+type RepositionMode =
+  | { status: 'idle' }
+  | { status: 'repositioning'; placeId: number; original: PlaceCoordinates }
+  | { status: 'saving'; placeId: number; original: PlaceCoordinates }
+
+function patchPlaceCoordinates(placeId: number, coordinates: PlaceCoordinates): void {
+  useTripStore.setState(state => ({
+    places: state.places.map(place => place.id === placeId ? { ...place, ...coordinates } : place),
+    assignments: Object.fromEntries(Object.entries(state.assignments).map(([dayId, items]) => [
+      dayId,
+      items.map(assignment => assignment.place?.id === placeId
+        ? { ...assignment, place: { ...assignment.place, ...coordinates } }
+        : assignment),
+    ])),
+  }))
+}
 
 /**
  * Trip planner page logic — the big one. Owns the trip store wiring, addon
@@ -71,8 +89,60 @@ export function useTripPlanner() {
   // Actions — stable references, don't cause re-renders
   const tripActions = useRef(useTripStore.getState()).current
   const can = useCanDo()
+  const canEditPlaces = can('place_edit', trip)
   const canUploadFiles = can('file_upload', trip)
   const { pushUndo, undo, canUndo, lastActionLabel } = usePlannerHistory()
+  const { selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment } = usePlaceSelection()
+  const [repositionMode, setRepositionMode] = useState<RepositionMode>({ status: 'idle' })
+
+  const startPlaceReposition = useCallback((place: Place) => {
+    const original = { lat: Number(place.lat), lng: Number(place.lng) }
+    if (!canEditPlaces || !isValidPlaceCoordinates(original)) return
+    setSelectedPlaceId(place.id)
+    setRepositionMode({ status: 'repositioning', placeId: place.id, original })
+  }, [canEditPlaces, setSelectedPlaceId])
+
+  const cancelPlaceReposition = useCallback(() => {
+    setRepositionMode(current => current.status === 'saving' ? current : { status: 'idle' })
+  }, [])
+
+  const handlePlaceRepositionEnd = useCallback(async (placeId: number, coordinates: PlaceCoordinates) => {
+    if (repositionMode.status !== 'repositioning' || repositionMode.placeId !== placeId) return
+    if (!isValidPlaceCoordinates(coordinates)) {
+      setRepositionMode({ status: 'idle' })
+      return
+    }
+    const original = repositionMode.original
+    if (Math.abs(original.lat - coordinates.lat) < 1e-7 && Math.abs(original.lng - coordinates.lng) < 1e-7) {
+      setRepositionMode({ status: 'idle' })
+      return
+    }
+
+    setRepositionMode({ status: 'saving', placeId, original })
+    patchPlaceCoordinates(placeId, coordinates)
+    try {
+      await placeRepo.update(tripId, placeId, coordinates)
+    } catch {
+      patchPlaceCoordinates(placeId, original)
+    } finally {
+      setRepositionMode({ status: 'idle' })
+    }
+  }, [repositionMode, tripId])
+
+  useEffect(() => {
+    if (repositionMode.status !== 'repositioning') return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') cancelPlaceReposition()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [repositionMode.status, cancelPlaceReposition])
+
+  useEffect(() => {
+    setRepositionMode(current =>
+      current.status !== 'idle' && current.placeId !== selectedPlaceId ? { status: 'idle' } : current
+    )
+  }, [selectedPlaceId])
 
   const handleUndo = useCallback(async () => {
     const label = lastActionLabel
@@ -164,7 +234,6 @@ export function useTripPlanner() {
     if (tabId === 'dateien' && (!files || files.length === 0)) tripActions.loadFiles?.(tripId)
   }
   const { leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight } = useResizablePanels()
-  const { selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment } = usePlaceSelection()
   const [showDayDetail, setShowDayDetail] = useState<Day | null>(null)
   const [dayDetailCollapsed, setDayDetailCollapsed] = useState(false)
   const [showPlaceForm, setShowPlaceForm] = useState<boolean>(false)
@@ -942,6 +1011,7 @@ export function useTripPlanner() {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
+    canEditPlaces, repositionMode, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,
