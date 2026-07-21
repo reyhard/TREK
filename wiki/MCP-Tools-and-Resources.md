@@ -116,6 +116,21 @@ Transit search is powered by Transitous and uses the existing `geo:read` and `re
 | `search_transit_routes` | `geo:read` | Search scheduled routes between two coordinates with time, mode, and transfer filters. Also returns `dropped`, the number of provider itineraries that failed validation and are absent from the results. |
 | `create_transit_journey` | `reservations:write` | Save a selected route as a first-class automated transit journey on a trip day. Does not call Transitous. |
 | `update_transit_journey` | `reservations:write` | Replace route data of an existing automated transit journey while preserving title and notes unless explicitly overridden. Does not call Transitous. |
+| `update_transit_route_endpoints` | `reservations:write` | Correct the map-only origin and/or destination label and coordinates of an existing automated transit journey. Accepts `tripId`, `reservationId`, optional `from`, and optional `to` (at least one required). Preserves the provider itinerary, legs, timing, geometry, statistics, metadata, status, title, notes, and day-plan position; does not call Transitous or synthesize walking legs. |
+
+`from` and `to` have the same `{ name, lat, lng }` shape; one or both may be supplied. Latitude is `-90..90`, longitude is `-180..180`, and endpoint names are `1..300` characters. The tool is map pinning only — use `update_transit_journey` when replacing the provider itinerary.
+
+```json
+{
+  "tripId": 1,
+  "reservationId": 24,
+  "from": {
+    "name": "Keihan Fushimi-Inari Station",
+    "lat": 34.9685211,
+    "lng": 135.7691251
+  }
+}
+```
 
 ### Reservations
 

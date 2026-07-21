@@ -934,3 +934,34 @@ Commit `4bc62ec5` introduced the `TransitRouteEndpointEditor` with two issues co
 
 1. Validation messages and coordinate placeholders hard-code English text instead of using translation keys from `shared/src/i18n/en/trip.ts`.
 2. `onUpdateEndpoints` and `canEditEndpoints` props declared optional in `TransitJourneyModal.tsx`, allowing an out-of-contract caller to display the editor and have Save close it without sending an update.
+
+### Task 7 — Reservation Map Regression Coverage
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commit | `48356079` |
+| Review | clean; no production changes needed |
+
+#### Coverage added
+
+- **Marker positions** use `reservation.endpoints` via `waypoints` → `wp.lat`/`wp.lng`
+- **Polyline fallback arcs** use `item.arcs` derived from endpoint coords
+- **Provider geometry independence** preserved via `getTransitMapSegments` which reads `metadata.transit.legs`
+
+#### Test cases
+
+1. **`uses saved endpoint coordinates for markers and the no-geometry fallback line`** — No-geometry transit: markers and polyline at endpoint coords
+2. **`keeps provider geometry independent from edited endpoint coordinates`** — Transit with encoded polyline: markers at endpoints, polylines at decoded coords, endpoint pair NOT in polylines
+3. **`renders an untouched route with its stored endpoint coordinates`** — Legacy transit (null metadata): markers and polyline at original endpoint coords
+
+#### Verification
+
+| Check | Status |
+|-------|--------|
+| ReservationOverlay tests | 3/3 passed |
+| reservationRoutes tests | 12/12 passed |
+| TransitJourneyModal tests | 12/12 passed |
+| All related tests | 27/27 passed |
+| Production changes | None required |
