@@ -16,7 +16,7 @@ The result was that fixing a wrong map pin required either re-searching the rout
 | Branch | `feat/transit-route-endpoints` |
 | Worktree path | `/opt/trek/TREK/.worktrees/feat/transit-route-endpoints` |
 | Base commit | `e6309321` `feat(places): add route_geometry, coordinate validation, and zero-coord flyTo fix` |
-| Verification snapshot | `4f8dc77e` — subsequent docs-only commits exist (current HEAD is `1f4dd6af`); this report describes the feature state frozen at `4f8dc77e` |
+| Verification snapshot | `4f8dc77e` — a follow-up revision (`1f4dd6af`) added documentation and MCP schema-test evidence after this snapshot; this report describes the feature state frozen at `4f8dc77e` |
 
 ## Files changed
 
@@ -78,7 +78,7 @@ shared/src/reservation/reservation.schema.ts
 wiki/MCP-Tools-and-Resources.md
 ```
 
-Subsequent docs-only commits after the snapshot (`1f4dd6af`) modified `docs/superpowers/reports/2026-07-21-transit-route-endpoint-editing-implementation.md`, `.superpowers/sdd/task-8-report.md`, and `server/tests/unit/mcp/tools-transit.test.ts`.
+A follow-up revision (`1f4dd6af`) after the snapshot added documentation and MCP schema-test evidence, modifying `docs/superpowers/reports/2026-07-21-transit-route-endpoint-editing-implementation.md`, `.superpowers/sdd/task-8-report.md`, and `server/tests/unit/mcp/tools-transit.test.ts`.
 
 **Groups:**
 
