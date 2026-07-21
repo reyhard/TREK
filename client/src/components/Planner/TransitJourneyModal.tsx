@@ -10,6 +10,7 @@ import {
   Link2,
   List,
   ListChecks,
+  MapPin,
   MoveRight,
   Pencil,
   RefreshCw,
@@ -24,11 +25,13 @@ import remarkGfm from 'remark-gfm';
 import { useTranslation } from '../../i18n';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { Reservation } from '../../types';
+import type { TransitRouteEndpointsUpdateRequest } from '@trek/shared';
 import { formatTime, splitReservationDateTime } from '../../utils/formatters';
 import { safeParseMetadata } from '../../utils/safeParseMetadata';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import Modal from '../shared/Modal';
 import { TransitMetaBadges, TransitTitle, TransitWalkDivider, fmtTransitDuration } from './transitDisplay';
+import TransitRouteEndpointEditor from './TransitRouteEndpointEditor';
 
 /**
  * The journey view for an automated public-transit entry (#1065): a roomy modal
@@ -63,6 +66,8 @@ interface TransitJourneyModalProps {
   onDelete: () => Promise<unknown>;
   onChangeRoute: () => void;
   canEdit: boolean;
+  onUpdateEndpoints?: (input: TransitRouteEndpointsUpdateRequest) => Promise<unknown>;
+  canEditEndpoints?: boolean;
 }
 
 export default function TransitJourneyModal({
@@ -72,6 +77,8 @@ export default function TransitJourneyModal({
   onDelete,
   onChangeRoute,
   canEdit,
+  onUpdateEndpoints,
+  canEditEndpoints,
 }: TransitJourneyModalProps) {
   const { t, locale } = useTranslation();
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -90,6 +97,11 @@ export default function TransitJourneyModal({
   const [notesTab, setNotesTab] = useState<'write' | 'preview'>(() => (res.notes ? 'preview' : 'write'));
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingEndpoints, setEditingEndpoints] = useState(false);
+
+  const fromEndpoint = (res.endpoints || []).find((endpoint) => endpoint.role === 'from');
+  const toEndpoint = (res.endpoints || []).find((endpoint) => endpoint.role === 'to');
+  const canOpenEndpointEditor = canEdit && canEditEndpoints && !!fromEndpoint && !!toEndpoint;
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -234,6 +246,26 @@ export default function TransitJourneyModal({
             </button>
           )}
           <div style={{ flex: 1 }} />
+          {canOpenEndpointEditor && (
+            <button
+              onClick={() => setEditingEndpoints(true)}
+              className="text-content-muted"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                borderRadius: 10,
+                border: '1px solid var(--border-primary)',
+                background: 'none',
+                fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <MapPin size={13} /> {t('transit.editEndpoints')}
+            </button>
+          )}
           {canEdit && (
             <button
               onClick={onChangeRoute}
@@ -292,6 +324,19 @@ export default function TransitJourneyModal({
         </div>
       }
     >
+      {editingEndpoints && fromEndpoint && toEndpoint ? (
+        <TransitRouteEndpointEditor
+          from={fromEndpoint}
+          to={toEndpoint}
+          onSave={async (input) => {
+            if (onUpdateEndpoints) {
+              await onUpdateEndpoints(input);
+            }
+            setEditingEndpoints(false);
+          }}
+          onCancel={() => setEditingEndpoints(false)}
+        />
+      ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'var(--font-system)' }}>
         {/* header: icon + inline-renamable title + date/time */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -886,6 +931,7 @@ export default function TransitJourneyModal({
           )}
         </div>
       </div>
+      )}
 
       <ConfirmDialog
         isOpen={confirmDelete}

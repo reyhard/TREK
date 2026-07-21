@@ -74,6 +74,8 @@ function makeProps(overrides = {}) {
     onDelete: vi.fn().mockResolvedValue({}),
     onChangeRoute: vi.fn(),
     canEdit: true,
+    onUpdateEndpoints: vi.fn().mockResolvedValue({}),
+    canEditEndpoints: true,
     ...overrides,
   };
 }
@@ -110,14 +112,14 @@ describe('TransitJourneyModal', () => {
     await user.type(screen.getByPlaceholderText(/notes/i), 'Take **coffee**');
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave).toHaveBeenCalledWith({ title: 'Zum Zoo', notes: 'Take **coffee**' });
+    expect(onSave).toHaveBeenCalledWith({ title: 'Zum Zoo', notes: 'Take **coffee**', status: 'confirmed', confirmation_number: null });
   });
 
-  it('FE-PLANNER-TRANSITJOURNEY-006: no status or booking-code fields; notes support a markdown preview', async () => {
+  it('FE-PLANNER-TRANSITJOURNEY-006: status and confirmation fields are editable; notes support a markdown preview', async () => {
     const user = userEvent.setup();
     render(<TransitJourneyModal {...makeProps()} />);
-    expect(screen.queryByText('Status')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Booking code|Confirmation/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Status')).toBeInTheDocument();
+    expect(screen.getByText(/Booking Code/i)).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText(/notes/i), '**bold** note');
     await user.click(screen.getByRole('button', { name: 'Preview' }));
     const bold = document.querySelector('.collab-note-md strong');
@@ -165,11 +167,32 @@ describe('TransitJourneyModal', () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalled());
   });
 
-  it('FE-PLANNER-TRANSITJOURNEY-005: read-only without edit rights — no delete/save/change-route', () => {
+  it('offers a distinct endpoint editor and keeps Change route available', async () => {
+    const user = userEvent.setup();
+    render(<TransitJourneyModal {...makeProps()} />);
+    expect(screen.getByRole('button', { name: /Change route/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }));
+    expect(screen.getByText('Map route endpoints')).toBeInTheDocument();
+    expect(screen.getByText(/changes map pinning only/i)).toBeInTheDocument();
+  });
+
+  it('hides endpoint editing without reservation_edit permission', () => {
+    render(<TransitJourneyModal {...makeProps({ canEditEndpoints: false })} />);
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
+  });
+
+  it('does not offer endpoint editing when from or to is missing', () => {
+    const reservation = { ...makeReservation(), endpoints: makeReservation().endpoints.filter((endpoint: any) => endpoint.role !== 'to') };
+    render(<TransitJourneyModal {...makeProps({ reservation })} />);
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-TRANSITJOURNEY-005: read-only without edit rights — no delete/save/change-route, no endpoint editor', () => {
     render(<TransitJourneyModal {...makeProps({ canEdit: false })} />);
     expect(screen.queryByRole('button', { name: /^Delete$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Change route/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Close/ })).toBeInTheDocument();
   });
 });

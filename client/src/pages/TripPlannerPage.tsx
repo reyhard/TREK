@@ -1745,6 +1745,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
         <TransitJourneyModal
           reservation={reservations.find((r) => r.id === transitJourney.id) ?? transitJourney}
           canEdit={can('day_edit', trip)}
+          canEditEndpoints={can('reservation_edit', trip)}
+          onUpdateEndpoints={async (input) => {
+            await tripActions.updateTransitRouteEndpoints(tripId, transitJourney.id, input);
+            toast.success(t('transit.endpointUpdated'));
+          }}
           onClose={() => setTransitJourney(null)}
           onSave={async (fields) => {
             await tripActions.updateReservation(tripId, transitJourney.id, fields);

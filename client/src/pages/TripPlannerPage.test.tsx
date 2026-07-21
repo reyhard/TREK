@@ -146,6 +146,14 @@ vi.mock('../components/Planner/ReservationModal', () => ({
   },
 }));
 
+const capturedTransitJourneyModalProps: { current: Record<string, any> } = { current: {} };
+vi.mock('../components/Planner/TransitJourneyModal', () => ({
+  default: (props: Record<string, any>) => {
+    capturedTransitJourneyModalProps.current = props;
+    return React.createElement('div', { 'data-testid': 'transit-journey-modal' });
+  },
+}));
+
 const capturedConfirmDialogProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/shared/ConfirmDialog', () => ({
   default: (props: Record<string, any>) => {
@@ -197,6 +205,25 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
   const mockLoadTrip = withMocks ? vi.fn().mockResolvedValue(undefined) : undefined;
   const mockLoadFiles = withMocks ? vi.fn().mockResolvedValue(undefined) : undefined;
   const mockLoadReservations = withMocks ? vi.fn().mockResolvedValue(undefined) : undefined;
+  const mockUpdateTransitEndpoints = withMocks
+    ? vi.fn().mockImplementation(async (_tripId: number, resId: number, input: any) => {
+        const prev = useTripStore.getState();
+        useTripStore.setState({
+          reservations: prev.reservations.map((r: any) =>
+            r.id === resId
+              ? {
+                  ...r,
+                  endpoints: r.endpoints.map((ep: any) => {
+                    const upd = input[ep.role];
+                    return upd ? { ...ep, name: upd.name, lat: upd.lat, lng: upd.lng } : ep;
+                  }),
+                }
+              : r,
+          ),
+        } as any);
+        return { reservation: {} };
+      })
+    : undefined;
 
   seedStore(useTripStore, {
     trip,
@@ -214,10 +241,11 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
       loadTrip: mockLoadTrip,
       loadFiles: mockLoadFiles,
       loadReservations: mockLoadReservations,
+      updateTransitRouteEndpoints: mockUpdateTransitEndpoints,
     }),
   } as any);
 
-  return { trip, day, mockLoadTrip, mockLoadFiles, mockLoadReservations };
+  return { trip, day, mockLoadTrip, mockLoadFiles, mockLoadReservations, mockUpdateTransitEndpoints };
 }
 
 // Helper to render TripPlannerPage with route params
@@ -2106,6 +2134,59 @@ describe('TripPlannerPage', () => {
       // Then include the actual day → place is un-hidden
       await act(async () => {
         capturedDayPlanSidebarProps.current.onExpandedDaysChange?.(new Set([day.id]));
+      });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-045: transit endpoint update wires store action and updates reservation', () => {
+    it('calls onUpdateEndpoints and replaces the reservation in the store', async () => {
+      const reservationWithEndpoints = {
+        id: 24,
+        type: 'transit',
+        title: 'Test Transit',
+        status: 'confirmed',
+        endpoints: [
+          { role: 'from', sequence: 0, name: 'Old Origin', code: null, lat: 1, lng: 2, timezone: null, local_date: null, local_time: null },
+          { role: 'to', sequence: 1, name: 'Old Dest', code: null, lat: 3, lng: 4, timezone: null, local_date: null, local_time: null },
+        ],
+      };
+
+      vi.useFakeTimers();
+      const { mockUpdateTransitEndpoints } = seedTripStore({ id: 42 });
+      seedStore(useTripStore, { reservations: [reservationWithEndpoints] } as any);
+
+      renderPlannerPage(42);
+
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+
+      // Open the transit journey modal
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onOpenTransit?.(reservationWithEndpoints);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transit-journey-modal')).toBeInTheDocument();
+      });
+
+      // Now call onUpdateEndpoints through the modal's captured props
+      await act(async () => {
+        await capturedTransitJourneyModalProps.current.onUpdateEndpoints({
+          from: { name: 'Station', lat: 34.9685211, lng: 135.7691251 },
+        });
+      });
+
+      expect(mockUpdateTransitEndpoints).toHaveBeenCalledWith(42, 24, {
+        from: { name: 'Station', lat: 34.9685211, lng: 135.7691251 },
+      });
+
+      // Reservation endpoints should be updated in the store
+      expect(capturedTransitJourneyModalProps.current.reservation.endpoints[0]).toMatchObject({
+        name: 'Station', lat: 34.9685211, lng: 135.7691251,
       });
     });
   });
