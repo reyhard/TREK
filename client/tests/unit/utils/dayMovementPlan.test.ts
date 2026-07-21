@@ -167,7 +167,7 @@ describe('buildDayMovementPlan', () => {
 
   it('uses track start/time for morning hotel and track end/end_time for evening hotel', () => {
     const t = track(1, [[52, 5], [52.2, 5.2]], { place_time: '10:00', end_time: '18:00' })
-    const hotel = { id: 30, trip_id: 1, start_day_id: 1, end_day_id: 2, place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
+    const hotel = { id: 30, trip_id: 1, start_day_id: 1, end_day_id: 2, check_in: '09:00', place_name: 'Hotel', place_lat: 51.9, place_lng: 4.9 }
     const plan = build({ assignments: [assignment(11, t, 0)], places: [t], accommodations: [hotel as any] })
     expect(plan.parts.map(p => p.kind)).toEqual(['routed', 'track', 'routed'])
     expect((plan.parts[0] as PlannedRoutedPart).to).toMatchObject({ lat: 52, lng: 5, source: 'track-start' })
@@ -236,5 +236,57 @@ describe('buildDayMovementPlan', () => {
       { lat: 52, lng: 5 },
       { lat: 52, lng: 5 },
     ])
+  })
+
+  describe('check-in day morning-leg suppression', () => {
+    const checkInDay = { id: 2, trip_id: 1, day_number: 2 }
+    const allDays = [{ ...day, day_number: 1 }, checkInDay]
+    const hotel = (over = {}) => ({
+      id: 40, trip_id: 1, start_day_id: 2, end_day_id: 4,
+      place_name: 'Hotel', place_lat: 52, place_lng: 5, check_in: '14:00', ...over,
+    })
+    const mkAssignment = (placeData: ReturnType<typeof place>, order: number) => ({
+      ...assignment(41, placeData, order), day_id: 2,
+    })
+
+    it('omits hotel-top when first place is untimed on check-in day', () => {
+      const p = place(1, 52.5, 5.5, { place_time: null })
+      const plan = buildDayMovementPlan({
+        day: checkInDay, days: allDays, assignments: [mkAssignment(p, 0)],
+        places: [p], reservations: [], accommodations: [hotel() as any],
+      })
+      expect(plan.parts.some(part => part.kind === 'routed' && part.placement.kind === 'hotel-top')).toBe(false)
+    })
+
+    it('includes hotel-top when first place is at check-in time', () => {
+      const p = place(1, 52.5, 5.5, { place_time: '14:00' })
+      const plan = buildDayMovementPlan({
+        day: checkInDay, days: allDays, assignments: [mkAssignment(p, 0)],
+        places: [p], reservations: [], accommodations: [hotel() as any],
+      })
+      expect(plan.parts.some(part => part.kind === 'routed' && part.placement.kind === 'hotel-top')).toBe(true)
+    })
+
+    it('omits hotel-top for an untimed track on check-in day', () => {
+      const t = track(2, [[52.2, 5.2], [52.4, 5.4]], { place_time: null })
+      const plan = buildDayMovementPlan({
+        day: checkInDay, days: allDays, assignments: [mkAssignment(t, 0)],
+        places: [t], reservations: [], accommodations: [hotel() as any],
+      })
+      expect(plan.parts.some(part => part.kind === 'routed' && part.placement.kind === 'hotel-top')).toBe(false)
+    })
+
+    it('includes hotel-top targeting track-start when track is timed after check-in', () => {
+      const t = track(2, [[52.2, 5.2], [52.4, 5.4]], { place_time: '15:00' })
+      const plan = buildDayMovementPlan({
+        day: checkInDay, days: allDays, assignments: [mkAssignment(t, 0)],
+        places: [t], reservations: [], accommodations: [hotel() as any],
+      })
+      const approach = plan.parts.find(
+        part => part.kind === 'routed' && part.placement.kind === 'hotel-top',
+      ) as PlannedRoutedPart | undefined
+      expect(approach).toBeDefined()
+      expect(approach!.to.source).toBe('track-start')
+    })
   })
 })
