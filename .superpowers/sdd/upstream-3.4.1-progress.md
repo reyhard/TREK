@@ -111,6 +111,35 @@ EXIT: 0
 | Server typecheck | PASS (`npm --prefix server run typecheck` → exit 0) |
 | Client typecheck | PASS (`npm --prefix client run typecheck` → exit 0) |
 
+## Task 02 — Transit Arrive-By Result Ordering
+
+**Status:** DONE
+**Completed:** 2026-07-21
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `client/src/components/Planner/TransitSearchPanel.tsx` | Extracted `orderTransitItineraries` pure helper with indexed tie-breaking; replaced inline mutable sort |
+| `client/src/components/Planner/TransitSearchPanel.test.tsx` | Added FE-PLANNER-TRANSIT-010 (depart-at preserves provider order) and FE-PLANNER-TRANSIT-011 (equal endTime retains provider order) |
+
+### Tests
+
+| Suite | Result |
+|-------|--------|
+| `TransitSearchPanel.test.tsx` | 14/14 PASS |
+| `TransitJourneyModal.test.tsx` | 6/8 PASS (2 pre-existing failures unrelated to Task 02) |
+| Client typecheck | PASS |
+
+### Acceptance Gate
+
+- [x] arrive-by is descending by arrival time
+- [x] depart-at remains unchanged
+- [x] No server/MCP contract changes
+- [x] Pure helper does not mutate input array
+- [x] Indexed decoration ensures stable sort for equal endTime values
+- [x] Preserved route selection, route indices, itinerary validation, fork transit connector behavior
+
 ### Handoff
 
 - **Task 02** consumes: the merge commit `aa364b3f` with verified two-parent topology and upstream ancestry.
