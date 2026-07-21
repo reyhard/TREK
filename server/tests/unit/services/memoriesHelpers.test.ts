@@ -280,4 +280,22 @@ describe('pipeAsset fetch options (#1611)', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.any(String), boom);
     errorSpy.mockRestore();
   });
+
+  it('MEM-HELPERS-024: logged error does not leak _sid= or full asset URL', async () => {
+    const boom = new Error('self signed certificate');
+    mockSafeFetch.mockRejectedValue(boom);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = mockResponse({ headersSent: false });
+
+    const assetUrl = 'https://nas.example.com/photo/webapi/entry.cgi?api=SYNO.Foto.Thumbnail&_sid=secret-session-123&id=42';
+    await pipeAsset(assetUrl, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    const loggedArgs = errorSpy.mock.calls.map((args) => args.join(' '));
+    for (const line of loggedArgs) {
+      expect(line).not.toContain('_sid=');
+      expect(line).not.toContain(assetUrl);
+    }
+    errorSpy.mockRestore();
+  });
 });
