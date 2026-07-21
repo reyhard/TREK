@@ -3,12 +3,13 @@
 **Date:** 2026-07-21
 **Branch:** `integration/upstream-3.4.1`
 
-## Status: DONE
+## Status: DONE (review findings corrected)
 
-## Commit
+## Commits
 
 ```
-TODO (will fill after commit)
+151d5934 fix(notifications): isolate per-user ntfy topics
+e3a500ad fix(notifications): remove admin token fallback from per-user ntfy sends, add TDD coverage for ntfy opt-out
 ```
 
 ## What Was Done
@@ -44,13 +45,32 @@ The test file had two identical `import` blocks (lines 1–10 and 39–41). Remo
 
 When a personal send is skipped (no user topic), no log message is emitted — the channel simply returns `false`. `sendNtfy()` logs only: event name, URL (topic path, no credentials), priority, tags. Notification body, tokens, and credential-bearing URLs are never logged.
 
+### 7. Review findings corrections
+
+#### 7a. Admin token fallback removed from per-user ntfy sends
+
+**File:** `server/src/services/notifications/builtins.ts:98`
+**Problem:** `ntfyChannel.sendToUser()` used `userCfg?.token ?? adminCfg.token`, allowing the admin token to be transmitted in per-user ntfy sends when the user had no personal token.
+**Fix:** Changed to `userCfg?.token ?? null`. Personal sends now never transmit the admin token. Admin credentials are used _only_ in `sendGlobal()`.
+
+#### 7b. TDD coverage for user ntfy opt-out
+
+**Test:** `NTFY-SVCB-006a` — ntfy skipped when user disabled event on ntfy channel via `disableNotificationPref`
+- User has ntfy topic configured and ntfy channel active
+- User disables `trip_invite` on `ntfy` channel via `disableNotificationPref(testDb, userId, 'trip_invite', 'ntfy')`
+- Assert: no ntfy fetch calls fire
+
+**Test:** `NTFY-SVCB-005b` — ntfy does not fall back to admin token when user has no token
+- Admin ntfy token is set to a known value; user has topic but no token
+- Assert: ntfy send fires but the `Authorization` header is **absent** (admin token not leaked)
+
 ## Tests
 
 | Suite | Count | Result |
 |-------|-------|--------|
 | `notifications.test.ts` | 53 | PASS |
-| `notificationService.test.ts` | 33 | PASS |
-| **Total** | **86** | **PASS** |
+| `notificationService.test.ts` | 35 | PASS |
+| **Total** | **88** | **PASS** |
 
 ## Commands and Results
 
@@ -61,18 +81,18 @@ npm --prefix server run typecheck
 npm --prefix server test -- \
   tests/unit/services/notificationService.test.ts \
   tests/unit/services/notifications.test.ts
-# → 2 files, 86 tests, all passed
+# → 2 files, 88 tests, all passed
 ```
 
 ## Fixture Safety
 
 - No fixture files modified or staged
 - No `.sqlite` or JSON fixture files appear in `git status`
+- Only `server/src/services/notifications/builtins.ts` and `server/tests/unit/services/notificationService.test.ts` modified
 
 ## Concerns
 
 - `sendNtfy()` logs the HTTP error response body on non-2xx (`logError(\`Ntfy HTTP ${res.status}: ${errBody}\`)`). If the ntfy server echoes the sent payload in its error response, the notification body could appear in logs. This is pre-existing behavior unchanged by this task.
-- The `userCfg?.token ?? adminCfg.token` fallback in `sendToUser()` uses the admin token when the user has no personal token. This is authentication-only (not content routing) and was intentionally preserved.
 
 ## Report path
 

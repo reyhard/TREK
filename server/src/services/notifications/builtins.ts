@@ -95,7 +95,7 @@ const ntfyChannel: ExternalChannel = {
     const adminCfg = getAdminNtfyConfig();
     const url = resolveNtfyUrl(adminCfg, userCfg);
     if (!url) return false;
-    return sendNtfy(url, userCfg?.token ?? adminCfg.token, {
+    return sendNtfy(url, userCfg?.token ?? null, {
       event: msg.event,
       title: msg.title,
       body: msg.body,
