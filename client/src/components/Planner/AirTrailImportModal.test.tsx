@@ -109,9 +109,16 @@ describe('AirTrailImportModal', () => {
     // The modal stays mounted with isOpen=false until the AirTrail button is
     // clicked — every hook must run on the closed renders too, or the open
     // render throws "Rendered more hooks than during the previous render".
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: any[]) => {
+      errors.push(args.join(' '));
+    });
     const { rerender } = render(<AirTrailImportModal {...defaultProps} isOpen={false} />);
     rerender(<AirTrailImportModal {...defaultProps} isOpen={true} />);
     expect(await screen.findByText('Import from AirTrail')).toBeInTheDocument();
+    expect(errors.join('\n')).not.toContain('Rendered more hooks than during the previous render');
+    expect(errors.join('\n')).not.toContain('310');
+    spy.mockRestore();
   });
 
   it('FE-PLANNER-AIRTRAIL-004: offers to join a detected connection, on by default', async () => {
