@@ -15,6 +15,18 @@ import { z } from 'zod';
  */
 
 const open = z.record(z.string(), z.unknown());
+const latitudeSchema = z.number().finite().min(-90).max(90);
+const longitudeSchema = z.number().finite().min(-180).max(180);
+
+export const placeCoordinatesSchema = z.object({
+  lat: latitudeSchema,
+  lng: longitudeSchema,
+});
+export type PlaceCoordinates = z.infer<typeof placeCoordinatesSchema>;
+
+export function isValidPlaceCoordinates(value: unknown): value is PlaceCoordinates {
+  return placeCoordinatesSchema.safeParse(value).success;
+}
 
 /**
  * Embedded category as returned on a place — a trimmed projection of the

@@ -1035,6 +1035,67 @@ describe('TripPlannerPage', () => {
       expect(useTripStore.getState().places[0]).toMatchObject({ lat: 48.8566, lng: 2.3522 });
     });
 
+    it('shows the persistence error after rolling back optimistic coordinates', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      const addToast = vi.fn();
+      window.__addToast = addToast;
+      vi.mocked(placeRepo.update).mockRejectedValue(new Error('offline'));
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd(place.id, { lat: 48.9, lng: 2.4 });
+      });
+
+      expect(useTripStore.getState().places[0]).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+      expect(addToast).toHaveBeenCalledWith('offline', 'error', undefined);
+    });
+
+    it('cancels repositioning when edit permission is lost before drag end', async () => {
+      vi.useFakeTimers();
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      mockPlaceSelectionState.selectedPlaceId = place.id;
+      seedTripStore({ id: 42 });
+      seedStore(useTripStore, { places: [place] } as any);
+
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(capturedPlaceInspectorProps.current.onStartReposition).toBeInstanceOf(Function));
+      await act(async () => {
+        capturedPlaceInspectorProps.current.onStartReposition();
+      });
+      expect(capturedMapViewProps.current.repositionPlaceId).toBe(place.id);
+
+      act(() => {
+        seedStore(usePermissionsStore, { permissions: { place_edit: 'admin' } });
+      });
+      await waitFor(() => expect(capturedMapViewProps.current.canRepositionPlaces).toBe(false));
+
+      await act(async () => {
+        await capturedMapViewProps.current.onPlaceRepositionEnd(place.id, { lat: 48.9, lng: 2.4 });
+      });
+
+      expect(capturedMapViewProps.current.repositionPlaceId).toBeNull();
+      expect(placeRepo.update).not.toHaveBeenCalled();
+      expect(useTripStore.getState().places[0]).toMatchObject({ lat: 48.8566, lng: 2.3522 });
+    });
+
     it('replaces the mobile Inspector with a cancellable drag instruction', async () => {
       vi.useFakeTimers();
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });

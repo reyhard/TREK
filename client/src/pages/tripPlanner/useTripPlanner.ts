@@ -108,6 +108,10 @@ export function useTripPlanner() {
 
   const handlePlaceRepositionEnd = useCallback(async (placeId: number, coordinates: PlaceCoordinates) => {
     if (repositionMode.status !== 'repositioning' || repositionMode.placeId !== placeId) return
+    if (!canEditPlaces) {
+      setRepositionMode({ status: 'idle' })
+      return
+    }
     if (!isValidPlaceCoordinates(coordinates)) {
       setRepositionMode({ status: 'idle' })
       return
@@ -122,12 +126,13 @@ export function useTripPlanner() {
     patchPlaceCoordinates(placeId, coordinates)
     try {
       await placeRepo.update(tripId, placeId, coordinates)
-    } catch {
+    } catch (err: unknown) {
       patchPlaceCoordinates(placeId, original)
+      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
     } finally {
       setRepositionMode({ status: 'idle' })
     }
-  }, [repositionMode, tripId])
+  }, [canEditPlaces, repositionMode, t, toast, tripId])
 
   useEffect(() => {
     if (repositionMode.status !== 'repositioning') return
