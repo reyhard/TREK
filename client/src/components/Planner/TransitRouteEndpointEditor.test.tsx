@@ -69,3 +69,23 @@ it('cancels without saving', async () => {
   await user.click(screen.getByRole('button', { name: /^Cancel$/ }));
   expect(onCancel).toHaveBeenCalledTimes(1);
 });
+
+it('reports errors for blank latitude and longitude and blocks save', async () => {
+  const user = userEvent.setup();
+  render(<TransitRouteEndpointEditor from={from} to={to} onSave={vi.fn()} onCancel={vi.fn()} />);
+  const latInput = screen.getByLabelText('Origin — Latitude');
+  await user.clear(latInput);
+  expect(screen.getByText('Latitude must be a number from -90 to 90.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled();
+});
+
+it('does not submit an accidental zero for blank coordinates', async () => {
+  const user = userEvent.setup();
+  const onSave = vi.fn().mockResolvedValue({});
+  render(<TransitRouteEndpointEditor from={from} to={to} onSave={onSave} onCancel={vi.fn()} />);
+  const lngInput = screen.getByLabelText('Origin — Longitude');
+  await user.clear(lngInput);
+  // Save should be blocked — blank longitude must not coerce to 0
+  await user.click(screen.getByRole('button', { name: /^Save$/ }));
+  expect(onSave).not.toHaveBeenCalled();
+});

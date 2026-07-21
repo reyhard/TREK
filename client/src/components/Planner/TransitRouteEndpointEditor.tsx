@@ -23,6 +23,7 @@ function buildFields(endpoint: ReservationEndpoint): EndpointFieldState {
 function normalize(endpoint: EndpointFieldState): { name: string; lat: number; lng: number } | null {
   const name = endpoint.name.trim();
   if (!name || name.length > 300) return null;
+  if (endpoint.lat.trim() === '' || endpoint.lng.trim() === '') return null;
   const lat = Number(endpoint.lat);
   const lng = Number(endpoint.lng);
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
@@ -34,10 +35,18 @@ function validateField(endpoint: EndpointFieldState): { name?: string; lat?: str
   const errors: { name?: string; lat?: string; lng?: string } = {};
   const name = endpoint.name.trim();
   if (!name || name.length > 300) errors.name = 'Enter a label between 1 and 300 characters.';
-  const lat = Number(endpoint.lat);
-  const lng = Number(endpoint.lng);
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) errors.lat = 'Latitude must be a number from -90 to 90.';
-  if (!Number.isFinite(lng) || lng < -180 || lng > 180) errors.lng = 'Longitude must be a number from -180 to 180.';
+  if (endpoint.lat.trim() === '') {
+    errors.lat = 'Latitude must be a number from -90 to 90.';
+  } else {
+    const lat = Number(endpoint.lat);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) errors.lat = 'Latitude must be a number from -90 to 90.';
+  }
+  if (endpoint.lng.trim() === '') {
+    errors.lng = 'Longitude must be a number from -180 to 180.';
+  } else {
+    const lng = Number(endpoint.lng);
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) errors.lng = 'Longitude must be a number from -180 to 180.';
+  }
   return errors;
 }
 

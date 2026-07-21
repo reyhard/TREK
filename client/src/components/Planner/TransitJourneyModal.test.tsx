@@ -187,12 +187,19 @@ describe('TransitJourneyModal', () => {
     expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
   });
 
-  it('FE-PLANNER-TRANSITJOURNEY-005: read-only without edit rights — no delete/save/change-route, no endpoint editor', () => {
+  it('FE-PLANNER-TRANSITJOURNEY-005: read-only without day_edit — no delete/save/change-route, but endpoint editor is shown with reservation_edit alone', () => {
     render(<TransitJourneyModal {...makeProps({ canEdit: false })} />);
     expect(screen.queryByRole('button', { name: /^Delete$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Change route/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
+    // Endpoint editing is gated by reservation_edit (canEditEndpoints), not day_edit
+    expect(screen.getByRole('button', { name: /Edit route endpoints/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Close/ })).toBeInTheDocument();
+  });
+
+  it('hides endpoint editing when reservation_edit is missing even with day_edit', () => {
+    render(<TransitJourneyModal {...makeProps({ canEdit: true, canEditEndpoints: false })} />);
+    expect(screen.getByRole('button', { name: /Change route/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
   });
 });

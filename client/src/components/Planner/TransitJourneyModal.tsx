@@ -101,7 +101,7 @@ export default function TransitJourneyModal({
 
   const fromEndpoint = (res.endpoints || []).find((endpoint) => endpoint.role === 'from');
   const toEndpoint = (res.endpoints || []).find((endpoint) => endpoint.role === 'to');
-  const canOpenEndpointEditor = canEdit && canEditEndpoints && !!fromEndpoint && !!toEndpoint;
+  const canOpenEndpointEditor = canEditEndpoints && !!fromEndpoint && !!toEndpoint;
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
 
