@@ -39,6 +39,11 @@ const { resv } = vi.hoisted(() => ({
 }));
 vi.mock('../../../src/services/reservationService', () => resv);
 
+const { transitRouteEndpointService } = vi.hoisted(() => ({
+  transitRouteEndpointService: { updateTransitRouteEndpoints: vi.fn() },
+}));
+vi.mock('../../../src/services/transitRouteEndpointService', () => transitRouteEndpointService);
+
 function svc() {
   return new ReservationsService();
 }
@@ -142,5 +147,12 @@ describe('ReservationsService', () => {
 
   it('notifyBookingChange resolves without throwing (fire-and-forget)', () => {
     expect(() => svc().notifyBookingChange('5', { id: 1, email: 'a@b.c' } as never, 'Hotel', 'lodging')).not.toThrow();
+  });
+
+  it('updateTransitRouteEndpoints delegates to the focused domain service', () => {
+    const input = { from: { name: 'Station', lat: 34.9, lng: 135.7 } };
+    transitRouteEndpointService.updateTransitRouteEndpoints.mockReturnValue({ id: 9 });
+    expect(svc().updateTransitRouteEndpoints('9', '5', input)).toEqual({ id: 9 });
+    expect(transitRouteEndpointService.updateTransitRouteEndpoints).toHaveBeenCalledWith('9', '5', input);
   });
 });

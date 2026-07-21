@@ -7,9 +7,11 @@ import {
 } from '../../services/budgetService';
 import { checkPermission } from '../../services/permissions';
 import * as svc from '../../services/reservationService';
+import { updateTransitRouteEndpoints as updateTransitRouteEndpointsService } from '../../services/transitRouteEndpointService';
 import type { User } from '../../types';
 import { broadcast } from '../../websocket';
 import { Injectable } from '@nestjs/common';
+import type { TransitRouteEndpointsUpdateRequest } from '@trek/shared';
 import { typeToCostCategory } from '@trek/shared';
 
 type Trip = NonNullable<ReturnType<typeof svc.verifyTripAccess>>;
@@ -160,6 +162,14 @@ export class ReservationsService {
     } catch (err) {
       console.error('[reservations] Failed to create/update budget entry:', err);
     }
+  }
+
+  updateTransitRouteEndpoints(
+    id: string,
+    tripId: string,
+    input: TransitRouteEndpointsUpdateRequest,
+  ) {
+    return updateTransitRouteEndpointsService(id, tripId, input);
   }
 
   /** Fire-and-forget booking-change notification, mirroring the legacy dynamic import. */
