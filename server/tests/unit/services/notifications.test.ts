@@ -6,6 +6,7 @@ import {
   sendWebhook,
   sendNtfy,
   resolveNtfyUrl,
+  resolveAdminNtfyUrl,
   type NtfyConfig,
 } from '../../../src/services/notifications';
 import { checkSsrf } from '../../../src/utils/ssrfGuard';
@@ -35,10 +36,6 @@ vi.mock('../../../src/utils/ssrfGuard', () => ({
   checkSsrf: vi.fn(async () => ({ allowed: true, isPrivate: false, resolvedIp: '1.2.3.4' })),
   createPinnedDispatcher: vi.fn(() => ({})),
 }));
-
-import { getEventText, buildEmailHtml, buildWebhookBody, sendWebhook, sendNtfy, resolveNtfyUrl, resolveAdminNtfyUrl, type NtfyConfig } from '../../../src/services/notifications';
-import { checkSsrf } from '../../../src/utils/ssrfGuard';
-import { logError } from '../../../src/services/auditLog';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -390,6 +387,11 @@ describe('resolveNtfyUrl', () => {
     const noServer: NtfyConfig = { server: null, topic: null, token: null };
     const user: NtfyConfig = { server: null, topic: 'my-topic', token: null };
     expect(resolveNtfyUrl(noServer, user)).toBe('https://ntfy.sh/my-topic');
+  });
+
+  it('returns null when user topic is whitespace-only', () => {
+    const user: NtfyConfig = { server: null, topic: '   ', token: null };
+    expect(resolveNtfyUrl(adminCfg, user)).toBeNull();
   });
 });
 

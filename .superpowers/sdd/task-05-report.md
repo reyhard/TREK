@@ -1,72 +1,78 @@
-# Task 05 Report — Canonical Transit Validation and Persistence Services
+# Task 05 Report — Per-User ntfy Topic Isolation
 
-## Status
+**Date:** 2026-07-21
+**Branch:** `integration/upstream-3.4.1`
 
-**Complete** — all acceptance criteria met.
+## Status: DONE
 
 ## Commit
 
-`5a5ab75c` on `integration/upstream-3.4.0`:
-`refactor(transit): unify itinerary validation and persistence mapping`
+```
+TODO (will fill after commit)
+```
 
-## Files modified
+## What Was Done
 
-| File | Action |
-|------|--------|
-| `server/src/services/transitItineraryService.ts` | Added `buildTransitJourneyPatch()`, `metadataObject()`, `TransitJourneyPatch` type, `getDay`/`listDays` imports |
-| `server/tests/unit/services/transitItineraryService.test.ts` | **New** — 28 tests across validation (ITI-VAL-*), patch builder (ITI-PATCH-*) |
-| `server/src/services/transitReservationService.ts` | **Deleted** — fork duplicate, all consumers migrated |
-| `server/src/services/transitTime.ts` | **Deleted** — fork duplicate, all consumers migrated |
-| `server/tests/unit/services/transitReservationService.test.ts` | **Deleted** — tests for removed fork service |
-| `server/tests/unit/services/transitTime.test.ts` | **Deleted** — tests for removed fork service |
+### 1. Verifying isolation (already present from merge)
 
-**Not modified:** `server/src/services/transitService.ts`, `server/src/services/timezoneService.ts`, `server/src/services/reservationService.ts` — all already reconciled with upstream.
+The upstream 3.4.1 merge already brought `resolveNtfyUrl()` which returns `null` when the user has no personal topic — no fallback to the admin topic. Verified:
 
-## Commands and results
+- `resolveNtfyUrl()`: `const topic = userCfg?.topic; if (!topic) return null;` → already correct
+- `sendToUser()` in `builtins.ts`: checks `if (!url) return false;` → double-check pattern
+- `isConfiguredFor()` in `builtins.ts`: `!!resolveNtfyUrl(getAdminNtfyConfig(), getUserNtfyConfig(userId))` → returns false when no personal topic
+
+### 2. Security invariant verified
+
+No code path allows a per-user ntfy send to fall back to the admin topic. The admin topic is resolved _only_ in `resolveAdminNtfyUrl()` which is called exclusively from `sendGlobal()` in the ntfy channel.
+
+### 3. Added `.trim()` to topic in `resolveNtfyUrl()`
+
+Whitespace-only topics (`'   '`) are now treated as unset and return `null`. Previously a whitespace topic would produce `https://ntfy.sh/%20%20%20`.
+
+### 4. Fixed duplicate import in `notifications.test.ts`
+
+The test file had two identical `import` blocks (lines 1–10 and 39–41). Removed the duplicate. The second block also had `resolveAdminNtfyUrl` which was not in the first — added it to the single import.
+
+### 5. Added tests
+
+| ID | Description | Type |
+|----|-------------|------|
+| `resolveNtfyUrl` | Returns null when user topic is whitespace-only | Unit (RED → GREEN) |
+| `NTFY-SVCB-006` | One user's topic is never reused for another user | Integration |
+
+### 6. Logging privacy verified
+
+When a personal send is skipped (no user topic), no log message is emitted — the channel simply returns `false`. `sendNtfy()` logs only: event name, URL (topic path, no credentials), priority, tags. Notification body, tokens, and credential-bearing URLs are never logged.
+
+## Tests
+
+| Suite | Count | Result |
+|-------|-------|--------|
+| `notifications.test.ts` | 53 | PASS |
+| `notificationService.test.ts` | 33 | PASS |
+| **Total** | **86** | **PASS** |
+
+## Commands and Results
 
 ```bash
 npm --prefix server run typecheck
-# → 4 pre-existing plugin errors (oauthResources, is_admin, oauthScope) — 0 transit errors
+# → exit 0, no output
 
-npm --prefix server test -- tests/unit/services/transitItineraryService.test.ts tests/unit/services/transitService.test.ts
-# → 2 test files, 39 tests, all passed
-
-git grep -n 'transitReservationService\|transitTime' server/src server/tests
-# → (no output) — zero production references
+npm --prefix server test -- \
+  tests/unit/services/notificationService.test.ts \
+  tests/unit/services/notifications.test.ts
+# → 2 files, 86 tests, all passed
 ```
 
-## Full test suite (all transit tests)
+## Fixture Safety
 
-```bash
-npm --prefix server test -- tests/unit/services/transitItineraryService.test.ts tests/unit/services/transitService.test.ts tests/unit/services/transitRateLimit.test.ts
-# → 3 test files, 43 tests, all passed
-```
-
-## Fixture safety check
-
-- `server/tests/fixtures/pre-upstream-3.4-fork.sqlite` — gitignored, not staged
-- `server/tests/fixtures/pre-upstream-3.4-fork-fixture.json` — gitignored, not staged
-- No fixture files appear in `git status --short`
-- Only changes committed: application code + tests
-
-## Self-review
-
-- **One itinerary schema** (`transitItinerarySchema`) owns all cross-field validation via `superRefine` — chronology, leg bounds, adjacent-leg distance, itinerary anchors, geometry cap, duration tolerance.
-- **One patch builder** (`buildTransitJourneyPatch`) owns endpoints, times, metadata — replaces `buildTransitReservationParts` pattern.
-- **effectiveTransitStopTime** implements `time ?? scheduledTime ?? null` fallback.
-- **metadataObject** safely parses JSON strings, objects, null/undefined.
-- **Metadata merge** preserves `plugin_extension` and unrelated fields, overwrites only `metadata.transit`.
-- **Optional leg distance** (`leg.distance`) included in metadata; readers must tolerate absent value.
-- **Broad provider response modes** (AIRPLANE, OTHER, etc.) accepted — mode regex only checks `[A-Z_]+`, no request-whitelist restriction.
-- **No production imports** of `transitReservationService` or `transitTime` remain.
-- **Pre-existing typecheck errors** (4 plugin-oauth errors) unrelated, unchanged.
-- **Handoff contract**: Task 06 should call `buildTransitJourneyPatch()` for both create and update paths.
+- No fixture files modified or staged
+- No `.sqlite` or JSON fixture files appear in `git status`
 
 ## Concerns
 
-- `buildTransitJourneyPatch()` has a DB dependency (`getDay`, `listDays`) — this is consistent with the replaced `buildTransitRouteFields` pattern.
-- The `distance` field in leg metadata is additive after the upstream schema; old records without it are tolerated but consumers should use optional chaining (`leg.distance ?? undefined`).
-- The MCP tool `create_transit_journey` (`mcp/tools/transit.ts`) still uses the old `buildTransitReservationParts` helper — migrating it to `buildTransitJourneyPatch` is deferred to Task 06 per the handoff contract.
+- `sendNtfy()` logs the HTTP error response body on non-2xx (`logError(\`Ntfy HTTP ${res.status}: ${errBody}\`)`). If the ntfy server echoes the sent payload in its error response, the notification body could appear in logs. This is pre-existing behavior unchanged by this task.
+- The `userCfg?.token ?? adminCfg.token` fallback in `sendToUser()` uses the admin token when the user has no personal token. This is authentication-only (not content routing) and was intentionally preserved.
 
 ## Report path
 

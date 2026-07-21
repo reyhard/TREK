@@ -732,6 +732,44 @@ describe('send() — ntfy channel dispatch', () => {
     expect(ntfyCalls[0][1].headers['Priority']).toBe('4'); // version_available = high priority
     expect(ntfyCalls[0][1].headers['Tags']).toContain('package');
   });
+
+  it('NTFY-SVCB-006 — one user topic is never reused for another user', async () => {
+    const { user: userA } = createUser(testDb);
+    const { user: userB } = createUser(testDb);
+    setUserNtfyTopic(userA.id, 'topic-a');
+    setUserNtfyTopic(userB.id, 'topic-b');
+    setNotificationChannels(testDb, 'ntfy');
+
+    fetchMock.mockClear();
+    await send({
+      event: 'trip_invite',
+      actorId: null,
+      scope: 'user',
+      targetId: userA.id,
+      params: { trip: 'Tokyo', actor: 'Alice', invitee: 'Bob', tripId: '1' },
+    });
+
+    const ntfyCallsA = fetchMock.mock.calls.filter(([url]: [string]) => url.includes('ntfy.sh'));
+    expect(ntfyCallsA.length).toBeGreaterThan(0);
+    const urlA = ntfyCallsA[0][0] as string;
+    expect(urlA).toContain('topic-a');
+    expect(urlA).not.toContain('topic-b');
+
+    fetchMock.mockClear();
+    await send({
+      event: 'trip_invite',
+      actorId: null,
+      scope: 'user',
+      targetId: userB.id,
+      params: { trip: 'Osaka', actor: 'Bob', invitee: 'Alice', tripId: '2' },
+    });
+
+    const ntfyCallsB = fetchMock.mock.calls.filter(([url]: [string]) => url.includes('ntfy.sh'));
+    expect(ntfyCallsB.length).toBeGreaterThan(0);
+    const urlB = ntfyCallsB[0][0] as string;
+    expect(urlB).toContain('topic-b');
+    expect(urlB).not.toContain('topic-a');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

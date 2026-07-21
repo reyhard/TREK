@@ -498,7 +498,7 @@ export function getAdminNtfyConfig(): NtfyConfig {
  * Returns null if the user has no topic.
  */
 export function resolveNtfyUrl(adminCfg: NtfyConfig, userCfg: NtfyConfig | null): string | null {
-  const topic = userCfg?.topic;
+  const topic = userCfg?.topic?.trim();
   if (!topic) return null;
   const base = (userCfg?.server || adminCfg.server || 'https://ntfy.sh').replace(/\/+$/, '');
   return `${base}/${encodeURIComponent(topic)}`;
