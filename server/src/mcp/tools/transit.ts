@@ -16,6 +16,10 @@ import {
   transitPlaceSchema,
   type TransitJourneyPatch,
 } from '../../services/transitItineraryService';
+import {
+  TransitRouteEndpointUpdateError,
+  updateTransitRouteEndpoints,
+} from '../../services/transitRouteEndpointService';
 import { geocode, plan, SCHEDULED_TRANSIT_MODES } from '../../services/transitService';
 import { canRead, canWrite } from '../scopes';
 import {
@@ -29,6 +33,7 @@ import {
   TOOL_ANNOTATIONS_WRITE,
 } from './_shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { transitRouteEndpointInputSchema, transitRouteEndpointsUpdateRequestSchema } from '@trek/shared';
 
 import { z } from 'zod';
 
@@ -257,6 +262,46 @@ export function registerTransitTools(server: McpServer, userId: number, scopes: 
         return ok({ reservation });
       } catch {
         return { content: [{ type: 'text' as const, text: 'Failed to update transit journey.' }], isError: true };
+      }
+    },
+  );
+
+  server.registerTool(
+    'update_transit_route_endpoints',
+    {
+      description:
+        'Correct the map-only origin and/or destination of an existing automated transit journey. Preserves the saved provider itinerary, legs, timing, geometry, statistics, metadata, status, title, notes, and day-plan position. Does not call Transitous or create walking legs.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        reservationId: z.number().int().positive(),
+        from: transitRouteEndpointInputSchema.optional(),
+        to: transitRouteEndpointInputSchema.optional(),
+      },
+      annotations: TOOL_ANNOTATIONS_WRITE,
+    },
+    async ({ tripId, reservationId, from, to }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      if (!hasTripPermission('reservation_edit', tripId, userId)) return permissionDenied();
+
+      const parsed = transitRouteEndpointsUpdateRequestSchema.safeParse({ from, to });
+      if (!parsed.success) {
+        return {
+          content: [{ type: 'text' as const, text: parsed.error.issues[0]?.message ?? 'Invalid endpoint update.' }],
+          isError: true,
+        };
+      }
+
+      try {
+        const reservation = updateTransitRouteEndpoints(reservationId, tripId, parsed.data);
+        safeBroadcast(tripId, 'reservation:updated', { reservation });
+        notifyBookingChange(tripId, userId, reservation.title, reservation.type || 'transit');
+        return ok({ reservation });
+      } catch (err: unknown) {
+        if (err instanceof TransitRouteEndpointUpdateError) {
+          return { content: [{ type: 'text' as const, text: err.message }], isError: true };
+        }
+        return errorResult(err, 'Failed to update transit route endpoints.');
       }
     },
   );

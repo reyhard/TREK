@@ -105,6 +105,11 @@ export const reservationSchema = z.object({
 });
 export type Reservation = z.infer<typeof reservationSchema>;
 
+export const transitRouteEndpointsUpdateResponseSchema = z.object({
+  reservation: reservationSchema,
+});
+export type TransitRouteEndpointsUpdateResponse = z.infer<typeof transitRouteEndpointsUpdateResponseSchema>;
+
 /**
  * Accommodation entity as returned by listAccommodations / getAccommodationWithPlace
  * (server/src/services/dayService.ts). Columns of the day_accommodations table
@@ -144,6 +149,23 @@ export const reservationPositionsRequestSchema = z.object({
   day_id: z.union([z.number(), z.string()]).nullable().optional(),
 });
 export type ReservationPositionsRequest = z.infer<typeof reservationPositionsRequestSchema>;
+
+export const transitRouteEndpointInputSchema = z.object({
+  name: z.string().trim().min(1).max(300),
+  lat: z.number().finite().min(-90).max(90),
+  lng: z.number().finite().min(-180).max(180),
+});
+export type TransitRouteEndpointInput = z.infer<typeof transitRouteEndpointInputSchema>;
+
+export const transitRouteEndpointsUpdateRequestSchema = z
+  .object({
+    from: transitRouteEndpointInputSchema.optional(),
+    to: transitRouteEndpointInputSchema.optional(),
+  })
+  .refine((value) => value.from !== undefined || value.to !== undefined, {
+    message: 'At least one transit route endpoint is required.',
+  });
+export type TransitRouteEndpointsUpdateRequest = z.infer<typeof transitRouteEndpointsUpdateRequestSchema>;
 
 export const accommodationCreateRequestSchema = z.object({
   place_id: z.union([z.number(), z.string()]),

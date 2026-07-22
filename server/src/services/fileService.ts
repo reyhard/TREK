@@ -64,7 +64,7 @@ export const BLOCKED_EXTENSIONS = [
   '.ps1',
   '.app',
 ];
-export const filesDir = path.join(__dirname, '../../uploads/files');
+export const filesDir = process.env.TREK_FILES_DIR || path.join(__dirname, '../../uploads/files');
 
 // ---------------------------------------------------------------------------
 // Helpers

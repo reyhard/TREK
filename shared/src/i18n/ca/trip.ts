@@ -40,6 +40,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalidTitle': 'Invitació no disponible',
   'trip.invite.invalid': "Aquest enllaç d'invitació no és vàlid o ha caducat.",
   'trip.invite.backToDashboard': 'Tornar al tauler',
+  'transit.planConnector': 'Plan public transit', // en-fallback
   'transit.title': 'Transport públic',
   'transit.from': 'Des de',
   'transit.to': 'Fins a',
@@ -81,5 +82,20 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Transbords',
   'transit.walkLabel': 'A peu',
   'transit.searchHint': 'Cerca connexions reals i afegeix-les directament al dia — dades via Transitous.',
+  'transit.editEndpoints': 'Edit route endpoints',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint':
+    'This changes map pinning only. The saved provider itinerary, route geometry, timing, and transit legs are not changed, and TREK will not add walking connections.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
+  'transit.endpointNoChanges': 'Change at least one endpoint before saving.',
+  'transit.endpointUpdated': 'Route map endpoints updated',
+  'transit.endpointUnavailable': 'This route does not have editable origin and destination endpoint records.',
 };
 export default trip;

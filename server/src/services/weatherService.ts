@@ -165,7 +165,7 @@ setInterval(() => {
     const toDelete = entries.slice(0, entries.length - CACHE_PRUNE_TARGET);
     toDelete.forEach(([key]) => weatherCache.delete(key));
   }
-}, CACHE_CLEANUP_INTERVAL);
+}, CACHE_CLEANUP_INTERVAL).unref();
 
 const TTL_FORECAST_MS = 60 * 60 * 1000; // 1 hour
 const TTL_CURRENT_MS = 15 * 60 * 1000; // 15 minutes

@@ -84,5 +84,20 @@ const trip: TranslationStrings = {
   'transit.walkLabel': 'Gyaloglás',
   'transit.searchHint':
     'Keress valós összeköttetéseket, és add hozzá őket közvetlenül a naphoz – adatok a Transitous révén.',
+  'transit.editEndpoints': 'Edit route endpoints',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint':
+    'This changes map pinning only. The saved provider itinerary, route geometry, timing, and transit legs are not changed, and TREK will not add walking connections.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Hely vagy állomás neve',
+  'transit.endpointLatitude': 'Szélesség',
+  'transit.endpointLongitude': 'Hosszúság',
+  'transit.endpointInvalidName': 'Adjon meg egy 1 és 300 karakter közötti nevet.',
+  'transit.endpointInvalidLatitude': 'A szélességnek -90 és 90 közötti számnak kell lennie.',
+  'transit.endpointInvalidLongitude': 'A hosszúságnak -180 és 180 közötti számnak kell lennie.',
+  'transit.endpointNoChanges': 'Change at least one endpoint before saving.',
+  'transit.endpointUpdated': 'Route map endpoints updated',
+  'transit.endpointUnavailable': 'This route does not have editable origin and destination endpoint records.',
 };
 export default trip;

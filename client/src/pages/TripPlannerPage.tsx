@@ -1136,7 +1136,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 <div
                   role="status"
                   aria-live="polite"
-                  className="bg-surface-card border border-edge-secondary shadow-lg text-content"
+                  className="border border-edge-secondary bg-surface-card text-content shadow-lg"
                   style={{
                     position: 'fixed',
                     left: 16,
@@ -1745,6 +1745,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
         <TransitJourneyModal
           reservation={reservations.find((r) => r.id === transitJourney.id) ?? transitJourney}
           canEdit={can('day_edit', trip)}
+          canEditEndpoints={can('reservation_edit', trip)}
+          onUpdateEndpoints={async (input) => {
+            await tripActions.updateTransitRouteEndpoints(tripId, transitJourney.id, input);
+            toast.success(t('transit.endpointUpdated'));
+          }}
           onClose={() => setTransitJourney(null)}
           onSave={async (fields) => {
             await tripActions.updateReservation(tripId, transitJourney.id, fields);

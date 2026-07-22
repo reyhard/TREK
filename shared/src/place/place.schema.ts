@@ -121,7 +121,7 @@ export const placeUpdateRequestSchema = open.and(
   z.object({
     lat: latitudeSchema.optional(),
     lng: longitudeSchema.optional(),
-  })
+  }),
 );
 export type PlaceUpdateRequest = z.infer<typeof placeUpdateRequestSchema>;
 

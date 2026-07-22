@@ -16,6 +16,7 @@ import { resetDemoUser, saveBaseline, hasBaseline } from '../../src/demo/demo-re
 import { seedDemoData } from '../../src/demo/demo-seed';
 
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,9 +51,194 @@ interface SemanticCheck {
 // Fixture path
 // ---------------------------------------------------------------------------
 
-const FIXTURES_DIR = path.resolve(__dirname, '../fixtures');
-const FORK_FIXTURE_SQLITE = path.join(FIXTURES_DIR, 'pre-upstream-3.4-fork.sqlite');
-const FORK_FIXTURE_MANIFEST = path.join(FIXTURES_DIR, 'pre-upstream-3.4-fork-fixture.json');
+const PRE_173_VERSION = 172;
+const PRE_173_SCHEMA_SHA256 = '0d90f420c443de2dd6e56b115a49b21581d1176d47756d7405fcc940e4bfe2a5';
+const SCHEMA_PATH = path.resolve(__dirname, '../../src/db/schema.ts');
+
+const MANIFEST = {
+  users: [
+    { id: 10, email: 'alice@example.com', username: 'alice_fixture', role: 'user', password_version: 1 },
+    { id: 11, email: 'bob@example.com', username: 'bob_fixture', role: 'user', password_version: 1 },
+  ],
+  trip: {
+    title: 'Pre-Sync Fixture Trip',
+    start_date: '2026-06-01',
+    end_date: '2026-06-14',
+    id: 100,
+    owner_email: 'alice@example.com',
+  },
+  places: [
+    { id: 400, name: 'Eiffel Tower', lat: 48.8566, lng: 2.3522 },
+    { id: 401, name: 'Louvre Museum', lat: 48.8606, lng: 2.3376 },
+    { id: 402, name: 'Colosseum', lat: 41.8902, lng: 12.4922 },
+    { id: 403, name: 'Trevi Fountain', lat: 41.9009, lng: 12.4833 },
+  ],
+  reservations: [
+    { id: 300, title: 'Flight CDG-FCO', status: 'confirmed', type: 'flight', endpoint_count: 2 },
+    { id: 301, title: 'Automated Transit: Paris Metro Line 1', status: 'booked', type: 'transit', endpoint_count: 2 },
+  ],
+  plugins: [{ id: 'travelbuddy', enabled: true }],
+  budget_items: [
+    { name: 'Flight tickets', total_price: 450.0 },
+    { name: 'Hotel Paris', total_price: 1200.0 },
+  ],
+  packing_items: [
+    { name: 'Passport', category: 'Documents' },
+    { name: 'Sunscreen', category: 'Toiletries' },
+  ],
+  todo_items: [{ name: 'Book museum tickets' }, { name: 'Buy travel adapter' }],
+  collab_notes: [{ title: 'Trip Itinerary v2' }],
+  oauth: { client_id: 'test-client-fork' },
+};
+
+/** Build a pre-173 fixture without ever applying migrations 173-176. */
+function generateForkFixture(fixturePath: string): void {
+  const schemaHash = createHash('sha256').update(fs.readFileSync(SCHEMA_PATH)).digest('hex');
+  if (schemaHash !== PRE_173_SCHEMA_SHA256) {
+    throw new Error(
+      'The pre-173 fixture schema changed; create a new versioned historical snapshot before updating it.',
+    );
+  }
+
+  const genDb = new Database(fixturePath);
+  try {
+    genDb.exec('PRAGMA journal_mode = WAL');
+    genDb.exec('PRAGMA busy_timeout = 5000');
+    genDb.exec('PRAGMA foreign_keys = ON');
+
+    createTables(genDb);
+    runMigrations(genDb, PRE_173_VERSION);
+
+    // Insert fixture data
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO users (id,username,email,password_hash,role,password_version) VALUES(1,'admin','admin@trek.local','x','admin',1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO users (id,username,email,password_hash,role,password_version) VALUES(10,'alice_fixture','alice@example.com','x','user',1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO users (id,username,email,password_hash,role,password_version) VALUES(11,'bob_fixture','bob@example.com','x','user',1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO trips (id,user_id,title,start_date,end_date,currency) VALUES(100,10,'Pre-Sync Fixture Trip','2026-06-01','2026-06-14','EUR')`,
+      )
+      .run();
+    genDb.prepare(`INSERT OR IGNORE INTO days (id,trip_id,day_number,date) VALUES(200,100,1,'2026-06-01')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO days (id,trip_id,day_number,date) VALUES(201,100,2,'2026-06-02')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO days (id,trip_id,day_number,date) VALUES(202,100,3,'2026-06-03')`).run();
+    genDb
+      .prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(400,100,'Eiffel Tower',48.8566,2.3522)`)
+      .run();
+    genDb
+      .prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(401,100,'Louvre Museum',48.8606,2.3376)`)
+      .run();
+    genDb
+      .prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(402,100,'Colosseum',41.8902,12.4922)`)
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(403,100,'Trevi Fountain',41.9009,12.4833)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO reservations (id,trip_id,day_id,title,status,type,day_plan_position) VALUES(300,100,200,'Flight CDG-FCO','confirmed','flight',1.0)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO reservations (id,trip_id,day_id,title,status,type,day_plan_position) VALUES(301,100,200,'Automated Transit: Paris Metro Line 1','booked','transit',2.5)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(300,'departure',0,'CDG Airport','CDG',49.0097,2.5479)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(300,'arrival',1,'FCO Airport','FCO',41.8003,12.2389)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(301,'departure',0,'La Défense',NULL,48.8917,2.2386)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(301,'arrival',1,'Château de Vincennes',NULL,48.8474,2.4392)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO oauth_clients (id,user_id,name,client_id,client_secret_hash,redirect_uris,allowed_scopes,is_public) VALUES('test-client-fork',10,'Test Client','test-client-fork','hash','[]','[]',1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO oauth_tokens (client_id,user_id,access_token_hash,refresh_token_hash,scopes,access_token_expires_at,refresh_token_expires_at) VALUES('test-client-fork',10,'abc123hash','def456hash','[]','2030-01-01T00:00:00.000Z','2030-01-01T00:00:00.000Z')`,
+      )
+      .run();
+    genDb
+      .prepare(`INSERT OR IGNORE INTO plugins (id,name,version,enabled) VALUES('travelbuddy','Travel Buddy','1.0.0',1)`)
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO plugin_oauth_tokens (plugin_id,user_id,access_token,refresh_token,scope) VALUES('travelbuddy',10,'tok_abc','tok_ref_abc','read_write')`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO budget_items (trip_id,category,name,total_price,sort_order) VALUES(100,'Transport','Flight tickets',450.0,0)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO budget_items (trip_id,category,name,total_price,sort_order) VALUES(100,'Accommodation','Hotel Paris',1200.0,1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO packing_items (trip_id,name,category,sort_order) VALUES(100,'Passport','Documents',0)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO packing_items (trip_id,name,category,sort_order) VALUES(100,'Sunscreen','Toiletries',1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO todo_items (trip_id,name,category,sort_order) VALUES(100,'Book museum tickets','Planning',0)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO todo_items (trip_id,name,category,sort_order) VALUES(100,'Buy travel adapter','Shopping',1)`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT OR IGNORE INTO collab_notes (trip_id,user_id,title,content,category) VALUES(100,10,'Trip Itinerary v2','Finalized itinerary','General')`,
+      )
+      .run();
+    genDb
+      .prepare(
+        `INSERT INTO place_regions (place_id,country_code,region_code,region_name) VALUES(400,'US','US-CA-STALE','Stale region')`,
+      )
+      .run();
+  } finally {
+    genDb.close();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 1. CLEAN DATABASE MIGRATION
@@ -144,29 +330,16 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   let db: Database.Database;
 
   beforeAll(() => {
-    if (!fs.existsSync(FORK_FIXTURE_SQLITE)) {
-      throw new Error(`Fork fixture not found at ${FORK_FIXTURE_SQLITE}`);
-    }
-    // Copy fixture to a unique temporary path — never mutate the committed fixture
     tempPath = path.join(
       os.tmpdir(),
       `task-03-fork-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sqlite`,
     );
-    fs.copyFileSync(FORK_FIXTURE_SQLITE, tempPath);
+    generateForkFixture(tempPath);
 
     db = new Database(tempPath);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA busy_timeout = 5000');
     db.exec('PRAGMA foreign_keys = ON');
-
-    const version = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version;
-    console.log(`[test] Fork fixture starting version: ${version}`);
-
-    // Run upstream migrations against the fork fixture
-    runMigrations(db);
-
-    const newVersion = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version;
-    console.log(`[test] After migration, version: ${newVersion}`);
   });
 
   afterAll(() => {
@@ -178,8 +351,70 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
     }
   });
 
+  // ── pre-migration schema fidelity ──────────────────────────────────────────
+  // Verify the fork fixture genuinely reflects a pre-173 state BEFORE any
+  // migrations run in this process. Guards against the fixture having been
+  // built with the full current schema (which would make the replay a no-op).
+
+  describe('pre-migration schema fidelity', () => {
+    let fixtureVersion: number;
+
+    beforeAll(() => {
+      fixtureVersion = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version;
+      console.log(`[test] Fork fixture starting version: ${fixtureVersion}`);
+    });
+
+    afterAll(() => {
+      // Run upstream migrations against the fork fixture now so all
+      // sibling and outer describe blocks see the post-migration state.
+      runMigrations(db);
+      const newVersion = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version;
+      console.log(`[test] After migration, version: ${newVersion}`);
+    });
+
+    it('starts at version 172 (pre-173)', () => {
+      expect(fixtureVersion).toBe(PRE_173_VERSION);
+    });
+
+    it('lacks oauth_tokens.user_password_version column (migration 176)', () => {
+      const cols = (db.prepare("PRAGMA table_info('oauth_tokens')").all() as Array<{ name: string }>).map(
+        (c) => c.name,
+      );
+      expect(cols).not.toContain('user_password_version');
+    });
+
+    it('lacks plugins.trek_range column (migration 173)', () => {
+      const cols = (db.prepare("PRAGMA table_info('plugins')").all() as Array<{ name: string }>).map((c) => c.name);
+      expect(cols).not.toContain('trek_range');
+    });
+
+    it('lacks hidden_regions table (migration 175)', () => {
+      const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='hidden_regions'").get();
+      expect(table).toBeUndefined();
+    });
+
+    it('seeds a stale place_regions cache row for migration 174 to delete', () => {
+      const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='place_regions'").get();
+      expect(table).toBeDefined();
+      const row = db
+        .prepare('SELECT place_id, country_code, region_code, region_name FROM place_regions WHERE place_id = 400')
+        .get() as { place_id: number; country_code: string; region_code: string; region_name: string } | undefined;
+      expect(row).toEqual({
+        place_id: 400,
+        country_code: 'US',
+        region_code: 'US-CA-STALE',
+        region_name: 'Stale region',
+      });
+    });
+  });
+
   it('has zero foreign key violations after migration', () => {
     expect(verifyForeignKeys(db)).toBe(0);
+  });
+
+  it('clears the stale place_regions cache in migration 174', () => {
+    const row = db.prepare('SELECT place_id FROM place_regions WHERE place_id = 400').get();
+    expect(row).toBeUndefined();
   });
 
   it('second migration run is idempotent', () => {
@@ -190,7 +425,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture users by email', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedUser of manifest.users) {
       const row = db.prepare('SELECT id, username, email, role FROM users WHERE email = ?').get(expectedUser.email) as
         | {
@@ -201,17 +436,19 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
           }
         | undefined;
       expect(row, `User ${expectedUser.email} should exist`).toBeDefined();
+      expect(row!.id).toBe(expectedUser.id);
       expect(row!.username).toBe(expectedUser.username);
       expect(row!.role).toBe(expectedUser.role);
     }
   });
 
   it('preserves fork fixture trip data', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     const trip = db.prepare('SELECT * FROM trips WHERE title = ?').get(manifest.trip.title) as
       | Record<string, unknown>
       | undefined;
     expect(trip, `Trip "${manifest.trip.title}" should exist`).toBeDefined();
+    expect(trip!.id).toBe(manifest.trip.id);
     expect(trip!.start_date).toBe(manifest.trip.start_date);
     expect(trip!.end_date).toBe(manifest.trip.end_date);
     // Owner preserved
@@ -220,24 +457,31 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture places', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedPlace of manifest.places) {
       const place = db.prepare('SELECT * FROM places WHERE name = ?').get(expectedPlace.name) as
         | Record<string, unknown>
         | undefined;
       expect(place, `Place "${expectedPlace.name}" should exist`).toBeDefined();
+      expect(place!.id).toBe(expectedPlace.id);
+      expect(place!.lat).toBe(expectedPlace.lat);
+      expect(place!.lng).toBe(expectedPlace.lng);
+      expect(place!.trip_id).toBe(manifest.trip.id);
     }
   });
 
   it('preserves fork fixture reservations with endpoints', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedRes of manifest.reservations) {
       const reservation = db.prepare('SELECT * FROM reservations WHERE title = ?').get(expectedRes.title) as
         | Record<string, unknown>
         | undefined;
       expect(reservation, `Reservation "${expectedRes.title}" should exist`).toBeDefined();
+      expect(reservation!.id).toBe(expectedRes.id);
       expect(reservation!.status).toBe(expectedRes.status);
       expect(reservation!.type).toBe(expectedRes.type);
+      expect(reservation!.trip_id).toBe(manifest.trip.id);
+      expect(reservation!.day_id).toBe(200);
 
       // Verify endpoints preserved
       const endpoints = db
@@ -248,7 +492,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture plugins', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedPlugin of manifest.plugins) {
       const plugin = db.prepare('SELECT * FROM plugins WHERE id = ?').get(expectedPlugin.id) as
         | Record<string, unknown>
@@ -265,7 +509,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture budget, packing, todo, collab data', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     // Budget
     if (manifest.budget_items?.length) {
       for (const item of manifest.budget_items) {
@@ -301,7 +545,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture OAuth tokens', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     const expectedClientId = manifest.oauth.client_id;
 
     // oauth_tokens uses client_id = the external client_id from oauth_clients.client_id
@@ -319,15 +563,25 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
     expect(reservation!.day_plan_position).toBe(2.5);
   });
 
-  it('has oauth_tokens.user_password_version column preserved from fork fixture', () => {
+  it('has oauth_tokens.user_password_version column after migration 176', () => {
     const cols = (db.prepare("PRAGMA table_info('oauth_tokens')").all() as Array<{ name: string }>).map((c) => c.name);
     expect(cols).toContain('user_password_version');
-    // Verify existing tokens have the column populated
+    // Verify migration 176 backfilled existing tokens from users.password_version
     const token = db.prepare('SELECT user_password_version FROM oauth_tokens LIMIT 1').get() as
       | { user_password_version: number }
       | undefined;
     expect(token).toBeDefined();
-    expect(typeof token!.user_password_version).toBe('number');
+    expect(token!.user_password_version).toBe(1);
+  });
+
+  it('has plugins.trek_range column after migration 173', () => {
+    const cols = (db.prepare("PRAGMA table_info('plugins')").all() as Array<{ name: string }>).map((c) => c.name);
+    expect(cols).toContain('trek_range');
+  });
+
+  it('has hidden_regions table after migration 175', () => {
+    const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='hidden_regions'").get();
+    expect(table).toBeDefined();
   });
 });
 

@@ -852,3 +852,116 @@ Full completion report: `docs/superpowers/reports/2026-07-20-upstream-3.4-sync.m
 - Any staging or review blocker returns to the owning task (Tasks 01-13), then Task 13 is rerun before Task 14 is repeated.
 - The completion report documents all blockers, evidence, and migration classifications.
 - Review request prepared for subsystem reviewers.
+
+---
+
+## Transit Route Endpoint Editing
+
+**Status:** ALL TASKS COMPLETE
+
+### Task 1 — Core Domain Model
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commits | `e6309321..4ebbb819` |
+| Review | clean |
+
+### Task 2 — Atomic Route Endpoint Update
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commit | `6bff6fb1` |
+| Review | clean; minor test hygiene recorded |
+
+### Task 3 — HTTP API Endpoint
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commit | `c138235b` |
+| Review | clean; P3 HTTP integration coverage gap recorded |
+
+### Task 4 — MCP Tool
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Initial commit | `822ff9b4` |
+| Remediation commit | `93ae451c` |
+| Review | clean; at-least-one constraint enforced at handler not schema level |
+
+#### Remediation
+
+Commit `822ff9b4` destructively replaced `.superpowers/sdd/progress.md` (848 deletions), overwriting the 854-line upstream-sync progress ledger with a minimal 21-line feature-branch header. Fixed by `93ae451c` which restored the parent commit's full progress ledger and appended the Transit Route Endpoint Editing section preserving Tasks 1-4 entries. No product source or test files were touched in the fix.
+
+### Task 5 — Reservation Client and Store Integration
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commit | `6fbc3d52` |
+| Review | clean; minor test gap noted — error-path test omitted from reservationsSlice.test.ts |
+
+#### Concern
+
+The slice tests cover the happy-path API call and store replacement but do not test the `try/catch` error path where `getApiErrorMessage` is exercised. A follow-up should add an error-propagation test (`mockRejectedValue`, verify thrown message). Not blocking for Task 6 which only consumes the exported action.
+
+### Task 6 — Transit Journey Endpoint Editor
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commit | `4bc62ec5` |
+| Remediation commit | `2d734584` |
+| Review | clean; two important findings resolved, two minor findings recorded |
+
+#### Remediation
+
+Commit `4bc62ec5` introduced the `TransitRouteEndpointEditor` with two issues corrected by `2d734584`:
+
+1. **Permission gating:** Removed `canEdit &&` from the gate in `TransitJourneyModal.tsx`, requiring only `reservation_edit` instead of both `day_edit` + `reservation_edit`.
+2. **Blank coordinate coercion:** Added explicit blank-string checks in `normalize()` and `validateField()` in `TransitRouteEndpointEditor.tsx` to prevent `Number('')` evaluating to `0`.
+
+#### Minor findings
+
+1. Validation messages and coordinate placeholders hard-code English text instead of using translation keys from `shared/src/i18n/en/trip.ts`.
+2. `onUpdateEndpoints` and `canEditEndpoints` props declared optional in `TransitJourneyModal.tsx`, allowing an out-of-contract caller to display the editor and have Save close it without sending an update.
+
+### Task 7 — Reservation Map Regression Coverage
+
+**Status:** DONE
+
+| Detail | Value |
+|--------|-------|
+| Commit | `48356079` |
+| Review | clean; no production changes needed |
+
+#### Coverage added
+
+- **Marker positions** use `reservation.endpoints` via `waypoints` → `wp.lat`/`wp.lng`
+- **Polyline fallback arcs** use `item.arcs` derived from endpoint coords
+- **Provider geometry independence** preserved via `getTransitMapSegments` which reads `metadata.transit.legs`
+
+#### Test cases
+
+1. **`uses saved endpoint coordinates for markers and the no-geometry fallback line`** — No-geometry transit: markers and polyline at endpoint coords
+2. **`keeps provider geometry independent from edited endpoint coordinates`** — Transit with encoded polyline: markers at endpoints, polylines at decoded coords, endpoint pair NOT in polylines
+3. **`renders an untouched route with its stored endpoint coordinates`** — Legacy transit (null metadata): markers and polyline at original endpoint coords
+
+#### Verification
+
+| Check | Status |
+|-------|--------|
+| ReservationOverlay tests | 3/3 passed |
+| reservationRoutes tests | 12/12 passed |
+| TransitJourneyModal tests | 12/12 passed |
+| All related tests | 27/27 passed |
+| Production changes | None required |

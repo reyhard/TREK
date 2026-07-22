@@ -1,3 +1,4 @@
+import type { TransitRouteEndpointsUpdateRequest } from '@trek/shared';
 import {
   ArrowRight,
   ArrowRightLeft,
@@ -10,6 +11,7 @@ import {
   Link2,
   List,
   ListChecks,
+  MapPin,
   MoveRight,
   Pencil,
   RefreshCw,
@@ -29,6 +31,7 @@ import { safeParseMetadata } from '../../utils/safeParseMetadata';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import Modal from '../shared/Modal';
 import { TransitMetaBadges, TransitTitle, TransitWalkDivider, fmtTransitDuration } from './transitDisplay';
+import TransitRouteEndpointEditor from './TransitRouteEndpointEditor';
 
 /**
  * The journey view for an automated public-transit entry (#1065): a roomy modal
@@ -63,6 +66,8 @@ interface TransitJourneyModalProps {
   onDelete: () => Promise<unknown>;
   onChangeRoute: () => void;
   canEdit: boolean;
+  onUpdateEndpoints?: (input: TransitRouteEndpointsUpdateRequest) => Promise<unknown>;
+  canEditEndpoints?: boolean;
 }
 
 export default function TransitJourneyModal({
@@ -72,6 +77,8 @@ export default function TransitJourneyModal({
   onDelete,
   onChangeRoute,
   canEdit,
+  onUpdateEndpoints,
+  canEditEndpoints,
 }: TransitJourneyModalProps) {
   const { t, locale } = useTranslation();
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -90,6 +97,11 @@ export default function TransitJourneyModal({
   const [notesTab, setNotesTab] = useState<'write' | 'preview'>(() => (res.notes ? 'preview' : 'write'));
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingEndpoints, setEditingEndpoints] = useState(false);
+
+  const fromEndpoint = (res.endpoints || []).find((endpoint) => endpoint.role === 'from');
+  const toEndpoint = (res.endpoints || []).find((endpoint) => endpoint.role === 'to');
+  const canOpenEndpointEditor = canEditEndpoints && !!fromEndpoint && !!toEndpoint;
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const notesRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -234,6 +246,26 @@ export default function TransitJourneyModal({
             </button>
           )}
           <div style={{ flex: 1 }} />
+          {canOpenEndpointEditor && (
+            <button
+              onClick={() => setEditingEndpoints(true)}
+              className="text-content-muted"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                borderRadius: 10,
+                border: '1px solid var(--border-primary)',
+                background: 'none',
+                fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <MapPin size={13} /> {t('transit.editEndpoints')}
+            </button>
+          )}
           {canEdit && (
             <button
               onClick={onChangeRoute}
@@ -292,169 +324,137 @@ export default function TransitJourneyModal({
         </div>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'var(--font-system)' }}>
-        {/* header: icon + inline-renamable title + date/time */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div
-            style={{
-              width: isMobile ? 40 : 48,
-              height: isMobile ? 40 : 48,
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 13,
-              background: '#7c3aed18',
-            }}
-          >
-            <TramFront size={isMobile ? 19 : 23} strokeWidth={1.8} color="#7c3aed" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {editingTitle ? (
-              <input
-                ref={titleInputRef}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={() => setEditingTitle(false)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') setEditingTitle(false);
-                  if (e.key === 'Escape') {
-                    setTitle(res.title || '');
-                    setEditingTitle(false);
-                  }
-                }}
-                className="text-content"
-                aria-label={t('reservations.titleLabel')}
-                style={{
-                  width: '100%',
-                  border: 'none',
-                  outline: 'none',
-                  background: 'transparent',
-                  padding: 0,
-                  fontFamily: 'inherit',
-                  fontSize: 'calc(17px * var(--fs-scale-subtitle, 1))',
-                  fontWeight: 700,
-                  letterSpacing: '-0.015em',
-                  borderBottom: '1.5px solid var(--text-primary)',
-                }}
-              />
-            ) : (
-              <div
-                className="text-content"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  fontSize: 'calc(17px * var(--fs-scale-subtitle, 1))',
-                  fontWeight: 700,
-                  letterSpacing: '-0.015em',
-                  minWidth: 0,
-                }}
-              >
-                <span style={{ minWidth: 0, overflow: 'hidden' }}>
-                  <TransitTitle title={title} iconSize={15} />
-                </span>
-                {canEdit && (
-                  <button
-                    onClick={() => setEditingTitle(true)}
-                    aria-label={t('common.edit')}
-                    title={t('common.edit')}
-                    className="text-content-faint"
-                    style={{
-                      border: 'none',
-                      background: 'none',
-                      padding: 3,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Pencil size={13} strokeWidth={1.8} />
-                  </button>
-                )}
-              </div>
-            )}
+      {editingEndpoints && fromEndpoint && toEndpoint ? (
+        <TransitRouteEndpointEditor
+          from={fromEndpoint}
+          to={toEndpoint}
+          onSave={async (input) => {
+            if (onUpdateEndpoints) {
+              await onUpdateEndpoints(input);
+            }
+            setEditingEndpoints(false);
+          }}
+          onCancel={() => setEditingEndpoints(false)}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'var(--font-system)' }}>
+          {/* header: icon + inline-renamable title + date/time */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div
-              className="text-content-muted"
-              style={{ fontSize: 'calc(12.5px * var(--fs-scale-body, 1))', marginTop: 3 }}
+              style={{
+                width: isMobile ? 40 : 48,
+                height: isMobile ? 40 : 48,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 13,
+                background: '#7c3aed18',
+              }}
             >
-              {[
-                dateStr,
-                time
-                  ? `${formatTime(time, locale, timeFormat)}${endTime ? ` – ${formatTime(endTime, locale, timeFormat)}` : ''}`
-                  : '',
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              <TramFront size={isMobile ? 19 : 23} strokeWidth={1.8} color="#7c3aed" />
             </div>
-          </div>
-        </div>
-
-        {transit && (
-          <>
-            {/* journey stats — three full-width tiles; iconless and flat on mobile */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: isMobile ? 6 : 10 }}>
-              {statTiles.map(({ Icon, value, label }, i) =>
-                isMobile ? (
-                  <div
-                    key={i}
-                    className="bg-surface-tertiary"
-                    style={{ padding: '7px 6px 6px', borderRadius: 11, textAlign: 'center', minWidth: 0 }}
-                  >
-                    <div
-                      className="text-content"
-                      style={{
-                        fontSize: 'calc(13px * var(--fs-scale-body, 1))',
-                        fontWeight: 700,
-                        letterSpacing: '-0.01em',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {value}
-                    </div>
-                    <div
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {editingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onBlur={() => setEditingTitle(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') setEditingTitle(false);
+                    if (e.key === 'Escape') {
+                      setTitle(res.title || '');
+                      setEditingTitle(false);
+                    }
+                  }}
+                  className="text-content"
+                  aria-label={t('reservations.titleLabel')}
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    padding: 0,
+                    fontFamily: 'inherit',
+                    fontSize: 'calc(17px * var(--fs-scale-subtitle, 1))',
+                    fontWeight: 700,
+                    letterSpacing: '-0.015em',
+                    borderBottom: '1.5px solid var(--text-primary)',
+                  }}
+                />
+              ) : (
+                <div
+                  className="text-content"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    fontSize: 'calc(17px * var(--fs-scale-subtitle, 1))',
+                    fontWeight: 700,
+                    letterSpacing: '-0.015em',
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={{ minWidth: 0, overflow: 'hidden' }}>
+                    <TransitTitle title={title} iconSize={15} />
+                  </span>
+                  {canEdit && (
+                    <button
+                      onClick={() => setEditingTitle(true)}
+                      aria-label={t('common.edit')}
+                      title={t('common.edit')}
                       className="text-content-faint"
                       style={{
-                        fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                        marginTop: 1,
-                      }}
-                    >
-                      {label}
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    key={i}
-                    className="bg-surface-tertiary"
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderRadius: 12 }}
-                  >
-                    <div
-                      className="bg-surface-card"
-                      style={{
-                        width: 34,
-                        height: 34,
-                        flexShrink: 0,
+                        border: 'none',
+                        background: 'none',
+                        padding: 3,
+                        cursor: 'pointer',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: 10,
+                        flexShrink: 0,
                       }}
                     >
-                      <Icon size={16} strokeWidth={1.9} className="text-content-muted" />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
+                      <Pencil size={13} strokeWidth={1.8} />
+                    </button>
+                  )}
+                </div>
+              )}
+              <div
+                className="text-content-muted"
+                style={{ fontSize: 'calc(12.5px * var(--fs-scale-body, 1))', marginTop: 3 }}
+              >
+                {[
+                  dateStr,
+                  time
+                    ? `${formatTime(time, locale, timeFormat)}${endTime ? ` – ${formatTime(endTime, locale, timeFormat)}` : ''}`
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </div>
+          </div>
+
+          {transit && (
+            <>
+              {/* journey stats — three full-width tiles; iconless and flat on mobile */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: isMobile ? 6 : 10 }}>
+                {statTiles.map(({ Icon, value, label }, i) =>
+                  isMobile ? (
+                    <div
+                      key={i}
+                      className="bg-surface-tertiary"
+                      style={{ padding: '7px 6px 6px', borderRadius: 11, textAlign: 'center', minWidth: 0 }}
+                    >
                       <div
                         className="text-content"
                         style={{
-                          fontSize: 'calc(15px * var(--fs-scale-subtitle, 1))',
+                          fontSize: 'calc(13px * var(--fs-scale-body, 1))',
                           fontWeight: 700,
                           letterSpacing: '-0.01em',
                           whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                         }}
                       >
                         {value}
@@ -462,430 +462,479 @@ export default function TransitJourneyModal({
                       <div
                         className="text-content-faint"
                         style={{
-                          fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))',
+                          fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
                           fontWeight: 600,
                           textTransform: 'uppercase',
                           letterSpacing: '0.04em',
+                          marginTop: 1,
                         }}
                       >
                         {label}
                       </div>
                     </div>
-                  </div>
-                )
-              )}
-            </div>
-
-            {/* stop-by-stop itinerary */}
-            <div
-              className="bg-surface-tertiary"
-              style={{ padding: isMobile ? '11px 10px' : '14px 16px', borderRadius: 12 }}
-            >
-              <div
-                className="text-content-faint"
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  marginBottom: 12,
-                }}
-              >
-                {t('transit.itinerary')}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {(transit.legs as TransitLegMeta[]).map((leg, i) => {
-                  if (leg.mode === 'WALK')
-                    return <TransitWalkDivider key={i} leg={leg} t={t} size={isMobile ? 'sm' : 'md'} />;
-                  const mins = leg.duration ? Math.round(leg.duration / 60) : null;
-                  if (isMobile) {
-                    // The wide from → to line plus the chip row doesn't fit a
-                    // phone: each leg becomes a depart / ride / arrive rail in
-                    // the line's color, meta as one quiet text line.
-                    const color = leg.line_color || 'var(--text-muted)';
-                    const metaLine = [
-                      mins ? t('transit.min', { count: mins }) : null,
-                      leg.stops ? t('transit.stops', { count: leg.stops }) : null,
-                      leg.agency || null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ');
-                    // Names wrap instead of clipping; the platform gets its
-                    // own quiet line below so it never pushes the name out.
-                    const stopName = (stop: TransitLegMeta['from']) => (
+                  ) : (
+                    <div
+                      key={i}
+                      className="bg-surface-tertiary"
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderRadius: 12 }}
+                    >
+                      <div
+                        className="bg-surface-card"
+                        style={{
+                          width: 34,
+                          height: 34,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: 10,
+                        }}
+                      >
+                        <Icon size={16} strokeWidth={1.9} className="text-content-muted" />
+                      </div>
                       <div style={{ minWidth: 0 }}>
                         <div
                           className="text-content"
                           style={{
-                            fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                            fontWeight: 600,
-                            lineHeight: 1.35,
-                            overflowWrap: 'anywhere',
+                            fontSize: 'calc(15px * var(--fs-scale-subtitle, 1))',
+                            fontWeight: 700,
+                            letterSpacing: '-0.01em',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          {stop?.name}
+                          {value}
                         </div>
-                        {stop?.track && (
-                          <div
-                            className="text-content-faint"
-                            style={{
-                              fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))',
-                              fontWeight: 500,
-                              marginTop: 1,
-                            }}
-                          >
-                            {t('transit.platform', { track: stop.track })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                    const timeCell = (time?: string | null) => (
-                      <div
-                        className="text-content-muted"
-                        style={{
-                          fontSize: 'calc(11.5px * var(--fs-scale-caption, 1))',
-                          fontWeight: 600,
-                          textAlign: 'right',
-                          paddingTop: 1,
-                        }}
-                      >
-                        {time || ''}
-                      </div>
-                    );
-                    return (
-                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '34px 14px 1fr', columnGap: 8 }}>
-                        {timeCell(leg.from?.time)}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <span
-                            style={{
-                              width: 9,
-                              height: 9,
-                              borderRadius: '50%',
-                              border: `2.5px solid ${color}`,
-                              background: 'var(--bg-tertiary)',
-                              flexShrink: 0,
-                              marginTop: 3,
-                            }}
-                          />
-                          <span style={{ flex: 1, width: 3, borderRadius: 2, background: color, marginTop: 2 }} />
-                        </div>
-                        {stopName(leg.from)}
-                        <div />
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                          <span style={{ width: 3, borderRadius: 2, background: color }} />
-                        </div>
-                        <div style={{ padding: '6px 0 8px', minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                background: leg.line_color || 'var(--bg-hover)',
-                                color: leg.line_color ? leg.line_text_color || '#fff' : 'var(--text-primary)',
-                                borderRadius: 6,
-                                padding: '1px 7px',
-                                fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                                fontWeight: 700,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {leg.line || leg.mode}
-                            </span>
-                            {leg.headsign && (
-                              <span
-                                className="text-content-faint"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 3,
-                                  fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                                  minWidth: 0,
-                                }}
-                              >
-                                <MoveRight size={10} style={{ flexShrink: 0 }} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {leg.headsign}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                          {metaLine && (
-                            <div
-                              className="text-content-faint"
-                              style={{ fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))', marginTop: 3 }}
-                            >
-                              {metaLine}
-                            </div>
-                          )}
-                        </div>
-                        {timeCell(leg.to?.time)}
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                          <span
-                            style={{
-                              width: 9,
-                              height: 9,
-                              borderRadius: '50%',
-                              border: `2.5px solid ${color}`,
-                              background: 'var(--bg-tertiary)',
-                              marginTop: 3,
-                            }}
-                          />
-                        </div>
-                        {stopName(leg.to)}
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                      <div
-                        className="text-content-muted"
-                        style={{
-                          width: 44,
-                          flexShrink: 0,
-                          textAlign: 'right',
-                          fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                          fontWeight: 600,
-                          paddingTop: 1,
-                        }}
-                      >
-                        {leg.from?.time || ''}
-                      </div>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          background: leg.line_color || 'var(--bg-hover)',
-                          color: leg.line_color ? leg.line_text_color || '#fff' : 'var(--text-primary)',
-                          borderRadius: 6,
-                          padding: '2px 8px',
-                          fontSize: 'calc(11.5px * var(--fs-scale-caption, 1))',
-                          fontWeight: 700,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {leg.line || leg.mode}
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
-                          className="text-content"
+                          className="text-content-faint"
                           style={{
-                            fontSize: 'calc(13.5px * var(--fs-scale-body, 1))',
+                            fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))',
                             fontWeight: 600,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            flexWrap: 'wrap',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
                           }}
                         >
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.from?.name}</span>
-                          {leg.from?.track && (
-                            <span className="text-content-faint" style={{ fontWeight: 500 }}>
-                              ({t('transit.platform', { track: leg.from.track })})
-                            </span>
-                          )}
-                          <ArrowRight size={12} className="text-content-faint" style={{ flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.to?.name}</span>
-                        </div>
-                        <div style={{ marginTop: 3 }}>
-                          <TransitMetaBadges
-                            items={[
-                              {
-                                icon: Clock,
-                                text: leg.from?.time
-                                  ? `${leg.from.time}${leg.to?.time ? ` – ${leg.to.time}` : ''}`
-                                  : '',
-                              },
-                              { text: mins ? t('transit.min', { count: mins }) : '' },
-                              { text: leg.stops ? t('transit.stops', { count: leg.stops }) : '' },
-                              { icon: MoveRight, text: leg.headsign || '' },
-                              { text: leg.agency || '', dim: true },
-                            ]}
-                          />
+                          {label}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  )
+                )}
+              </div>
+
+              {/* stop-by-stop itinerary */}
+              <div
+                className="bg-surface-tertiary"
+                style={{ padding: isMobile ? '11px 10px' : '14px 16px', borderRadius: 12 }}
+              >
+                <div
+                  className="text-content-faint"
+                  style={{
+                    fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    marginBottom: 12,
+                  }}
+                >
+                  {t('transit.itinerary')}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {(transit.legs as TransitLegMeta[]).map((leg, i) => {
+                    if (leg.mode === 'WALK')
+                      return <TransitWalkDivider key={i} leg={leg} t={t} size={isMobile ? 'sm' : 'md'} />;
+                    const mins = leg.duration ? Math.round(leg.duration / 60) : null;
+                    if (isMobile) {
+                      // The wide from → to line plus the chip row doesn't fit a
+                      // phone: each leg becomes a depart / ride / arrive rail in
+                      // the line's color, meta as one quiet text line.
+                      const color = leg.line_color || 'var(--text-muted)';
+                      const metaLine = [
+                        mins ? t('transit.min', { count: mins }) : null,
+                        leg.stops ? t('transit.stops', { count: leg.stops }) : null,
+                        leg.agency || null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ');
+                      // Names wrap instead of clipping; the platform gets its
+                      // own quiet line below so it never pushes the name out.
+                      const stopName = (stop: TransitLegMeta['from']) => (
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            className="text-content"
+                            style={{
+                              fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                              fontWeight: 600,
+                              lineHeight: 1.35,
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {stop?.name}
+                          </div>
+                          {stop?.track && (
+                            <div
+                              className="text-content-faint"
+                              style={{
+                                fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))',
+                                fontWeight: 500,
+                                marginTop: 1,
+                              }}
+                            >
+                              {t('transit.platform', { track: stop.track })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                      const timeCell = (time?: string | null) => (
+                        <div
+                          className="text-content-muted"
+                          style={{
+                            fontSize: 'calc(11.5px * var(--fs-scale-caption, 1))',
+                            fontWeight: 600,
+                            textAlign: 'right',
+                            paddingTop: 1,
+                          }}
+                        >
+                          {time || ''}
+                        </div>
+                      );
+                      return (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '34px 14px 1fr', columnGap: 8 }}>
+                          {timeCell(leg.from?.time)}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <span
+                              style={{
+                                width: 9,
+                                height: 9,
+                                borderRadius: '50%',
+                                border: `2.5px solid ${color}`,
+                                background: 'var(--bg-tertiary)',
+                                flexShrink: 0,
+                                marginTop: 3,
+                              }}
+                            />
+                            <span style={{ flex: 1, width: 3, borderRadius: 2, background: color, marginTop: 2 }} />
+                          </div>
+                          {stopName(leg.from)}
+                          <div />
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <span style={{ width: 3, borderRadius: 2, background: color }} />
+                          </div>
+                          <div style={{ padding: '6px 0 8px', minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  background: leg.line_color || 'var(--bg-hover)',
+                                  color: leg.line_color ? leg.line_text_color || '#fff' : 'var(--text-primary)',
+                                  borderRadius: 6,
+                                  padding: '1px 7px',
+                                  fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
+                                  fontWeight: 700,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {leg.line || leg.mode}
+                              </span>
+                              {leg.headsign && (
+                                <span
+                                  className="text-content-faint"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 3,
+                                    fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  <MoveRight size={10} style={{ flexShrink: 0 }} />
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {leg.headsign}
+                                  </span>
+                                </span>
+                              )}
+                            </div>
+                            {metaLine && (
+                              <div
+                                className="text-content-faint"
+                                style={{ fontSize: 'calc(10.5px * var(--fs-scale-caption, 1))', marginTop: 3 }}
+                              >
+                                {metaLine}
+                              </div>
+                            )}
+                          </div>
+                          {timeCell(leg.to?.time)}
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <span
+                              style={{
+                                width: 9,
+                                height: 9,
+                                borderRadius: '50%',
+                                border: `2.5px solid ${color}`,
+                                background: 'var(--bg-tertiary)',
+                                marginTop: 3,
+                              }}
+                            />
+                          </div>
+                          {stopName(leg.to)}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <div
+                          className="text-content-muted"
+                          style={{
+                            width: 44,
+                            flexShrink: 0,
+                            textAlign: 'right',
+                            fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                            fontWeight: 600,
+                            paddingTop: 1,
+                          }}
+                        >
+                          {leg.from?.time || ''}
+                        </div>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            background: leg.line_color || 'var(--bg-hover)',
+                            color: leg.line_color ? leg.line_text_color || '#fff' : 'var(--text-primary)',
+                            borderRadius: 6,
+                            padding: '2px 8px',
+                            fontSize: 'calc(11.5px * var(--fs-scale-caption, 1))',
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {leg.line || leg.mode}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            className="text-content"
+                            style={{
+                              fontSize: 'calc(13.5px * var(--fs-scale-body, 1))',
+                              fontWeight: 600,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.from?.name}</span>
+                            {leg.from?.track && (
+                              <span className="text-content-faint" style={{ fontWeight: 500 }}>
+                                ({t('transit.platform', { track: leg.from.track })})
+                              </span>
+                            )}
+                            <ArrowRight size={12} className="text-content-faint" style={{ flexShrink: 0 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{leg.to?.name}</span>
+                          </div>
+                          <div style={{ marginTop: 3 }}>
+                            <TransitMetaBadges
+                              items={[
+                                {
+                                  icon: Clock,
+                                  text: leg.from?.time
+                                    ? `${leg.from.time}${leg.to?.time ? ` – ${leg.to.time}` : ''}`
+                                    : '',
+                                },
+                                { text: mins ? t('transit.min', { count: mins }) : '' },
+                                { text: leg.stops ? t('transit.stops', { count: leg.stops }) : '' },
+                                { icon: MoveRight, text: leg.headsign || '' },
+                                { text: leg.agency || '', dim: true },
+                              ]}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Generic fields: status + confirmation number — editable regardless of route */}
+          {canEdit && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                <label
+                  className="text-content-faint"
+                  style={{
+                    fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em',
+                    display: 'block',
+                    marginBottom: 4,
+                  }}
+                >
+                  {t('reservations.status')}
+                </label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
+                >
+                  <option value="pending">{t('planner.resPending').replace(/\s*·\s*$/, '')}</option>
+                  <option value="confirmed">{t('planner.resConfirmed').replace(/\s*·\s*$/, '')}</option>
+                </select>
+              </div>
+              <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                <label
+                  className="text-content-faint"
+                  style={{
+                    fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em',
+                    display: 'block',
+                    marginBottom: 4,
+                  }}
+                >
+                  {t('reservations.confirmationCode')}
+                </label>
+                <input
+                  type="text"
+                  value={confirmationNumber}
+                  onChange={(e) => setConfirmationNumber(e.target.value)}
+                  placeholder={t('reservations.confirmationCodePlaceholder')}
+                  className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
+                />
               </div>
             </div>
-          </>
-        )}
+          )}
 
-        {/* Generic fields: status + confirmation number — editable regardless of route */}
-        {canEdit && (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-              <label
-                className="text-content-faint"
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                  display: 'block',
-                  marginBottom: 4,
-                }}
-              >
-                {t('reservations.status')}
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
-              >
-                <option value="pending">{t('planner.resPending').replace(/\s*·\s*$/, '')}</option>
-                <option value="confirmed">{t('planner.resConfirmed').replace(/\s*·\s*$/, '')}</option>
-              </select>
-            </div>
-            <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-              <label
-                className="text-content-faint"
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                  display: 'block',
-                  marginBottom: 4,
-                }}
-              >
-                {t('reservations.confirmationCode')}
-              </label>
-              <input
-                type="text"
-                value={confirmationNumber}
-                onChange={(e) => setConfirmationNumber(e.target.value)}
-                placeholder={t('reservations.confirmationCodePlaceholder')}
-                className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* notes — full width, markdown */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 6,
-              gap: 8,
-              flexWrap: 'wrap',
-            }}
-          >
-            <label
-              className="text-content-faint"
+          {/* notes — full width, markdown */}
+          <div>
+            <div
               style={{
-                fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.03em',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 6,
+                gap: 8,
+                flexWrap: 'wrap',
               }}
             >
-              {t('reservations.notes')}
-            </label>
-            {canEdit && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {notesTab === 'write' && (
+              <label
+                className="text-content-faint"
+                style={{
+                  fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                {t('reservations.notes')}
+              </label>
+              {canEdit && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {notesTab === 'write' && (
+                    <div
+                      className="bg-surface-secondary"
+                      style={{ display: 'flex', borderRadius: 8, padding: 2, gap: 1 }}
+                    >
+                      {MD_TOOLS.map(({ Icon, label, action }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => applyMd(action)}
+                          title={label}
+                          aria-label={label}
+                          className="text-content-muted"
+                          style={{
+                            width: 26,
+                            height: 24,
+                            display: 'grid',
+                            placeItems: 'center',
+                            borderRadius: 6,
+                            border: 0,
+                            background: 'transparent',
+                            cursor: 'pointer',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-card)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <Icon size={13} strokeWidth={2} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div
                     className="bg-surface-secondary"
-                    style={{ display: 'flex', borderRadius: 8, padding: 2, gap: 1 }}
+                    style={{ display: 'flex', borderRadius: 8, padding: 2, gap: 2 }}
                   >
-                    {MD_TOOLS.map(({ Icon, label, action }) => (
+                    {(
+                      [
+                        ['write', t('common.edit')],
+                        ['preview', t('common.preview')],
+                      ] as const
+                    ).map(([tab, label]) => (
                       <button
-                        key={label}
+                        key={tab}
                         type="button"
-                        onClick={() => applyMd(action)}
-                        title={label}
-                        aria-label={label}
-                        className="text-content-muted"
+                        onClick={() => setNotesTab(tab)}
+                        className={notesTab === tab ? 'bg-surface-card text-content' : 'text-content-muted'}
                         style={{
-                          width: 26,
-                          height: 24,
-                          display: 'grid',
-                          placeItems: 'center',
+                          padding: '4px 12px',
+                          fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
+                          fontWeight: 500,
                           borderRadius: 6,
                           border: 0,
-                          background: 'transparent',
                           cursor: 'pointer',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--bg-card)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
+                          fontFamily: 'inherit',
+                          background: notesTab === tab ? undefined : 'transparent',
                         }}
                       >
-                        <Icon size={13} strokeWidth={2} />
+                        {label}
                       </button>
                     ))}
                   </div>
-                )}
-                <div className="bg-surface-secondary" style={{ display: 'flex', borderRadius: 8, padding: 2, gap: 2 }}>
-                  {(
-                    [
-                      ['write', t('common.edit')],
-                      ['preview', t('common.preview')],
-                    ] as const
-                  ).map(([tab, label]) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setNotesTab(tab)}
-                      className={notesTab === tab ? 'bg-surface-card text-content' : 'text-content-muted'}
-                      style={{
-                        padding: '4px 12px',
-                        fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                        fontWeight: 500,
-                        borderRadius: 6,
-                        border: 0,
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        background: notesTab === tab ? undefined : 'transparent',
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
                 </div>
+              )}
+            </div>
+            {canEdit && notesTab === 'write' ? (
+              <textarea
+                ref={notesRef}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={t('reservations.notesPlaceholder')}
+                className="box-border w-full rounded-[10px] border border-edge bg-surface-input px-[12px] py-[10px] font-[inherit] text-[13px] text-content outline-none"
+                style={{ minHeight: 130, resize: 'vertical', lineHeight: 1.55 }}
+              />
+            ) : (
+              <div
+                className="bg-surface-tertiary"
+                style={{ borderRadius: 10, padding: '12px 14px', minHeight: canEdit ? 130 : undefined }}
+              >
+                {notes.trim() ? (
+                  <div
+                    className="collab-note-md text-content"
+                    style={{
+                      fontSize: 'calc(13px * var(--fs-scale-body, 1))',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
+                    <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{notes}</Markdown>
+                  </div>
+                ) : (
+                  <span className="text-content-faint" style={{ fontSize: 'calc(12.5px * var(--fs-scale-body, 1))' }}>
+                    {t('reservations.notesPlaceholder')}
+                  </span>
+                )}
               </div>
             )}
           </div>
-          {canEdit && notesTab === 'write' ? (
-            <textarea
-              ref={notesRef}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t('reservations.notesPlaceholder')}
-              className="box-border w-full rounded-[10px] border border-edge bg-surface-input px-[12px] py-[10px] font-[inherit] text-[13px] text-content outline-none"
-              style={{ minHeight: 130, resize: 'vertical', lineHeight: 1.55 }}
-            />
-          ) : (
-            <div
-              className="bg-surface-tertiary"
-              style={{ borderRadius: 10, padding: '12px 14px', minHeight: canEdit ? 130 : undefined }}
-            >
-              {notes.trim() ? (
-                <div
-                  className="collab-note-md text-content"
-                  style={{
-                    fontSize: 'calc(13px * var(--fs-scale-body, 1))',
-                    wordBreak: 'break-word',
-                    overflowWrap: 'anywhere',
-                  }}
-                >
-                  <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{notes}</Markdown>
-                </div>
-              ) : (
-                <span className="text-content-faint" style={{ fontSize: 'calc(12.5px * var(--fs-scale-body, 1))' }}>
-                  {t('reservations.notesPlaceholder')}
-                </span>
-              )}
-            </div>
-          )}
         </div>
-      </div>
+      )}
 
       <ConfirmDialog
         isOpen={confirmDelete}

@@ -43,6 +43,7 @@ import { avatarSrc } from '../../utils/avatarSrc';
 import { openFile } from '../../utils/fileDownload';
 import { formatMoney, formatTime, splitReservationDateTime } from '../../utils/formatters';
 import { safeParseMetadata } from '../../utils/safeParseMetadata';
+import { getTrackMovement } from '../../utils/trackGeometry';
 import { formatDistance, formatElevation } from '../../utils/units';
 import StatusBadge from '../Collections/StatusBadge';
 import PluginFrame from '../Plugins/PluginFrame';
@@ -459,7 +460,9 @@ export default function PlaceInspector({
               style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '9px 12px' }}
             >
               <MapPin size={14} aria-hidden="true" />
-              <span>{isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}</span>
+              <span>
+                {isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}
+              </span>
             </div>
           )}
           {/* Info-Chips — hidden on mobile, shown on desktop */}
@@ -1616,80 +1619,61 @@ function PlaceExtras({
       )}
 
       {/* GPX Track stats */}
-      {place.route_geometry &&
-        (() => {
-          try {
-            const pts: number[][] = JSON.parse(place.route_geometry);
-            if (!pts || pts.length < 2) return null;
-            const hasEle = pts[0].length >= 3;
+      {(() => {
+        const movement = getTrackMovement(place);
+        if (!movement) return null;
+        const distKm = movement.distance / 1000;
 
-            // Haversine distance
-            const toRad = (d: number) => (d * Math.PI) / 180;
-            let totalDist = 0;
-            for (let i = 1; i < pts.length; i++) {
-              const [lat1, lng1] = pts[i - 1],
-                [lat2, lng2] = pts[i];
-              const dLat = toRad(lat2 - lat1),
-                dLng = toRad(lng2 - lng1);
-              const a =
-                Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-              totalDist += 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            }
-            const distKm = totalDist / 1000;
+        const chartW = 280,
+          chartH = 60;
+        const elevations = movement.elevations.filter((e): e is number => e != null);
+        const hasEle = elevations.length > 0;
+        let pathD = '';
+        if (elevations.length > 1) {
+          const step = Math.max(1, Math.floor(elevations.length / chartW));
+          const sampled = elevations.filter((_, i) => i % step === 0);
+          const eMin = Math.min(...sampled),
+            eMax = Math.max(...sampled);
+          const range = eMax - eMin || 1;
+          pathD = sampled
+            .map((e, i) => {
+              const x = (i / (sampled.length - 1)) * chartW;
+              const y = chartH - ((e - eMin) / range) * (chartH - 4) - 2;
+              return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+            })
+            .join(' ');
+        }
 
-            // Elevation stats
-            let minEle = Infinity,
-              maxEle = -Infinity,
-              totalUp = 0,
-              totalDown = 0;
-            if (hasEle) {
-              for (let i = 0; i < pts.length; i++) {
-                const e = pts[i][2];
-                if (e < minEle) minEle = e;
-                if (e > maxEle) maxEle = e;
-                if (i > 0) {
-                  const diff = e - pts[i - 1][2];
-                  if (diff > 0) totalUp += diff;
-                  else totalDown += Math.abs(diff);
-                }
-              }
-            }
-
-            // Elevation profile SVG
-            const chartW = 280,
-              chartH = 60;
-            const elevations = hasEle ? pts.map((p) => p[2]) : [];
-            let pathD = '';
-            if (elevations.length > 1) {
-              const step = Math.max(1, Math.floor(elevations.length / chartW));
-              const sampled = elevations.filter((_, i) => i % step === 0);
-              const eMin = Math.min(...sampled),
-                eMax = Math.max(...sampled);
-              const range = eMax - eMin || 1;
-              pathD = sampled
-                .map((e, i) => {
-                  const x = (i / (sampled.length - 1)) * chartW;
-                  const y = chartH - ((e - eMin) / range) * (chartH - 4) - 2;
-                  return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-                })
-                .join(' ');
-            }
-
-            return (
-              <div
-                className="bg-surface-hover"
-                style={{ borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}
+        return (
+          <div
+            className="bg-surface-hover"
+            style={{ borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <TrendingUp size={13} color="#9ca3af" />
+              <span
+                className="text-content-secondary"
+                style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <TrendingUp size={13} color="#9ca3af" />
-                  <span
-                    className="text-content-secondary"
-                    style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500 }}
-                  >
-                    {t('inspector.trackStats')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {t('inspector.trackStats')}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <div
+                className="text-content"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                  fontWeight: 600,
+                }}
+              >
+                <MapPin size={12} color="#3b82f6" />
+                {formatDistance(distKm, distanceUnit)}
+              </div>
+              {hasEle && (
+                <>
                   <div
                     className="text-content"
                     style={{
@@ -1700,67 +1684,50 @@ function PlaceExtras({
                       fontWeight: 600,
                     }}
                   >
-                    <MapPin size={12} color="#3b82f6" />
-                    {formatDistance(distKm, distanceUnit)}
+                    <Mountain size={12} color="#22c55e" />
+                    {formatElevation(movement.maxElevation!, distanceUnit)}
                   </div>
-                  {hasEle && (
-                    <>
-                      <div
-                        className="text-content"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Mountain size={12} color="#22c55e" />
-                        {formatElevation(maxEle, distanceUnit)}
-                      </div>
-                      <div
-                        className="text-content"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Mountain size={12} color="#ef4444" />
-                        {formatElevation(minEle, distanceUnit)}
-                      </div>
-                      <div className="text-content-muted" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>
-                        ↑{formatElevation(totalUp, distanceUnit)} &nbsp;↓{formatElevation(totalDown, distanceUnit)}
-                      </div>
-                    </>
-                  )}
-                </div>
-                {pathD && (
-                  <svg
-                    width="100%"
-                    viewBox={`0 0 ${chartW} ${chartH}`}
-                    preserveAspectRatio="none"
-                    className="bg-surface-tertiary"
-                    style={{ display: 'block', borderRadius: 6 }}
+                  <div
+                    className="text-content"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                      fontWeight: 600,
+                    }}
                   >
-                    <defs>
-                      <linearGradient id={`ele-grad-${place.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
-                      </linearGradient>
-                    </defs>
-                    <path d={`${pathD} L${chartW},${chartH} L0,${chartH} Z`} fill={`url(#ele-grad-${place.id})`} />
-                    <path d={pathD} fill="none" stroke="#3b82f6" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-                  </svg>
-                )}
-              </div>
-            );
-          } catch {
-            return null;
-          }
-        })()}
+                    <Mountain size={12} color="#ef4444" />
+                    {formatElevation(movement.minElevation!, distanceUnit)}
+                  </div>
+                  <div className="text-content-muted" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>
+                    ↑{formatElevation(movement.elevationGain, distanceUnit)} &nbsp;↓
+                    {formatElevation(movement.elevationLoss, distanceUnit)}
+                  </div>
+                </>
+              )}
+            </div>
+            {pathD && (
+              <svg
+                width="100%"
+                viewBox={`0 0 ${chartW} ${chartH}`}
+                preserveAspectRatio="none"
+                className="bg-surface-tertiary"
+                style={{ display: 'block', borderRadius: 6 }}
+              >
+                <defs>
+                  <linearGradient id={`ele-grad-${place.id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+                <path d={`${pathD} L${chartW},${chartH} L0,${chartH} Z`} fill={`url(#ele-grad-${place.id})`} />
+                <path d={pathD} fill="none" stroke="#3b82f6" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+              </svg>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Files section */}
       {(placeFiles.length > 0 || onFileUpload) && (

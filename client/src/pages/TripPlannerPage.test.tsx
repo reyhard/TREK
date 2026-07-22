@@ -6,12 +6,12 @@ import { buildAssignment, buildDay, buildPlace, buildTrip, buildUser } from '../
 import { server } from '../../tests/helpers/msw/server';
 import { act, fireEvent, render, screen, waitFor } from '../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../tests/helpers/store';
+import { placeRepo } from '../repo/placeRepo';
 import { useAuthStore } from '../store/authStore';
+import { usePermissionsStore } from '../store/permissionsStore';
 import { usePluginStore } from '../store/pluginStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTripStore } from '../store/tripStore';
-import { usePermissionsStore } from '../store/permissionsStore';
-import { placeRepo } from '../repo/placeRepo';
 import TripPlannerPage from './TripPlannerPage';
 
 vi.mock('../repo/placeRepo', () => ({
@@ -146,6 +146,14 @@ vi.mock('../components/Planner/ReservationModal', () => ({
   },
 }));
 
+const capturedTransitJourneyModalProps: { current: Record<string, any> } = { current: {} };
+vi.mock('../components/Planner/TransitJourneyModal', () => ({
+  default: (props: Record<string, any>) => {
+    capturedTransitJourneyModalProps.current = props;
+    return React.createElement('div', { 'data-testid': 'transit-journey-modal' });
+  },
+}));
+
 const capturedConfirmDialogProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/shared/ConfirmDialog', () => ({
   default: (props: Record<string, any>) => {
@@ -197,6 +205,25 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
   const mockLoadTrip = withMocks ? vi.fn().mockResolvedValue(undefined) : undefined;
   const mockLoadFiles = withMocks ? vi.fn().mockResolvedValue(undefined) : undefined;
   const mockLoadReservations = withMocks ? vi.fn().mockResolvedValue(undefined) : undefined;
+  const mockUpdateTransitEndpoints = withMocks
+    ? vi.fn().mockImplementation(async (_tripId: number, resId: number, input: any) => {
+        const prev = useTripStore.getState();
+        useTripStore.setState({
+          reservations: prev.reservations.map((r: any) =>
+            r.id === resId
+              ? {
+                  ...r,
+                  endpoints: r.endpoints.map((ep: any) => {
+                    const upd = input[ep.role];
+                    return upd ? { ...ep, name: upd.name, lat: upd.lat, lng: upd.lng } : ep;
+                  }),
+                }
+              : r
+          ),
+        } as any);
+        return { reservation: {} };
+      })
+    : undefined;
 
   seedStore(useTripStore, {
     trip,
@@ -214,10 +241,11 @@ function seedTripStore(overrides: { id?: number; tripName?: string; withMocks?: 
       loadTrip: mockLoadTrip,
       loadFiles: mockLoadFiles,
       loadReservations: mockLoadReservations,
+      updateTransitRouteEndpoints: mockUpdateTransitEndpoints,
     }),
   } as any);
 
-  return { trip, day, mockLoadTrip, mockLoadFiles, mockLoadReservations };
+  return { trip, day, mockLoadTrip, mockLoadFiles, mockLoadReservations, mockUpdateTransitEndpoints };
 }
 
 // Helper to render TripPlannerPage with route params
@@ -1116,7 +1144,9 @@ describe('TripPlannerPage', () => {
       });
 
       expect(screen.queryByTestId('place-inspector')).toBeNull();
-      expect(screen.getByRole('status')).toHaveTextContent('Drag the marker to its new location. Press Escape to cancel.');
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Drag the marker to its new location. Press Escape to cancel.'
+      );
       expect(screen.getByRole('button', { name: 'Cancel repositioning' })).toBeInTheDocument();
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
@@ -1126,9 +1156,11 @@ describe('TripPlannerPage', () => {
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
       const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
       let resolveUpdate!: (value: { place: typeof place }) => void;
-      vi.mocked(placeRepo.update).mockReturnValue(new Promise((resolve) => {
-        resolveUpdate = resolve;
-      }));
+      vi.mocked(placeRepo.update).mockReturnValue(
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        })
+      );
       mockPlaceSelectionState.selectedPlaceId = place.id;
       seedTripStore({ id: 42 });
       seedStore(useTripStore, { places: [place] } as any);
@@ -2115,26 +2147,9 @@ describe('TripPlannerPage', () => {
       vi.useFakeTimers();
 
       const { day } = seedTripStore({ id: 42 });
-      const planned = buildPlace({
-        id: 1,
-        trip_id: 42,
-        name: 'Planned Marker',
-        lat: 48.8566,
-        lng: 2.3522,
-      });
-      const unplanned = buildPlace({
-        id: 2,
-        trip_id: 42,
-        name: 'Unplanned Marker',
-        lat: 48.8666,
-        lng: 2.3622,
-      });
-      const assignment = buildAssignment({
-        id: 10,
-        day_id: day.id,
-        place: planned,
-        order_index: 0,
-      });
+      const planned = buildPlace({ id: 1, trip_id: 42, name: 'Planned Marker', lat: 48.8566, lng: 2.3522 });
+      const unplanned = buildPlace({ id: 2, trip_id: 42, name: 'Unplanned Marker', lat: 48.8666, lng: 2.3622 });
+      const assignment = buildAssignment({ id: 10, day_id: day.id, place: planned, order_index: 0 });
 
       seedStore(useTripStore, {
         places: [planned, unplanned],
@@ -2151,6 +2166,60 @@ describe('TripPlannerPage', () => {
 
       await waitFor(() => {
         expect(capturedMapViewProps.current.places).toEqual([planned]);
+      });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-045: transit endpoint update wires store action and updates reservation', () => {
+    it('calls onUpdateEndpoints and replaces the reservation in the store', async () => {
+      const reservationWithEndpoints = {
+        id: 24,
+        type: 'transit',
+        title: 'Test Transit',
+        status: 'confirmed',
+        endpoints: [
+          { role: 'from', sequence: 0, name: 'Old Origin', code: null, lat: 1, lng: 2, timezone: null, local_date: null, local_time: null },
+          { role: 'to', sequence: 1, name: 'Old Dest', code: null, lat: 3, lng: 4, timezone: null, local_date: null, local_time: null },
+        ],
+      };
+
+      vi.useFakeTimers();
+      const { mockUpdateTransitEndpoints } = seedTripStore({ id: 42 });
+      seedStore(useTripStore, { reservations: [reservationWithEndpoints] } as any);
+
+      renderPlannerPage(42);
+
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onOpenTransit?.(reservationWithEndpoints);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transit-journey-modal')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        await capturedTransitJourneyModalProps.current.onUpdateEndpoints({
+          from: { name: 'Station', lat: 34.9685211, lng: 135.7691251 },
+        });
+      });
+
+      expect(mockUpdateTransitEndpoints).toHaveBeenCalledWith(42, 24, {
+        from: { name: 'Station', lat: 34.9685211, lng: 135.7691251 },
+      });
+
+      expect(capturedTransitJourneyModalProps.current.reservation.endpoints[0]).toMatchObject({
+        name: 'Station',
+        lat: 34.9685211,
+        lng: 135.7691251,
       });
     });
   });

@@ -61,6 +61,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
   return { testDb: db, dbMock: mock };
 });
 
+const testFilesDir = vi.hoisted(() => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trek-security-test-'));
+  process.env.TREK_FILES_DIR = dir;
+  return dir;
+});
+
 vi.mock('../../src/db/database', () => dbMock);
 vi.mock('../../src/config', () => ({
   JWT_SECRET: 'test-jwt-secret-for-trek-testing-only',
@@ -76,7 +85,7 @@ vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.
 let nestApp: INestApplication;
 let app: Application;
 const FIXTURE_IMG = path.join(__dirname, '../fixtures/small-image.jpg');
-const uploadsDir = path.join(__dirname, '../../uploads/files');
+const uploadsDir = testFilesDir;
 
 beforeAll(async () => {
   createTables(testDb);

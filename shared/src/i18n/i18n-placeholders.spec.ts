@@ -65,8 +65,26 @@ const LOCALES: Record<string, TranslationStrings> = {
 const PLACEHOLDER_RE = /\{([a-zA-Z0-9_]+)\}/g;
 
 function placeholders(value: string): string[] {
-  return [...value.matchAll(PLACEHOLDER_RE)].map((m) => m[1]).sort();
+  return [...value.matchAll(PLACEHOLDER_RE)].map((m) => m[1]!).sort();
 }
+
+describe('placeholders', () => {
+  it('extracts a single placeholder', () => {
+    expect(placeholders('Hello {name}')).toEqual(['name']);
+  });
+
+  it('extracts multiple placeholders sorted', () => {
+    expect(placeholders('{b} and {a}')).toEqual(['a', 'b']);
+  });
+
+  it('returns empty array when no placeholders', () => {
+    expect(placeholders('Hello world')).toEqual([]);
+  });
+
+  it('extracts underscore-separated names', () => {
+    expect(placeholders('{provider_name} connected')).toEqual(['provider_name']);
+  });
+});
 
 describe('i18n placeholder parity', () => {
   it('every locale has the exact same placeholder set as EN for each key', () => {

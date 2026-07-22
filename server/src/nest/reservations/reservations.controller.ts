@@ -1,9 +1,12 @@
 import { pushReservationToAirtrail } from '../../services/airtrail/airtrailSync';
+import { isDemoEmail } from '../../services/demo';
+import { TransitRouteEndpointUpdateError } from '../../services/transitRouteEndpointService';
 import type { User } from '../../types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ReservationsService } from './reservations.service';
 import { Body, Controller, Delete, Get, Headers, HttpException, Param, Post, Put, UseGuards } from '@nestjs/common';
+import type { TransitRouteEndpointsUpdateRequest } from '@trek/shared';
 
 type ReservationBody = Record<string, unknown> & {
   title?: string;
@@ -94,6 +97,32 @@ export class ReservationsController {
       socketId,
     );
     return { success: true };
+  }
+
+  @Put(':id/transit-endpoints')
+  updateTransitEndpoints(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Param('id') id: string,
+    @Body() body: TransitRouteEndpointsUpdateRequest,
+    @Headers('x-socket-id') socketId?: string,
+  ) {
+    if (process.env.DEMO_MODE?.toLowerCase() === 'true' && isDemoEmail(user.email)) {
+      throw new HttpException({ error: 'Write operations are disabled in demo mode.' }, 403);
+    }
+    const trip = this.requireTrip(tripId, user);
+    this.requireEdit(trip, user);
+
+    try {
+      const reservation = this.reservations.updateTransitRouteEndpoints(id, tripId, body);
+      this.reservations.broadcast(tripId, 'reservation:updated', { reservation }, socketId);
+      this.reservations.notifyBookingChange(tripId, user, reservation.title, reservation.type || 'transit');
+      return { reservation };
+    } catch (err: unknown) {
+      if (!(err instanceof TransitRouteEndpointUpdateError)) throw err;
+      const status = err.code === 'RESERVATION_NOT_FOUND' ? 404 : err.code === 'ENDPOINT_STRUCTURE_INVALID' ? 409 : 400;
+      throw new HttpException({ error: err.message }, status);
+    }
   }
 
   @Put(':id')

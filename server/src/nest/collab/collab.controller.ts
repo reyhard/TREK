@@ -1,4 +1,4 @@
-import { BLOCKED_EXTENSIONS } from '../../services/fileService';
+import { BLOCKED_EXTENSIONS, filesDir } from '../../services/fileService';
 import type { User } from '../../types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -27,7 +27,6 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 const MAX_NOTE_FILE_SIZE = 50 * 1024 * 1024;
-const filesDir = path.join(__dirname, '../../../uploads/files');
 const NOTE_UPLOAD = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {

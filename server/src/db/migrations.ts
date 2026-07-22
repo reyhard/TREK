@@ -66,7 +66,74 @@ export function trimUserWhitespace(db: Database.Database): boolean {
   return hadCollision;
 }
 
-function runMigrations(db: Database.Database): void {
+export function reconcileAtlasRegions(db: Database.Database): void {
+  type Row = { id: number; region_code: string; region_name: string; country_code: string };
+  const rows = db.prepare('SELECT id, region_code, region_name, country_code FROM visited_regions').all() as Row[];
+  if (rows.length === 0) return;
+
+  let features: { properties?: { iso_a2?: string; iso_3166_2?: string; name?: string } }[];
+  try {
+    const file = path.join(__dirname, '..', '..', 'assets', 'atlas', 'admin1.geojson.gz');
+    features = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')).features || [];
+  } catch {
+    features = [];
+  }
+  const validCodes = new Set<string>();
+  const nameToCode = new Map<string, string>();
+  const codeToName = new Map<string, string>();
+  for (const f of features) {
+    const a2 = (f.properties?.iso_a2 || '').toUpperCase();
+    const code = f.properties?.iso_3166_2 || '';
+    const name = f.properties?.name || '';
+    if (!code) continue;
+    validCodes.add(code);
+    if (!codeToName.has(code)) codeToName.set(code, name);
+    if (a2 && name) nameToCode.set(`${a2}|${name.toLowerCase()}`, code);
+  }
+
+  const MERGE_CROSSWALK: Record<string, string> = {
+    'NO-04': 'NO-34',
+    'NO-05': 'NO-34',
+    'NO-12': 'NO-46',
+    'NO-14': 'NO-46',
+    'NO-09': 'NO-42',
+    'NO-10': 'NO-42',
+    'NO-01': 'NO-30',
+    'NO-02': 'NO-30',
+    'NO-06': 'NO-30',
+    'NO-07': 'NO-38',
+    'NO-08': 'NO-38',
+    'NO-19': 'NO-54',
+    'NO-20': 'NO-54',
+    'NO-16': 'NO-50',
+    'NO-17': 'NO-50',
+  };
+
+  const resolve = (row: Row): string | null => {
+    if (validCodes.has(row.region_code)) return null;
+    const a2 = (row.country_code || '').toUpperCase();
+    const byName = nameToCode.get(`${a2}|${(row.region_name || '').toLowerCase()}`);
+    if (byName) return byName;
+    const merged = MERGE_CROSSWALK[row.region_code];
+    if (merged && (validCodes.size === 0 || validCodes.has(merged))) return merged;
+    return null;
+  };
+
+  const update = db.prepare('UPDATE OR IGNORE visited_regions SET region_code = ?, region_name = ? WHERE id = ?');
+  const del = db.prepare('DELETE FROM visited_regions WHERE id = ?');
+  for (const row of rows) {
+    const newCode = resolve(row);
+    if (!newCode || newCode === row.region_code) continue;
+    const newName = codeToName.get(newCode) || row.region_name;
+    update.run(newCode, newName, row.id);
+    const after = db.prepare('SELECT region_code FROM visited_regions WHERE id = ?').get(row.id) as
+      | { region_code: string }
+      | undefined;
+    if (after && after.region_code === row.region_code) del.run(row.id);
+  }
+}
+
+function runMigrations(db: Database.Database, targetVersion?: number): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
   const versionRow = db.prepare('SELECT version FROM schema_version').get() as { version: number } | undefined;
   let currentVersion = versionRow?.version ?? 0;
@@ -2895,79 +2962,7 @@ function runMigrations(db: Database.Database): void {
     // ISO-3166-1 alpha-2 codes (invariant across the swap), `bucket_list.name` is free
     // text we must not auto-rewrite, and `place_regions` is a re-derivable Nominatim cache.
     () => {
-      type Row = { id: number; region_code: string; region_name: string; country_code: string };
-      const rows = db.prepare('SELECT id, region_code, region_name, country_code FROM visited_regions').all() as Row[];
-      if (rows.length === 0) return; // nothing marked → skip the bundle read entirely
-
-      // Index the shipped admin-1 bundle: valid codes, name→code per country, code→name.
-      // __dirname resolves ../../assets under both dist (dist/db) and tests (src/db).
-      let features: { properties?: { iso_a2?: string; iso_3166_2?: string; name?: string } }[];
-      try {
-        const file = path.join(__dirname, '..', '..', 'assets', 'atlas', 'admin1.geojson.gz');
-        features = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')).features || [];
-      } catch {
-        features = []; // bundle missing → degrade to the curated crosswalk below
-      }
-      const validCodes = new Set<string>();
-      const nameToCode = new Map<string, string>(); // `${A2}|${nameLower}` → code
-      const codeToName = new Map<string, string>();
-      for (const f of features) {
-        const a2 = (f.properties?.iso_a2 || '').toUpperCase();
-        const code = f.properties?.iso_3166_2 || '';
-        const name = f.properties?.name || '';
-        if (!code) continue;
-        validCodes.add(code);
-        if (!codeToName.has(code)) codeToName.set(code, name);
-        if (a2 && name) nameToCode.set(`${a2}|${name.toLowerCase()}`, code);
-      }
-
-      // Curated crosswalk for regions absorbed into a *renamed* successor (step 2 can't
-      // match these because the name changed). Norway's 2018/2020 reforms; extend as the
-      // pinned geoBoundaries dataset gains further reforms.
-      const MERGE_CROSSWALK: Record<string, string> = {
-        'NO-04': 'NO-34',
-        'NO-05': 'NO-34', // Hedmark, Oppland → Innlandet
-        'NO-12': 'NO-46',
-        'NO-14': 'NO-46', // Hordaland, Sogn og Fjordane → Vestland
-        'NO-09': 'NO-42',
-        'NO-10': 'NO-42', // Aust-/Vest-Agder → Agder
-        'NO-01': 'NO-30',
-        'NO-02': 'NO-30',
-        'NO-06': 'NO-30', // Østfold/Akershus/Buskerud → Viken
-        'NO-07': 'NO-38',
-        'NO-08': 'NO-38', // Vestfold, Telemark → Vestfold og Telemark
-        'NO-19': 'NO-54',
-        'NO-20': 'NO-54', // Troms, Finnmark → Troms og Finnmark
-        'NO-16': 'NO-50',
-        'NO-17': 'NO-50', // Sør-/Nord-Trøndelag → Trøndelag
-      };
-
-      const resolve = (row: Row): string | null => {
-        if (validCodes.has(row.region_code)) return null; // already valid
-        const a2 = (row.country_code || '').toUpperCase();
-        const byName = nameToCode.get(`${a2}|${(row.region_name || '').toLowerCase()}`);
-        if (byName) return byName;
-        const merged = MERGE_CROSSWALK[row.region_code];
-        // Only trust the crosswalk target if it actually exists in the bundle (or the
-        // bundle was unreadable, in which case we apply the curated map blindly).
-        if (merged && (validCodes.size === 0 || validCodes.has(merged))) return merged;
-        return null;
-      };
-
-      const update = db.prepare('UPDATE OR IGNORE visited_regions SET region_code = ?, region_name = ? WHERE id = ?');
-      const del = db.prepare('DELETE FROM visited_regions WHERE id = ?');
-      for (const row of rows) {
-        const newCode = resolve(row);
-        if (!newCode || newCode === row.region_code) continue;
-        const newName = codeToName.get(newCode) || row.region_name;
-        update.run(newCode, newName, row.id);
-        // UNIQUE(user_id, region_code): if the user already had the target code the
-        // UPDATE was IGNORED and this row still carries the old code → drop the duplicate.
-        const after = db.prepare('SELECT region_code FROM visited_regions WHERE id = ?').get(row.id) as
-          | { region_code: string }
-          | undefined;
-        if (after && after.region_code === row.region_code) del.run(row.id);
-      }
+      reconcileAtlasRegions(db);
     },
     () => {
       // AirTrail integration addon — disabled by default (opt-in). Per-user connection
@@ -3763,9 +3758,14 @@ function runMigrations(db: Database.Database): void {
     },
   ];
 
-  if (currentVersion < migrations.length) {
-    for (let i = currentVersion; i < migrations.length; i++) {
-      console.log(`[DB] Running migration ${i + 1}/${migrations.length}`);
+  const finalVersion = targetVersion ?? migrations.length;
+  if (finalVersion < currentVersion || finalVersion > migrations.length) {
+    throw new Error(`Invalid migration target ${finalVersion}; current version is ${currentVersion}`);
+  }
+
+  if (currentVersion < finalVersion) {
+    for (let i = currentVersion; i < finalVersion; i++) {
+      console.log(`[DB] Running migration ${i + 1}/${finalVersion}`);
       try {
         const migration = migrations[i];
         if (typeof migration === 'function') {
@@ -3779,7 +3779,7 @@ function runMigrations(db: Database.Database): void {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(i + 1);
     }
-    console.log(`[DB] Migrations complete — schema version ${migrations.length}`);
+    console.log(`[DB] Migrations complete — schema version ${finalVersion}`);
   }
 }
 

@@ -1,9 +1,13 @@
 import { ReservationsController } from '../../../src/nest/reservations/reservations.controller';
 import type { ReservationsService } from '../../../src/nest/reservations/reservations.service';
+import { TransitRouteEndpointUpdateError } from '../../../src/services/transitRouteEndpointService';
 import type { User } from '../../../src/types';
 import { HttpException } from '@nestjs/common';
 
 import { describe, it, expect, vi } from 'vitest';
+
+const { isDemoEmail } = vi.hoisted(() => ({ isDemoEmail: vi.fn(() => false) }));
+vi.mock('../../../src/services/demo', () => ({ isDemoEmail }));
 
 const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
 const trip = { id: 5, user_id: 1 };
@@ -163,6 +167,73 @@ describe('ReservationsController (parity with the legacy /api/trips/:tripId/rese
       expect(broadcast).toHaveBeenCalledWith('5', 'accommodation:deleted', { accommodationId: 3 }, 'sock');
       expect(broadcast).toHaveBeenCalledWith('5', 'budget:deleted', { itemId: 7 }, 'sock');
       expect(broadcast).toHaveBeenCalledWith('5', 'reservation:deleted', { reservationId: 9 }, 'sock');
+    });
+  });
+
+  describe('PUT /:id/transit-endpoints', () => {
+    const body = {
+      from: { name: 'Keihan Fushimi-Inari Station', lat: 34.9685211, lng: 135.7691251 },
+    };
+
+    afterEach(() => {
+      delete process.env.DEMO_MODE;
+    });
+
+    it('403 for demo user in demo mode', () => {
+      process.env.DEMO_MODE = 'true';
+      isDemoEmail.mockReturnValueOnce(true);
+      expect(
+        thrown(() => new ReservationsController(makeService()).updateTransitEndpoints(user, '5', '9', body)),
+      ).toEqual({
+        status: 403,
+        body: { error: 'Write operations are disabled in demo mode.' },
+      });
+    });
+
+    it('requires reservation edit permission', () => {
+      const svc = makeService({ canEdit: vi.fn().mockReturnValue(false) });
+      expect(thrown(() => new ReservationsController(svc).updateTransitEndpoints(user, '5', '9', body))).toEqual({
+        status: 403,
+        body: { error: 'No permission' },
+      });
+    });
+
+    it('returns and broadcasts the updated reservation', () => {
+      const reservation = { id: 9, title: 'A → B', type: 'transit' };
+      const updateTransitRouteEndpoints = vi.fn().mockReturnValue(reservation);
+      const broadcast = vi.fn();
+      const notifyBookingChange = vi.fn();
+      const svc = makeService({
+        updateTransitRouteEndpoints,
+        broadcast,
+        notifyBookingChange,
+      } as Partial<ReservationsService>);
+
+      expect(new ReservationsController(svc).updateTransitEndpoints(user, '5', '9', body, 'sock')).toEqual({
+        reservation,
+      });
+      expect(updateTransitRouteEndpoints).toHaveBeenCalledWith('9', '5', body);
+      expect(broadcast).toHaveBeenCalledWith('5', 'reservation:updated', { reservation }, 'sock');
+      expect(notifyBookingChange).toHaveBeenCalledWith('5', user, 'A → B', 'transit');
+      expect(svc.syncBudgetOnUpdate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['INVALID_INPUT', 400],
+      ['RESERVATION_NOT_FOUND', 404],
+      ['NOT_TRANSIT', 400],
+      ['ENDPOINT_STRUCTURE_INVALID', 409],
+    ] as const)('maps %s to HTTP %s', (code, status) => {
+      const error = new TransitRouteEndpointUpdateError(code, `error:${code}`);
+      const svc = makeService({
+        updateTransitRouteEndpoints: vi.fn(() => {
+          throw error;
+        }),
+      } as Partial<ReservationsService>);
+      expect(thrown(() => new ReservationsController(svc).updateTransitEndpoints(user, '5', '9', body))).toEqual({
+        status,
+        body: { error: `error:${code}` },
+      });
     });
   });
 });
