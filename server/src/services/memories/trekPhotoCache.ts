@@ -67,7 +67,7 @@ export function serveFresh(res: Response, key: string): boolean {
 
   res.set('Content-Type', entry.contentType);
   res.set('Cache-Control', 'public, max-age=3600');
-  res.sendFile(entry.filePath);
+  res.sendFile(entry.filePath, { dotfiles: 'allow' });
   return true;
 }
 

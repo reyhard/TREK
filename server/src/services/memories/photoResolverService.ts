@@ -129,7 +129,7 @@ export async function streamPhoto(
         if (fs.existsSync(thumbAbs)) {
           res.set('Cache-Control', 'public, max-age=86400, immutable');
           res.set('X-Content-Type-Options', 'nosniff');
-          res.sendFile(thumbAbs);
+          res.sendFile(thumbAbs, { dotfiles: 'allow' });
           return;
         }
       }
@@ -146,7 +146,7 @@ export async function streamPhoto(
     if (fs.existsSync(localPath)) {
       res.set('Cache-Control', 'public, max-age=86400');
       res.set('X-Content-Type-Options', 'nosniff');
-      res.sendFile(localPath);
+      res.sendFile(localPath, { dotfiles: 'allow' });
       return;
     }
   }

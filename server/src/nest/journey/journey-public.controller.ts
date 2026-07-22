@@ -71,7 +71,7 @@ export class JourneyPublicController {
         throw new HttpException({ error: 'Not found' }, 404);
       }
       res.set('Cache-Control', 'public, max-age=86400');
-      res.sendFile(resolved);
+      res.sendFile(resolved, { dotfiles: 'allow' });
       return;
     }
 
