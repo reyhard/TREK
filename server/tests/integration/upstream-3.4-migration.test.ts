@@ -54,6 +54,79 @@ const FIXTURES_DIR = path.resolve(__dirname, '../fixtures');
 const FORK_FIXTURE_SQLITE = path.join(FIXTURES_DIR, 'pre-upstream-3.4-fork.sqlite');
 const FORK_FIXTURE_MANIFEST = path.join(FIXTURES_DIR, 'pre-upstream-3.4-fork-fixture.json');
 
+/** Generate the fork fixture on demand so the test is self-sufficient. */
+function generateForkFixture(): void {
+  if (fs.existsSync(FORK_FIXTURE_SQLITE)) return;
+
+  const MANIFEST = {
+    users: [
+      { email: 'alice@example.com', username: 'alice_fixture', role: 'user' },
+      { email: 'bob@example.com', username: 'bob_fixture', role: 'user' },
+    ],
+    trip: { title: 'Pre-Sync Fixture Trip', start_date: '2026-06-01', end_date: '2026-06-14', owner_email: 'alice@example.com' },
+    places: [{ name: 'Eiffel Tower' }, { name: 'Louvre Museum' }, { name: 'Colosseum' }, { name: 'Trevi Fountain' }],
+    reservations: [
+      { title: 'Flight CDG-FCO', status: 'confirmed', type: 'flight', endpoint_count: 2 },
+      { title: 'Automated Transit: Paris Metro Line 1', status: 'booked', type: 'transit', endpoint_count: 2 },
+    ],
+    plugins: [{ id: 'travelbuddy', enabled: true }],
+    budget_items: [{ name: 'Flight tickets', total_price: 450.0 }, { name: 'Hotel Paris', total_price: 1200.0 }],
+    packing_items: [{ name: 'Passport', category: 'Documents' }, { name: 'Sunscreen', category: 'Toiletries' }],
+    todo_items: [{ name: 'Book museum tickets' }, { name: 'Buy travel adapter' }],
+    collab_notes: [{ title: 'Trip Itinerary v2' }],
+    oauth: { client_id: 'test-client-fork' },
+  };
+
+  fs.mkdirSync(FIXTURES_DIR, { recursive: true });
+
+  const genDb = new Database(FORK_FIXTURE_SQLITE);
+  try {
+    genDb.exec('PRAGMA journal_mode = WAL');
+    genDb.exec('PRAGMA busy_timeout = 5000');
+    genDb.exec('PRAGMA foreign_keys = ON');
+
+    createTables(genDb);
+    runMigrations(genDb);
+
+    // Rewind to the fork's pre-upstream version so runMigrations replays 173+
+    genDb.prepare('UPDATE schema_version SET version = ?').run(172);
+
+    // Insert fixture data
+    genDb.prepare(`INSERT OR IGNORE INTO users (id,username,email,password_hash,role,password_version) VALUES(1,'admin','admin@trek.local','x','admin',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO users (id,username,email,password_hash,role,password_version) VALUES(10,'alice_fixture','alice@example.com','x','user',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO users (id,username,email,password_hash,role,password_version) VALUES(11,'bob_fixture','bob@example.com','x','user',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO trips (id,user_id,title,start_date,end_date,currency) VALUES(100,10,'Pre-Sync Fixture Trip','2026-06-01','2026-06-14','EUR')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO days (id,trip_id,day_number,date) VALUES(200,100,1,'2026-06-01')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO days (id,trip_id,day_number,date) VALUES(201,100,2,'2026-06-02')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO days (id,trip_id,day_number,date) VALUES(202,100,3,'2026-06-03')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(400,100,'Eiffel Tower',48.8566,2.3522)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(401,100,'Louvre Museum',48.8606,2.3376)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(402,100,'Colosseum',41.8902,12.4922)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO places (id,trip_id,name,lat,lng) VALUES(403,100,'Trevi Fountain',41.9009,12.4833)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO reservations (id,trip_id,day_id,title,status,type,day_plan_position) VALUES(300,100,200,'Flight CDG-FCO','confirmed','flight',1.0)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO reservations (id,trip_id,day_id,title,status,type,day_plan_position) VALUES(301,100,200,'Automated Transit: Paris Metro Line 1','booked','transit',2.5)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(300,'departure',0,'CDG Airport','CDG',49.0097,2.5479)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(300,'arrival',1,'FCO Airport','FCO',41.8003,12.2389)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(301,'departure',0,'La Défense',NULL,48.8917,2.2386)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO reservation_endpoints (reservation_id,role,sequence,name,code,lat,lng) VALUES(301,'arrival',1,'Château de Vincennes',NULL,48.8474,2.4392)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO oauth_clients (id,user_id,name,client_id,client_secret_hash,redirect_uris,allowed_scopes,is_public) VALUES('test-client-fork',10,'Test Client','test-client-fork','hash','[]','[]',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO oauth_tokens (client_id,user_id,access_token_hash,refresh_token_hash,scopes,access_token_expires_at,refresh_token_expires_at) VALUES('test-client-fork',10,'abc123hash','def456hash','[]','2030-01-01T00:00:00.000Z','2030-01-01T00:00:00.000Z')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO plugins (id,name,version,enabled) VALUES('travelbuddy','Travel Buddy','1.0.0',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO plugin_oauth_tokens (plugin_id,user_id,access_token,refresh_token,scope) VALUES('travelbuddy',10,'tok_abc','tok_ref_abc','read_write')`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO budget_items (trip_id,category,name,total_price,sort_order) VALUES(100,'Transport','Flight tickets',450.0,0)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO budget_items (trip_id,category,name,total_price,sort_order) VALUES(100,'Accommodation','Hotel Paris',1200.0,1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO packing_items (trip_id,name,category,sort_order) VALUES(100,'Passport','Documents',0)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO packing_items (trip_id,name,category,sort_order) VALUES(100,'Sunscreen','Toiletries',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO todo_items (trip_id,name,category,sort_order) VALUES(100,'Book museum tickets','Planning',0)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO todo_items (trip_id,name,category,sort_order) VALUES(100,'Buy travel adapter','Shopping',1)`).run();
+    genDb.prepare(`INSERT OR IGNORE INTO collab_notes (trip_id,user_id,title,content,category) VALUES(100,10,'Trip Itinerary v2','Finalized itinerary','General')`).run();
+
+    fs.writeFileSync(FORK_FIXTURE_MANIFEST, JSON.stringify(MANIFEST, null, 2));
+  } finally {
+    genDb.close();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 1. CLEAN DATABASE MIGRATION
 // ---------------------------------------------------------------------------
@@ -144,9 +217,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   let db: Database.Database;
 
   beforeAll(() => {
-    if (!fs.existsSync(FORK_FIXTURE_SQLITE)) {
-      throw new Error(`Fork fixture not found at ${FORK_FIXTURE_SQLITE}`);
-    }
+    generateForkFixture();
     // Copy fixture to a unique temporary path — never mutate the committed fixture
     tempPath = path.join(
       os.tmpdir(),
