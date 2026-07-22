@@ -187,8 +187,7 @@ export function PlacesHeader(S: SidebarState) {
                     transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
                   }}
                 >
-                  {f.label}
-                  {' '}
+                  {f.label}{' '}
                   <span
                     className={active ? 'text-accent-text' : 'text-content-faint'}
                     style={{

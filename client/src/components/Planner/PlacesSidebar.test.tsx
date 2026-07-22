@@ -263,10 +263,7 @@ describe('Filter tabs', () => {
     const plannedCafe = buildPlace({ id: 2, name: 'Planned Cafe' });
     const unplannedMuseum = buildPlace({ id: 3, name: 'Unplanned Museum' });
     const assignments = {
-      '1': [
-        buildAssignment({ place: plannedMuseum, day_id: 1 }),
-        buildAssignment({ place: plannedCafe, day_id: 1 }),
-      ],
+      '1': [buildAssignment({ place: plannedMuseum, day_id: 1 }), buildAssignment({ place: plannedCafe, day_id: 1 })],
     };
 
     render(
