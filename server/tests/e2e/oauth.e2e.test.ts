@@ -27,7 +27,10 @@ const { db } = vi.hoisted(() => {
 
 vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: () => {} }));
 vi.mock('../../src/services/auditLog', () => ({ writeAudit: vi.fn(), getClientIp: () => '1.2.3.4', logWarn: vi.fn() }));
-vi.mock('../../src/services/notifications', () => ({ getMcpSafeUrl: () => 'https://app' }));
+vi.mock('../../src/services/notifications', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/notifications')>();
+  return { ...actual, getMcpSafeUrl: () => 'https://app' };
+});
 
 const { isAddonEnabled } = vi.hoisted(() => ({ isAddonEnabled: vi.fn(() => true) }));
 vi.mock('../../src/services/adminService', () => ({ isAddonEnabled }));
