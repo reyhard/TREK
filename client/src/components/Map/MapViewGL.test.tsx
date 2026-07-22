@@ -1,7 +1,7 @@
 import { act } from '@testing-library/react';
 import maplibregl from 'maplibre-gl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildPlace } from '../../../tests/helpers/factories';
+import { buildPlace, buildReservation } from '../../../tests/helpers/factories';
 import { render } from '../../../tests/helpers/render';
 import { resetAllStores } from '../../../tests/helpers/store';
 import { DEFAULT_MAP_ZOOM } from '../../constants/mapDefaults';
@@ -58,6 +58,8 @@ const glBounds = vi.hoisted(() => {
     },
   };
 });
+
+const overlayUpdate = vi.hoisted(() => vi.fn());
 
 vi.mock('mapbox-gl', () => ({
   default: {
@@ -138,7 +140,7 @@ vi.mock('./locationMarkerMapbox', () => ({
 
 vi.mock('./reservationsMapbox', () => ({
   ReservationMapboxOverlay: vi.fn(function () {
-    return { update: vi.fn(), destroy: vi.fn() };
+    return { update: overlayUpdate, destroy: vi.fn() };
   }),
 }));
 
@@ -172,7 +174,38 @@ function buildMapPlace(overrides: Record<string, any> = {}) {
   } as any;
 }
 
+function buildRoutableReservation(overrides: Record<string, any> = {}) {
+  return buildReservation({
+    endpoints: [
+      {
+        role: 'from',
+        sequence: 0,
+        name: 'From',
+        code: null,
+        lat: 35,
+        lng: 139,
+        timezone: null,
+        local_time: null,
+        local_date: null,
+      },
+      {
+        role: 'to',
+        sequence: 1,
+        name: 'To',
+        code: null,
+        lat: 35.1,
+        lng: 139.1,
+        timezone: null,
+        local_time: null,
+        local_date: null,
+      },
+    ],
+    ...overrides,
+  } as any);
+}
+
 beforeEach(() => {
+  overlayUpdate.mockClear();
   glMap.on.mockImplementation(() => glMap);
   glMap.off.mockImplementation(() => glMap);
   glMap.once.mockImplementation(() => glMap);
@@ -815,5 +848,118 @@ describe('MapViewGL', () => {
     await act(async () => {});
 
     expect(glMap.fitBounds.mock.calls.length).toBe(afterDayFit);
+  });
+
+  it('sends only selected-day transit to the overlay and replaces it when the day changes', async () => {
+    glMap.on.mockImplementation((event: string, handler: unknown) => {
+      if (event === 'load' && typeof handler === 'function') handler();
+      return glMap;
+    });
+    const dayOneTransit = buildRoutableReservation({ id: 101, type: 'transit', day_id: 101 });
+    const dayTwoTransit = buildRoutableReservation({ id: 102, type: 'transit', day_id: 102 });
+    const { rerender } = render(
+      <MapViewGL
+        places={[]}
+        reservations={[dayOneTransit, dayTwoTransit]}
+        selectedDayId={101}
+        showTransitRoutes
+        visibleConnectionIds={[]}
+      />
+    );
+    await act(async () => {});
+    expect(overlayUpdate).toHaveBeenLastCalledWith([dayOneTransit], expect.any(Object), expect.anything());
+
+    rerender(
+      <MapViewGL
+        places={[]}
+        reservations={[dayOneTransit, dayTwoTransit]}
+        selectedDayId={102}
+        showTransitRoutes
+        visibleConnectionIds={[]}
+      />
+    );
+    await act(async () => {});
+    expect(overlayUpdate).toHaveBeenLastCalledWith([dayTwoTransit], expect.any(Object), expect.anything());
+  });
+
+  it('does not let manually visible ids reveal off-day transit but preserves non-transit routes', async () => {
+    glMap.on.mockImplementation((event: string, handler: unknown) => {
+      if (event === 'load' && typeof handler === 'function') handler();
+      return glMap;
+    });
+    const matchingTransit = buildRoutableReservation({ id: 201, type: 'transit', day_id: 1 });
+    const offDayTransit = buildRoutableReservation({ id: 202, type: 'transit', day_id: 2 });
+    const flight = buildRoutableReservation({ id: 203, type: 'flight', day_id: 99 });
+    render(
+      <MapViewGL
+        places={[]}
+        reservations={[matchingTransit, offDayTransit, flight]}
+        selectedDayId={1}
+        showTransitRoutes
+        visibleConnectionIds={[202, 203]}
+      />
+    );
+    await act(async () => {});
+    expect(overlayUpdate).toHaveBeenLastCalledWith([matchingTransit, flight], expect.any(Object), expect.anything());
+  });
+
+  it('excludes off-day transit endpoints from GL fit bounds', async () => {
+    glMap.on.mockImplementation((event: string, handler: unknown) => {
+      if (event === 'load' && typeof handler === 'function') handler();
+      return glMap;
+    });
+    const selectedTransit = buildRoutableReservation({ id: 301, type: 'transit', day_id: 1 });
+    const offDayTransit = buildRoutableReservation({
+      id: 302,
+      type: 'transit',
+      day_id: 2,
+      endpoints: [
+        {
+          role: 'from',
+          sequence: 0,
+          name: 'From',
+          code: null,
+          lat: 34.6,
+          lng: 135.4,
+          timezone: null,
+          local_time: null,
+          local_date: null,
+        },
+        {
+          role: 'to',
+          sequence: 1,
+          name: 'To',
+          code: null,
+          lat: 34.7,
+          lng: 135.5,
+          timezone: null,
+          local_time: null,
+          local_date: null,
+        },
+      ],
+    });
+    const { rerender } = render(
+      <MapViewGL
+        places={[]}
+        reservations={[selectedTransit, offDayTransit]}
+        selectedDayId={1}
+        showTransitRoutes
+        fitKey={1}
+      />
+    );
+    await act(async () => {});
+    glBounds.clear();
+
+    rerender(
+      <MapViewGL
+        places={[]}
+        reservations={[selectedTransit, offDayTransit]}
+        selectedDayId={1}
+        showTransitRoutes
+        fitKey={2}
+      />
+    );
+    await act(async () => {});
+    expect(glBounds.instances.at(-1)?.extend.mock.calls).toEqual([[[139, 35]], [[139.1, 35.1]]]);
   });
 });

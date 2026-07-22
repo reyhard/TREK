@@ -101,6 +101,7 @@ interface Props {
   reservations?: Reservation[];
   visibleConnectionIds?: number[];
   showTransitRoutes?: boolean;
+  selectedDayId?: number | null;
   showReservationStats?: boolean;
   onReservationClick?: (reservationId: number) => void;
   pois?: Poi[];
@@ -233,6 +234,7 @@ export function MapViewGL({
   reservations = [],
   visibleConnectionIds = [],
   showTransitRoutes = true,
+  selectedDayId = null,
   showReservationStats = false,
   onReservationClick,
   pois = [],
@@ -336,6 +338,10 @@ export function MapViewGL({
     () => routeCoords.map(([lat, lng]) => `${lat.toFixed(6)},${lng.toFixed(6)}`).join('|'),
     [routeCoords]
   );
+  const routeVisibilityOptions = useMemo(
+    () => ({ visibleConnectionIds, showTransitRoutes, selectedDayId }),
+    [visibleConnectionIds, showTransitRoutes, selectedDayId]
+  );
   // Set when the map was built already framed on its places, so the fit below knows there is
   // nothing left to do on mount.
   const framedOnMountRef = useRef(false);
@@ -349,7 +355,8 @@ export function MapViewGL({
     // show Japan straight away, not the world view followed by a flight across the planet.
     // Reading them here is what makes this "on load" — the map is built once, and the trip's
     // places are already loaded by then (TripPlannerPage holds a splash until they are).
-    const framed = computeMapViewport(dayPlaces.length > 0 ? dayPlaces : places, {
+    const endpointPoints = visibleReservationEndpointPoints(reservations, routeVisibilityOptions);
+    const framed = computeMapViewport([...(dayPlaces.length > 0 ? dayPlaces : places), ...endpointPoints], {
       tileSize: TILE_SIZE_GL,
       padding: paddingOpts,
     });
@@ -1068,15 +1075,15 @@ export function MapViewGL({
   // DayPlanSidebar — nothing is rendered until the user enables a
   // booking's route, matching the Leaflet MapView's behaviour.
   const visibleReservations = useMemo(
-    () => visibleRouteReservations(reservations, { visibleConnectionIds, showTransitRoutes }),
-    [reservations, visibleConnectionIds, showTransitRoutes]
+    () => visibleRouteReservations(reservations, routeVisibilityOptions),
+    [reservations, routeVisibilityOptions]
   );
   const reservationEndpointCoords = useMemo<[number, number][]>(
     () =>
-      visibleReservationEndpointPoints(reservations, { visibleConnectionIds, showTransitRoutes }).map(
+      visibleReservationEndpointPoints(reservations, routeVisibilityOptions).map(
         (p) => [p.lat!, p.lng!] as [number, number]
       ),
-    [reservations, visibleConnectionIds, showTransitRoutes]
+    [reservations, routeVisibilityOptions]
   );
   // Real road geometry for car/bus/taxi/bicycle bookings (straight line until it loads/if it fails).
   const transportRoutes = useTransportRoutes(visibleReservations);
