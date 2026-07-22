@@ -43,6 +43,26 @@ describe('trackGeometry', () => {
     expect(parsed?.distance).toBeLessThan(690)
   })
 
+  it('filters rows with non-numeric (string) coordinates', () => {
+    const parsed = parseTrackGeometry(JSON.stringify([
+      [48.8584, 2.2945, 100],
+      ['invalid', 2.2975, 999],
+      [48.86, 2.3, 120],
+      [48.862, 2.305, 110],
+      [48.864, 2.31, 130],
+    ]))
+
+    expect(parsed?.coordinates).toEqual([
+      [48.8584, 2.2945],
+      [48.86, 2.3],
+      [48.862, 2.305],
+      [48.864, 2.31],
+    ])
+    expect(parsed?.distance).toBeGreaterThan(0)
+    expect(parsed?.minElevation).toBe(100)
+    expect(parsed?.maxElevation).toBe(130)
+  })
+
   it.each([
     null,
     '',
