@@ -240,7 +240,7 @@ describe('Filter tabs', () => {
     expect(screen.getByText(/All places are planned/i)).toBeInTheDocument();
   });
 
-  it('FE-PLANNER-SIDEBAR-047: "Planned" tab filters out unplanned places and shows its count', async () => {
+  it('FE-PLANNER-SIDEBAR-049: "Planned" tab filters out unplanned places and shows its count', async () => {
     const user = userEvent.setup();
     const planned = buildPlace({ id: 1, name: 'Planned Place' });
     const unplanned = buildPlace({ id: 2, name: 'Unplanned Place' });
@@ -257,7 +257,7 @@ describe('Filter tabs', () => {
     expect(screen.queryByText('Unplanned Place')).not.toBeInTheDocument();
   });
 
-  it('FE-PLANNER-SIDEBAR-048: "Planned" count and results respect the active search', async () => {
+  it('FE-PLANNER-SIDEBAR-050: "Planned" count and results respect the active search', async () => {
     const user = userEvent.setup();
     const plannedMuseum = buildPlace({ id: 1, name: 'Planned Museum' });
     const plannedCafe = buildPlace({ id: 2, name: 'Planned Cafe' });
@@ -289,7 +289,7 @@ describe('Filter tabs', () => {
     expect(screen.queryByText('Unplanned Museum')).not.toBeInTheDocument();
   });
 
-  it('FE-PLANNER-SIDEBAR-049: "Planned" stays active with zero results and uses the generic empty state', async () => {
+  it('FE-PLANNER-SIDEBAR-051: "Planned" stays active with zero results and uses the generic empty state', async () => {
     const user = userEvent.setup();
     const unplanned = buildPlace({ id: 1, name: 'Only Candidate' });
 
