@@ -805,10 +805,10 @@ export default function TripPlannerPage(): React.ReactElement | null {
                   onOpenTransit={(r) => setTransitJourney(r)}
                   onPlanTransit={
                     can('day_edit', trip) && tripHasDates
-                      ? (dayId) => {
+                      ? (dayId, prefill) => {
                           setTransportModalDayId(dayId);
                           setEditingTransport(null);
-                          setTransitPrefill(null);
+                          setTransitPrefill(prefill ?? null);
                           setTransportModalAutomated(true);
                           setShowTransportModal(true);
                         }
@@ -1357,10 +1357,10 @@ export default function TripPlannerPage(): React.ReactElement | null {
                           }}
                           onPlanTransit={
                             can('day_edit', trip) && tripHasDates
-                              ? (dayId) => {
+                              ? (dayId, prefill) => {
                                   setTransportModalDayId(dayId);
                                   setEditingTransport(null);
-                                  setTransitPrefill(null);
+                                  setTransitPrefill(prefill ?? null);
                                   setTransportModalAutomated(true);
                                   setShowTransportModal(true);
                                   setMobileSidebarOpen(null);

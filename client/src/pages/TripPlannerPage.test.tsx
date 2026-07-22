@@ -154,6 +154,14 @@ vi.mock('../components/Planner/TransitJourneyModal', () => ({
   },
 }));
 
+const capturedTransportModalProps: { current: Record<string, any> } = { current: {} };
+vi.mock('../components/Planner/TransportModal', () => ({
+  TransportModal: (props: Record<string, any>) => {
+    capturedTransportModalProps.current = props;
+    return null;
+  },
+}));
+
 const capturedConfirmDialogProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/shared/ConfirmDialog', () => ({
   default: (props: Record<string, any>) => {
@@ -282,6 +290,7 @@ beforeEach(() => {
   capturedTripMembersModalProps.current = {};
   capturedFileManagerProps.current = {};
   capturedPlaceInspectorProps.current = {};
+  capturedTransportModalProps.current = {};
   seedStore(useAuthStore, { isAuthenticated: true, user: buildUser() });
 });
 
@@ -2221,6 +2230,96 @@ describe('TripPlannerPage', () => {
         lat: 34.9685211,
         lng: 135.7691251,
       });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-053: TransportModal connector prefill', () => {
+    it('passes full connector prefill (from/to/time/placement) to TransportModal on desktop', async () => {
+      vi.useFakeTimers();
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+      const prefill = {
+        from: { name: 'Gare du Nord', lat: 48.8809, lng: 2.3553 },
+        to: { name: 'Gare de Lyon', lat: 48.8448, lng: 2.3735 },
+        time: '14:30',
+        placement: { dayId: day.id, position: 1.5 },
+      };
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onPlanTransit?.(day.id, prefill);
+      });
+      await waitFor(() => {
+        expect(capturedTransportModalProps.current.transitPrefill).toEqual(prefill);
+      });
+    });
+
+    it('clears stale transitPrefill when onPlanTransit is called without prefill', async () => {
+      vi.useFakeTimers();
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+      const prefill = {
+        from: { name: 'Gare du Nord', lat: 48.8809, lng: 2.3553 },
+        to: { name: 'Gare de Lyon', lat: 48.8448, lng: 2.3735 },
+        time: '14:30',
+        placement: { dayId: day.id, position: 1.5 },
+      };
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onPlanTransit?.(day.id, prefill);
+      });
+      await waitFor(() => {
+        expect(capturedTransportModalProps.current.transitPrefill).toEqual(prefill);
+      });
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onPlanTransit?.(day.id, undefined);
+      });
+      await waitFor(() => {
+        expect(capturedTransportModalProps.current.transitPrefill).toBeNull();
+      });
+    });
+
+    it('forwards connector prefill to TransportModal on mobile and closes the Plan sheet', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+      const mobilePlanBtn = Array.from(document.body.querySelectorAll('button')).find(
+        (b) => b.textContent === 'Plan' && !b.getAttribute('title')
+      );
+      expect(mobilePlanBtn).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(mobilePlanBtn!);
+      });
+      await waitFor(() => {
+        expect(screen.getAllByTestId('day-plan-sidebar').length).toBe(2);
+      });
+      expect(capturedDayPlanSidebarProps.current.showRouteToolsWhenExpanded).toBe(true);
+      const prefill = {
+        from: { name: 'Gare du Nord', lat: 48.8809, lng: 2.3553 },
+        to: { name: 'Gare de Lyon', lat: 48.8448, lng: 2.3735 },
+        time: '14:30',
+        placement: { dayId: day.id, position: 1.5 },
+      };
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onPlanTransit?.(day.id, prefill);
+      });
+      // Prefill is forwarded; the mobile Plan sheet is dismissed
+      expect(capturedTransportModalProps.current.transitPrefill).toEqual(prefill);
+      expect(screen.getAllByTestId('day-plan-sidebar').length).toBe(1);
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
   });
 });
