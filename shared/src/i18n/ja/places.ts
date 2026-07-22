@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': '詳細を見る',
   'places.assignToDay': 'どの日に追加しますか？',
   'places.all': 'すべて',
+  'places.planned': '計画済み',
   'places.unplanned': '未計画',
   'places.filterTracks': 'トラック',
   'places.search': '場所を検索…',

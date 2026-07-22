@@ -43,6 +43,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Ayrıntıları Görüntüle',
   'places.assignToDay': 'Hangi güne eklensin?',
   'places.all': 'Tüm',
+  'places.planned': 'Planlanan',
   'places.unplanned': 'Planlanmamış',
   'places.filterTracks': 'Parçalar',
   'places.search': 'Yer ara...',

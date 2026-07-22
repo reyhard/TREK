@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'عرض التفاصيل',
   'places.assignToDay': 'إلى أي يوم تريد الإضافة؟',
   'places.all': 'الكل',
+  'places.planned': 'مخطط',
   'places.unplanned': 'غير مخطط',
   'places.filterTracks': 'المسارات',
   'places.search': 'ابحث عن أماكن...',

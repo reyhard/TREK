@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Ver detalles',
   'places.assignToDay': '¿A qué día añadirlo?',
   'places.all': 'Todo',
+  'places.planned': 'Planificados',
   'places.unplanned': 'Sin planificar',
   'places.filterTracks': 'Rutas',
   'places.search': 'Buscar lugares...',

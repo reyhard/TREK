@@ -40,6 +40,7 @@ const places: TranslationStrings = {
   'places.viewDetails': '檢視詳情',
   'places.assignToDay': '新增到哪一天？',
   'places.all': '全部',
+  'places.planned': '已規劃',
   'places.unplanned': '未規劃',
   'places.filterTracks': '路線',
   'places.search': '搜尋地點...',

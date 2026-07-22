@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Részletek megtekintése',
   'places.assignToDay': 'Melyik naphoz adod?',
   'places.all': 'Összes',
+  'places.planned': 'Tervezett',
   'places.unplanned': 'Nem tervezett',
   'places.filterTracks': 'Nyomvonalak',
   'places.search': 'Helyek keresése...',

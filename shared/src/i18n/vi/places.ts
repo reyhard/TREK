@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Xem chi tiết',
   'places.assignToDay': 'Thêm vào ngày nào?',
   'places.all': 'Tất cả',
+  'places.planned': 'Đã lên kế hoạch',
   'places.unplanned': 'Không có kế hoạch',
   'places.filterTracks': 'Bài hát',
   'places.search': 'Tìm kiếm địa điểm...',

@@ -40,6 +40,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Lihat Detail',
   'places.assignToDay': 'Tambah ke hari mana?',
   'places.all': 'Semua',
+  'places.planned': 'Direncanakan',
   'places.unplanned': 'Belum direncanakan',
   'places.filterTracks': 'Trek',
   'places.search': 'Cari tempat...',

@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Деталі',
   'places.assignToDay': 'Додати на який день?',
   'places.all': 'Усі',
+  'places.planned': 'Заплановані',
   'places.unplanned': 'Незаплановані',
   'places.filterTracks': 'Треки',
   'places.search': 'Пошук місць...',

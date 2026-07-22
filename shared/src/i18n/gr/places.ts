@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Προβολή Λεπτομερειών',
   'places.assignToDay': 'Σε ποια ημέρα να προστεθεί;',
   'places.all': 'Όλα',
+  'places.planned': 'Προγραμματισμένα',
   'places.unplanned': 'Μη προγραμματισμένα',
   'places.filterTracks': 'Ίχνη',
   'places.search': 'Αναζήτηση μερών...',

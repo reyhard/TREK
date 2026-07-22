@@ -32,6 +32,7 @@ const places: TranslationStrings = {
   'places.importGoogleList': 'Lista Google',
   'places.assignToDay': 'Do którego dnia dodać?',
   'places.all': 'Wszystkie',
+  'places.planned': 'Zaplanowane',
   'places.unplanned': 'Niezaplanowane',
   'places.filterTracks': 'Trasy',
   'places.search': 'Szukaj miejsc...',

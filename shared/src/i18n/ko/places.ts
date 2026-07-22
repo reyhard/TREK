@@ -40,6 +40,7 @@ const places: TranslationStrings = {
   'places.viewDetails': '상세 보기',
   'places.assignToDay': '어느 날에 추가할까요?',
   'places.all': '전체',
+  'places.planned': '계획됨',
   'places.unplanned': '미계획',
   'places.filterTracks': '트랙',
   'places.search': '장소 검색...',

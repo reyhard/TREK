@@ -41,6 +41,7 @@ const places: TranslationStrings = {
   'places.viewDetails': 'Zobrazit detaily',
   'places.assignToDay': 'Přidat do kterého dne?',
   'places.all': 'Vše',
+  'places.planned': 'Naplánované',
   'places.unplanned': 'Nezařazené',
   'places.filterTracks': 'Trasy',
   'places.search': 'Hledat místa...',
