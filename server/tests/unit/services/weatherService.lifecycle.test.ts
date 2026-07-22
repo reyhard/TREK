@@ -13,13 +13,11 @@ describe('weatherService lifecycle — module-level cleanup timer', () => {
   });
 
   it('imports weatherService without leaving a blocking timer', async () => {
-    vi.spyOn(globalThis, 'setInterval').mockImplementation(
-      (handler: TimerHandler, ms?: number, ...args: unknown[]) => {
-        const timer = origSetInterval(handler, ms, ...args);
-        intervals.push(timer);
-        return timer;
-      },
-    );
+    vi.spyOn(globalThis, 'setInterval').mockImplementation((handler: TimerHandler, ms?: number, ...args: unknown[]) => {
+      const timer = origSetInterval(handler, ms, ...args);
+      intervals.push(timer);
+      return timer;
+    });
 
     const mod = await import('../../../src/services/weatherService');
     expect(mod.getWeather).toBeDefined();

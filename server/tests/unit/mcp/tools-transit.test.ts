@@ -1256,7 +1256,7 @@ describe('MCP transit tools', () => {
       }
 
       // Also verify the top-level object schema does not claim additionalProperties
-      expect((tool.inputSchema as Record<string, unknown>)).not.toHaveProperty('additionalProperties');
+      expect(tool.inputSchema as Record<string, unknown>).not.toHaveProperty('additionalProperties');
     });
   });
 

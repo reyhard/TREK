@@ -13,13 +13,11 @@ describe('oidcService lifecycle — module-level cleanup timers', () => {
   });
 
   it('imports oidcService without leaving blocking timers', async () => {
-    vi.spyOn(globalThis, 'setInterval').mockImplementation(
-      (handler: TimerHandler, ms?: number, ...args: unknown[]) => {
-        const timer = origSetInterval(handler, ms, ...args);
-        intervals.push(timer);
-        return timer;
-      },
-    );
+    vi.spyOn(globalThis, 'setInterval').mockImplementation((handler: TimerHandler, ms?: number, ...args: unknown[]) => {
+      const timer = origSetInterval(handler, ms, ...args);
+      intervals.push(timer);
+      return timer;
+    });
 
     const mod = await import('../../../src/services/oidcService');
     expect(mod.createState).toBeDefined();
