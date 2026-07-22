@@ -2109,4 +2109,49 @@ describe('TripPlannerPage', () => {
       });
     });
   });
+
+  describe('FE-PAGE-PLANNER-052: Planned filter is applied to map markers', () => {
+    it('passes only assigned places to MapView when placesFilter is planned', async () => {
+      vi.useFakeTimers();
+
+      const { day } = seedTripStore({ id: 42 });
+      const planned = buildPlace({
+        id: 1,
+        trip_id: 42,
+        name: 'Planned Marker',
+        lat: 48.8566,
+        lng: 2.3522,
+      });
+      const unplanned = buildPlace({
+        id: 2,
+        trip_id: 42,
+        name: 'Unplanned Marker',
+        lat: 48.8666,
+        lng: 2.3622,
+      });
+      const assignment = buildAssignment({
+        id: 10,
+        day_id: day.id,
+        place: planned,
+        order_index: 0,
+      });
+
+      seedStore(useTripStore, {
+        places: [planned, unplanned],
+        assignments: { [String(day.id)]: [assignment] },
+        placesFilter: 'planned',
+      } as any);
+
+      renderPlannerPage(42);
+
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(capturedMapViewProps.current.places).toEqual([planned]);
+      });
+    });
+  });
 });

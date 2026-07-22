@@ -454,8 +454,8 @@ export function useTripPlanner() {
       }
     }
 
-    // Build set of planned place IDs for unplanned filter
-    const plannedIds = placesFilter === 'unplanned'
+    // Build set of planned place IDs for planned/unplanned filters
+    const plannedIds = placesFilter === 'planned' || placesFilter === 'unplanned'
       ? new Set(Object.values(assignments).flatMap(da => da.map(a => a.place?.id).filter(Boolean)))
       : null
 
@@ -468,7 +468,8 @@ export function useTripPlanner() {
         } else if (!placesCategoryFilter.has(String(p.category_id))) return false
       }
       if (hiddenPlaceIds.has(p.id)) return false
-      if (plannedIds && plannedIds.has(p.id)) return false
+      if (placesFilter === 'planned' && plannedIds && !plannedIds.has(p.id)) return false
+      if (placesFilter === 'unplanned' && plannedIds && plannedIds.has(p.id)) return false
       return true
     })
   }, [places, placesCategoryFilter, placesFilter, assignments, expandedDayIds])
