@@ -60,6 +60,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
   return { testDb: db, dbMock: mock };
 });
 
+const testFilesDir = vi.hoisted(() => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trek-collab-test-'));
+  process.env.TREK_FILES_DIR = dir;
+  return dir;
+});
+
 vi.mock('../../src/db/database', () => dbMock);
 vi.mock('../../src/config', () => ({
   JWT_SECRET: 'test-jwt-secret-for-trek-testing-only',
@@ -86,7 +95,7 @@ let app: Application;
 const FIXTURE_PDF = path.join(__dirname, '../fixtures/test.pdf');
 
 // Ensure uploads/files dir exists for collab file uploads
-const uploadsDir = path.join(__dirname, '../../uploads/files');
+const uploadsDir = testFilesDir;
 
 beforeAll(async () => {
   createTables(testDb);
@@ -104,6 +113,7 @@ beforeEach(() => {
 afterAll(async () => {
   await nestApp.close();
   testDb.close();
+  fs.rmSync(uploadsDir, { recursive: true, force: true });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
