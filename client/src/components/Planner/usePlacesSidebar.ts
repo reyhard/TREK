@@ -197,6 +197,7 @@ export function usePlacesSidebar(props: PlacesSidebarProps) {
   ), [assignments])
 
   const filtered = useMemo(() => places.filter(p => {
+    if (filter === 'planned' && !plannedIds.has(p.id)) return false
     if (filter === 'unplanned' && plannedIds.has(p.id)) return false
     if (filter === 'tracks' && !p.route_geometry) return false
     if (categoryFilters.size > 0) {

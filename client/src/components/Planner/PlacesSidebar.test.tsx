@@ -239,6 +239,71 @@ describe('Filter tabs', () => {
     await user.click(screen.getByRole('button', { name: /Unplanned/i }));
     expect(screen.getByText(/All places are planned/i)).toBeInTheDocument();
   });
+
+  it('FE-PLANNER-SIDEBAR-047: "Planned" tab filters out unplanned places and shows its count', async () => {
+    const user = userEvent.setup();
+    const planned = buildPlace({ id: 1, name: 'Planned Place' });
+    const unplanned = buildPlace({ id: 2, name: 'Unplanned Place' });
+    const assignments = { '1': [buildAssignment({ place: planned, day_id: 1 })] };
+
+    render(<PlacesSidebar {...defaultProps} places={[planned, unplanned]} assignments={assignments} />);
+
+    const plannedTab = screen.getByRole('button', { name: /^Planned\b/i });
+    expect(plannedTab).toHaveTextContent('1');
+
+    await user.click(plannedTab);
+
+    expect(screen.getByText('Planned Place')).toBeInTheDocument();
+    expect(screen.queryByText('Unplanned Place')).not.toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-SIDEBAR-048: "Planned" count and results respect the active search', async () => {
+    const user = userEvent.setup();
+    const plannedMuseum = buildPlace({ id: 1, name: 'Planned Museum' });
+    const plannedCafe = buildPlace({ id: 2, name: 'Planned Cafe' });
+    const unplannedMuseum = buildPlace({ id: 3, name: 'Unplanned Museum' });
+    const assignments = {
+      '1': [
+        buildAssignment({ place: plannedMuseum, day_id: 1 }),
+        buildAssignment({ place: plannedCafe, day_id: 1 }),
+      ],
+    };
+
+    render(
+      <PlacesSidebar
+        {...defaultProps}
+        places={[plannedMuseum, plannedCafe, unplannedMuseum]}
+        assignments={assignments}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText(/Search places/i), 'Museum');
+
+    const plannedTab = screen.getByRole('button', { name: /^Planned\b/i });
+    expect(plannedTab).toHaveTextContent('1');
+
+    await user.click(plannedTab);
+
+    expect(screen.getByText('Planned Museum')).toBeInTheDocument();
+    expect(screen.queryByText('Planned Cafe')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unplanned Museum')).not.toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-SIDEBAR-049: "Planned" stays active with zero results and uses the generic empty state', async () => {
+    const user = userEvent.setup();
+    const unplanned = buildPlace({ id: 1, name: 'Only Candidate' });
+
+    render(<PlacesSidebar {...defaultProps} places={[unplanned]} />);
+
+    const plannedTab = screen.getByRole('button', { name: /^Planned\b/i });
+    expect(plannedTab).toHaveTextContent('0');
+
+    await user.click(plannedTab);
+
+    expect(screen.getByText(/No places found/i)).toBeInTheDocument();
+    expect(screen.queryByText('Only Candidate')).not.toBeInTheDocument();
+    expect(plannedTab).toHaveClass('bg-accent');
+  });
 });
 
 // ── Search ────────────────────────────────────────────────────────────────────
