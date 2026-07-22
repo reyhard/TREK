@@ -73,7 +73,7 @@ setInterval(() => {
   for (const [state, data] of pendingStates) {
     if (now - data.createdAt > STATE_TTL) pendingStates.delete(state);
   }
-}, STATE_CLEANUP);
+}, STATE_CLEANUP).unref();
 
 function base64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -108,7 +108,7 @@ setInterval(() => {
   for (const [code, entry] of authCodes) {
     if (now - entry.created > AUTH_CODE_TTL) authCodes.delete(code);
   }
-}, AUTH_CODE_CLEANUP);
+}, AUTH_CODE_CLEANUP).unref();
 
 export function createAuthCode(token: string): string {
   const { v4: uuidv4 } = require('uuid');
