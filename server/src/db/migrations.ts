@@ -133,7 +133,7 @@ export function reconcileAtlasRegions(db: Database.Database): void {
   }
 }
 
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: Database.Database, targetVersion?: number): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
   const versionRow = db.prepare('SELECT version FROM schema_version').get() as { version: number } | undefined;
   let currentVersion = versionRow?.version ?? 0;
@@ -3758,9 +3758,14 @@ function runMigrations(db: Database.Database): void {
     },
   ];
 
-  if (currentVersion < migrations.length) {
-    for (let i = currentVersion; i < migrations.length; i++) {
-      console.log(`[DB] Running migration ${i + 1}/${migrations.length}`);
+  const finalVersion = targetVersion ?? migrations.length;
+  if (finalVersion < currentVersion || finalVersion > migrations.length) {
+    throw new Error(`Invalid migration target ${finalVersion}; current version is ${currentVersion}`);
+  }
+
+  if (currentVersion < finalVersion) {
+    for (let i = currentVersion; i < finalVersion; i++) {
+      console.log(`[DB] Running migration ${i + 1}/${finalVersion}`);
       try {
         const migration = migrations[i];
         if (typeof migration === 'function') {
@@ -3774,7 +3779,7 @@ function runMigrations(db: Database.Database): void {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(i + 1);
     }
-    console.log(`[DB] Migrations complete — schema version ${migrations.length}`);
+    console.log(`[DB] Migrations complete — schema version ${finalVersion}`);
   }
 }
 

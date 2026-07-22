@@ -16,6 +16,7 @@ import { resetDemoUser, saveBaseline, hasBaseline } from '../../src/demo/demo-re
 import { seedDemoData } from '../../src/demo/demo-seed';
 
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,72 +51,63 @@ interface SemanticCheck {
 // Fixture path
 // ---------------------------------------------------------------------------
 
-const FIXTURES_DIR = path.resolve(__dirname, '../fixtures');
-const FORK_FIXTURE_SQLITE = path.join(FIXTURES_DIR, 'pre-upstream-3.4-fork.sqlite');
-const FORK_FIXTURE_MANIFEST = path.join(FIXTURES_DIR, 'pre-upstream-3.4-fork-fixture.json');
+const PRE_173_VERSION = 172;
+const PRE_173_SCHEMA_SHA256 = '0d90f420c443de2dd6e56b115a49b21581d1176d47756d7405fcc940e4bfe2a5';
+const SCHEMA_PATH = path.resolve(__dirname, '../../src/db/schema.ts');
 
-/** Generate the fork fixture on demand so the test is self-sufficient. */
-function generateForkFixture(): void {
-  if (fs.existsSync(FORK_FIXTURE_SQLITE)) return;
+const MANIFEST = {
+  users: [
+    { id: 10, email: 'alice@example.com', username: 'alice_fixture', role: 'user', password_version: 1 },
+    { id: 11, email: 'bob@example.com', username: 'bob_fixture', role: 'user', password_version: 1 },
+  ],
+  trip: {
+    title: 'Pre-Sync Fixture Trip',
+    start_date: '2026-06-01',
+    end_date: '2026-06-14',
+    id: 100,
+    owner_email: 'alice@example.com',
+  },
+  places: [
+    { id: 400, name: 'Eiffel Tower', lat: 48.8566, lng: 2.3522 },
+    { id: 401, name: 'Louvre Museum', lat: 48.8606, lng: 2.3376 },
+    { id: 402, name: 'Colosseum', lat: 41.8902, lng: 12.4922 },
+    { id: 403, name: 'Trevi Fountain', lat: 41.9009, lng: 12.4833 },
+  ],
+  reservations: [
+    { id: 300, title: 'Flight CDG-FCO', status: 'confirmed', type: 'flight', endpoint_count: 2 },
+    { id: 301, title: 'Automated Transit: Paris Metro Line 1', status: 'booked', type: 'transit', endpoint_count: 2 },
+  ],
+  plugins: [{ id: 'travelbuddy', enabled: true }],
+  budget_items: [
+    { name: 'Flight tickets', total_price: 450.0 },
+    { name: 'Hotel Paris', total_price: 1200.0 },
+  ],
+  packing_items: [
+    { name: 'Passport', category: 'Documents' },
+    { name: 'Sunscreen', category: 'Toiletries' },
+  ],
+  todo_items: [{ name: 'Book museum tickets' }, { name: 'Buy travel adapter' }],
+  collab_notes: [{ title: 'Trip Itinerary v2' }],
+  oauth: { client_id: 'test-client-fork' },
+};
 
-  const MANIFEST = {
-    users: [
-      { email: 'alice@example.com', username: 'alice_fixture', role: 'user' },
-      { email: 'bob@example.com', username: 'bob_fixture', role: 'user' },
-    ],
-    trip: {
-      title: 'Pre-Sync Fixture Trip',
-      start_date: '2026-06-01',
-      end_date: '2026-06-14',
-      owner_email: 'alice@example.com',
-    },
-    places: [{ name: 'Eiffel Tower' }, { name: 'Louvre Museum' }, { name: 'Colosseum' }, { name: 'Trevi Fountain' }],
-    reservations: [
-      { title: 'Flight CDG-FCO', status: 'confirmed', type: 'flight', endpoint_count: 2 },
-      { title: 'Automated Transit: Paris Metro Line 1', status: 'booked', type: 'transit', endpoint_count: 2 },
-    ],
-    plugins: [{ id: 'travelbuddy', enabled: true }],
-    budget_items: [
-      { name: 'Flight tickets', total_price: 450.0 },
-      { name: 'Hotel Paris', total_price: 1200.0 },
-    ],
-    packing_items: [
-      { name: 'Passport', category: 'Documents' },
-      { name: 'Sunscreen', category: 'Toiletries' },
-    ],
-    todo_items: [{ name: 'Book museum tickets' }, { name: 'Buy travel adapter' }],
-    collab_notes: [{ title: 'Trip Itinerary v2' }],
-    oauth: { client_id: 'test-client-fork' },
-  };
+/** Build a pre-173 fixture without ever applying migrations 173-176. */
+function generateForkFixture(fixturePath: string): void {
+  const schemaHash = createHash('sha256').update(fs.readFileSync(SCHEMA_PATH)).digest('hex');
+  if (schemaHash !== PRE_173_SCHEMA_SHA256) {
+    throw new Error(
+      'The pre-173 fixture schema changed; create a new versioned historical snapshot before updating it.',
+    );
+  }
 
-  fs.mkdirSync(FIXTURES_DIR, { recursive: true });
-
-  const genDb = new Database(FORK_FIXTURE_SQLITE);
+  const genDb = new Database(fixturePath);
   try {
     genDb.exec('PRAGMA journal_mode = WAL');
     genDb.exec('PRAGMA busy_timeout = 5000');
     genDb.exec('PRAGMA foreign_keys = ON');
 
     createTables(genDb);
-    runMigrations(genDb);
-
-    // Strip schema changes that migrations 173-176 introduce so the fixture
-    // genuinely reflects a pre-173 state. This prevents the test from being
-    // a false positive where all tables/columns already exist and the replay
-    // silently skips via "duplicate column name" / "IF NOT EXISTS" guards.
-    const otCols = genDb.prepare("PRAGMA table_info('oauth_tokens')").all() as Array<{ name: string }>;
-    if (otCols.some((c) => c.name === 'user_password_version')) {
-      genDb.exec('ALTER TABLE oauth_tokens DROP COLUMN user_password_version');
-    }
-    const plCols = genDb.prepare("PRAGMA table_info('plugins')").all() as Array<{ name: string }>;
-    if (plCols.some((c) => c.name === 'trek_range')) {
-      genDb.exec('ALTER TABLE plugins DROP COLUMN trek_range');
-    }
-    genDb.exec('DROP TABLE IF EXISTS hidden_regions');
-    genDb.exec('DROP INDEX IF EXISTS idx_hidden_regions_user');
-
-    // Rewind to the fork's pre-upstream version so runMigrations replays 173+
-    genDb.prepare('UPDATE schema_version SET version = ?').run(172);
+    runMigrations(genDb, PRE_173_VERSION);
 
     // Insert fixture data
     genDb
@@ -238,8 +230,11 @@ function generateForkFixture(): void {
         `INSERT OR IGNORE INTO collab_notes (trip_id,user_id,title,content,category) VALUES(100,10,'Trip Itinerary v2','Finalized itinerary','General')`,
       )
       .run();
-
-    fs.writeFileSync(FORK_FIXTURE_MANIFEST, JSON.stringify(MANIFEST, null, 2));
+    genDb
+      .prepare(
+        `INSERT INTO place_regions (place_id,country_code,region_code,region_name) VALUES(400,'US','US-CA-STALE','Stale region')`,
+      )
+      .run();
   } finally {
     genDb.close();
   }
@@ -335,13 +330,11 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   let db: Database.Database;
 
   beforeAll(() => {
-    generateForkFixture();
-    // Copy fixture to a unique temporary path — never mutate the committed fixture
     tempPath = path.join(
       os.tmpdir(),
       `task-03-fork-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sqlite`,
     );
-    fs.copyFileSync(FORK_FIXTURE_SQLITE, tempPath);
+    generateForkFixture(tempPath);
 
     db = new Database(tempPath);
     db.exec('PRAGMA journal_mode = WAL');
@@ -380,7 +373,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
     });
 
     it('starts at version 172 (pre-173)', () => {
-      expect(fixtureVersion).toBe(172);
+      expect(fixtureVersion).toBe(PRE_173_VERSION);
     });
 
     it('lacks oauth_tokens.user_password_version column (migration 176)', () => {
@@ -400,17 +393,28 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
       expect(table).toBeUndefined();
     });
 
-    it('migration 174 data-DELETE has no effect on empty place_regions table', () => {
-      // Ensure place_regions table exists (created by migration 69) but is empty
+    it('seeds a stale place_regions cache row for migration 174 to delete', () => {
       const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='place_regions'").get();
       expect(table).toBeDefined();
-      const count = (db.prepare('SELECT COUNT(*) AS cnt FROM place_regions').get() as { cnt: number }).cnt;
-      expect(count).toBe(0);
+      const row = db
+        .prepare('SELECT place_id, country_code, region_code, region_name FROM place_regions WHERE place_id = 400')
+        .get() as { place_id: number; country_code: string; region_code: string; region_name: string } | undefined;
+      expect(row).toEqual({
+        place_id: 400,
+        country_code: 'US',
+        region_code: 'US-CA-STALE',
+        region_name: 'Stale region',
+      });
     });
   });
 
   it('has zero foreign key violations after migration', () => {
     expect(verifyForeignKeys(db)).toBe(0);
+  });
+
+  it('clears the stale place_regions cache in migration 174', () => {
+    const row = db.prepare('SELECT place_id FROM place_regions WHERE place_id = 400').get();
+    expect(row).toBeUndefined();
   });
 
   it('second migration run is idempotent', () => {
@@ -421,7 +425,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture users by email', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedUser of manifest.users) {
       const row = db.prepare('SELECT id, username, email, role FROM users WHERE email = ?').get(expectedUser.email) as
         | {
@@ -432,17 +436,19 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
           }
         | undefined;
       expect(row, `User ${expectedUser.email} should exist`).toBeDefined();
+      expect(row!.id).toBe(expectedUser.id);
       expect(row!.username).toBe(expectedUser.username);
       expect(row!.role).toBe(expectedUser.role);
     }
   });
 
   it('preserves fork fixture trip data', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     const trip = db.prepare('SELECT * FROM trips WHERE title = ?').get(manifest.trip.title) as
       | Record<string, unknown>
       | undefined;
     expect(trip, `Trip "${manifest.trip.title}" should exist`).toBeDefined();
+    expect(trip!.id).toBe(manifest.trip.id);
     expect(trip!.start_date).toBe(manifest.trip.start_date);
     expect(trip!.end_date).toBe(manifest.trip.end_date);
     // Owner preserved
@@ -451,24 +457,31 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture places', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedPlace of manifest.places) {
       const place = db.prepare('SELECT * FROM places WHERE name = ?').get(expectedPlace.name) as
         | Record<string, unknown>
         | undefined;
       expect(place, `Place "${expectedPlace.name}" should exist`).toBeDefined();
+      expect(place!.id).toBe(expectedPlace.id);
+      expect(place!.lat).toBe(expectedPlace.lat);
+      expect(place!.lng).toBe(expectedPlace.lng);
+      expect(place!.trip_id).toBe(manifest.trip.id);
     }
   });
 
   it('preserves fork fixture reservations with endpoints', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedRes of manifest.reservations) {
       const reservation = db.prepare('SELECT * FROM reservations WHERE title = ?').get(expectedRes.title) as
         | Record<string, unknown>
         | undefined;
       expect(reservation, `Reservation "${expectedRes.title}" should exist`).toBeDefined();
+      expect(reservation!.id).toBe(expectedRes.id);
       expect(reservation!.status).toBe(expectedRes.status);
       expect(reservation!.type).toBe(expectedRes.type);
+      expect(reservation!.trip_id).toBe(manifest.trip.id);
+      expect(reservation!.day_id).toBe(200);
 
       // Verify endpoints preserved
       const endpoints = db
@@ -479,7 +492,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture plugins', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     for (const expectedPlugin of manifest.plugins) {
       const plugin = db.prepare('SELECT * FROM plugins WHERE id = ?').get(expectedPlugin.id) as
         | Record<string, unknown>
@@ -496,7 +509,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture budget, packing, todo, collab data', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     // Budget
     if (manifest.budget_items?.length) {
       for (const item of manifest.budget_items) {
@@ -532,7 +545,7 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
   });
 
   it('preserves fork fixture OAuth tokens', () => {
-    const manifest = JSON.parse(fs.readFileSync(FORK_FIXTURE_MANIFEST, 'utf8'));
+    const manifest = MANIFEST;
     const expectedClientId = manifest.oauth.client_id;
 
     // oauth_tokens uses client_id = the external client_id from oauth_clients.client_id
