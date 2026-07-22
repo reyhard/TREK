@@ -23,7 +23,11 @@ const capturedMapViewProps: { current: Record<string, any> } = { current: {} };
 vi.mock('../components/Map/MapView', () => ({
   MapView: (props: Record<string, any>) => {
     capturedMapViewProps.current = props;
-    return React.createElement('div', { 'data-testid': 'map-view' });
+    return React.createElement('div', {
+      'data-testid': 'map-view',
+      'data-selected-day-id': props.selectedDayId ?? '',
+      'data-show-transit-routes': String(props.showTransitRoutes),
+    });
   },
 }));
 
@@ -696,6 +700,27 @@ describe('TripPlannerPage', () => {
   });
 
   describe('FE-PAGE-PLANNER-020: handleSelectDay covers plan selection logic', () => {
+    it('passes the selected day to the map and clears it when the selection is cleared', async () => {
+      vi.useFakeTimers();
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument());
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onSelectDay?.(day.id);
+      });
+      expect(screen.getByTestId('map-view')).toHaveAttribute('data-selected-day-id', String(day.id));
+
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onSelectDay?.(null);
+      });
+      expect(screen.getByTestId('map-view')).toHaveAttribute('data-selected-day-id', '');
+    });
+
     it('calls handleSelectDay through captured DayPlanSidebar props', async () => {
       vi.useFakeTimers();
 
@@ -2198,9 +2223,7 @@ describe('TripPlannerPage', () => {
 
       renderPlannerPage(42);
 
-      act(() => {
-        vi.runAllTimers();
-      });
+      act(() => { vi.runAllTimers(); });
       vi.useRealTimers();
 
       await waitFor(() => {
@@ -2291,7 +2314,9 @@ describe('TripPlannerPage', () => {
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
       const { day } = seedTripStore({ id: 42 });
       renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
+      act(() => {
+        vi.runAllTimers();
+      });
       vi.useRealTimers();
       await waitFor(() => {
         expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();

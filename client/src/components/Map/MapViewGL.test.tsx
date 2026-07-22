@@ -960,6 +960,9 @@ describe('MapViewGL', () => {
       />
     );
     await act(async () => {});
-    expect(glBounds.instances.at(-1)?.extend.mock.calls).toEqual([[[139, 35]], [[139.1, 35.1]]]);
+    expect(glBounds.instances[glBounds.instances.length - 1]?.extend.mock.calls).toEqual([
+      [[139, 35]],
+      [[139.1, 35.1]],
+    ]);
   });
 });
