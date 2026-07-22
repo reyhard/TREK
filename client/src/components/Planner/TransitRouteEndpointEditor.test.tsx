@@ -1,4 +1,5 @@
 import userEvent from '@testing-library/user-event';
+import en from '@trek/shared/i18n/en';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '../../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
@@ -102,4 +103,22 @@ it('does not submit an accidental zero for blank coordinates', async () => {
   // Save should be blocked — blank longitude must not coerce to 0
   await user.click(screen.getByRole('button', { name: /^Save$/ }));
   expect(onSave).not.toHaveBeenCalled();
+});
+
+it('renders text from i18n keys rather than hardcoded English', async () => {
+  const user = userEvent.setup();
+  render(<TransitRouteEndpointEditor from={from} to={to} onSave={vi.fn()} onCancel={vi.fn()} />);
+
+  // aria-labels and placeholders flow through t()
+  expect(screen.getByLabelText(`Origin — ${en['transit.endpointName'] as string}`)).toBeInTheDocument();
+  expect(screen.getByLabelText(`Origin — ${en['transit.endpointLatitude'] as string}`)).toBeInTheDocument();
+  expect(screen.getByLabelText(`Origin — ${en['transit.endpointLongitude'] as string}`)).toBeInTheDocument();
+  expect(screen.getAllByPlaceholderText(en['transit.endpointLatitude'] as string)).toHaveLength(2);
+  expect(screen.getAllByPlaceholderText(en['transit.endpointLongitude'] as string)).toHaveLength(2);
+
+  // Trigger validation error — message comes from i18n, not hardcoded string
+  const latInput = screen.getByLabelText(`Origin — ${en['transit.endpointLatitude'] as string}`);
+  await user.clear(latInput);
+  expect(screen.getByText(en['transit.endpointInvalidLatitude'] as string)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled();
 });

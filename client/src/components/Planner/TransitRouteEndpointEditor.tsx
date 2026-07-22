@@ -31,21 +31,24 @@ function normalize(endpoint: EndpointFieldState): { name: string; lat: number; l
   return { name, lat, lng };
 }
 
-function validateField(endpoint: EndpointFieldState): { name?: string; lat?: string; lng?: string } {
+function validateField(
+  endpoint: EndpointFieldState,
+  t: (key: string) => string
+): { name?: string; lat?: string; lng?: string } {
   const errors: { name?: string; lat?: string; lng?: string } = {};
   const name = endpoint.name.trim();
-  if (!name || name.length > 300) errors.name = 'Enter a label between 1 and 300 characters.';
+  if (!name || name.length > 300) errors.name = t('transit.endpointInvalidName');
   if (endpoint.lat.trim() === '') {
-    errors.lat = 'Latitude must be a number from -90 to 90.';
+    errors.lat = t('transit.endpointInvalidLatitude');
   } else {
     const lat = Number(endpoint.lat);
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90) errors.lat = 'Latitude must be a number from -90 to 90.';
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) errors.lat = t('transit.endpointInvalidLatitude');
   }
   if (endpoint.lng.trim() === '') {
-    errors.lng = 'Longitude must be a number from -180 to 180.';
+    errors.lng = t('transit.endpointInvalidLongitude');
   } else {
     const lng = Number(endpoint.lng);
-    if (!Number.isFinite(lng) || lng < -180 || lng > 180) errors.lng = 'Longitude must be a number from -180 to 180.';
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) errors.lng = t('transit.endpointInvalidLongitude');
   }
   return errors;
 }
@@ -63,9 +66,10 @@ interface EndpointCardProps {
   fields: EndpointFieldState;
   errors: ReturnType<typeof validateField>;
   onChange: (fields: EndpointFieldState) => void;
+  t: (key: string) => string;
 }
 
-function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
+function EndpointCard({ label, fields, errors, onChange, t }: EndpointCardProps) {
   const set = (key: keyof EndpointFieldState) => (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange({ ...fields, [key]: e.target.value });
   };
@@ -90,7 +94,7 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
           <input
             value={fields.name}
             onChange={set('name')}
-            aria-label={`${label} — Place or station label`}
+            aria-label={`${label} — ${t('transit.endpointName')}`}
             className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
           />
           {errors.name && (
@@ -104,8 +108,8 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
             <input
               value={fields.lat}
               onChange={set('lat')}
-              aria-label={`${label} — Latitude`}
-              placeholder="Latitude"
+              aria-label={`${label} — ${t('transit.endpointLatitude')}`}
+              placeholder={t('transit.endpointLatitude')}
               className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
             />
             {errors.lat && (
@@ -118,8 +122,8 @@ function EndpointCard({ label, fields, errors, onChange }: EndpointCardProps) {
             <input
               value={fields.lng}
               onChange={set('lng')}
-              aria-label={`${label} — Longitude`}
-              placeholder="Longitude"
+              aria-label={`${label} — ${t('transit.endpointLongitude')}`}
+              placeholder={t('transit.endpointLongitude')}
               className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
             />
             {errors.lng && (
@@ -141,8 +145,8 @@ export default function TransitRouteEndpointEditor({ from, to, onSave, onCancel 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const fromErrors = validateField(fromFields);
-  const toErrors = validateField(toFields);
+  const fromErrors = validateField(fromFields, t);
+  const toErrors = validateField(toFields, t);
   const normalizedFrom = normalize(fromFields);
   const normalizedTo = normalize(toFields);
   const hasChanges = !isUnchanged(normalizedFrom, from) || !isUnchanged(normalizedTo, to);
@@ -164,7 +168,7 @@ export default function TransitRouteEndpointEditor({ from, to, onSave, onCancel 
     try {
       await onSave(input);
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed');
+      setSaveError(err instanceof Error ? err.message : t('common.error'));
       setSaving(false);
     }
   };
@@ -192,12 +196,14 @@ export default function TransitRouteEndpointEditor({ from, to, onSave, onCancel 
         fields={fromFields}
         errors={fromErrors}
         onChange={setFromFields}
+        t={t}
       />
       <EndpointCard
         label={t('transit.endpointDestination')}
         fields={toFields}
         errors={toErrors}
         onChange={setToFields}
+        t={t}
       />
 
       {saveError && (
