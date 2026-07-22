@@ -2961,7 +2961,9 @@ function runMigrations(db: Database.Database): void {
     // Other Atlas tables need NO remap: `visited_countries` / `bucket_list` hold only
     // ISO-3166-1 alpha-2 codes (invariant across the swap), `bucket_list.name` is free
     // text we must not auto-rewrite, and `place_regions` is a re-derivable Nominatim cache.
-    () => { reconcileAtlasRegions(db); },
+    () => {
+      reconcileAtlasRegions(db);
+    },
     () => {
       // AirTrail integration addon — disabled by default (opt-in). Per-user connection
       // lives in Settings → Integrations; this row is only the admin-level global toggle.
