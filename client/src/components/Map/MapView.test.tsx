@@ -78,12 +78,12 @@ vi.mock('leaflet', () => ({
   default: {
     divIcon: vi.fn(() => ({})),
     Icon: { Default: { prototype: {}, mergeOptions: vi.fn() } },
-    latLngBounds: vi.fn(() => ({ isValid: () => true })),
+    latLngBounds: vi.fn((coords: [number, number][]) => ({ coords, isValid: () => true })),
     point: vi.fn((x: number, y: number) => [x, y]),
   },
   divIcon: vi.fn(() => ({})),
   Icon: { Default: { prototype: {}, mergeOptions: vi.fn() } },
-  latLngBounds: vi.fn(() => ({ isValid: () => true })),
+  latLngBounds: vi.fn((coords: [number, number][]) => ({ coords, isValid: () => true })),
   point: vi.fn((x: number, y: number) => [x, y]),
 }));
 
@@ -107,6 +107,36 @@ function buildMapPlace(overrides: Record<string, any> = {}) {
     category_icon: null,
     ...overrides,
   } as any;
+}
+
+function buildRoutableReservation(overrides: Record<string, any> = {}) {
+  return buildReservation({
+    endpoints: [
+      {
+        role: 'from',
+        sequence: 0,
+        name: 'From',
+        code: null,
+        lat: 35,
+        lng: 139,
+        timezone: null,
+        local_time: null,
+        local_date: null,
+      },
+      {
+        role: 'to',
+        sequence: 1,
+        name: 'To',
+        code: null,
+        lat: 35.1,
+        lng: 139.1,
+        timezone: null,
+        local_time: null,
+        local_date: null,
+      },
+    ],
+    ...overrides,
+  } as any);
 }
 
 afterEach(() => {
@@ -545,5 +575,129 @@ describe('MapView', () => {
     } as any);
     render(<MapView reservations={[reservation]} visibleConnectionIds={[42]} />);
     expect(screen.getAllByTestId('polyline').length).toBeGreaterThan(0);
+  });
+
+  it('renders only transit for the selected day and replaces it when the day changes', () => {
+    const dayOneTransit = buildRoutableReservation({ id: 101, type: 'transit', day_id: 101 });
+    const dayTwoTransit = buildRoutableReservation({
+      id: 102,
+      type: 'transit',
+      day_id: 102,
+      endpoints: [
+        {
+          role: 'from',
+          sequence: 0,
+          name: 'From',
+          code: null,
+          lat: 34.6,
+          lng: 135.4,
+          timezone: null,
+          local_time: null,
+          local_date: null,
+        },
+        {
+          role: 'to',
+          sequence: 1,
+          name: 'To',
+          code: null,
+          lat: 34.7,
+          lng: 135.5,
+          timezone: null,
+          local_time: null,
+          local_date: null,
+        },
+      ],
+    });
+    const { rerender } = render(
+      <MapView
+        reservations={[dayOneTransit, dayTwoTransit]}
+        selectedDayId={101}
+        showTransitRoutes
+        visibleConnectionIds={[]}
+      />
+    );
+
+    expect(screen.getAllByTestId('marker').map((node) => [Number(node.dataset.lat), Number(node.dataset.lng)])).toEqual(
+      [
+        [35, 139],
+        [35.1, 139.1],
+      ]
+    );
+
+    rerender(
+      <MapView
+        reservations={[dayOneTransit, dayTwoTransit]}
+        selectedDayId={102}
+        showTransitRoutes
+        visibleConnectionIds={[]}
+      />
+    );
+
+    expect(screen.getAllByTestId('marker').map((node) => [Number(node.dataset.lat), Number(node.dataset.lng)])).toEqual(
+      [
+        [34.6, 135.4],
+        [34.7, 135.5],
+      ]
+    );
+  });
+
+  it('keeps manually visible non-transit routes from another day', () => {
+    const flight = buildRoutableReservation({ id: 201, type: 'flight', day_id: 99 });
+    render(<MapView reservations={[flight]} selectedDayId={1} showTransitRoutes visibleConnectionIds={[201]} />);
+    expect(screen.getAllByTestId('marker').map((node) => [Number(node.dataset.lat), Number(node.dataset.lng)])).toEqual(
+      [
+        [35, 139],
+        [35.1, 139.1],
+      ]
+    );
+  });
+
+  it('excludes off-day transit endpoints from fit bounds', async () => {
+    const L = (await import('leaflet')).default as unknown as { latLngBounds: ReturnType<typeof vi.fn> };
+    const selectedTransit = buildRoutableReservation({ id: 301, type: 'transit', day_id: 1 });
+    const offDayTransit = buildRoutableReservation({
+      id: 302,
+      type: 'transit',
+      day_id: 2,
+      endpoints: [
+        {
+          role: 'from',
+          sequence: 0,
+          name: 'From',
+          code: null,
+          lat: 34.6,
+          lng: 135.4,
+          timezone: null,
+          local_time: null,
+          local_date: null,
+        },
+        {
+          role: 'to',
+          sequence: 1,
+          name: 'To',
+          code: null,
+          lat: 34.7,
+          lng: 135.5,
+          timezone: null,
+          local_time: null,
+          local_date: null,
+        },
+      ],
+    });
+    const { rerender } = render(
+      <MapView reservations={[selectedTransit, offDayTransit]} selectedDayId={1} showTransitRoutes fitKey={1} />
+    );
+    L.latLngBounds.mockClear();
+
+    rerender(
+      <MapView reservations={[selectedTransit, offDayTransit]} selectedDayId={1} showTransitRoutes fitKey={2} />
+    );
+
+    await waitFor(() =>
+      expect(L.latLngBounds).toHaveBeenCalledWith([
+        [35, 139],
+        [35.1, 139.1],
+      ])
+    );
   });
 });

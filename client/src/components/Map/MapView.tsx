@@ -541,6 +541,7 @@ export const MapView = memo(function MapView({
   showReservationStats = false,
   visibleConnectionIds = [] as number[],
   showTransitRoutes = true,
+  selectedDayId = null,
   onReservationClick,
   pois = [] as Poi[],
   onPoiClick,
@@ -564,18 +565,22 @@ export const MapView = memo(function MapView({
       )),
     [pois, onPoiClick]
   );
+  const routeVisibilityOptions = useMemo(
+    () => ({ visibleConnectionIds, showTransitRoutes, selectedDayId }),
+    [visibleConnectionIds, showTransitRoutes, selectedDayId]
+  );
   const visibleReservations = useMemo(
-    () => visibleRouteReservations(reservations, { visibleConnectionIds, showTransitRoutes }),
-    [reservations, visibleConnectionIds, showTransitRoutes]
+    () => visibleRouteReservations(reservations, routeVisibilityOptions),
+    [reservations, routeVisibilityOptions]
   );
   // Real road geometry for car/bus/taxi/bicycle bookings (straight line until it loads/if it fails).
   const transportRoutes = useTransportRoutes(visibleReservations);
   const reservationEndpointCoords = useMemo<[number, number][]>(
     () =>
-      visibleReservationEndpointPoints(reservations, { visibleConnectionIds, showTransitRoutes }).map(
+      visibleReservationEndpointPoints(reservations, routeVisibilityOptions).map(
         (p) => [p.lat!, p.lng!] as [number, number]
       ),
-    [reservations, visibleConnectionIds, showTransitRoutes]
+    [reservations, routeVisibilityOptions]
   );
   // Dynamic padding: account for sidebars + bottom inspector + day detail panel  // The chrome overlaying the map (side panels, day detail). Kept as a plain box so both the
   // Leaflet fit options and the opening-camera maths can read the same numbers.
@@ -604,7 +609,7 @@ export const MapView = memo(function MapView({
   // camera belongs to the user. `framed` is false when no place has coordinates (a new trip),
   // and then the caller's center/zoom stands.
   const [initialView] = useState(() => {
-    const endpointPoints = visibleReservationEndpointPoints(reservations, { visibleConnectionIds, showTransitRoutes });
+    const endpointPoints = visibleReservationEndpointPoints(reservations, routeVisibilityOptions);
     const framed = computeMapViewport([...(dayPlaces.length > 0 ? dayPlaces : places), ...endpointPoints], {
       tileSize: TILE_SIZE_RASTER,
       padding: paddingBox,
