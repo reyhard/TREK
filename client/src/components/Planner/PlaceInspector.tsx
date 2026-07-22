@@ -460,7 +460,9 @@ export default function PlaceInspector({
               style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '9px 12px' }}
             >
               <MapPin size={14} aria-hidden="true" />
-              <span>{isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}</span>
+              <span>
+                {isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}
+              </span>
             </div>
           )}
           {/* Info-Chips — hidden on mobile, shown on desktop */}
@@ -1699,7 +1701,8 @@ function PlaceExtras({
                     {formatElevation(movement.minElevation!, distanceUnit)}
                   </div>
                   <div className="text-content-muted" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>
-                    ↑{formatElevation(movement.elevationGain, distanceUnit)} &nbsp;↓{formatElevation(movement.elevationLoss, distanceUnit)}
+                    ↑{formatElevation(movement.elevationGain, distanceUnit)} &nbsp;↓
+                    {formatElevation(movement.elevationLoss, distanceUnit)}
                   </div>
                 </>
               )}

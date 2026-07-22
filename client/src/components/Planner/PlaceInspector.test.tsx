@@ -159,14 +159,18 @@ describe('PlaceInspector', () => {
     const onCancelReposition = vi.fn();
     render(<PlaceInspector {...defaultProps} canReposition isRepositioning onCancelReposition={onCancelReposition} />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Drag the marker to its new location. Press Escape to cancel.');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Drag the marker to its new location. Press Escape to cancel.'
+    );
     await user.click(screen.getByRole('button', { name: 'Cancel repositioning' }));
     expect(onCancelReposition).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'Reposition on map' })).toBeNull();
   });
 
   it('FE-PLANNER-INSPECTOR-046: saving reposition mode announces saving and disables Cancel', () => {
-    render(<PlaceInspector {...defaultProps} canReposition isRepositioning isRepositionSaving onCancelReposition={vi.fn()} />);
+    render(
+      <PlaceInspector {...defaultProps} canReposition isRepositioning isRepositionSaving onCancelReposition={vi.fn()} />
+    );
 
     expect(screen.getByRole('status')).toHaveTextContent('Saving the new marker position');
     expect(screen.getByRole('button', { name: 'Cancel repositioning' })).toBeDisabled();

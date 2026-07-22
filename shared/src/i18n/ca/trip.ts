@@ -40,6 +40,7 @@ const trip: TranslationStrings = {
   'trip.invite.invalidTitle': 'Invitació no disponible',
   'trip.invite.invalid': "Aquest enllaç d'invitació no és vàlid o ha caducat.",
   'trip.invite.backToDashboard': 'Tornar al tauler',
+  'transit.planConnector': 'Plan public transit', // en-fallback
   'transit.title': 'Transport públic',
   'transit.from': 'Des de',
   'transit.to': 'Fins a',
