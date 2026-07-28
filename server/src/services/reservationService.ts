@@ -473,7 +473,7 @@ interface UpdateReservationData {
   location?: string;
   confirmation_number?: string;
   notes?: string;
-  url?: string;
+  url?: string | null;
   day_id?: number;
   end_day_id?: number | null;
   place_id?: number;

@@ -209,6 +209,126 @@ describe('Tool: create_reservation', () => {
 // update_reservation
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// reservation url
+// ---------------------------------------------------------------------------
+
+describe('Tool: reservation url', () => {
+  it('create_reservation accepts optional url and persists it', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: {
+          tripId: trip.id,
+          title: 'Osaka Airbnb',
+          type: 'hotel',
+          url: 'https://pl.airbnb.com/rooms/1358386861453348134',
+        },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.url).toBe('https://pl.airbnb.com/rooms/1358386861453348134');
+    });
+  });
+
+  it('create_reservation omitting url sets null', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: { tripId: trip.id, title: 'No URL', type: 'other' },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.url).toBeNull();
+    });
+  });
+
+  it('create_reservation rejects empty url string', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: { tripId: trip.id, title: 'Bad', type: 'other', url: '' },
+      });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  it('update_reservation with url string replaces existing url', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const reservation = createReservation(testDb, trip.id, { title: 'Stay', type: 'hotel' });
+    // Manually set a URL via raw DB to simulate existing URL
+    testDb.prepare('UPDATE reservations SET url = ? WHERE id = ?').run('https://old.example.com', reservation.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_reservation',
+        arguments: {
+          tripId: trip.id,
+          reservationId: reservation.id,
+          url: 'https://new.example.com',
+        },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.url).toBe('https://new.example.com');
+    });
+  });
+
+  it('update_reservation with null clears url', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const reservation = createReservation(testDb, trip.id, { title: 'Stay', type: 'hotel' });
+    testDb.prepare('UPDATE reservations SET url = ? WHERE id = ?').run('https://old.example.com', reservation.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_reservation',
+        arguments: {
+          tripId: trip.id,
+          reservationId: reservation.id,
+          url: null,
+        },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.url).toBeNull();
+    });
+  });
+
+  it('update_reservation omitting url preserves existing url', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const reservation = createReservation(testDb, trip.id, { title: 'Stay', type: 'hotel' });
+    testDb.prepare('UPDATE reservations SET url = ? WHERE id = ?').run('https://keep.example.com', reservation.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_reservation',
+        arguments: {
+          tripId: trip.id,
+          reservationId: reservation.id,
+          title: 'Updated Title',
+        },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.url).toBe('https://keep.example.com');
+    });
+  });
+
+  it('update_reservation rejects empty url string', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const reservation = createReservation(testDb, trip.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_reservation',
+        arguments: { tripId: trip.id, reservationId: reservation.id, url: '' },
+      });
+      expect(result.isError).toBe(true);
+    });
+  });
+});
+
 describe('Tool: update_reservation', () => {
   it('updates reservation fields', async () => {
     const { user } = createUser(testDb);

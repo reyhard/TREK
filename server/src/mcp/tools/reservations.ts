@@ -33,7 +33,7 @@ export function registerReservationTools(server: McpServer, userId: number, scop
     'create_reservation',
     {
       description:
-        'Recommend a reservation for a trip. Created as pending — the user must confirm it. For flights, trains, cars, and cruises, use create_transport instead. Linking: hotel → use place_id + start_day_id + end_day_id (all three required to create the accommodation link); restaurant/event/tour/activity/other → use assignment_id. Set price to record the cost; it will appear on the booking and in the Budget tab.',
+        'Recommend a reservation for a trip. Created as pending — the user must confirm it. For flights, trains, cars, and cruises, use create_transport instead. Linking: hotel → use place_id + start_day_id + end_day_id (all three required to create the accommodation link); restaurant/event/tour/activity/other → use assignment_id. Set price to record the cost; it will appear on the booking and in the Budget tab. Use url to set a booking or listing link (displayed as Link in TREK).',
       inputSchema: {
         tripId: z.number().int().positive(),
         title: z.string().min(1).max(200),
@@ -76,6 +76,12 @@ export function registerReservationTools(server: McpServer, userId: number, scop
           .max(100)
           .optional()
           .describe('Budget category for the price entry (defaults to reservation type)'),
+        url: z
+          .string()
+          .min(1)
+          .max(2048)
+          .optional()
+          .describe('Booking or listing URL displayed in the reservation Link field in TREK'),
       },
       annotations: TOOL_ANNOTATIONS_NON_IDEMPOTENT,
     },
@@ -96,6 +102,7 @@ export function registerReservationTools(server: McpServer, userId: number, scop
       assignment_id,
       price,
       budget_category,
+      url,
     }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
@@ -143,6 +150,7 @@ export function registerReservationTools(server: McpServer, userId: number, scop
         location,
         confirmation_number,
         notes,
+        url,
         day_id,
         place_id,
         assignment_id,
@@ -172,7 +180,7 @@ export function registerReservationTools(server: McpServer, userId: number, scop
     'update_reservation',
     {
       description:
-        'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. For flights, trains, cars, and cruises, use update_transport instead. Linking: hotel → use place_id to link to an accommodation place; restaurant/event/tour/activity/other → use assignment_id to link to a day assignment.',
+        'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. For flights, trains, cars, and cruises, use update_transport instead. Linking: hotel → use place_id to link to an accommodation place; restaurant/event/tour/activity/other → use assignment_id to link to a day assignment. Use url to set or replace the booking link (displayed as Link in TREK); pass null to clear it.',
       inputSchema: {
         tripId: z.number().int().positive(),
         reservationId: z.number().int().positive(),
@@ -205,6 +213,13 @@ export function registerReservationTools(server: McpServer, userId: number, scop
           .describe(
             'Link to a day assignment (use for restaurant, train, car, cruise, event, tour, activity, other), or null to unlink',
           ),
+        url: z
+          .string()
+          .min(1)
+          .max(2048)
+          .nullable()
+          .optional()
+          .describe('Booking or listing URL displayed in the reservation Link field in TREK; pass null to clear it'),
       },
       annotations: TOOL_ANNOTATIONS_WRITE,
     },
@@ -220,6 +235,7 @@ export function registerReservationTools(server: McpServer, userId: number, scop
       status,
       place_id,
       assignment_id,
+      url,
     }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
@@ -246,6 +262,7 @@ export function registerReservationTools(server: McpServer, userId: number, scop
           confirmation_number,
           notes,
           status,
+          url,
           place_id: place_id !== undefined ? (place_id ?? undefined) : undefined,
           assignment_id: assignment_id !== undefined ? (assignment_id ?? undefined) : undefined,
         },
