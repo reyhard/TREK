@@ -3,12 +3,7 @@
  */
 import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
-import {
-  createBudgetItem,
-  createReservation,
-  createTrip,
-  createUser,
-} from '../../helpers/factories';
+import { createBudgetItem, createReservation, createTrip, createUser } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
 
@@ -333,9 +328,7 @@ describe('Budget/reservation relationship tool scopes', () => {
         for (const name of ['link_budget_item_to_reservation', 'unlink_budget_item_from_reservation']) {
           const result = await h.client.callTool({
             name,
-            arguments: name.startsWith('link_')
-              ? { tripId: 1, itemId: 1, reservationId: 1 }
-              : { tripId: 1, itemId: 1 },
+            arguments: name.startsWith('link_') ? { tripId: 1, itemId: 1, reservationId: 1 } : { tripId: 1, itemId: 1 },
           });
           expect(result.isError).toBe(true);
         }
@@ -353,9 +346,7 @@ describe('Budget/reservation relationship tool scopes', () => {
         for (const name of ['link_budget_item_to_reservation', 'unlink_budget_item_from_reservation']) {
           const result = await h.client.callTool({
             name,
-            arguments: name.startsWith('link_')
-              ? { tripId: 1, itemId: 1, reservationId: 1 }
-              : { tripId: 1, itemId: 1 },
+            arguments: name.startsWith('link_') ? { tripId: 1, itemId: 1, reservationId: 1 } : { tripId: 1, itemId: 1 },
           });
           expect(result.isError).toBe(true);
         }
@@ -399,9 +390,7 @@ describe('Budget/reservation relationship tool scopes', () => {
         for (const name of ['link_budget_item_to_reservation', 'unlink_budget_item_from_reservation']) {
           const result = await h.client.callTool({
             name,
-            arguments: name.startsWith('link_')
-              ? { tripId: 1, itemId: 1, reservationId: 1 }
-              : { tripId: 1, itemId: 1 },
+            arguments: name.startsWith('link_') ? { tripId: 1, itemId: 1, reservationId: 1 } : { tripId: 1, itemId: 1 },
           });
           expect(result.isError).toBe(true);
         }

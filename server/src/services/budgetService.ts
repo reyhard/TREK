@@ -438,10 +438,7 @@ export function unlinkBudgetItemFromReservation(
       return { ok: true, item: getBudgetItem(itemId, tripId)!, changed: false };
     }
 
-    db.prepare('UPDATE budget_items SET reservation_id = NULL WHERE id = ? AND trip_id = ?').run(
-      itemId,
-      tripId,
-    );
+    db.prepare('UPDATE budget_items SET reservation_id = NULL WHERE id = ? AND trip_id = ?').run(itemId, tripId);
 
     return { ok: true, item: getBudgetItem(itemId, tripId)!, changed: true };
   })();

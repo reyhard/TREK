@@ -4,13 +4,7 @@ import {
   linkExistingBudgetItemToReservation,
   unlinkBudgetItemFromReservation,
 } from '../../../src/services/budgetService';
-import {
-  addTripMember,
-  createBudgetItem,
-  createReservation,
-  createTrip,
-  createUser,
-} from '../../helpers/factories';
+import { addTripMember, createBudgetItem, createReservation, createTrip, createUser } from '../../helpers/factories';
 import { resetTestDb } from '../../helpers/test-db';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -71,12 +65,12 @@ describe('linkExistingBudgetItemToReservation', () => {
       category: 'accommodation',
       total_price: 120,
     });
-    testDb.prepare(
-      'INSERT INTO budget_item_members (budget_item_id, user_id, paid) VALUES (?, ?, 0)',
-    ).run(item.id, member.id);
-    testDb.prepare(
-      'INSERT INTO budget_item_payers (budget_item_id, user_id, amount) VALUES (?, ?, ?)',
-    ).run(item.id, owner.id, 120);
+    testDb
+      .prepare('INSERT INTO budget_item_members (budget_item_id, user_id, paid) VALUES (?, ?, 0)')
+      .run(item.id, member.id);
+    testDb
+      .prepare('INSERT INTO budget_item_payers (budget_item_id, user_id, amount) VALUES (?, ?, ?)')
+      .run(item.id, owner.id, 120);
 
     const result = linkExistingBudgetItemToReservation(trip.id, item.id, reservation.id);
 
@@ -93,10 +87,7 @@ describe('linkExistingBudgetItemToReservation', () => {
     const trip = createTrip(testDb, user.id);
     const reservation = createReservation(testDb, trip.id);
     const item = createBudgetItem(testDb, trip.id);
-    testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id = ?').run(
-      reservation.id,
-      item.id,
-    );
+    testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id = ?').run(reservation.id, item.id);
 
     const result = linkExistingBudgetItemToReservation(trip.id, item.id, reservation.id);
 
@@ -122,8 +113,7 @@ describe('linkExistingBudgetItemToReservation', () => {
       linkedReservationId: first.id,
     });
     expect(
-      (testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any)
-        .reservation_id,
+      (testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id,
     ).toBe(first.id);
   });
 
@@ -202,9 +192,9 @@ describe('unlinkBudgetItemFromReservation', () => {
       category: 'transport',
       total_price: 88,
     });
-    testDb.prepare(
-      'UPDATE budget_items SET reservation_id = ?, note = ?, currency = ?, expense_date = ? WHERE id = ?',
-    ).run(reservation.id, 'Non-refundable', 'EUR', '2026-10-01', item.id);
+    testDb
+      .prepare('UPDATE budget_items SET reservation_id = ?, note = ?, currency = ?, expense_date = ? WHERE id = ?')
+      .run(reservation.id, 'Non-refundable', 'EUR', '2026-10-01', item.id);
 
     const result = unlinkBudgetItemFromReservation(trip.id, item.id);
 

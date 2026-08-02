@@ -360,6 +360,10 @@ For flights, trains, cars, and cruises, use the **Transport** tools above. Reser
 | `delete_budget_item`       | Remove a budget item.                                                                 |
 | `set_budget_item_members`  | Set which trip members are splitting a budget item (replaces current member list).    |
 | `toggle_budget_member_paid`| Mark or unmark a member as having paid their share of a budget item.                  |
+| `link_budget_item_to_reservation` | Link an existing budget item to an existing reservation in the same trip. Multiple costs may reference one reservation; a cost already linked elsewhere must be unlinked first. Requires both `budget:write` and `reservations:write`. |
+| `unlink_budget_item_from_reservation` | Clear a budget item's reservation link without deleting the cost or reservation. Requires both `budget:write` and `reservations:write`. |
+
+> Cost–reservation relationship tools require both Budget and Reservations write scopes. The relationship is one reservation to many costs, while each individual cost can link to at most one reservation.
 
 ### Packing
 
