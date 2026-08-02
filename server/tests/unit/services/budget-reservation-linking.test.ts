@@ -184,14 +184,22 @@ describe('linkExistingBudgetItemToReservation', () => {
 
 describe('unlinkBudgetItemFromReservation', () => {
   it('unlinks the item while preserving all cost data', () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
+    const { user: owner } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id);
+    addTripMember(testDb, trip.id, member.id);
     const reservation = createReservation(testDb, trip.id);
     const item = createBudgetItem(testDb, trip.id, {
       name: 'Rail pass',
       category: 'transport',
       total_price: 88,
     });
+    testDb
+      .prepare('INSERT INTO budget_item_members (budget_item_id, user_id, paid) VALUES (?, ?, 0)')
+      .run(item.id, member.id);
+    testDb
+      .prepare('INSERT INTO budget_item_payers (budget_item_id, user_id, amount) VALUES (?, ?, ?)')
+      .run(item.id, owner.id, 88);
     testDb
       .prepare('UPDATE budget_items SET reservation_id = ?, note = ?, currency = ?, expense_date = ? WHERE id = ?')
       .run(reservation.id, 'Non-refundable', 'EUR', '2026-10-01', item.id);
@@ -211,6 +219,8 @@ describe('unlinkBudgetItemFromReservation', () => {
       currency: 'EUR',
       expense_date: '2026-10-01',
     });
+    expect(result.item.members?.map((m) => m.user_id)).toEqual([member.id]);
+    expect(result.item.payers?.map((p) => p.user_id)).toEqual([owner.id]);
     expect(testDb.prepare('SELECT id FROM reservations WHERE id = ?').get(reservation.id)).toBeDefined();
   });
 
