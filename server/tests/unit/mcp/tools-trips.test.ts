@@ -377,6 +377,18 @@ describe('Tool: list_trips', () => {
     });
   });
 
+  // Regression: static-token deprecation notice must NOT appear in successful results.
+  // The old code would return isError:true with a deprecation text on the first tool call
+  // when using a static token. These assertions guard against re-introducing that pattern.
+  it('returns successful result (not isError) for owner with trips', async () => {
+    const { user } = createUser(testDb);
+    createTrip(testDb, user.id, { title: 'My Trip' });
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({ name: 'list_trips', arguments: {} });
+      expect(result.isError).toBeFalsy();
+    });
+  });
+
   it('excludes archived trips by default', async () => {
     const { user } = createUser(testDb);
     createTrip(testDb, user.id, { title: 'Active' });
@@ -410,6 +422,16 @@ describe('Tool: list_trips', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: get_trip_summary', () => {
+  // Regression: static-token deprecation notice must NOT appear in summary results.
+  it('returns successful result (not isError) for accessible trip', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Summary' });
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({ name: 'get_trip_summary', arguments: { tripId: trip.id } });
+      expect(result.isError).toBeFalsy();
+    });
+  });
+
   it('returns full denormalized trip snapshot', async () => {
     const { user } = createUser(testDb);
     const { user: member } = createUser(testDb);

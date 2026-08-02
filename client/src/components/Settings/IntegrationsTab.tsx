@@ -500,9 +500,6 @@ function IntegrationsMcpSection(props: any) {
           }`}
         >
           {t('settings.mcp.apiTokens')}
-          <span className="rounded border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#b45309]">
-            Deprecated
-          </span>
         </button>
       </div>
 
@@ -685,14 +682,9 @@ function IntegrationsMcpSection(props: any) {
         </>
       )}
 
-      {/* API Tokens tab (deprecated) */}
+      {/* API Tokens tab */}
       {activeMcpTab === 'apitokens' && (
         <>
-          <div className="flex items-baseline gap-2 rounded-lg border border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.06)] px-3 py-2.5">
-            <span className="flex-shrink-0 leading-none text-amber-500">⚠</span>
-            <p className="text-xs text-[#92400e]">{t('settings.mcp.apiTokensDeprecated')}</p>
-          </div>
-
           {/* JSON config — API Token (collapsible) */}
           <div className="overflow-hidden rounded-lg border border-edge">
             <button

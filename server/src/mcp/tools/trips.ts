@@ -41,12 +41,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
 import { z } from 'zod';
 
-export function registerTripTools(
-  server: McpServer,
-  userId: number,
-  scopes: string[] | null,
-  getDeprecationNotice: () => string | null = () => null,
-): void {
+export function registerTripTools(server: McpServer, userId: number, scopes: string[] | null): void {
   const R = canReadTrips(scopes);
   const W = canWrite(scopes, 'trips');
   const D = canDeleteTrips(scopes);
@@ -205,16 +200,7 @@ export function registerTripTools(
       annotations: TOOL_ANNOTATIONS_READONLY,
     },
     async ({ include_archived }) => {
-      const notice = getDeprecationNotice();
       const trips = listTrips(userId, include_archived ? null : 0);
-      if (notice)
-        return {
-          isError: true as const,
-          content: [
-            { type: 'text' as const, text: notice },
-            { type: 'text' as const, text: JSON.stringify({ trips }, null, 2) },
-          ],
-        };
       return ok({ trips });
     },
   );
@@ -255,13 +241,6 @@ export function registerTripTools(
         if (collabFeatures?.polls) pollCount = listPolls(tripId).length;
         if (collabFeatures?.chat) messageCount = countMessages(tripId);
       }
-      const notice = getDeprecationNotice();
-      // The core bucket (trip metadata, members WITH email, days with place
-      // coordinates, accommodations) carries confidential PII and itinerary data,
-      // so it is gated on trips:read just like the sub-sections below. Without a
-      // read scope the tool still resolves trip id + title so it stays usable for
-      // navigation (list_trips already covers discovery). trek_ PATs (null scopes)
-      // and any trips:read holder keep the full payload — no behaviour change.
       const summaryData = {
         trip: R ? summary.trip : { id: summary.trip.id, title: summary.trip.title },
         members: R ? summary.members : undefined,
@@ -278,14 +257,6 @@ export function registerTripTools(
         pollCount,
         messageCount,
       };
-      if (notice)
-        return {
-          isError: true as const,
-          content: [
-            { type: 'text' as const, text: notice },
-            { type: 'text' as const, text: JSON.stringify(summaryData, null, 2) },
-          ],
-        };
       return ok(summaryData);
     },
   );

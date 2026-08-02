@@ -18,14 +18,8 @@ import { registerTripTools } from './tools/trips';
 import { registerVacayTools } from './tools/vacay';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
-export function registerTools(
-  server: McpServer,
-  userId: number,
-  scopes: string[] | null,
-  isStaticToken = false,
-  getDeprecationNotice: () => string | null = () => null,
-): void {
-  registerTripTools(server, userId, scopes, getDeprecationNotice);
+export function registerTools(server: McpServer, userId: number, scopes: string[] | null): void {
+  registerTripTools(server, userId, scopes);
 
   registerPlaceTools(server, userId, scopes);
 
@@ -59,5 +53,5 @@ export function registerTools(
 
   registerTodoTools(server, userId, scopes);
 
-  registerMcpPrompts(server, userId, isStaticToken);
+  registerMcpPrompts(server, userId);
 }

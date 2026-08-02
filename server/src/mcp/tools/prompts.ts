@@ -7,29 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 
 import { z } from 'zod';
 
-export function registerMcpPrompts(server: McpServer, _userId: number, isStaticToken = false): void {
-  if (isStaticToken) {
-    server.registerPrompt(
-      'token_auth_notice',
-      {
-        title: 'Static Token Auth Notice',
-        description: 'Notification that this session uses a static API token which will be deprecated',
-        argsSchema: {},
-      },
-      async () => ({
-        description: 'Static token deprecation notice',
-        messages: [
-          {
-            role: 'user' as const,
-            content: {
-              type: 'text' as const,
-              text: '⚠️ This MCP connection is authenticated with a static API token (trek_…). Static token authentication will be deprecated in a future version of TREK. Please inform the user that they should migrate to OAuth 2.1 by going to Settings → Integrations → MCP → OAuth Clients in TREK and registering an OAuth 2.1 application for their MCP client.',
-            },
-          },
-        ],
-      }),
-    );
-  }
+export function registerMcpPrompts(server: McpServer, _userId: number): void {
   const userId = _userId;
 
   server.registerPrompt(

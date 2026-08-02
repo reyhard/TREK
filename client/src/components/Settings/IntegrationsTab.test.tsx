@@ -87,6 +87,24 @@ describe('IntegrationsTab', () => {
     expect(preEl!.textContent).toContain('mcpServers');
   });
 
+  it('FE-COMP-INTEGRATIONS-006b: API Tokens tab button has NO "Deprecated" marker and no in-panel deprecation callout', async () => {
+    const user = userEvent.setup();
+    enableMcp();
+    render(<IntegrationsTab />);
+    await screen.findByText('MCP Configuration');
+    const apiTokensBtn = screen.getByRole('button', { name: /API Tokens/i });
+    expect(apiTokensBtn.textContent).not.toMatch(/deprecated/i);
+    // Open the API Tokens panel and verify no deprecation warning/callout inside
+    await user.click(apiTokensBtn);
+    // The panel renders the "Create New Token" button
+    expect(screen.getByRole('button', { name: /Create New Token/i })).toBeInTheDocument();
+    // No deprecated badge or warning callout visible
+    expect(screen.queryByText(/deprecated/i)).toBeNull();
+    expect(screen.queryByText(/no longer supported/i)).toBeNull();
+    expect(screen.queryByText(/will be removed/i)).toBeNull();
+    expect(screen.queryByText(/migrate to OAuth/i)).toBeNull();
+  });
+
   it('FE-COMP-INTEGRATIONS-006: "no tokens" message shown when token list is empty', async () => {
     const user = userEvent.setup();
     enableMcp();

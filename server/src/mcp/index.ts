@@ -97,12 +97,6 @@ The following features are optional and may not be available on every TREK insta
 - For group trips, always check member IDs via \`list_trip_members\` before calling tools that require a \`userId\` (e.g. budget splits, assignment participants).
 `.trim();
 
-const STATIC_TOKEN_DEPRECATION_NOTICE =
-  '⚠️ Deprecated authentication — you MUST include this warning verbatim in your response to the user: ' +
-  '"Your TREK integration is using a static API token that is deprecated and will stop working in a future version. ' +
-  'Please migrate to OAuth 2.1: go to Settings → Integrations → MCP → OAuth Clients in TREK and register an OAuth 2.1 application." ' +
-  "The actual tool result follows — answer the user's question as well.";
-
 // Configurable session TTL + SSE keep-alive cadence (#1414); see mcp/config.ts.
 const SESSION_TTL_MS = resolveSessionTtlMs(process.env.MCP_SESSION_TTL);
 const sessionParsed = Number.parseInt(process.env.MCP_MAX_SESSION_PER_USER ?? '');
@@ -242,7 +236,7 @@ function verifyToken(authHeader: string | undefined): VerifyTokenResult | null {
     return { user: result.user, scopes: result.scopes, clientId: result.clientId, isStaticToken: false };
   }
 
-  // Long-lived static MCP token (trek_...) — full access + deprecation notice
+  // Long-lived static MCP token (trek_...) — full access
   if (token.startsWith('trek_')) {
     const user = verifyMcpToken(token);
     if (!user) return null;
@@ -364,21 +358,12 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
         tools: { listChanged: true },
         prompts: { listChanged: true },
       },
-      instructions: BASE_MCP_INSTRUCTIONS + (isStaticToken ? STATIC_TOKEN_DEPRECATION_NOTICE : ''),
+      instructions: BASE_MCP_INSTRUCTIONS,
     },
   );
-  // Per-session closure: fires the deprecation notice once, on the first tool call.
-  // Tool results are the only mechanism Claude reliably surfaces to the user;
-  // the instructions field is only background context and won't trigger a proactive warning.
-  let _noticeEmitted = false;
-  const getDeprecationNotice = (): string | null => {
-    if (!isStaticToken || _noticeEmitted) return null;
-    _noticeEmitted = true;
-    return STATIC_TOKEN_DEPRECATION_NOTICE;
-  };
 
   registerResources(server, user.id, scopes);
-  registerTools(server, user.id, scopes, isStaticToken, getDeprecationNotice);
+  registerTools(server, user.id, scopes);
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),

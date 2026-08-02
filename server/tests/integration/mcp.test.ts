@@ -11,8 +11,7 @@ import { createTables } from '../../src/db/schema';
 import { closeMcpSessions } from '../../src/mcp/index';
 import { sessions } from '../../src/mcp/sessionManager';
 import { generateToken } from '../helpers/auth';
-import { createUser } from '../helpers/factories';
-import { createMcpToken } from '../helpers/factories';
+import { createUser, createMcpToken, createTrip } from '../helpers/factories';
 import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
 
@@ -221,6 +220,61 @@ describe('MCP API token auth', () => {
 
     const res = await request(app).post('/mcp').send({ jsonrpc: '2.0', method: 'initialize', id: 1 });
     expect(res.status).toBe(401);
+  });
+
+  it('MCP — static trek_ token HTTP integration: init, list_trips, get_trip_summary', async () => {
+    const { user } = createUser(testDb);
+    const { rawToken } = createMcpToken(testDb, user.id);
+    testDb.prepare("UPDATE addons SET enabled = 1 WHERE id = 'mcp'").run();
+    createTrip(testDb, user.id, { title: 'API Token Trip' });
+
+    const initRes = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${rawToken}`)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        method: 'initialize',
+        id: 1,
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+      });
+    expect(initRes.status).toBe(200);
+    const sessionId = initRes.headers['mcp-session-id'] as string;
+    expect(sessionId).toBeTruthy();
+
+    const initText = (initRes.text || '').toLowerCase();
+    expect(initText).not.toContain('deprecated');
+    expect(initText).not.toContain('static token');
+
+    const listRes = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${rawToken}`)
+      .set('mcp-session-id', sessionId)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', method: 'tools/call', id: 2, params: { name: 'list_trips', arguments: {} } });
+    expect(listRes.status).toBe(200);
+    const listText = listRes.text.toLowerCase();
+    expect(listText).not.toContain('deprecated');
+    expect(listText).not.toContain('static token');
+    expect(listText).not.toContain('migrate to oauth');
+
+    const trip = testDb.prepare('SELECT id FROM trips LIMIT 1').get() as { id: number };
+    const summaryRes = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${rawToken}`)
+      .set('mcp-session-id', sessionId)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        id: 3,
+        params: { name: 'get_trip_summary', arguments: { tripId: trip.id } },
+      });
+    expect(summaryRes.status).toBe(200);
+    const summaryText = summaryRes.text.toLowerCase();
+    expect(summaryText).not.toContain('deprecated');
+    expect(summaryText).not.toContain('static token');
+    expect(summaryText).not.toContain('migrate to oauth');
   });
 });
 

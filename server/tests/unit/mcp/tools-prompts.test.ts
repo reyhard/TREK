@@ -115,9 +115,9 @@ afterAll(() => {
 });
 
 /** Build a fresh McpServer with prompts registered for the given userId. */
-function buildServer(userId: number, opts: { isStaticToken?: boolean } = {}): McpServer {
+function buildServer(userId: number): McpServer {
   const server = new McpServer({ name: 'trek-test', version: '1.0.0' });
-  registerMcpPrompts(server, userId, opts.isStaticToken ?? false);
+  registerMcpPrompts(server, userId);
   return server;
 }
 
@@ -148,23 +148,13 @@ async function invokePromptText(server: McpServer, name: string, args: Record<st
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// token_auth_notice
+// token_auth_notice (removed — no longer part of registered prompts)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Prompt: token_auth_notice', () => {
-  it('is registered and returns deprecation notice when isStaticToken=true', async () => {
+  it('is NOT registered', async () => {
     const { user } = createUser(testDb);
-    const server = buildServer(user.id, { isStaticToken: true });
-    const names = listRegisteredPrompts(server);
-    expect(names).toContain('token_auth_notice');
-    const text = await invokePrompt(server, 'token_auth_notice', {});
-    expect(text).toContain('static API token');
-    expect(text).toContain('deprecated');
-  });
-
-  it('is NOT registered when isStaticToken=false', async () => {
-    const { user } = createUser(testDb);
-    const server = buildServer(user.id, { isStaticToken: false });
+    const server = buildServer(user.id);
     const names = listRegisteredPrompts(server);
     expect(names).not.toContain('token_auth_notice');
   });

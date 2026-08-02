@@ -9,7 +9,7 @@ export interface McpSession {
   scopes: string[] | null;
   /** OAuth 2.1 client_id that owns this session; null for static-token / JWT sessions */
   clientId: string | null;
-  /** true when authenticated via static trek_ token — triggers deprecation prompt */
+  /** true when authenticated via static trek_ token */
   isStaticToken: boolean;
   lastActivity: number;
 }

@@ -29,17 +29,15 @@ export interface McpHarnessOptions {
   withTools?: boolean;
   /** OAuth scopes to restrict tools; null = full access (default: null) */
   scopes?: string[] | null;
-  /** Whether the session is authenticated via a static API token (default: false) */
-  isStaticToken?: boolean;
 }
 
 export async function createMcpHarness(options: McpHarnessOptions): Promise<McpHarness> {
-  const { userId, withResources = true, withTools = true, scopes = null, isStaticToken = false } = options;
+  const { userId, withResources = true, withTools = true, scopes = null } = options;
 
   const server = new McpServer({ name: 'trek-test', version: '1.0.0' });
 
   if (withResources) registerResources(server, userId);
-  if (withTools) registerTools(server, userId, scopes ?? null, isStaticToken);
+  if (withTools) registerTools(server, userId, scopes ?? null);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
