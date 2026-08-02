@@ -410,7 +410,7 @@ describe('Budget/reservation relationship tool scopes', () => {
     );
   });
 
-  it('with null scopes, link succeeds', async () => {
+  it('with null scopes, link and unlink succeed', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const item = createBudgetItem(testDb, trip.id);
@@ -419,11 +419,17 @@ describe('Budget/reservation relationship tool scopes', () => {
     await withHarness(
       user.id,
       async (h) => {
-        const result = await h.client.callTool({
+        const link = await h.client.callTool({
           name: 'link_budget_item_to_reservation',
           arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
         });
-        expect(result.isError).toBeFalsy();
+        expect(link.isError).toBeFalsy();
+
+        const unlink = await h.client.callTool({
+          name: 'unlink_budget_item_from_reservation',
+          arguments: { tripId: trip.id, itemId: item.id },
+        });
+        expect(unlink.isError).toBeFalsy();
       },
       null,
     );
