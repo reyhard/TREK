@@ -10,6 +10,8 @@ import {
   toggleMemberPaid,
   getBudgetItem,
   freezeForeignRate,
+  linkExistingBudgetItemToReservation,
+  unlinkBudgetItemFromReservation,
   calculateSettlement,
   listSettlements,
   createSettlement,
@@ -62,6 +64,7 @@ function resolveMemberIds(tripId: number, member_ids?: number[]): number[] | und
 export function registerBudgetTools(server: McpServer, userId: number, scopes: string[] | null): void {
   const R = canRead(scopes, 'budget');
   const W = canWrite(scopes, 'budget');
+  const reservationW = canWrite(scopes, 'reservations');
 
   if (isAddonEnabled(ADDON_IDS.BUDGET)) {
     // --- BUDGET ---
@@ -277,6 +280,87 @@ export function registerBudgetTools(server: McpServer, userId: number, scopes: s
           const member = toggleMemberPaid(itemId, tripId, memberId, paid);
           safeBroadcast(tripId, 'budget:member-paid-updated', { itemId, member });
           return ok({ member });
+        },
+      );
+
+    // --- BUDGET ITEM <-> RESERVATION RELATIONSHIP (costs linked to a booking) ---
+
+    if (W && reservationW)
+      server.registerTool(
+        'link_budget_item_to_reservation',
+        {
+          description:
+            'Link an existing budget item to an existing reservation in the same trip. Multiple different budget items may link to one reservation. If the item is linked to another reservation, unlink it first. Requires both budget and reservation write access.',
+          inputSchema: {
+            tripId: z.number().int().positive(),
+            itemId: z.number().int().positive().describe('Existing budget item ID'),
+            reservationId: z.number().int().positive().describe('Existing reservation ID'),
+          },
+          annotations: TOOL_ANNOTATIONS_WRITE,
+        },
+        async ({ tripId, itemId, reservationId }) => {
+          if (isDemoUser(userId)) return demoDenied();
+          if (!canAccessTrip(tripId, userId)) return noAccess();
+          if (
+            !hasTripPermission('budget_edit', tripId, userId) ||
+            !hasTripPermission('reservation_edit', tripId, userId)
+          ) {
+            return permissionDenied();
+          }
+
+          const result = linkExistingBudgetItemToReservation(tripId, itemId, reservationId);
+          if (result.ok === false) {
+            if (result.error === 'budget_item_not_found') {
+              return { content: [{ type: 'text' as const, text: 'Budget item not found.' }], isError: true };
+            }
+            if (result.error === 'reservation_not_found') {
+              return { content: [{ type: 'text' as const, text: 'Reservation not found.' }], isError: true };
+            }
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Budget item is already linked to reservation ${result.linkedReservationId}. Unlink it before linking it to another reservation.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          if (result.changed) safeBroadcast(tripId, 'budget:updated', { item: result.item });
+          return ok({ item: result.item, changed: result.changed });
+        },
+      );
+
+    if (W && reservationW)
+      server.registerTool(
+        'unlink_budget_item_from_reservation',
+        {
+          description:
+            'Remove the reservation link from an existing budget item without deleting the cost or reservation. Requires both budget and reservation write access.',
+          inputSchema: {
+            tripId: z.number().int().positive(),
+            itemId: z.number().int().positive().describe('Budget item whose reservation link will be cleared'),
+          },
+          annotations: TOOL_ANNOTATIONS_WRITE,
+        },
+        async ({ tripId, itemId }) => {
+          if (isDemoUser(userId)) return demoDenied();
+          if (!canAccessTrip(tripId, userId)) return noAccess();
+          if (
+            !hasTripPermission('budget_edit', tripId, userId) ||
+            !hasTripPermission('reservation_edit', tripId, userId)
+          ) {
+            return permissionDenied();
+          }
+
+          const result = unlinkBudgetItemFromReservation(tripId, itemId);
+          if (result.ok === false) {
+            return { content: [{ type: 'text' as const, text: 'Budget item not found.' }], isError: true };
+          }
+
+          if (result.changed) safeBroadcast(tripId, 'budget:updated', { item: result.item });
+          return ok({ item: result.item, changed: result.changed });
         },
       );
 
