@@ -3,7 +3,12 @@
  */
 import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
-import { createUser, createTrip } from '../../helpers/factories';
+import {
+  createBudgetItem,
+  createReservation,
+  createTrip,
+  createUser,
+} from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
 
@@ -310,6 +315,117 @@ describe('Scope enforcement in tools', () => {
         expect(result.isError).toBeFalsy();
       },
       ['budget:write', 'trips:read'],
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Budget/reservation relationship tools — scope and addon gating
+// ---------------------------------------------------------------------------
+
+describe('Budget/reservation relationship tool scopes', () => {
+  it('does not register relationship tools with only budget:write', async () => {
+    const { user } = createUser(testDb);
+
+    await withHarness(
+      user.id,
+      async (h) => {
+        for (const name of ['link_budget_item_to_reservation', 'unlink_budget_item_from_reservation']) {
+          const result = await h.client.callTool({
+            name,
+            arguments: name.startsWith('link_')
+              ? { tripId: 1, itemId: 1, reservationId: 1 }
+              : { tripId: 1, itemId: 1 },
+          });
+          expect(result.isError).toBe(true);
+        }
+      },
+      ['budget:write'],
+    );
+  });
+
+  it('does not register relationship tools with only reservations:write', async () => {
+    const { user } = createUser(testDb);
+
+    await withHarness(
+      user.id,
+      async (h) => {
+        for (const name of ['link_budget_item_to_reservation', 'unlink_budget_item_from_reservation']) {
+          const result = await h.client.callTool({
+            name,
+            arguments: name.startsWith('link_')
+              ? { tripId: 1, itemId: 1, reservationId: 1 }
+              : { tripId: 1, itemId: 1 },
+          });
+          expect(result.isError).toBe(true);
+        }
+      },
+      ['reservations:write'],
+    );
+  });
+
+  it('registers relationship tools with both write scopes', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const item = createBudgetItem(testDb, trip.id);
+    const reservation = createReservation(testDb, trip.id);
+
+    await withHarness(
+      user.id,
+      async (h) => {
+        const link = await h.client.callTool({
+          name: 'link_budget_item_to_reservation',
+          arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
+        });
+        expect(link.isError).toBeFalsy();
+
+        const unlink = await h.client.callTool({
+          name: 'unlink_budget_item_from_reservation',
+          arguments: { tripId: trip.id, itemId: item.id },
+        });
+        expect(unlink.isError).toBeFalsy();
+      },
+      ['budget:write', 'reservations:write'],
+    );
+  });
+
+  it('when budget addon disabled, relationship tools are not registered', async () => {
+    const { user } = createUser(testDb);
+    isAddonEnabledMock.mockImplementation((id: string) => id !== 'budget');
+
+    await withHarness(
+      user.id,
+      async (h) => {
+        for (const name of ['link_budget_item_to_reservation', 'unlink_budget_item_from_reservation']) {
+          const result = await h.client.callTool({
+            name,
+            arguments: name.startsWith('link_')
+              ? { tripId: 1, itemId: 1, reservationId: 1 }
+              : { tripId: 1, itemId: 1 },
+          });
+          expect(result.isError).toBe(true);
+        }
+      },
+      ['budget:write', 'reservations:write'],
+    );
+  });
+
+  it('with null scopes, link succeeds', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const item = createBudgetItem(testDb, trip.id);
+    const reservation = createReservation(testDb, trip.id);
+
+    await withHarness(
+      user.id,
+      async (h) => {
+        const result = await h.client.callTool({
+          name: 'link_budget_item_to_reservation',
+          arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
+        });
+        expect(result.isError).toBeFalsy();
+      },
+      null,
     );
   });
 });
