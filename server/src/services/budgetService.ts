@@ -374,6 +374,79 @@ export function linkBudgetItemToReservation(
   return item;
 }
 
+export type LinkExistingBudgetItemResult =
+  | { ok: true; item: BudgetItem; changed: boolean }
+  | {
+      ok: false;
+      error: 'budget_item_not_found' | 'reservation_not_found' | 'already_linked';
+      linkedReservationId?: number;
+    };
+
+export type UnlinkBudgetItemResult =
+  | { ok: true; item: BudgetItem; changed: boolean }
+  | { ok: false; error: 'budget_item_not_found' };
+
+export function linkExistingBudgetItemToReservation(
+  tripId: string | number,
+  itemId: string | number,
+  reservationId: string | number,
+): LinkExistingBudgetItemResult {
+  return db.transaction((): LinkExistingBudgetItemResult => {
+    const item = db
+      .prepare('SELECT id, reservation_id FROM budget_items WHERE id = ? AND trip_id = ?')
+      .get(itemId, tripId) as { id: number; reservation_id: number | null } | undefined;
+
+    if (!item) return { ok: false, error: 'budget_item_not_found' };
+
+    const reservation = db
+      .prepare('SELECT id FROM reservations WHERE id = ? AND trip_id = ?')
+      .get(reservationId, tripId) as { id: number } | undefined;
+
+    if (!reservation) return { ok: false, error: 'reservation_not_found' };
+
+    if (item.reservation_id != null) {
+      if (Number(item.reservation_id) === Number(reservationId)) {
+        return { ok: true, item: getBudgetItem(itemId, tripId)!, changed: false };
+      }
+      return {
+        ok: false,
+        error: 'already_linked',
+        linkedReservationId: Number(item.reservation_id),
+      };
+    }
+
+    db.prepare(
+      'UPDATE budget_items SET reservation_id = ? WHERE id = ? AND trip_id = ? AND reservation_id IS NULL',
+    ).run(reservationId, itemId, tripId);
+
+    return { ok: true, item: getBudgetItem(itemId, tripId)!, changed: true };
+  })();
+}
+
+export function unlinkBudgetItemFromReservation(
+  tripId: string | number,
+  itemId: string | number,
+): UnlinkBudgetItemResult {
+  return db.transaction((): UnlinkBudgetItemResult => {
+    const item = db
+      .prepare('SELECT id, reservation_id FROM budget_items WHERE id = ? AND trip_id = ?')
+      .get(itemId, tripId) as { id: number; reservation_id: number | null } | undefined;
+
+    if (!item) return { ok: false, error: 'budget_item_not_found' };
+
+    if (item.reservation_id == null) {
+      return { ok: true, item: getBudgetItem(itemId, tripId)!, changed: false };
+    }
+
+    db.prepare('UPDATE budget_items SET reservation_id = NULL WHERE id = ? AND trip_id = ?').run(
+      itemId,
+      tripId,
+    );
+
+    return { ok: true, item: getBudgetItem(itemId, tripId)!, changed: true };
+  })();
+}
+
 export function updateBudgetItem(
   id: string | number,
   tripId: string | number,
