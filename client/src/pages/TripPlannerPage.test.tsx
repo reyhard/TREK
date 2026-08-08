@@ -2198,7 +2198,9 @@ describe('TripPlannerPage', () => {
       await waitFor(() => {
         expect(useTripStore.getState().selectedDayId).toBe(day.id);
         expect(within(dialog).getByTestId('timeline-content-action')).toBeInTheDocument();
-        expect(dialog).toContainElement(document.activeElement);
+        const activeElement = document.activeElement;
+        expect(activeElement).toBeInstanceOf(HTMLElement);
+        expect(dialog).toContainElement(activeElement as HTMLElement);
       });
 
       const close = screen.getByRole('button', { name: 'Close' });
