@@ -14,8 +14,8 @@ export function getAssignmentsForDay(dayId: number | string) {
       `
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      COALESCE(da.assignment_time, p.place_time) as place_time,
-      COALESCE(da.assignment_end_time, p.end_time) as end_time,
+      CASE WHEN da.assignment_time = '' THEN NULL ELSE COALESCE(da.assignment_time, p.place_time) END as place_time,
+      CASE WHEN da.assignment_end_time = '' THEN NULL ELSE COALESCE(da.assignment_end_time, p.end_time) END as end_time,
       p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.google_ftid, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
@@ -98,8 +98,8 @@ export function listDays(tripId: string | number) {
       `
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      COALESCE(da.assignment_time, p.place_time) as place_time,
-      COALESCE(da.assignment_end_time, p.end_time) as end_time,
+      CASE WHEN da.assignment_time = '' THEN NULL ELSE COALESCE(da.assignment_time, p.place_time) END as place_time,
+      CASE WHEN da.assignment_end_time = '' THEN NULL ELSE COALESCE(da.assignment_end_time, p.end_time) END as end_time,
       p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.google_ftid, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon

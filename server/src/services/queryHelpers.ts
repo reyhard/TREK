@@ -69,8 +69,8 @@ function formatAssignmentWithPlace(a: AssignmentRow, tags: Partial<Tag>[], parti
     place_id: a.place_id,
     order_index: a.order_index,
     notes: a.notes,
-    assignment_time: a.assignment_time ?? null,
-    assignment_end_time: a.assignment_end_time ?? null,
+    assignment_time: a.assignment_time || null,
+    assignment_end_time: a.assignment_end_time || null,
     participants: participants || [],
     created_at: a.created_at,
     place: {

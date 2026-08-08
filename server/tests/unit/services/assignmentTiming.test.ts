@@ -38,6 +38,24 @@ describe('resolveAssignmentTiming', () => {
     ).toEqual({ placeTime: null, endTime: null });
   });
 
+  it('clears an end-only assignment when the end is explicitly null', () => {
+    expect(
+      resolveAssignmentTiming(
+        { effectiveStart: null, effectiveEnd: '10:00', recommendedDuration: 60 },
+        { end_time: null },
+      ),
+    ).toEqual({ placeTime: null, endTime: null });
+  });
+
+  it('rejects a malformed explicit end time when no start exists', () => {
+    expect(() =>
+      resolveAssignmentTiming(
+        { effectiveStart: null, effectiveEnd: '10:00', recommendedDuration: 60 },
+        { end_time: 'invalid' },
+      ),
+    ).toThrow(AssignmentTimingError);
+  });
+
   it('rejects a derived end time after the end of the day', () => {
     expect(() =>
       resolveAssignmentTiming(

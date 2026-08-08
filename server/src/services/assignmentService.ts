@@ -4,14 +4,16 @@ import { resolveAssignmentTiming } from './assignmentTiming';
 import { loadTagsByPlaceIds, loadParticipantsByAssignmentIds, formatAssignmentWithPlace } from './queryHelpers';
 import type { AssignmentTimeRequest } from '@trek/shared';
 
+const CLEARED_TIME = '';
+
 export function getAssignmentWithPlace(assignmentId: number | bigint) {
   const a = db
     .prepare(
       `
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      COALESCE(da.assignment_time, p.place_time) as place_time,
-      COALESCE(da.assignment_end_time, p.end_time) as end_time,
+      CASE WHEN da.assignment_time = '' THEN NULL ELSE COALESCE(da.assignment_time, p.place_time) END as place_time,
+      CASE WHEN da.assignment_end_time = '' THEN NULL ELSE COALESCE(da.assignment_end_time, p.end_time) END as end_time,
       p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.google_ftid, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
@@ -52,8 +54,8 @@ export function getAssignmentWithPlace(assignmentId: number | bigint) {
     place_id: a.place_id,
     order_index: a.order_index,
     notes: a.notes,
-    assignment_time: a.assignment_time ?? null,
-    assignment_end_time: a.assignment_end_time ?? null,
+    assignment_time: a.assignment_time || null,
+    assignment_end_time: a.assignment_end_time || null,
     participants,
     created_at: a.created_at,
     place: {
@@ -95,8 +97,8 @@ export function listDayAssignments(dayId: string | number) {
       `
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      COALESCE(da.assignment_time, p.place_time) as place_time,
-      COALESCE(da.assignment_end_time, p.end_time) as end_time,
+      CASE WHEN da.assignment_time = '' THEN NULL ELSE COALESCE(da.assignment_time, p.place_time) END as place_time,
+      CASE WHEN da.assignment_end_time = '' THEN NULL ELSE COALESCE(da.assignment_end_time, p.end_time) END as end_time,
       p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.google_ftid, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
@@ -208,8 +210,8 @@ export function updateTime(id: string | number, placeTime?: string | null, endTi
       .prepare(
         `
         SELECT da.assignment_time, da.assignment_end_time,
-          COALESCE(da.assignment_time, p.place_time) AS effective_start,
-          COALESCE(da.assignment_end_time, p.end_time) AS effective_end,
+          CASE WHEN da.assignment_time = '' THEN NULL ELSE COALESCE(da.assignment_time, p.place_time) END AS effective_start,
+          CASE WHEN da.assignment_end_time = '' THEN NULL ELSE COALESCE(da.assignment_end_time, p.end_time) END AS effective_end,
           p.duration_minutes
         FROM day_assignments da
         JOIN places p ON p.id = da.place_id
@@ -237,13 +239,13 @@ export function updateTime(id: string | number, placeTime?: string | null, endTi
       request,
     );
     db.prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?').run(
-      timing.placeTime,
-      timing.endTime,
+      timing.placeTime ?? (placeTime === null ? CLEARED_TIME : current.assignment_time),
+      timing.endTime ?? (placeTime === null || endTime === null ? CLEARED_TIME : current.assignment_end_time),
       id,
     );
 
     // Auto-sort: reorder timed assignments chronologically within the day.
-    if (timing.placeTime) {
+    if (placeTime) {
       const assignment = db.prepare('SELECT day_id FROM day_assignments WHERE id = ?').get(id) as
         | { day_id: number }
         | undefined;
@@ -251,7 +253,8 @@ export function updateTime(id: string | number, placeTime?: string | null, endTi
         const dayAssignments = db
           .prepare(
             `
-            SELECT da.id, COALESCE(da.assignment_time, p.place_time) as effective_time
+            SELECT da.id,
+              CASE WHEN da.assignment_time = '' THEN NULL ELSE COALESCE(da.assignment_time, p.place_time) END as effective_time
             FROM day_assignments da
             JOIN places p ON da.place_id = p.id
             WHERE da.day_id = ?

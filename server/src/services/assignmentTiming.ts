@@ -40,7 +40,14 @@ export function resolveAssignmentTiming(
   if (request.place_time === null) return { placeTime: null, endTime: null };
 
   const placeTime = request.place_time ?? current.effectiveStart;
-  if (!placeTime) return { placeTime: null, endTime: request.end_time ?? current.effectiveEnd };
+  if (!placeTime) {
+    if (Object.prototype.hasOwnProperty.call(request, 'end_time')) {
+      if (request.end_time === null) return { placeTime: null, endTime: null };
+      parseEndTime(request.end_time!);
+      return { placeTime: null, endTime: request.end_time! };
+    }
+    return { placeTime: null, endTime: current.effectiveEnd };
+  }
   parseStartTime(placeTime);
 
   if (Object.prototype.hasOwnProperty.call(request, 'end_time')) {

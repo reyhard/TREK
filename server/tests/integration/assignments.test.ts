@@ -430,4 +430,92 @@ describe('Assignment participants', () => {
     expect(clear.body.assignment.assignment_time).toBeNull();
     expect(clear.body.assignment.assignment_end_time).toBeNull();
   });
+
+  it('ASSIGN-009 — clearing legacy place times leaves only that assignment untimed', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day, place } = setupAssignmentFixtures(user.id);
+    testDb.prepare('UPDATE places SET place_time = ?, end_time = ? WHERE id = ?').run('09:00', '10:00', place.id);
+
+    const first = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: place.id });
+    const second = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: place.id });
+
+    const clear = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${first.body.assignment.id}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_time: null, end_time: null });
+    expect(clear.status).toBe(200);
+    expect(clear.body.assignment.assignment_time).toBeNull();
+    expect(clear.body.assignment.assignment_end_time).toBeNull();
+    expect(clear.body.assignment.place.place_time).toBeNull();
+    expect(clear.body.assignment.place.end_time).toBeNull();
+
+    const endOnly = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${first.body.assignment.id}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({ end_time: '11:30' });
+    expect(endOnly.status).toBe(200);
+    expect(endOnly.body.assignment.place.place_time).toBeNull();
+    expect(endOnly.body.assignment.place.end_time).toBe('11:30');
+
+    const list = await request(app)
+      .get(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id));
+    const cleared = list.body.assignments.find((assignment: any) => assignment.id === first.body.assignment.id);
+    const inherited = list.body.assignments.find((assignment: any) => assignment.id === second.body.assignment.id);
+    expect(cleared.place.place_time).toBeNull();
+    expect(cleared.place.end_time).toBe('11:30');
+    expect(inherited.place.place_time).toBe('09:00');
+    expect(inherited.place.end_time).toBe('10:00');
+  });
+
+  it('ASSIGN-009 — end-only and empty time requests preserve the existing order', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2025-06-01' });
+    const firstPlace = createPlace(testDb, trip.id, { name: 'First' });
+    const secondPlace = createPlace(testDb, trip.id, { name: 'Second' });
+
+    const first = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: firstPlace.id });
+    const second = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: secondPlace.id });
+    testDb
+      .prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?')
+      .run('10:00', '11:00', first.body.assignment.id);
+    testDb
+      .prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?')
+      .run('09:00', '10:00', second.body.assignment.id);
+
+    const order = async () => {
+      const list = await request(app)
+        .get(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+        .set('Cookie', authCookie(user.id));
+      return list.body.assignments.map((assignment: any) => assignment.id);
+    };
+    expect(await order()).toEqual([first.body.assignment.id, second.body.assignment.id]);
+
+    const empty = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${first.body.assignment.id}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({});
+    expect(empty.status).toBe(200);
+    expect(await order()).toEqual([first.body.assignment.id, second.body.assignment.id]);
+
+    const endOnly = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${first.body.assignment.id}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({ end_time: '11:30' });
+    expect(endOnly.status).toBe(200);
+    expect(await order()).toEqual([first.body.assignment.id, second.body.assignment.id]);
+  });
 });
