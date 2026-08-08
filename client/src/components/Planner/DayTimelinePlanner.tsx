@@ -1,5 +1,5 @@
 import { formatDayTime, parseDayTime } from '@trek/shared';
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock, GripVertical, Pencil, TramFront, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, GripVertical, Pencil, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '../../i18n';
@@ -612,12 +612,12 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     const transitMeta = isTransport ? safeTransitMeta(entry.sourceReservation) : null;
     const TransportIcon = isTransport
       ? transitMeta
-        ? TramFront
+        ? RES_ICONS.transit
         : RES_ICONS[entry.reservation.type] || RES_ICONS.transport_other
       : null;
     const transportColor = isTransport
       ? transitMeta
-        ? 'rgb(124, 58, 237)'
+        ? TRANSPORT_DETAIL_COLORS.transit
         : TRANSPORT_DETAIL_COLORS[entry.reservation.type] || TRANSPORT_DETAIL_COLORS.transport_other
       : null;
     const contextLabel = isTransport
@@ -736,6 +736,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
             borderRadius: 7,
             background: 'color-mix(in srgb, var(--accent) 5%, var(--bg-surface))',
             color: 'var(--text-primary)',
+            opacity: previousDay ? 1 : 0.5,
+            cursor: previousDay ? 'pointer' : 'not-allowed',
           }}
         >
           <ChevronLeft size={16} aria-hidden="true" />
@@ -758,6 +760,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
             borderRadius: 7,
             background: 'color-mix(in srgb, var(--accent) 5%, var(--bg-surface))',
             color: 'var(--text-primary)',
+            opacity: nextDay ? 1 : 0.5,
+            cursor: nextDay ? 'pointer' : 'not-allowed',
           }}
         >
           <ChevronRight size={16} aria-hidden="true" />

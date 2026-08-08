@@ -49,4 +49,31 @@ describe('TimelineRouteToolbar', () => {
     expect(onSetRouteProfile).toHaveBeenCalledWith('driving');
     expect(onPlanTransit).toHaveBeenCalledWith(10);
   });
+
+  it('keeps all labelled controls touch-safe and able to wrap in 200px and 320px containers', () => {
+    for (const width of [200, 320]) {
+      const { unmount } = render(
+        <div style={{ width }}>
+          <TimelineRouteToolbar
+            dayId={10}
+            routeShown={false}
+            routeProfile="walking"
+            onToggleRoute={vi.fn()}
+            onSetRouteProfile={vi.fn()}
+            onPlanTransit={vi.fn()}
+          />
+        </div>
+      );
+
+      const toolbar = screen.getByTestId('timeline-route-toolbar');
+      expect(toolbar).toHaveStyle({ display: 'flex', flexWrap: 'wrap', width: '100%', minWidth: '0px' });
+      expect(toolbar).toHaveStyle({ boxSizing: 'border-box', overflow: 'visible' });
+      for (const name of ['Route', 'Walking', 'Driving', 'Public transit']) {
+        const control = screen.getByRole('button', { name });
+        expect(control).toHaveTextContent(name);
+        expect(control).toHaveStyle({ minHeight: '44px', maxWidth: '100%', whiteSpace: 'normal' });
+      }
+      unmount();
+    }
+  });
 });

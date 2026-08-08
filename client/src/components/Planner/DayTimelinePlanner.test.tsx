@@ -102,6 +102,7 @@ describe('DayTimelinePlanner', () => {
 
     view.rerender(<DayTimelinePlanner {...props({ day: previous, days: [previous, day, next], onSelectDay })} />);
     expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous day' })).toHaveStyle({ opacity: '0.5', cursor: 'not-allowed' });
     expect(screen.getByRole('button', { name: 'Next day' })).toBeEnabled();
   });
 
@@ -278,7 +279,7 @@ describe('DayTimelinePlanner', () => {
     expect(busCard.querySelector('svg.lucide-bus')).toHaveAttribute('aria-hidden', 'true');
     expect(transitCard.querySelector('svg.lucide-tram-front')).toHaveAttribute('aria-hidden', 'true');
     expect(busCard.style.background).toContain('var(--bg-card)');
-    expect(transitCard.style.background).toContain('rgb(124, 58, 237)');
+    expect(transitCard.style.background).toContain('#7c3aed');
     expect(noteCard.style.background).toContain('var(--bg-card)');
     expect(activityCard.style.background).toContain('var(--bg-card)');
     expect(screen.getByTestId('timeline-day-header')).not.toHaveStyle({ background: 'var(--bg-card)' });

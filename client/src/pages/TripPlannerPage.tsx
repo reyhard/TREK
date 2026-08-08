@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { MapCompassPill, type CompassMap } from '../components/Map/MapCompassPill';
 import { MapViewAuto as MapView } from '../components/Map/MapViewAuto';
@@ -420,6 +420,62 @@ export default function TripPlannerPage(): React.ReactElement | null {
   } = useTripPlanner();
 
   const poi = usePoiExplore();
+  const mobileSheetRef = useRef<HTMLDivElement>(null);
+  const mobileSidebarTriggerRef = useRef<'left' | 'timeline' | 'right' | null>(null);
+  const openMobileSidebar = (sidebar: 'left' | 'timeline' | 'right') => {
+    setMobileSidebarOpen(sidebar);
+  };
+  const closeMobileSidebar = () => {
+    if (mobileSidebarOpen) mobileSidebarTriggerRef.current = mobileSidebarOpen;
+    setMobileSidebarOpen(null);
+  };
+  const handleMobileSelectDay = (dayId: number | null, skipFit?: boolean) => {
+    if (mobileSidebarOpen) mobileSidebarTriggerRef.current = mobileSidebarOpen;
+    handleSelectDay(dayId, skipFit);
+  };
+
+  useEffect(() => {
+    if (mobileSidebarOpen) {
+      mobileSheetRef.current?.focus();
+      return;
+    }
+
+    const opener = mobileSidebarTriggerRef.current;
+    if (opener) {
+      document.querySelector<HTMLButtonElement>(`[data-mobile-sidebar-trigger="${opener}"]`)?.focus();
+      mobileSidebarTriggerRef.current = null;
+    }
+  }, [mobileSidebarOpen]);
+
+  const trapMobileSheetFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMobileSidebar();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const sheet = mobileSheetRef.current;
+    if (!sheet) return;
+    const focusable = Array.from(
+      sheet.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (
+      event.shiftKey
+        ? document.activeElement === first || document.activeElement === sheet
+        : document.activeElement === last || document.activeElement === sheet
+    ) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  };
+
   const [glMap, setGlMap] = useState<CompassMap | null>(null);
   const poiPillEnabled = useSettingsStore((s) => s.settings.map_poi_pill_enabled) !== false;
 
@@ -1024,7 +1080,8 @@ export default function TripPlannerPage(): React.ReactElement | null {
                       <button
                         key={id}
                         type="button"
-                        onClick={() => setMobileSidebarOpen(id)}
+                        data-mobile-sidebar-trigger={id}
+                        onClick={() => openMobileSidebar(id)}
                         className="text-content hover:bg-surface-tertiary"
                         style={{
                           border: 'none',
@@ -1256,10 +1313,16 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 <div
                   className="bg-[rgba(0,0,0,0.3)]"
                   style={{ position: 'fixed', inset: 0, zIndex: 9999 }}
-                  onClick={() => setMobileSidebarOpen(null)}
+                  onClick={closeMobileSidebar}
                 >
                   <div
                     className="bg-surface-card"
+                    ref={mobileSheetRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="mobile-sidebar-title"
+                    tabIndex={-1}
+                    onKeyDown={trapMobileSheetFocus}
                     style={{
                       position: 'absolute',
                       top: 'var(--nav-h)',
@@ -1281,24 +1344,27 @@ export default function TripPlannerPage(): React.ReactElement | null {
                         padding: '14px 16px',
                       }}
                     >
-                      <span
+                      <h2
+                        id="mobile-sidebar-title"
                         className="text-content"
-                        style={{ fontWeight: 600, fontSize: 'calc(14px * var(--fs-scale-body, 1))' }}
+                        style={{ fontWeight: 600, fontSize: 'calc(14px * var(--fs-scale-body, 1))', margin: 0 }}
                       >
                         {mobileSidebarOpen === 'left'
                           ? t('trip.mobilePlan')
                           : mobileSidebarOpen === 'timeline'
                             ? t('trip.timeline.mode.timeline')
                             : t('trip.mobilePlaces')}
-                      </span>
+                      </h2>
                       <button
-                        onClick={() => setMobileSidebarOpen(null)}
+                        type="button"
+                        aria-label={t('common.close')}
+                        onClick={closeMobileSidebar}
                         className="bg-surface-tertiary text-content"
                         style={{
                           border: 'none',
                           borderRadius: '50%',
-                          width: 28,
-                          height: 28,
+                          minWidth: 44,
+                          minHeight: 44,
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -1329,7 +1395,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                           selectedDayId={selectedDayId}
                           selectedPlaceId={selectedPlaceId}
                           selectedAssignmentId={selectedAssignmentId}
-                          onSelectDay={handleSelectDay}
+                          onSelectDay={handleMobileSelectDay}
                           initialMode={mobileSidebarOpen === 'timeline' ? 'timeline' : 'list'}
                           onTimelineSelectDay={(id) => handleSelectDay(id, false, true)}
                           onPlaceClick={(placeId, assignmentId) => {
@@ -1355,7 +1421,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                             setEditingReservation(null);
                             tripActions.setSelectedDay(dayId);
                             setShowReservationModal(true);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onAddTransport={
                             can('day_edit', trip)
@@ -1365,13 +1431,13 @@ export default function TripPlannerPage(): React.ReactElement | null {
                                   setTransitPrefill(null);
                                   setTransportModalAutomated(false);
                                   setShowTransportModal(true);
-                                  setMobileSidebarOpen(null);
+                                  closeMobileSidebar();
                                 }
                               : undefined
                           }
                           onOpenTransit={(r) => {
                             setTransitJourney(r);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onPlanTransit={
                             can('day_edit', trip) && tripHasDates
@@ -1381,14 +1447,14 @@ export default function TripPlannerPage(): React.ReactElement | null {
                                   setTransitPrefill(prefill ?? null);
                                   setTransportModalAutomated(true);
                                   setShowTransportModal(true);
-                                  setMobileSidebarOpen(null);
+                                  closeMobileSidebar();
                                 }
                               : undefined
                           }
                           onAddPlace={() => {
                             setEditingPlace(null);
                             setShowPlaceForm(true);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onDayDetail={(day) => {
                             setShowDayDetail(day);
@@ -1400,7 +1466,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                             setEditingPlace(place);
                             setEditingAssignmentId(assignmentId || null);
                             setShowPlaceForm(true);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onDeletePlace={(placeId) => handleDeletePlace(placeId)}
                           accommodations={tripAccommodations}
@@ -1409,7 +1475,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                           onToggleRoute={() => setRouteShown((v) => !v)}
                           onSetRouteProfile={setRouteProfile}
                           onNavigateToFiles={() => {
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                             handleTabChange('dateien');
                           }}
                           onExpandedDaysChange={setExpandedDayIds}
@@ -1423,7 +1489,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                                   setEditingTransport(reservation);
                                   setTransportModalDayId(reservation.day_id ?? null);
                                   setShowTransportModal(true);
-                                  setMobileSidebarOpen(null);
+                                  closeMobileSidebar();
                                 }
                               : undefined
                           }
@@ -1432,7 +1498,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                               ? (r) => {
                                   setEditingReservation(r);
                                   setShowReservationModal(true);
-                                  setMobileSidebarOpen(null);
+                                  closeMobileSidebar();
                                 }
                               : undefined
                           }
@@ -1453,17 +1519,17 @@ export default function TripPlannerPage(): React.ReactElement | null {
                           selectedPlaceId={selectedPlaceId}
                           onPlaceClick={(placeId) => {
                             handlePlaceClick(placeId);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onAddPlace={() => {
                             setEditingPlace(null);
                             setShowPlaceForm(true);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onAssignToDay={handleAssignToDay}
                           onEditPlace={(place) => {
                             openPlaceEditor(place);
-                            setMobileSidebarOpen(null);
+                            closeMobileSidebar();
                           }}
                           onDeletePlace={(placeId) => handleDeletePlace(placeId)}
                           onBulkDeletePlaces={(ids) => setDeletePlaceIds(ids)}

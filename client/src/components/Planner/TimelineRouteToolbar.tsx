@@ -23,14 +23,21 @@ export function TimelineRouteToolbar({
   const buttonStyle: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
-    padding: '5px 8px',
+    minHeight: 44,
+    minWidth: 0,
+    maxWidth: '100%',
+    padding: '7px 10px',
     border: '1px solid var(--border-faint)',
     borderRadius: 7,
     cursor: 'pointer',
     font: 'inherit',
     fontSize: 12,
     fontWeight: 600,
+    lineHeight: 1.2,
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
   };
 
   return (
@@ -41,7 +48,12 @@ export function TimelineRouteToolbar({
       style={{
         display: 'flex',
         alignItems: 'center',
+        flexWrap: 'wrap',
         gap: 8,
+        width: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        overflow: 'visible',
         padding: '7px 12px',
         borderBottom: '1px solid var(--border-faint)',
         background: 'color-mix(in srgb, var(--accent) 7%, var(--bg-card))',
@@ -53,7 +65,7 @@ export function TimelineRouteToolbar({
           aria-pressed={routeShown}
           className={routeShown ? 'bg-accent text-accent-text' : 'bg-surface text-content'}
           onClick={onToggleRoute}
-          style={{ ...buttonStyle, background: routeShown ? undefined : 'var(--bg-surface)' }}
+          style={{ ...buttonStyle, flex: '1 1 132px', background: routeShown ? undefined : 'var(--bg-surface)' }}
         >
           <Route size={14} aria-hidden="true" />
           {t('dayplan.route')}
@@ -63,7 +75,16 @@ export function TimelineRouteToolbar({
         <div
           role="group"
           aria-label={t('dayplan.route')}
-          style={{ display: 'flex', border: '1px solid var(--border-faint)', borderRadius: 7, overflow: 'hidden' }}
+          style={{
+            display: 'flex',
+            flex: '1 1 200px',
+            flexWrap: 'wrap',
+            minWidth: 0,
+            maxWidth: '100%',
+            border: '1px solid var(--border-faint)',
+            borderRadius: 7,
+            overflow: 'hidden',
+          }}
         >
           <button
             type="button"
@@ -71,7 +92,13 @@ export function TimelineRouteToolbar({
             aria-pressed={routeProfile === 'walking'}
             className={routeProfile === 'walking' ? 'bg-accent text-accent-text' : 'bg-surface text-content'}
             onClick={() => onSetRouteProfile('walking')}
-            style={{ ...buttonStyle, border: 0, borderRadius: 0, background: routeProfile === 'walking' ? undefined : 'var(--bg-surface)' }}
+            style={{
+              ...buttonStyle,
+              flex: '1 1 90px',
+              border: 0,
+              borderRadius: 0,
+              background: routeProfile === 'walking' ? undefined : 'var(--bg-surface)',
+            }}
           >
             <Footprints size={14} aria-hidden="true" />
             {t('dayplan.movement.walking')}
@@ -84,6 +111,7 @@ export function TimelineRouteToolbar({
             onClick={() => onSetRouteProfile('driving')}
             style={{
               ...buttonStyle,
+              flex: '1 1 90px',
               border: 0,
               borderLeft: '1px solid var(--border-faint)',
               borderRadius: 0,
@@ -101,7 +129,7 @@ export function TimelineRouteToolbar({
           onClick={() => onPlanTransit(dayId)}
           style={{
             ...buttonStyle,
-            marginLeft: 'auto',
+            flex: '1 1 132px',
             borderColor: '#7c3aed',
             background: 'rgba(124, 58, 237, 0.12)',
             color: 'var(--text-primary)',

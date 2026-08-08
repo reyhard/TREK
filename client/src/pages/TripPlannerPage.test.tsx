@@ -2035,9 +2035,10 @@ describe('TripPlannerPage', () => {
         expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
       });
 
-      const mobilePlanBtn = screen.getByRole('button', { name: 'Plan' });
+      const mobilePlanBtn = document.querySelector<HTMLButtonElement>('[data-mobile-sidebar-trigger="left"]');
+      expect(mobilePlanBtn).toBeTruthy();
       await act(async () => {
-        fireEvent.click(mobilePlanBtn);
+        fireEvent.click(mobilePlanBtn!);
       });
 
       // Mobile sidebar portal renders DayPlanSidebar — now two instances.
@@ -2112,6 +2113,46 @@ describe('TripPlannerPage', () => {
 
       expect(useTripStore.getState().selectedDayId).toBe(day.id);
       expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-053: Mobile sheets are accessible dialogs', () => {
+    it('focuses, traps, closes, and restores focus to the Timeline opener', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      const opener = await screen.findByRole('button', { name: 'Timeline' });
+      await act(async () => {
+        fireEvent.click(opener);
+      });
+
+      const dialog = screen.getByRole('dialog', { name: 'Timeline' });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+      expect(dialog).toHaveAttribute('aria-labelledby', 'mobile-sidebar-title');
+      expect(document.activeElement).toBe(dialog);
+
+      const close = screen.getByRole('button', { name: 'Close' });
+      expect(close).toHaveStyle({ minWidth: '44px', minHeight: '44px' });
+      fireEvent.keyDown(dialog, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+      fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(close);
+      fireEvent.keyDown(dialog, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: 'Timeline' })).not.toBeInTheDocument();
+      });
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Timeline' }));
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
