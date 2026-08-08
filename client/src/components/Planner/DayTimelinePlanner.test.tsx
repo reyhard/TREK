@@ -588,6 +588,22 @@ describe('DayTimelinePlanner', () => {
     expect(screen.getByText('Proposed time 10:15')).toBeInTheDocument();
   });
 
+  it('uses the visible context-expanded grid start as the keyboard movement lower bound', async () => {
+    const user = userEvent.setup();
+    const assignment = buildAssignment({ id: 202, day_id: day.id, place: museum });
+    const earlyContext = buildDayNote({ id: 603, day_id: day.id, text: 'Early reminder', time: '05:00' });
+    const onSetAssignmentTime = vi.fn().mockResolvedValue(assignment);
+    render(
+      <DayTimelinePlanner {...props({ assignments: [assignment], notes: [earlyContext], onSetAssignmentTime })} />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Move Museum' }));
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(onSetAssignmentTime).toHaveBeenCalledWith(day.id, assignment.id, { place_time: '05:15' });
+    expect(screen.getByText('Proposed time 05:15')).toBeInTheDocument();
+  });
+
   it('commits a snapped pointer move only after the handle receives pointer movement', async () => {
     const assignment = timedAssignment();
     const onSetAssignmentTime = vi.fn().mockResolvedValue(assignment);

@@ -394,7 +394,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
       event.preventDefault();
       const maximum = TIMELINE_END - assignmentDuration(entry);
       const proposedMinute = Math.min(
-        Math.max(keyboardMove.proposedMinute + changes[event.key]!, timeline.gridStartMinute),
+        Math.max(keyboardMove.proposedMinute + changes[event.key]!, gridStartMinute),
         maximum
       );
       setKeyboardMove({ ...keyboardMove, proposedMinute });
