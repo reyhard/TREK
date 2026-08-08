@@ -1,6 +1,7 @@
 import { parseDayTime } from '@trek/shared';
 
-import type { Assignment } from '../../types';
+import type { Assignment, Day, DayNote, Reservation } from '../../types';
+import { getSpanPhase, getTransportForDay, TRANSPORT_TYPES } from '../../utils/dayMerge';
 
 export const TIMELINE_SNAP_MINUTES = 15;
 export const TIMELINE_DEFAULT_START = 6 * 60;
@@ -28,11 +29,62 @@ export interface TimelineResult {
   gridStartMinute: number;
 }
 
+export type TimelineTransportReservation = Reservation & {
+  __leg?: { index: number; total: number; [key: string]: unknown };
+};
+
+export interface TimelineTransportContextEntry {
+  kind: 'transport';
+  key: string;
+  title: string;
+  reservation: TimelineTransportReservation;
+  sourceReservation: Reservation;
+}
+
+export interface TimelineNoteContextEntry {
+  kind: 'note';
+  key: string;
+  title: string;
+  note: DayNote;
+}
+
+export type TimelineContextEntry = TimelineTransportContextEntry | TimelineNoteContextEntry;
+
+export type ScheduledTimelineContextEntry = TimelineContextEntry & {
+  start: number;
+  end: number;
+  duration: number;
+  height: number;
+};
+
+export interface TimelineContextResult {
+  scheduled: ScheduledTimelineContextEntry[];
+  untimed: TimelineContextEntry[];
+}
+
+export interface TimelineVisualItem {
+  key: string;
+  start: number;
+  end: number;
+  height: number;
+}
+
+export interface TimelineVisualLayout {
+  key: string;
+  top: number;
+  height: number;
+  visualLane: number;
+  visualLaneCount: number;
+}
+
 interface Interval {
   assignment: Assignment;
   start: number;
   end: number;
 }
+
+const TIMELINE_CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const TIMELINE_ISO_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T((?:[01]\d|2[0-3]):[0-5]\d)(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/;
 
 export function snapTimelineMinute(rawMinute: number, increment = TIMELINE_SNAP_MINUTES): number {
   if (!Number.isFinite(rawMinute) || !Number.isFinite(increment) || increment <= 0) return rawMinute;
@@ -52,7 +104,7 @@ export function timelineMinuteFromPointer(
 
 export function buildTimelineEntries(assignments: Assignment[]): TimelineResult {
   const { intervals, unscheduled } = splitIntervals(assignments);
-  const gridStartMinute = resolveGridStart(intervals);
+  const gridStartMinute = resolveTimelineGridStart(intervals.map(({ start }) => start));
   const scheduled = placeIntervals(intervals, gridStartMinute);
 
   return {
@@ -63,10 +115,178 @@ export function buildTimelineEntries(assignments: Assignment[]): TimelineResult 
   };
 }
 
+export function resolveTimelineGridStart(starts: number[]): number {
+  const finiteStarts = starts.filter(Number.isFinite);
+  if (finiteStarts.length === 0) return TIMELINE_DEFAULT_START;
+  const earliestStart = Math.min(...finiteStarts);
+  if (earliestStart >= TIMELINE_DEFAULT_START) return TIMELINE_DEFAULT_START;
+  return Math.floor(earliestStart / TIMELINE_SNAP_MINUTES) * TIMELINE_SNAP_MINUTES;
+}
+
+export function layoutTimelineVisualItems(
+  items: TimelineVisualItem[],
+  gridStartMinute: number
+): TimelineVisualLayout[] {
+  const sorted = [...items].sort(
+    (left, right) => left.start - right.start || left.end - right.end || left.key.localeCompare(right.key)
+  );
+  const layouts: TimelineVisualLayout[] = [];
+  const laneEnds: number[] = [];
+  let groupEntries: TimelineVisualLayout[] = [];
+  let groupEnd = -Infinity;
+
+  const finishGroup = () => {
+    const laneCount = groupEntries.reduce((count, entry) => Math.max(count, entry.visualLane + 1), 0);
+    for (const entry of groupEntries) entry.visualLaneCount = laneCount;
+  };
+
+  for (const item of sorted) {
+    const top = (item.start - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE;
+    const gridEnd = (TIMELINE_END - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE;
+    const height = Math.min(item.height, Math.max(0, gridEnd - top));
+    const visualEnd = top + height;
+    if (top >= groupEnd) {
+      finishGroup();
+      groupEntries = [];
+      groupEnd = visualEnd;
+    } else {
+      groupEnd = Math.max(groupEnd, visualEnd);
+    }
+
+    const lane = laneEnds.findIndex((end) => end <= top);
+    const visualLane = lane === -1 ? laneEnds.length : lane;
+    laneEnds[visualLane] = visualEnd;
+    const layout: TimelineVisualLayout = {
+      key: item.key,
+      top,
+      height,
+      visualLane,
+      visualLaneCount: 1,
+    };
+    layouts.push(layout);
+    groupEntries.push(layout);
+  }
+
+  finishGroup();
+  return layouts;
+}
+
+export function buildTimelineContextEntries({
+  day,
+  days,
+  reservations,
+  notes,
+}: {
+  day: Day;
+  days: Day[];
+  reservations: Reservation[];
+  notes: DayNote[];
+}): TimelineContextResult {
+  const scheduled: ScheduledTimelineContextEntry[] = [];
+  const untimed: TimelineContextEntry[] = [];
+  const transports = getTransportForDay({
+    reservations,
+    dayId: day.id,
+    dayAssignmentIds: [],
+    days,
+  }).filter((reservation) => TRANSPORT_TYPES.has(reservation.type)) as TimelineTransportReservation[];
+
+  for (const reservation of transports) {
+    const phase = getSpanPhase(reservation, day.id);
+    const leg = reservation.__leg?.index ?? 'single';
+    const entry: TimelineTransportContextEntry = {
+      kind: 'transport',
+      key: `transport:${reservation.id}:leg:${leg}:day:${day.id}:phase:${phase}`,
+      title: reservation.title,
+      reservation,
+      sourceReservation: reservations.find((source) => source.id === reservation.id) ?? reservation,
+    };
+    const interval = timelineTransportInterval(reservation, phase);
+
+    if (interval === null) {
+      untimed.push(entry);
+    } else {
+      scheduled.push(scheduleTimelineContextEntry(entry, interval.start, interval.end));
+    }
+  }
+
+  for (const note of notes) {
+    if (note.day_id !== day.id) continue;
+    const entry: TimelineNoteContextEntry = {
+      kind: 'note',
+      key: `note:${note.id}`,
+      title: note.text,
+      note,
+    };
+    const minute = parseTimelineContextClock(note.time);
+
+    if (minute === null) {
+      untimed.push(entry);
+    } else {
+      const marker = timelineMarkerInterval(minute);
+      scheduled.push(scheduleTimelineContextEntry(entry, marker.start, marker.end));
+    }
+  }
+
+  return { scheduled, untimed };
+}
+
 export function timelineAssignmentTimes(assignment: Assignment): { start: string | null; end: string | null } {
   return {
     start: assignment.assignment_time ?? assignment.place.place_time ?? null,
     end: assignment.assignment_end_time ?? assignment.place.end_time ?? null,
+  };
+}
+
+function parseTimelineContextClock(value: unknown, allowEndOfDay = false): number | null {
+  if (allowEndOfDay && value === '24:00') return parseDayTime(value, { allowEndOfDay: true });
+  if (typeof value !== 'string') return null;
+  if (TIMELINE_CLOCK_PATTERN.test(value)) return parseDayTime(value);
+  const isoMatch = TIMELINE_ISO_PATTERN.exec(value);
+  return isoMatch ? parseDayTime(isoMatch[1]) : null;
+}
+
+function timelineMarkerInterval(minute: number): { start: number; end: number } {
+  if (minute > TIMELINE_END - TIMELINE_SNAP_MINUTES) {
+    return { start: TIMELINE_END - TIMELINE_SNAP_MINUTES, end: TIMELINE_END };
+  }
+  return { start: minute, end: minute + TIMELINE_SNAP_MINUTES };
+}
+
+function timelineTransportInterval(
+  reservation: TimelineTransportReservation,
+  phase: 'single' | 'start' | 'middle' | 'end'
+): { start: number; end: number } | null {
+  if (phase === 'middle') return null;
+  if (phase === 'start') {
+    const start = parseTimelineContextClock(reservation.reservation_time);
+    return start === null ? null : timelineMarkerInterval(start);
+  }
+  if (phase === 'end') {
+    const end = parseTimelineContextClock(reservation.reservation_end_time, true);
+    return end === null ? null : timelineMarkerInterval(end);
+  }
+
+  const start = parseTimelineContextClock(reservation.reservation_time);
+  const end = parseTimelineContextClock(reservation.reservation_end_time, true);
+  if (start !== null) {
+    return end !== null && end > start ? { start, end } : timelineMarkerInterval(start);
+  }
+  return end === null ? null : timelineMarkerInterval(end);
+}
+
+function scheduleTimelineContextEntry(
+  entry: TimelineContextEntry,
+  start: number,
+  end: number
+): ScheduledTimelineContextEntry {
+  const duration = end - start;
+  return {
+    ...entry,
+    start,
+    end,
+    duration,
+    height: Math.max(duration * TIMELINE_PIXELS_PER_MINUTE, TIMELINE_MIN_BLOCK_HEIGHT),
   };
 }
 
@@ -91,12 +311,6 @@ function splitIntervals(assignments: Assignment[]): { intervals: Interval[]; uns
   );
 
   return { intervals, unscheduled };
-}
-
-function resolveGridStart(intervals: Interval[]): number {
-  const earliestStart = intervals[0]?.start;
-  if (earliestStart === undefined || earliestStart >= TIMELINE_DEFAULT_START) return TIMELINE_DEFAULT_START;
-  return Math.floor(earliestStart / TIMELINE_SNAP_MINUTES) * TIMELINE_SNAP_MINUTES;
 }
 
 function placeIntervals(intervals: Interval[], gridStartMinute: number): TimelineEntry[] {
@@ -146,36 +360,20 @@ function placeIntervals(intervals: Interval[], gridStartMinute: number): Timelin
   }
 
   finishGroup();
-  placeVisualLanes(entries);
-  return entries;
-}
-
-function placeVisualLanes(entries: TimelineEntry[]): void {
-  const laneEnds: number[] = [];
-  let groupEntries: TimelineEntry[] = [];
-  let groupEnd = -Infinity;
-
-  const finishGroup = () => {
-    const laneCount = groupEntries.reduce((count, entry) => Math.max(count, entry.visualLane + 1), 0);
-    for (const entry of groupEntries) entry.visualLaneCount = laneCount;
-  };
-
-  for (const entry of entries) {
-    const visualStart = entry.top;
-    const visualEnd = entry.top + entry.height;
-    if (visualStart >= groupEnd) {
-      finishGroup();
-      groupEntries = [];
-      groupEnd = visualEnd;
-    } else {
-      groupEnd = Math.max(groupEnd, visualEnd);
-    }
-
-    const lane = laneEnds.findIndex((end) => end <= visualStart);
-    entry.visualLane = lane === -1 ? laneEnds.length : lane;
-    laneEnds[entry.visualLane] = visualEnd;
-    groupEntries.push(entry);
+  const visualLayouts = layoutTimelineVisualItems(
+    entries.map((entry, index) => ({
+      key: String(index).padStart(12, '0'),
+      start: entry.start,
+      end: entry.end,
+      height: entry.height,
+    })),
+    gridStartMinute
+  );
+  for (let index = 0; index < entries.length; index += 1) {
+    entries[index].top = visualLayouts[index].top;
+    entries[index].height = visualLayouts[index].height;
+    entries[index].visualLane = visualLayouts[index].visualLane;
+    entries[index].visualLaneCount = visualLayouts[index].visualLaneCount;
   }
-
-  finishGroup();
+  return entries;
 }

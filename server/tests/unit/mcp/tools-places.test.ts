@@ -13,6 +13,7 @@ import {
 } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
 import { resetTestDb } from '../../helpers/test-db';
+import { invalidatePermissionsCache } from '../../../src/services/permissions';
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -91,6 +92,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetTestDb(testDb);
+  invalidatePermissionsCache();
   broadcastMock.mockClear();
   searchPlacesMock.mockClear();
   delete process.env.DEMO_MODE;
@@ -153,6 +155,50 @@ describe('Tool: create_place', () => {
       const data = parseToolResult(result) as any;
       expect(data.place.name).toBe('Mystery Spot');
       expect(data.place.trip_id).toBe(trip.id);
+    });
+  });
+
+  it('persists a caller-supplied non-default duration', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = parseToolResult(
+        await h.client.callTool({
+          name: 'create_place',
+          arguments: { tripId: trip.id, name: 'Long museum visit', duration_minutes: 120 },
+        }),
+      ) as any;
+
+      expect(result.place.duration_minutes).toBe(120);
+    });
+  });
+
+  it('defaults duration_minutes to 60 when omitted', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = parseToolResult(
+        await h.client.callTool({ name: 'create_place', arguments: { tripId: trip.id, name: 'Untimed stop' } }),
+      ) as any;
+
+      expect(result.place.duration_minutes).toBe(60);
+    });
+  });
+
+  it.each([4, 60.5, 1441])('rejects invalid duration %s without inserting a place', async (duration) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_place',
+        arguments: { tripId: trip.id, name: 'Invalid duration', duration_minutes: duration },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare('SELECT COUNT(*) AS count FROM places WHERE trip_id = ?').get(trip.id)).toEqual({ count: 0 });
     });
   });
 
@@ -437,6 +483,56 @@ describe('Tool: delete_place', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: create_and_assign_place', () => {
+  it('persists a caller-supplied non-default duration', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = parseToolResult(
+        await h.client.callTool({
+          name: 'create_and_assign_place',
+          arguments: { tripId: trip.id, dayId: day.id, name: 'Quick shrine', duration_minutes: 45 },
+        }),
+      ) as any;
+
+      expect(result.place.duration_minutes).toBe(45);
+    });
+  });
+
+  it('defaults duration_minutes to 60 when omitted', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = parseToolResult(
+        await h.client.callTool({
+          name: 'create_and_assign_place',
+          arguments: { tripId: trip.id, dayId: day.id, name: 'Untimed attraction' },
+        }),
+      ) as any;
+
+      expect(result.place.duration_minutes).toBe(60);
+    });
+  });
+
+  it.each([4, 60.5, 1441])('rejects invalid duration %s without inserting a place', async (duration) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_and_assign_place',
+        arguments: { tripId: trip.id, dayId: day.id, name: 'Invalid duration', duration_minutes: duration },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare('SELECT COUNT(*) AS count FROM places WHERE trip_id = ?').get(trip.id)).toEqual({ count: 0 });
+    });
+  });
+
   it('creates a skeleton suggestion in a linked journey', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -455,6 +551,163 @@ describe('Tool: create_and_assign_place', () => {
       expect(skeleton).toBeDefined();
       expect(skeleton.type).toBe('skeleton');
       expect(skeleton.title).toBe('Fresh POI');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// apply_recommended_durations
+// ---------------------------------------------------------------------------
+
+describe('Tool: apply_recommended_durations', () => {
+  it('applies heterogeneous durations, returns the updated IDs, and broadcasts each place after commit', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const museum = createPlace(testDb, trip.id, { name: 'Museum' });
+    const lunch = createPlace(testDb, trip.id, { name: 'Lunch' });
+
+    await withHarness(user.id, async (h) => {
+      const result = parseToolResult(
+        await h.client.callTool({
+          name: 'apply_recommended_durations',
+          arguments: {
+            tripId: trip.id,
+            recommendations: [
+              { placeId: lunch.id, duration_minutes: 45 },
+              { placeId: museum.id, duration_minutes: 120 },
+            ],
+          },
+        }),
+      ) as any;
+
+      expect(result).toEqual({ count: 2, updatedIds: [lunch.id, museum.id] });
+      expect(testDb.prepare('SELECT id, duration_minutes FROM places WHERE id IN (?, ?) ORDER BY id').all(museum.id, lunch.id)).toEqual([
+        { id: museum.id, duration_minutes: 120 },
+        { id: lunch.id, duration_minutes: 45 },
+      ]);
+      expect(broadcastMock).toHaveBeenCalledTimes(2);
+      expect(broadcastMock).toHaveBeenNthCalledWith(
+        1,
+        trip.id,
+        'place:updated',
+        expect.objectContaining({ place: expect.objectContaining({ id: lunch.id, duration_minutes: 45 }), _source: 'mcp' }),
+      );
+      expect(broadcastMock).toHaveBeenNthCalledWith(
+        2,
+        trip.id,
+        'place:updated',
+        expect.objectContaining({ place: expect.objectContaining({ id: museum.id, duration_minutes: 120 }), _source: 'mcp' }),
+      );
+    });
+  });
+
+  it('rejects duplicate place IDs without updating or broadcasting', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id);
+    testDb.prepare('UPDATE places SET duration_minutes = 75 WHERE id = ?').run(place.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'apply_recommended_durations',
+        arguments: {
+          tripId: trip.id,
+          recommendations: [
+            { placeId: place.id, duration_minutes: 45 },
+            { placeId: place.id, duration_minutes: 120 },
+          ],
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(place.id)).toEqual({
+        duration_minutes: 75,
+      });
+      expect(broadcastMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without updating or broadcasting', async (duration) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id);
+    testDb.prepare('UPDATE places SET duration_minutes = 75 WHERE id = ?').run(place.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'apply_recommended_durations',
+        arguments: { tripId: trip.id, recommendations: [{ placeId: place.id, duration_minutes: duration }] },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(place.id)).toEqual({
+        duration_minutes: 75,
+      });
+      expect(broadcastMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each(['missing', 'cross-trip'] as const)('rolls back and broadcasts nothing when a %s place is recommended', async (kind) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const otherTrip = createTrip(testDb, user.id);
+    const mine = createPlace(testDb, trip.id, { name: 'Mine' });
+    const foreign = createPlace(testDb, otherTrip.id, { name: 'Foreign' });
+    testDb.prepare('UPDATE places SET duration_minutes = 75 WHERE id = ?').run(mine.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'apply_recommended_durations',
+        arguments: {
+          tripId: trip.id,
+          recommendations: [
+            { placeId: mine.id, duration_minutes: 45 },
+            { placeId: kind === 'missing' ? 99999 : foreign.id, duration_minutes: 120 },
+          ],
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('One or more places were not found in this trip.');
+      expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(mine.id)).toEqual({
+        duration_minutes: 75,
+      });
+      expect(broadcastMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it('retains the demo, access, and place_edit permission gates', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const { user: stranger } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id);
+    const place = createPlace(testDb, trip.id);
+    testDb.prepare('INSERT INTO trip_members (trip_id, user_id) VALUES (?, ?)').run(trip.id, member.id);
+    testDb.prepare("INSERT INTO app_settings (key, value) VALUES ('perm_place_edit', 'trip_owner')").run();
+    invalidatePermissionsCache();
+
+    const arguments_ = { tripId: trip.id, recommendations: [{ placeId: place.id, duration_minutes: 45 }] };
+    await withHarness(stranger.id, async (h) => {
+      const result = await h.client.callTool({ name: 'apply_recommended_durations', arguments: arguments_ });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Trip not found or access denied.');
+    });
+    await withHarness(member.id, async (h) => {
+      const result = await h.client.callTool({ name: 'apply_recommended_durations', arguments: arguments_ });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('You do not have permission to perform this action on this trip.');
+    });
+    process.env.DEMO_MODE = 'true';
+    const { user: demoUser } = createUser(testDb, { email: 'demo@nomad.app' });
+    const demoTrip = createTrip(testDb, demoUser.id);
+    const demoPlace = createPlace(testDb, demoTrip.id);
+    await withHarness(demoUser.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'apply_recommended_durations',
+        arguments: { tripId: demoTrip.id, recommendations: [{ placeId: demoPlace.id, duration_minutes: 45 }] },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as any).text).toBe('Write operations are disabled in demo mode.');
     });
   });
 });

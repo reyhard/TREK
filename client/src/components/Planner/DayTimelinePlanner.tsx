@@ -3,15 +3,22 @@ import { AlertTriangle, ChevronLeft, ChevronRight, Clock, GripVertical, Pencil, 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '../../i18n';
-import type { Assignment, Category, Day, Place } from '../../types';
+import type { Assignment, Category, Day, DayNote, Place, Reservation } from '../../types';
 import { formatDate } from '../../utils/formatters';
+import { safeTransitMeta } from '../../utils/safeParseMetadata';
 import { useToast } from '../shared/Toast';
+import { getNoteIcon } from './DayPlanSidebar.constants';
 import {
+  buildTimelineContextEntries,
   buildTimelineEntries,
+  layoutTimelineVisualItems,
+  resolveTimelineGridStart,
   TIMELINE_END,
   TIMELINE_PIXELS_PER_MINUTE,
   timelineAssignmentTimes,
   timelineMinuteFromPointer,
+  type ScheduledTimelineContextEntry,
+  type TimelineContextEntry,
   type TimelineEntry,
 } from './dayTimelineModel';
 
@@ -23,6 +30,10 @@ export interface DayTimelinePlannerProps {
   assignments: Assignment[];
   places: Place[];
   categories: Category[];
+  reservations?: Reservation[];
+  notes?: DayNote[];
+  routeShown?: boolean;
+  routeProfile?: 'driving' | 'walking';
   canEdit: boolean;
   selectedPlaceId: number | null;
   selectedAssignmentId: number | null;
@@ -35,6 +46,11 @@ export interface DayTimelinePlannerProps {
   onPlaceClick: (placeId: number | null, assignmentId?: number | null) => void;
   onEditPlace: (place: Place, assignmentId?: number) => void;
   onSelectDay: (dayId: number) => void;
+  onToggleRoute?: () => void;
+  onSetRouteProfile?: (profile: 'driving' | 'walking') => void;
+  onPlanTransit?: (dayId: number) => void;
+  onOpenTransit?: (reservation: Reservation) => void;
+  onEditTransport?: (reservation: Reservation) => void;
 }
 
 interface MoveState {
@@ -75,6 +91,10 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   assignments,
   places,
   categories,
+  reservations = [],
+  notes = [],
+  routeShown = false,
+  routeProfile = 'driving',
   canEdit,
   selectedPlaceId,
   selectedAssignmentId,
@@ -83,6 +103,11 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   onPlaceClick,
   onEditPlace,
   onSelectDay,
+  onToggleRoute,
+  onSetRouteProfile,
+  onPlanTransit,
+  onOpenTransit,
+  onEditTransport,
 }: DayTimelinePlannerProps) {
   const { t, locale } = useTranslation();
   const toast = useToast();
@@ -116,6 +141,32 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     });
   }, [assignments, day.id, localAssignments, optimisticTimings]);
   const timeline = useMemo(() => buildTimelineEntries(allAssignments), [allAssignments]);
+  const context = useMemo(
+    () => buildTimelineContextEntries({ day, days, reservations, notes }),
+    [day, days, reservations, notes]
+  );
+  const gridStartMinute = useMemo(
+    () => resolveTimelineGridStart([...timeline.scheduled, ...context.scheduled].map(({ start }) => start)),
+    [context.scheduled, timeline.scheduled]
+  );
+  const visualLayouts = useMemo(
+    () =>
+      new Map(
+        layoutTimelineVisualItems(
+          [
+            ...timeline.scheduled.map(({ id, start, end, height }) => ({
+              key: `activity:${id}`,
+              start,
+              end,
+              height,
+            })),
+            ...context.scheduled.map(({ key, start, end, height }) => ({ key, start, end, height })),
+          ],
+          gridStartMinute
+        ).map((layout) => [layout.key, layout])
+      ),
+    [context.scheduled, gridStartMinute, timeline.scheduled]
+  );
   const selectedDayIndex = days.findIndex((candidate) => candidate.id === day.id);
   const previousDay = selectedDayIndex > 0 ? days[selectedDayIndex - 1] : undefined;
   const nextDay = selectedDayIndex >= 0 ? days[selectedDayIndex + 1] : undefined;
@@ -210,7 +261,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
 
   const minuteAtPointer = (clientY: number) => {
     const bounds = gridRef.current?.getBoundingClientRect() ?? ({ top: 0 } as DOMRect);
-    return timelineMinuteFromPointer(clientY, bounds, timeline.gridStartMinute, TIMELINE_PIXELS_PER_MINUTE);
+    return timelineMinuteFromPointer(clientY, bounds, gridStartMinute, TIMELINE_PIXELS_PER_MINUTE);
   };
 
   const getDragValue = (event: React.DragEvent, key: 'placeId' | 'assignmentId') =>
@@ -344,7 +395,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
       event.preventDefault();
       const maximum = TIMELINE_END - assignmentDuration(entry);
       const proposedMinute = Math.min(
-        Math.max(keyboardMove.proposedMinute + changes[event.key]!, timeline.gridStartMinute),
+        Math.max(keyboardMove.proposedMinute + changes[event.key]!, gridStartMinute),
         maximum
       );
       setKeyboardMove({ ...keyboardMove, proposedMinute });
@@ -381,8 +432,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     const overlapping = Boolean(scheduledEntry?.overlapping);
     const movementEntry: TimelineEntry = scheduledEntry ?? {
       ...assignment,
-      start: timeline.gridStartMinute,
-      end: timeline.gridStartMinute + duration,
+      start: gridStartMinute,
+      end: gridStartMinute + duration,
       duration,
       top: 0,
       height: Math.max(duration * TIMELINE_PIXELS_PER_MINUTE, 30),
@@ -494,7 +545,9 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           boxSizing: 'border-box',
           borderRadius: 8,
           border: `${isSelected ? 2 : 1}px solid ${category?.color || 'var(--accent)'}`,
-          background: 'var(--bg-card)',
+          background: isSelected
+            ? 'var(--bg-selected)'
+            : `color-mix(in srgb, ${category?.color || 'var(--accent)'} 10%, transparent)`,
           padding: compact ? '2px 4px' : '6px 8px',
           overflow: compact ? 'visible' : 'hidden',
           boxShadow: overlapping ? '0 0 0 2px var(--warning), var(--shadow-sm)' : 'var(--shadow-sm)',
@@ -552,8 +605,92 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     );
   };
 
+  const renderContext = (entry: TimelineContextEntry, scheduledEntry?: ScheduledTimelineContextEntry) => {
+    const isTransport = entry.kind === 'transport';
+    const NoteIcon = entry.kind === 'note' ? getNoteIcon(entry.note.icon) : null;
+    const contextLabel = isTransport
+      ? t('trip.timeline.transportContext', { name: entry.title })
+      : t('trip.timeline.noteContext', { name: entry.title });
+    const transitHandler =
+      isTransport && safeTransitMeta(entry.sourceReservation) && onOpenTransit
+        ? () => onOpenTransit(entry.sourceReservation)
+        : null;
+    const editHandler =
+      isTransport && !transitHandler && canEdit && onEditTransport
+        ? () => onEditTransport(entry.sourceReservation)
+        : null;
+    const activation = transitHandler ?? editHandler;
+    const compact = Boolean(scheduledEntry && scheduledEntry.height <= 45);
+    const timeLabel = scheduledEntry
+      ? `${formatDayTime(scheduledEntry.start)} – ${formatDayTime(scheduledEntry.end, { allowEndOfDay: true })}`
+      : null;
+    const label = timeLabel ? `${contextLabel}, ${timeLabel}` : contextLabel;
+    const style: React.CSSProperties = {
+      display: compact ? 'flex' : 'block',
+      alignItems: compact ? 'center' : undefined,
+      gap: compact ? 5 : undefined,
+      width: '100%',
+      minWidth: 0,
+      height: '100%',
+      boxSizing: 'border-box',
+      borderRadius: 8,
+      border: isTransport ? '1px solid color-mix(in srgb, #3b82f6 42%, transparent)' : '1px solid var(--border-faint)',
+      background: isTransport ? 'color-mix(in srgb, #3b82f6 10%, transparent)' : 'var(--bg-hover)',
+      color: 'var(--text-primary)',
+      padding: compact ? '2px 5px' : '6px 8px',
+      overflow: compact ? 'visible' : 'hidden',
+      boxShadow: 'var(--shadow-sm)',
+      cursor: activation ? 'pointer' : 'default',
+      font: 'inherit',
+      textAlign: 'left',
+    };
+    const contents = (
+      <>
+        <strong
+          className="text-content"
+          style={{
+            display: compact ? undefined : 'block',
+            flex: compact ? 1 : undefined,
+            minWidth: 0,
+            fontSize: compact ? 11 : 12,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: compact ? 'nowrap' : undefined,
+          }}
+        >
+          {NoteIcon && (
+            <NoteIcon
+              aria-hidden="true"
+              size={compact ? 12 : 14}
+              style={{ display: 'inline', marginRight: 4, verticalAlign: 'text-bottom' }}
+            />
+          )}
+          {entry.title}
+        </strong>
+        {timeLabel && (
+          <span
+            className="text-content-faint"
+            style={{ display: compact ? undefined : 'block', fontSize: compact ? 10 : 11, whiteSpace: 'nowrap' }}
+          >
+            {timeLabel}
+          </span>
+        )}
+      </>
+    );
+
+    return activation ? (
+      <button type="button" aria-label={label} onClick={activation} style={style}>
+        {contents}
+      </button>
+    ) : (
+      <div role="group" aria-label={label} style={style}>
+        {contents}
+      </div>
+    );
+  };
+
   const hours = [];
-  for (let minute = timeline.gridStartMinute; minute <= TIMELINE_END; minute += 60) hours.push(minute);
+  for (let minute = gridStartMinute; minute <= TIMELINE_END; minute += 60) hours.push(minute);
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
@@ -597,6 +734,69 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
         </button>
       </header>
 
+      {(onToggleRoute || onSetRouteProfile || onPlanTransit) && (
+        <div
+          role="toolbar"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 12px',
+            borderBottom: '1px solid var(--border-faint)',
+            background: 'var(--bg-card)',
+          }}
+        >
+          {onToggleRoute && (
+            <button
+              type="button"
+              aria-pressed={routeShown}
+              onClick={onToggleRoute}
+              style={{
+                padding: '4px 8px',
+                background: routeShown ? 'var(--bg-selected)' : 'transparent',
+              }}
+            >
+              {t('dayplan.route')}
+            </button>
+          )}
+          {onSetRouteProfile && (
+            <>
+              <button
+                type="button"
+                aria-pressed={routeProfile === 'walking'}
+                onClick={() => onSetRouteProfile('walking')}
+                style={{
+                  padding: '4px 8px',
+                  background: routeProfile === 'walking' ? 'var(--bg-selected)' : 'transparent',
+                }}
+              >
+                {t('dayplan.movement.walking')}
+              </button>
+              <button
+                type="button"
+                aria-pressed={routeProfile === 'driving'}
+                onClick={() => onSetRouteProfile('driving')}
+                style={{
+                  padding: '4px 8px',
+                  background: routeProfile === 'driving' ? 'var(--bg-selected)' : 'transparent',
+                }}
+              >
+                {t('dayplan.movement.driving')}
+              </button>
+            </>
+          )}
+          {onPlanTransit && (
+            <button
+              type="button"
+              onClick={() => onPlanTransit(day.id)}
+              style={{ marginLeft: 'auto', padding: '4px 8px' }}
+            >
+              {t('transit.title')}
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         data-testid="unscheduled-drop-zone"
         onDragOver={(event) => canEdit && event.preventDefault()}
@@ -617,6 +817,24 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           ))}
         </div>
       </div>
+
+      {context.untimed.length > 0 && (
+        <section
+          aria-label={t('trip.timeline.contextTray')}
+          style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-faint)' }}
+        >
+          <div className="text-content" style={{ fontSize: 12, fontWeight: 700, marginBottom: 7 }}>
+            {t('trip.timeline.contextTray')}
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {context.untimed.map((entry) => (
+              <div key={entry.key} style={{ minHeight: 42 }}>
+                {renderContext(entry)}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {timeline.overlapCount > 0 && (
         <div
@@ -639,7 +857,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           style={{
             position: 'relative',
             marginLeft: 48,
-            height: (TIMELINE_END - timeline.gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE,
+            height: (TIMELINE_END - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE,
             borderLeft: '1px solid var(--border-primary)',
           }}
         >
@@ -649,7 +867,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
               role="row"
               style={{
                 position: 'absolute',
-                top: (minute - timeline.gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE,
+                top: (minute - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE,
                 left: 0,
                 right: 0,
                 borderTop: '1px solid var(--border-faint)',
@@ -665,7 +883,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           ))}
           {timeline.scheduled.map((entry) => {
             const preview = previewMinutes[entry.id];
-            const top = ((preview ?? entry.start) - timeline.gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE;
+            const layout = visualLayouts.get(`activity:${entry.id}`)!;
+            const top = preview === undefined ? layout.top : (preview - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE;
             return (
               <div
                 key={entry.id}
@@ -673,13 +892,34 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
                 style={{
                   position: 'absolute',
                   top,
-                  height: entry.height,
-                  left: `calc(${(entry.visualLane / entry.visualLaneCount) * 100}% + 3px)`,
-                  width: `calc(${100 / entry.visualLaneCount}% - 6px)`,
+                  height: layout.height,
+                  left: `calc(${(layout.visualLane / layout.visualLaneCount) * 100}% + 3px)`,
+                  width: `calc(${100 / layout.visualLaneCount}% - 6px)`,
                   zIndex: preview === undefined ? 1 : 2,
+                  overflow: layout.height < entry.height ? 'hidden' : undefined,
                 }}
               >
                 {renderActivity(entry, entry)}
+              </div>
+            );
+          })}
+          {context.scheduled.map((entry) => {
+            const layout = visualLayouts.get(entry.key)!;
+            return (
+              <div
+                key={entry.key}
+                role="gridcell"
+                style={{
+                  position: 'absolute',
+                  top: layout.top,
+                  height: layout.height,
+                  left: `calc(${(layout.visualLane / layout.visualLaneCount) * 100}% + 3px)`,
+                  width: `calc(${100 / layout.visualLaneCount}% - 6px)`,
+                  zIndex: 1,
+                  overflow: layout.height < entry.height ? 'hidden' : undefined,
+                }}
+              >
+                {renderContext(entry, entry)}
               </div>
             );
           })}

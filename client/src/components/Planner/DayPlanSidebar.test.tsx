@@ -203,6 +203,73 @@ describe('DayPlanSidebar', () => {
     expect(onSelectDay).toHaveBeenCalledWith(second.id);
   });
 
+  it('wires selected-day timeline context and existing controls while retaining List mode', async () => {
+    const user = userEvent.setup();
+    const day = buildDay({ id: 10, title: 'Context day', date: '2026-08-09' });
+    const timedReservation = buildReservation({
+      id: 501,
+      day_id: day.id,
+      type: 'train',
+      title: 'Morning train',
+      reservation_time: '07:30',
+      reservation_end_time: '08:15',
+    });
+    const savedTransit = buildReservation({
+      id: 502,
+      day_id: day.id,
+      type: 'flight',
+      title: 'Island connection',
+      metadata: JSON.stringify({
+        legs: [{ dep_day_id: day.id, arr_day_id: day.id, dep_time: '09:00', arr_time: '10:00' }],
+        transit: { legs: [{ mode: 'rail' }] },
+      }),
+    });
+    const note = buildDayNote({ id: 601, day_id: day.id, text: 'Board ferry', time: '08:30' });
+    const onToggleRoute = vi.fn();
+    const onSetRouteProfile = vi.fn();
+    const onPlanTransit = vi.fn();
+    const onOpenTransit = vi.fn();
+    const onEditTransport = vi.fn();
+    seedStore(useTripStore, { dayNotes: { [String(day.id)]: [note] } } as any);
+
+    render(
+      <DayPlanSidebar
+        {...makeDefaultProps({
+          days: [day],
+          selectedDayId: day.id,
+          reservations: [timedReservation, savedTransit],
+          routeShown: true,
+          routeProfile: 'walking',
+          onToggleRoute,
+          onSetRouteProfile,
+          onPlanTransit,
+          onOpenTransit,
+          onEditTransport,
+        })}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(screen.getByLabelText('Transport: Morning train, 07:30 – 08:15')).toBeVisible();
+    expect(screen.getByLabelText('Note: Board ferry, 08:30 – 08:45')).toBeVisible();
+    expect(screen.getByText('Route')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Walking')).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByText('Route'));
+    await user.click(screen.getByText('Driving'));
+    await user.click(screen.getByText('Public transit'));
+    await user.click(screen.getByLabelText('Transport: Morning train, 07:30 – 08:15'));
+    await user.click(screen.getByLabelText('Transport: Island connection'));
+    expect(onToggleRoute).toHaveBeenCalledTimes(1);
+    expect(onSetRouteProfile).toHaveBeenCalledWith('driving');
+    expect(onPlanTransit).toHaveBeenCalledWith(day.id);
+    expect(onEditTransport.mock.calls[0]![0]).toBe(timedReservation);
+    expect(onOpenTransit.mock.calls[0]![0]).toBe(savedTransit);
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByLabelText('Add Note')).toBeVisible();
+  });
+
   it('shows a selection prompt instead of mounting the list when Timeline mode has no selected day', () => {
     localStorage.setItem('day-plan-mode-1', 'timeline');
     render(

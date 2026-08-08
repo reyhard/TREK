@@ -3974,6 +3974,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
   const { t } = useTranslation();
   const can = useCanDo();
   const setAssignmentTime = useTripStore((state) => state.setAssignmentTime);
+  const dayNotes = useTripStore((state) => state.dayNotes);
   const [mode, setMode] = useState<DayPlanMode>(() => readDayPlanMode(props.tripId));
 
   useEffect(() => {
@@ -4005,6 +4006,10 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             assignments={props.assignments[String(selectedDay.id)] ?? []}
             places={props.places}
             categories={props.categories}
+            reservations={props.reservations ?? []}
+            notes={dayNotes[String(selectedDay.id)] ?? []}
+            routeShown={props.routeShown}
+            routeProfile={props.routeProfile}
             canEdit={can('day_edit', props.trip)}
             selectedPlaceId={props.selectedPlaceId}
             selectedAssignmentId={props.selectedAssignmentId}
@@ -4015,6 +4020,11 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             onPlaceClick={props.onPlaceClick}
             onEditPlace={props.onEditPlace}
             onSelectDay={(dayId) => props.onSelectDay(dayId)}
+            onToggleRoute={props.onToggleRoute}
+            onSetRouteProfile={props.onSetRouteProfile}
+            onPlanTransit={props.onPlanTransit}
+            onOpenTransit={props.onOpenTransit}
+            onEditTransport={props.onEditTransport}
           />
         ) : (
           <div

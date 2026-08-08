@@ -1,6 +1,13 @@
 import userEvent from '@testing-library/user-event';
 
-import { buildAssignment, buildDay, buildPlace } from '../../../tests/helpers/factories';
+import {
+  buildAssignment,
+  buildCategory,
+  buildDay,
+  buildDayNote,
+  buildPlace,
+  buildReservation,
+} from '../../../tests/helpers/factories';
 import { fireEvent, render, screen, waitFor, within } from '../../../tests/helpers/render';
 import type { Assignment } from '../../types';
 import { DayTimelinePlanner, type DayTimelinePlannerProps } from './DayTimelinePlanner';
@@ -119,6 +126,50 @@ describe('DayTimelinePlanner', () => {
     expect(screen.queryByRole('group', { name: 'Cafe overlaps another activity' })).not.toBeInTheDocument();
   });
 
+  it('tints activity cards by category or accent while preserving selected category borders', () => {
+    const category = buildCategory({ id: 7, color: '#123456' });
+    const categorizedPlace = buildPlace({ id: 43, name: 'Gallery', category_id: category.id });
+    const uncategorizedPlace = buildPlace({ id: 44, name: 'Cafe', category_id: null });
+    const selectedPlace = buildPlace({ id: 45, name: 'Gardens', category_id: category.id });
+    const categorized = timedAssignment({ id: 102, place_id: categorizedPlace.id, place: categorizedPlace });
+    const uncategorized = timedAssignment({
+      id: 103,
+      place_id: uncategorizedPlace.id,
+      place: uncategorizedPlace,
+      assignment_time: '11:00',
+      assignment_end_time: '12:00',
+    });
+    const selected = timedAssignment({
+      id: 104,
+      place_id: selectedPlace.id,
+      place: selectedPlace,
+      assignment_time: '13:00',
+      assignment_end_time: '14:00',
+    });
+
+    render(
+      <DayTimelinePlanner
+        {...props({
+          assignments: [categorized, uncategorized, selected],
+          places: [categorizedPlace, uncategorizedPlace, selectedPlace],
+          categories: [category],
+          selectedAssignmentId: selected.id,
+        })}
+      />
+    );
+
+    expect(screen.getByRole('group', { name: 'Gallery' })).toHaveStyle({
+      background: 'color-mix(in srgb, #123456 10%, transparent)',
+    });
+    expect(screen.getByRole('group', { name: 'Cafe' })).toHaveStyle({
+      background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+    });
+    expect(screen.getByRole('group', { name: 'Gardens' })).toHaveStyle({
+      background: 'var(--bg-selected)',
+      border: '2px solid #123456',
+    });
+  });
+
   it('does not warn when one activity starts as another ends', () => {
     const next = timedAssignment({
       id: 102,
@@ -130,6 +181,181 @@ describe('DayTimelinePlanner', () => {
     render(<DayTimelinePlanner {...props({ assignments: [timedAssignment(), next] })} />);
 
     expect(screen.queryByRole('status', { name: /overlapping activities/i })).not.toBeInTheDocument();
+  });
+
+  it('renders scheduled and untimed transport and note context as distinct read-only cards', () => {
+    const scheduledTransport = buildReservation({
+      id: 501,
+      day_id: day.id,
+      type: 'train',
+      title: 'Morning train',
+      reservation_time: '07:30',
+      reservation_end_time: '08:15',
+    });
+    const malformedTransport = buildReservation({
+      id: 502,
+      day_id: day.id,
+      type: 'bus',
+      title: 'Flexible bus',
+      reservation_time: 'after lunch',
+    });
+    const timedNote = buildDayNote({ id: 601, day_id: day.id, text: 'Board ferry', time: '08:30', icon: 'Clock' });
+    const untimedNote = buildDayNote({ id: 602, day_id: day.id, text: 'Buy tickets', time: null, icon: 'Ticket' });
+
+    render(
+      <DayTimelinePlanner
+        {...props({
+          canEdit: false,
+          reservations: [scheduledTransport, malformedTransport],
+          notes: [timedNote, untimedNote],
+        })}
+      />
+    );
+
+    const grid = screen.getByRole('grid', { name: 'Day timeline' });
+    const transportCard = within(grid).getByRole('group', {
+      name: 'Transport: Morning train, 07:30 – 08:15',
+    });
+    const noteCard = within(grid).getByRole('group', { name: 'Note: Board ferry, 08:30 – 08:45' });
+    expect(within(transportCard).getByText('07:30 – 08:15')).toBeVisible();
+    expect(within(noteCard).getByText('08:30 – 08:45')).toBeVisible();
+    expect(transportCard).toHaveStyle({
+      background: 'color-mix(in srgb, #3b82f6 10%, transparent)',
+    });
+    expect(transportCard.style.border).toBe('1px solid color-mix(in srgb, rgb(59, 130, 246) 42%, transparent)');
+    expect(noteCard).toHaveStyle({ background: 'var(--bg-hover)' });
+    expect(noteCard.querySelector('svg.lucide-clock')).toHaveAttribute('aria-hidden', 'true');
+
+    const contextTray = screen.getByRole('region', { name: 'Timeline context' });
+    expect(within(contextTray).getByRole('group', { name: 'Transport: Flexible bus' })).toBeVisible();
+    const untimedNoteCard = within(contextTray).getByRole('group', { name: 'Note: Buy tickets' });
+    expect(untimedNoteCard).toBeVisible();
+    expect(untimedNoteCard.querySelector('svg.lucide-ticket')).toHaveAttribute('aria-hidden', 'true');
+    for (const card of [transportCard, noteCard, ...within(contextTray).getAllByRole('group')]) {
+      expect(card).not.toHaveAttribute('draggable');
+      expect(within(card).queryByRole('button', { name: /^(Move|Edit|Remove time)/ })).not.toBeInTheDocument();
+    }
+  });
+
+  it('renders every synthetic leg but opens saved transit with its original reservation', async () => {
+    const user = userEvent.setup();
+    const savedTransit = buildReservation({
+      id: 503,
+      day_id: day.id,
+      type: 'flight',
+      title: 'Island connection',
+      metadata: JSON.stringify({
+        legs: [
+          { dep_day_id: day.id, arr_day_id: day.id, dep_time: '09:00', arr_time: '10:00' },
+          { dep_day_id: day.id, arr_day_id: day.id, dep_time: '11:00', arr_time: '12:30' },
+        ],
+        transit: { legs: [{ mode: 'rail' }] },
+      }),
+    });
+    const onOpenTransit = vi.fn();
+    const onEditTransport = vi.fn();
+
+    render(<DayTimelinePlanner {...props({ reservations: [savedTransit], onOpenTransit, onEditTransport })} />);
+
+    const firstLeg = screen.getByRole('button', {
+      name: 'Transport: Island connection, 09:00 – 10:00',
+    });
+    const secondLeg = screen.getByRole('button', {
+      name: 'Transport: Island connection, 11:00 – 12:30',
+    });
+    expect(screen.getByText('09:00 – 10:00')).toBeVisible();
+    expect(screen.getByText('11:00 – 12:30')).toBeVisible();
+    expect(firstLeg).toBeVisible();
+    await user.click(secondLeg);
+    expect(onOpenTransit).toHaveBeenCalledTimes(1);
+    expect(onOpenTransit.mock.calls[0]![0]).toBe(savedTransit);
+    expect(onEditTransport).not.toHaveBeenCalled();
+  });
+
+  it('clips a minimum-height context marker at the end-of-day grid boundary', () => {
+    const lateNote = buildDayNote({ id: 603, day_id: day.id, text: 'Late reminder', time: '23:50' });
+
+    render(<DayTimelinePlanner {...props({ canEdit: false, notes: [lateNote] })} />);
+
+    const card = screen.getByRole('group', { name: 'Note: Late reminder, 23:45 – 24:00' });
+    expect(card.parentElement).toHaveStyle({ top: '1065px', height: '15px', overflow: 'hidden' });
+  });
+
+  it('edits ordinary transport only through the exact editable callback path', async () => {
+    const user = userEvent.setup();
+    const transport = buildReservation({
+      id: 504,
+      day_id: day.id,
+      type: 'bus',
+      title: 'Airport bus',
+      reservation_time: '13:00',
+    });
+    const onEditTransport = vi.fn();
+    const view = render(<DayTimelinePlanner {...props({ reservations: [transport], onEditTransport })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Transport: Airport bus, 13:00 – 13:15' }));
+    expect(onEditTransport).toHaveBeenCalledTimes(1);
+    expect(onEditTransport.mock.calls[0]![0]).toBe(transport);
+
+    view.rerender(<DayTimelinePlanner {...props({ reservations: [transport], canEdit: false, onEditTransport })} />);
+    expect(screen.queryByRole('button', { name: 'Transport: Airport bus, 13:00 – 13:15' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Transport: Airport bus, 13:00 – 13:15' })).toBeVisible();
+
+    view.rerender(<DayTimelinePlanner {...props({ reservations: [transport] })} />);
+    expect(screen.queryByRole('button', { name: 'Transport: Airport bus, 13:00 – 13:15' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Transport: Airport bus, 13:00 – 13:15' })).toBeVisible();
+  });
+
+  it('exposes route state, profile selection, and transit planning through the focused toolbar', async () => {
+    const user = userEvent.setup();
+    const onToggleRoute = vi.fn();
+    const onSetRouteProfile = vi.fn();
+    const onPlanTransit = vi.fn();
+    const view = render(
+      <DayTimelinePlanner
+        {...props({
+          routeShown: false,
+          routeProfile: 'walking',
+          onToggleRoute,
+          onSetRouteProfile,
+          onPlanTransit,
+        })}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Route' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Walking' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Driving' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: 'Route' }));
+    await user.click(screen.getByRole('button', { name: 'Driving' }));
+    await user.click(screen.getByRole('button', { name: 'Public transit' }));
+    expect(onToggleRoute).toHaveBeenCalledTimes(1);
+    expect(onSetRouteProfile).toHaveBeenCalledWith('driving');
+    expect(onPlanTransit).toHaveBeenCalledWith(day.id);
+
+    view.rerender(
+      <DayTimelinePlanner
+        {...props({
+          routeShown: true,
+          routeProfile: 'driving',
+          onToggleRoute,
+          onSetRouteProfile,
+          onPlanTransit,
+        })}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Route' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Walking' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Driving' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not render broken route controls when their callbacks are absent', () => {
+    render(<DayTimelinePlanner {...props({ routeShown: true, routeProfile: 'walking' })} />);
+
+    expect(screen.queryByRole('button', { name: 'Route' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Walking' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Driving' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Public transit' })).not.toBeInTheDocument();
   });
 
   it('assigns a cross-sidebar POI and schedules the returned assignment at the dropped slot', async () => {
@@ -379,6 +605,22 @@ describe('DayTimelinePlanner', () => {
 
     expect(onSetAssignmentTime).toHaveBeenCalledWith(10, 101, { place_time: '10:15' });
     expect(screen.getByText('Proposed time 10:15')).toBeInTheDocument();
+  });
+
+  it('uses the visible context-expanded grid start as the keyboard movement lower bound', async () => {
+    const user = userEvent.setup();
+    const assignment = buildAssignment({ id: 202, day_id: day.id, place: museum });
+    const earlyContext = buildDayNote({ id: 603, day_id: day.id, text: 'Early reminder', time: '05:00' });
+    const onSetAssignmentTime = vi.fn().mockResolvedValue(assignment);
+    render(
+      <DayTimelinePlanner {...props({ assignments: [assignment], notes: [earlyContext], onSetAssignmentTime })} />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Move Museum' }));
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(onSetAssignmentTime).toHaveBeenCalledWith(day.id, assignment.id, { place_time: '05:15' });
+    expect(screen.getByText('Proposed time 05:15')).toBeInTheDocument();
   });
 
   it('commits a snapped pointer move only after the handle receives pointer movement', async () => {
