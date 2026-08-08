@@ -20,7 +20,9 @@ import { useTripStore } from '../store/tripStore';
 // MemoriesPanel moved to Journey addon
 import {
   FolderPlus,
+  CalendarDays,
   ListTodo,
+  MapPin,
   PackageCheck,
   PanelLeftClose,
   PanelLeftOpen,
@@ -992,55 +994,58 @@ export default function TripPlannerPage(): React.ReactElement | null {
               !showReservationModal &&
               ReactDOM.createPortal(
                 <div
-                  className="flex md:hidden"
+                  className="flex justify-center md:hidden"
                   style={{
                     position: 'fixed',
                     top: 'calc(var(--nav-h) + 44px + 12px)',
                     left: 12,
                     right: 12,
-                    justifyContent: 'space-between',
                     zIndex: 100,
                     pointerEvents: 'none',
                   }}
                 >
-                  <button
-                    onClick={() => setMobileSidebarOpen('left')}
-                    className="border border-edge bg-surface-card text-content"
+                  <div
+                    className="border border-edge bg-surface-card"
                     style={{
                       pointerEvents: 'auto',
                       backdropFilter: 'blur(12px)',
-                      borderRadius: 24,
-                      padding: '11px 24px',
-                      fontSize: 'calc(15px * var(--fs-scale-subtitle, 1))',
-                      fontWeight: 600,
-                      cursor: 'pointer',
+                      borderRadius: 14,
+                      padding: 4,
                       boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-                      minHeight: 44,
-                      fontFamily: 'inherit',
-                      touchAction: 'manipulation',
+                      display: 'inline-flex',
+                      gap: 2,
                     }}
                   >
-                    {t('trip.mobilePlan')}
-                  </button>
-                  <button
-                    onClick={() => setMobileSidebarOpen('right')}
-                    className="border border-edge bg-surface-card text-content"
-                    style={{
-                      pointerEvents: 'auto',
-                      backdropFilter: 'blur(12px)',
-                      borderRadius: 24,
-                      padding: '11px 24px',
-                      fontSize: 'calc(15px * var(--fs-scale-subtitle, 1))',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-                      minHeight: 44,
-                      fontFamily: 'inherit',
-                      touchAction: 'manipulation',
-                    }}
-                  >
-                    {t('trip.mobilePlaces')}
-                  </button>
+                    {[
+                      { id: 'left' as const, label: t('trip.mobilePlan'), Icon: ListTodo },
+                      { id: 'timeline' as const, label: t('trip.timeline.mode.timeline'), Icon: CalendarDays },
+                      { id: 'right' as const, label: t('trip.mobilePlaces'), Icon: MapPin },
+                    ].map(({ id, label, Icon }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setMobileSidebarOpen(id)}
+                        className="text-content hover:bg-surface-tertiary"
+                        style={{
+                          border: 'none',
+                          borderRadius: 10,
+                          padding: '8px 10px',
+                          fontSize: 'calc(13px * var(--fs-scale-body, 1))',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          minHeight: 36,
+                          fontFamily: 'inherit',
+                          touchAction: 'manipulation',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                        }}
+                      >
+                        <Icon size={15} aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>,
                 document.body
               )}
@@ -1280,7 +1285,11 @@ export default function TripPlannerPage(): React.ReactElement | null {
                         className="text-content"
                         style={{ fontWeight: 600, fontSize: 'calc(14px * var(--fs-scale-body, 1))' }}
                       >
-                        {mobileSidebarOpen === 'left' ? t('trip.mobilePlan') : t('trip.mobilePlaces')}
+                        {mobileSidebarOpen === 'left'
+                          ? t('trip.mobilePlan')
+                          : mobileSidebarOpen === 'timeline'
+                            ? t('trip.timeline.mode.timeline')
+                            : t('trip.mobilePlaces')}
                       </span>
                       <button
                         onClick={() => setMobileSidebarOpen(null)}
@@ -1299,8 +1308,17 @@ export default function TripPlannerPage(): React.ReactElement | null {
                         <X size={14} />
                       </button>
                     </div>
-                    <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-                      {mobileSidebarOpen === 'left' ? (
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: mobileSidebarOpen === 'timeline' ? 'hidden' : 'auto',
+                        display: mobileSidebarOpen === 'timeline' ? 'flex' : undefined,
+                        flexDirection: mobileSidebarOpen === 'timeline' ? 'column' : undefined,
+                        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                      }}
+                    >
+                      {mobileSidebarOpen === 'left' || mobileSidebarOpen === 'timeline' ? (
                         <DayPlanSidebar
                           tripId={tripId}
                           trip={trip}
@@ -1311,10 +1329,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
                           selectedDayId={selectedDayId}
                           selectedPlaceId={selectedPlaceId}
                           selectedAssignmentId={selectedAssignmentId}
-                          onSelectDay={(id) => {
-                            handleSelectDay(id);
-                            setMobileSidebarOpen(null);
-                          }}
+                          onSelectDay={handleSelectDay}
+                          initialMode={mobileSidebarOpen === 'timeline' ? 'timeline' : 'list'}
+                          onTimelineSelectDay={(id) => handleSelectDay(id, false, true)}
                           onPlaceClick={(placeId, assignmentId) => {
                             handlePlaceClick(placeId, assignmentId);
                           }}

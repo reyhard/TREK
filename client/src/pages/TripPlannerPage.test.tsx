@@ -2035,32 +2035,16 @@ describe('TripPlannerPage', () => {
         expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
       });
 
-      // The mobile portal buttons are rendered to document.body.
-      // The "Plan" tab button has title="Plan"; the mobile portal button does not.
-      const mobilePlanBtn = Array.from(document.body.querySelectorAll('button')).find(
-        (b) => b.textContent === 'Plan' && !b.getAttribute('title')
-      );
+      const mobilePlanBtn = screen.getByRole('button', { name: 'Plan' });
+      await act(async () => {
+        fireEvent.click(mobilePlanBtn);
+      });
 
-      if (mobilePlanBtn) {
-        await act(async () => {
-          fireEvent.click(mobilePlanBtn);
-        });
-
-        // Mobile sidebar portal renders DayPlanSidebar — now two instances
-        await waitFor(() => {
-          expect(screen.getAllByTestId('day-plan-sidebar').length).toBeGreaterThanOrEqual(2);
-        });
-
-        // Close the mobile sidebar via the X button inside the portal header
-        const closeButtons = Array.from(document.body.querySelectorAll('button')).filter(
-          (b) => !b.textContent || b.textContent.trim() === ''
-        );
-        if (closeButtons.length > 0) {
-          await act(async () => {
-            fireEvent.click(closeButtons[0]);
-          });
-        }
-      }
+      // Mobile sidebar portal renders DayPlanSidebar — now two instances.
+      await waitFor(() => {
+        expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+      });
+      expect(capturedDayPlanSidebarProps.current.initialMode).toBe('list');
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
@@ -2084,21 +2068,50 @@ describe('TripPlannerPage', () => {
         expect(screen.getByTestId('places-sidebar')).toBeInTheDocument();
       });
 
-      // "Places" tab doesn't exist; the mobile portal "Places" button has no title
-      const mobilePlacesBtn = Array.from(document.body.querySelectorAll('button')).find(
-        (b) => b.textContent === 'Places' && !b.getAttribute('title')
-      );
+      const mobilePlacesBtn = screen.getByRole('button', { name: 'Places' });
+      await act(async () => {
+        fireEvent.click(mobilePlacesBtn);
+      });
 
-      if (mobilePlacesBtn) {
-        await act(async () => {
-          fireEvent.click(mobilePlacesBtn);
-        });
+      // PlacesSidebar renders in mobile sidebar portal.
+      await waitFor(() => {
+        expect(screen.getAllByTestId('places-sidebar')).toHaveLength(2);
+      });
 
-        // PlacesSidebar renders in mobile sidebar portal
-        await waitFor(() => {
-          expect(screen.getAllByTestId('places-sidebar').length).toBeGreaterThanOrEqual(2);
-        });
-      }
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-052: Mobile Timeline sheet is directly discoverable', () => {
+    it('opens Timeline in timeline mode and keeps its sheet mounted when selecting a day', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+      });
+
+      expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+      expect(capturedDayPlanSidebarProps.current.initialMode).toBe('timeline');
+      expect(typeof capturedDayPlanSidebarProps.current.onTimelineSelectDay).toBe('function');
+
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onTimelineSelectDay(day.id);
+      });
+
+      expect(useTripStore.getState().selectedDayId).toBe(day.id);
+      expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });

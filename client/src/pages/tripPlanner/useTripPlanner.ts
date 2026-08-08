@@ -309,7 +309,7 @@ export function useTripPlanner() {
   const [routeProfile, setRouteProfile] = useState<'driving' | 'walking'>('driving')
   const [fitKey, setFitKey] = useState<number>(0)
   const initialFitTripId = useRef<number | null>(null)
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<'left' | 'right' | null>(null)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<'left' | 'timeline' | 'right' | null>(null)
   const mobilePlanScrollTopRef = useRef<number>(0)
   const mobilePlacesScrollTopRef = useRef<number>(0)
   const [deletePlaceId, setDeletePlaceId] = useState<number | null>(null)
@@ -476,10 +476,10 @@ export function useTripPlanner() {
 
   const { route, routeSegments, routeInfo, setRoute, setRouteInfo, updateRouteForDay } = useRouteCalculation({ assignments } as any, selectedDayId, routeShown, routeProfile, tripAccommodations)
 
-  const handleSelectDay = useCallback((dayId: number | null, skipFit?: boolean) => {
+  const handleSelectDay = useCallback((dayId: number | null, skipFit?: boolean, keepMobileOpen = false) => {
     tripActions.setSelectedDay(dayId)
     if (!skipFit) setFitKey(k => k + 1)
-    setMobileSidebarOpen(null)
+    if (!keepMobileOpen) setMobileSidebarOpen(null)
     updateRouteForDay(dayId)
   }, [updateRouteForDay])
 
