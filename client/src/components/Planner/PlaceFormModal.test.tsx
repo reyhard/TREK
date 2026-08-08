@@ -124,7 +124,7 @@ describe('PlaceFormModal', () => {
     const place = buildPlace({ name: 'Louvre', duration_minutes: 90 });
     render(<PlaceFormModal {...defaultProps} place={place} />);
 
-    expect(screen.getByLabelText(/^(Recommended duration|places\.recommendedDuration)$/)).toHaveValue('90');
+    expect(screen.getByLabelText('Recommended duration')).toHaveValue('90');
   });
 
   it('FE-COMP-PLACEFORM-013: submitting empty form does not call onSave (name required)', async () => {
@@ -462,13 +462,11 @@ describe('PlaceFormModal', () => {
       const user = userEvent.setup();
       render(<PlaceFormModal {...defaultProps} place={buildPlace({ name: 'Museum' })} />);
 
-      const durationInput = screen.getByLabelText(/^(Recommended duration|places\.recommendedDuration)$/);
+      const durationInput = screen.getByLabelText('Recommended duration');
       await user.clear(durationInput);
       await user.type(durationInput, duration);
 
-      expect(
-        screen.getByText(/^(Enter a whole number from 5 to 1,440 minutes\.|places\.recommendedDurationInvalid)$/)
-      ).toBeInTheDocument();
+      expect(screen.getByText('Enter a whole number from 5 to 1,440 minutes.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /^Update$/i })).toBeDisabled();
     }
   );
@@ -561,7 +559,7 @@ describe('PlaceFormModal', () => {
     const place = buildPlace({ name: 'Museum', duration_minutes: 90 });
 
     render(<PlaceFormModal {...defaultProps} place={place} onSave={onSave} />);
-    const durationInput = screen.getByLabelText(/^(Recommended duration|places\.recommendedDuration)$/);
+    const durationInput = screen.getByLabelText('Recommended duration');
     await user.clear(durationInput);
     await user.type(durationInput, '120');
     await user.click(screen.getByRole('button', { name: /^Update$/i }));
