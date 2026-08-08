@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event';
 
-import { render, screen } from '../../../tests/helpers/render';
+import { render, screen, waitFor } from '../../../tests/helpers/render';
+import { useSettingsStore } from '../../store/settingsStore';
 import { TimelineRouteToolbar } from './TimelineRouteToolbar';
 
 describe('TimelineRouteToolbar', () => {
@@ -75,5 +76,30 @@ describe('TimelineRouteToolbar', () => {
       }
       unmount();
     }
+  });
+
+  it('keeps the long German public-transit label visible and touch-safe', async () => {
+    useSettingsStore.setState((state) => ({ settings: { ...state.settings, language: 'de' } }));
+    render(
+      <div style={{ width: 200 }}>
+        <TimelineRouteToolbar
+          dayId={10}
+          routeShown={false}
+          routeProfile="walking"
+          onToggleRoute={vi.fn()}
+          onSetRouteProfile={vi.fn()}
+          onPlanTransit={vi.fn()}
+        />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Öffentliche Verkehrsmittel' })).toBeVisible();
+    });
+    expect(screen.getByRole('button', { name: 'Öffentliche Verkehrsmittel' })).toHaveStyle({
+      maxWidth: '100%',
+      minHeight: '44px',
+      whiteSpace: 'normal',
+    });
   });
 });

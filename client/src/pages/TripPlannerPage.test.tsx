@@ -4,7 +4,7 @@ import { Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAssignment, buildDay, buildPlace, buildTrip, buildUser } from '../../tests/helpers/factories';
 import { server } from '../../tests/helpers/msw/server';
-import { act, fireEvent, render, screen, waitFor } from '../../tests/helpers/render';
+import { act, fireEvent, render, screen, waitFor, within } from '../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../tests/helpers/store';
 import { placeRepo } from '../repo/placeRepo';
 import { useAuthStore } from '../store/authStore';
@@ -70,7 +70,22 @@ const capturedPlacesSidebarProps: { current: Record<string, any> } = { current: 
 vi.mock('../components/Planner/DayPlanSidebar', () => ({
   default: (props: Record<string, any>) => {
     capturedDayPlanSidebarProps.current = props;
-    return React.createElement('div', { 'data-testid': 'day-plan-sidebar' });
+    const timelineChooser = props.initialMode === 'timeline' && props.selectedDayId == null;
+    return React.createElement(
+      'div',
+      { 'data-testid': 'day-plan-sidebar' },
+      timelineChooser
+        ? React.createElement(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'timeline-day-chooser',
+              onClick: () => props.onTimelineSelectDay?.(props.days[0]?.id),
+            },
+            'Choose timeline day'
+          )
+        : React.createElement('button', { type: 'button', 'data-testid': 'timeline-content-action' }, 'Timeline action')
+    );
   },
 }));
 
@@ -162,7 +177,9 @@ const capturedTransportModalProps: { current: Record<string, any> } = { current:
 vi.mock('../components/Planner/TransportModal', () => ({
   TransportModal: (props: Record<string, any>) => {
     capturedTransportModalProps.current = props;
-    return null;
+    return props.isOpen
+      ? React.createElement('button', { type: 'button', autoFocus: true, 'data-testid': 'transport-modal-focus' }, 'Transport editor')
+      : null;
   },
 }));
 
@@ -2046,6 +2063,7 @@ describe('TripPlannerPage', () => {
         expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
       });
       expect(capturedDayPlanSidebarProps.current.initialMode).toBe('list');
+      expect(mobilePlanBtn).toHaveStyle({ minHeight: '44px' });
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
@@ -2144,8 +2162,8 @@ describe('TripPlannerPage', () => {
       fireEvent.keyDown(dialog, { key: 'Tab' });
       expect(document.activeElement).toBe(close);
       fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
-      expect(document.activeElement).toBe(close);
-      fireEvent.keyDown(dialog, { key: 'Tab' });
+      expect(document.activeElement).toBe(within(dialog).getByTestId('timeline-day-chooser'));
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
       expect(document.activeElement).toBe(close);
 
       fireEvent.keyDown(dialog, { key: 'Escape' });
@@ -2153,6 +2171,70 @@ describe('TripPlannerPage', () => {
         expect(screen.queryByRole('dialog', { name: 'Timeline' })).not.toBeInTheDocument();
       });
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Timeline' }));
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-054: Mobile sheet focus survives content replacement', () => {
+    it('recovers focus from a removed Timeline chooser and cycles its new controls', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+      });
+      const dialog = screen.getByRole('dialog', { name: 'Timeline' });
+      const chooser = screen.getByTestId('timeline-day-chooser');
+      chooser.focus();
+      fireEvent.click(chooser);
+
+      await waitFor(() => {
+        expect(useTripStore.getState().selectedDayId).toBe(day.id);
+        expect(within(dialog).getByTestId('timeline-content-action')).toBeInTheDocument();
+        expect(dialog).toContainElement(document.activeElement);
+      });
+
+      const close = screen.getByRole('button', { name: 'Close' });
+      const action = within(dialog).getByTestId('timeline-content-action');
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+      fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(action);
+      fireEvent.keyDown(action, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+
+    it('does not restore the launcher after a mobile action opens the transport editor', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      const opener = document.querySelector<HTMLButtonElement>('[data-mobile-sidebar-trigger="left"]');
+      expect(opener).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(opener!);
+      });
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onPlanTransit?.(day.id, undefined);
+      });
+
+      const transportEditor = screen.getByTestId('transport-modal-focus');
+      expect(document.activeElement).toBe(transportEditor);
+      expect(document.activeElement).not.toBe(document.querySelector('[data-mobile-sidebar-trigger="left"]'));
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
