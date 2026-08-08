@@ -249,7 +249,7 @@ describe('DayTimelinePlanner', () => {
     const transit = buildReservation({
       id: 506,
       day_id: day.id,
-      type: 'transit',
+      type: 'flight',
       title: 'Metro connection',
       reservation_time: '09:00',
       reservation_end_time: '09:30',

@@ -99,7 +99,13 @@ export function TimelineRouteToolbar({
         <button
           type="button"
           onClick={() => onPlanTransit(dayId)}
-          style={{ ...buttonStyle, marginLeft: 'auto', borderColor: '#7c3aed', background: 'rgba(124, 58, 237, 0.12)', color: '#6d28d9' }}
+          style={{
+            ...buttonStyle,
+            marginLeft: 'auto',
+            borderColor: '#7c3aed',
+            background: 'rgba(124, 58, 237, 0.12)',
+            color: 'var(--text-primary)',
+          }}
         >
           <TramFront size={14} aria-hidden="true" />
           {t('transit.title')}

@@ -22,6 +22,7 @@ describe('TimelineRouteToolbar', () => {
     expect(screen.getByRole('button', { name: 'Public transit' }).querySelector('svg.lucide-tram-front')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Walking' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('timeline-route-toolbar')).not.toHaveStyle({ background: 'var(--bg-card)' });
+    expect(screen.getByRole('button', { name: 'Public transit' })).toHaveStyle({ color: 'var(--text-primary)' });
   });
 
   it('forwards route and transit commands through the supplied callbacks', async () => {
