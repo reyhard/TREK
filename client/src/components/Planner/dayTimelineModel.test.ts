@@ -261,13 +261,16 @@ describe('day timeline model', () => {
             height: 30,
           },
         ]);
-      expect(result.scheduled[0]).toMatchObject({
+      const scheduledInterval = result.scheduled[0];
+      expect(scheduledInterval.kind).toBe('transport');
+      if (scheduledInterval.kind !== 'transport') throw new Error('Expected a transport context entry');
+      expect(scheduledInterval).toMatchObject({
         kind: 'transport',
         title: 'Transport 121',
         reservation: interval,
         sourceReservation: interval,
       });
-      expect(result.scheduled[0].sourceReservation).toBe(interval);
+      expect(scheduledInterval.sourceReservation).toBe(interval);
     });
 
     it('uses only the clock belonging to each multi-day phase and leaves middle phases untimed', () => {
@@ -355,10 +358,15 @@ describe('day timeline model', () => {
         'transport:141:leg:0:day:10:phase:single',
         'transport:141:leg:1:day:10:phase:single',
       ]);
-      expect(result.scheduled[0].reservation).not.toBe(source);
-      expect(result.scheduled[0].reservation.__leg).toMatchObject({ index: 0, total: 2 });
-      expect(result.scheduled[0].sourceReservation).toBe(source);
-      expect(result.scheduled[1].sourceReservation).toBe(source);
+      const [firstLeg, secondLeg] = result.scheduled;
+      expect(firstLeg.kind).toBe('transport');
+      if (firstLeg.kind !== 'transport') throw new Error('Expected the first leg to be transport context');
+      expect(secondLeg.kind).toBe('transport');
+      if (secondLeg.kind !== 'transport') throw new Error('Expected the second leg to be transport context');
+      expect(firstLeg.reservation).not.toBe(source);
+      expect(firstLeg.reservation.__leg).toMatchObject({ index: 0, total: 2 });
+      expect(firstLeg.sourceReservation).toBe(source);
+      expect(secondLeg.sourceReservation).toBe(source);
     });
 
     it('includes transport types even when assignment-linked and excludes hotels and other bookings', () => {
@@ -375,7 +383,12 @@ describe('day timeline model', () => {
         notes: [],
       });
 
-      expect(result.scheduled.map(({ reservation }) => reservation.id)).toEqual([151]);
+      const reservationIds = result.scheduled.map((entry) => {
+        expect(entry.kind).toBe('transport');
+        if (entry.kind !== 'transport') throw new Error('Expected only transport context entries');
+        return entry.reservation.id;
+      });
+      expect(reservationIds).toEqual([151]);
       expect(result.untimed).toEqual([]);
     });
 
