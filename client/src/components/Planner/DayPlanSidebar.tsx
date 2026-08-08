@@ -4001,6 +4001,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
         ) : selectedDay ? (
           <DayTimelinePlanner
             day={selectedDay}
+            days={props.days}
             assignments={props.assignments[String(selectedDay.id)] ?? []}
             places={props.places}
             categories={props.categories}
@@ -4013,6 +4014,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             }
             onPlaceClick={props.onPlaceClick}
             onEditPlace={props.onEditPlace}
+            onSelectDay={(dayId) => props.onSelectDay(dayId)}
           />
         ) : (
           <div

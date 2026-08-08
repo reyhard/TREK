@@ -28,6 +28,7 @@ import {
   permissionDenied,
 } from './_shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { durationMinutesSchema } from '@trek/shared';
 
 import { z } from 'zod';
 
@@ -244,7 +245,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
           currency: z.string().length(3).optional(),
           place_time: z.string().max(50).optional().describe('Scheduled time (e.g. "09:00")'),
           end_time: z.string().max(50).optional().describe('End time (e.g. "11:00")'),
-          duration_minutes: z.number().int().positive().optional(),
+          duration_minutes: durationMinutesSchema.optional(),
           notes: z.string().max(2000).optional(),
           website: z.string().max(500).optional(),
           phone: z.string().max(50).optional(),
@@ -493,7 +494,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
           transport_mode: z.enum(['walking', 'driving', 'cycling', 'transit', 'flight']).optional(),
           place_time: z.string().max(50).optional().describe('Scheduled time (e.g. "09:00")'),
           end_time: z.string().max(50).optional().describe('End time (e.g. "11:00")'),
-          duration_minutes: z.number().int().positive().optional(),
+          duration_minutes: durationMinutesSchema.optional(),
           notes: z.string().max(2000).optional(),
           website: z.string().max(500).optional(),
           phone: z.string().max(50).optional(),

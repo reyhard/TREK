@@ -20,6 +20,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { durationMinutesSchema } from '@trek/shared';
 
 import { memoryStorage } from 'multer';
 
@@ -32,6 +33,15 @@ function validateLengths(body: Record<string, unknown>): void {
     if (value && typeof value === 'string' && value.length > max) {
       throw new HttpException({ error: `${field} must be ${max} characters or less` }, 400);
     }
+  }
+}
+
+function validateRecommendedDuration(body: Record<string, unknown>): void {
+  if (
+    Object.prototype.hasOwnProperty.call(body, 'duration_minutes') &&
+    !durationMinutesSchema.safeParse(body.duration_minutes).success
+  ) {
+    throw new HttpException({ error: 'duration_minutes must be an integer between 5 and 1440' }, 400);
   }
 }
 
@@ -90,6 +100,7 @@ export class PlacesController {
     const trip = this.requireTrip(tripId, user);
     validateLengths(body);
     this.requireEdit(trip, user);
+    validateRecommendedDuration(body);
     if (!body.name) {
       throw new HttpException({ error: 'Place name is required' }, 400);
     }
@@ -326,6 +337,7 @@ export class PlacesController {
     const trip = this.requireTrip(tripId, user);
     validateLengths(body);
     this.requireEdit(trip, user);
+    validateRecommendedDuration(body);
     const result = this.places.update(tripId, id, body as never, ifMatch);
     if (!result) {
       throw new HttpException({ error: 'Place not found' }, 404);

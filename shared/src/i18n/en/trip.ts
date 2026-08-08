@@ -28,6 +28,8 @@ const trip: TranslationStrings = {
   'trip.timeline.mode.list': 'List',
   'trip.timeline.mode.timeline': 'Timeline',
   'trip.timeline.selectDay': 'Select a day to view its timeline.',
+  'trip.timeline.previousDay': 'Previous day',
+  'trip.timeline.nextDay': 'Next day',
   'trip.timeline.unscheduled': 'Unscheduled',
   'trip.timeline.gridLabel': 'Day timeline',
   'trip.timeline.move': 'Move',

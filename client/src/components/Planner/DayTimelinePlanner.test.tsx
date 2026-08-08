@@ -28,6 +28,7 @@ function timedAssignment(overrides: Partial<Assignment> = {}) {
 function props(overrides: Partial<DayTimelinePlannerProps> = {}): DayTimelinePlannerProps {
   return {
     day,
+    days: [day],
     assignments: [],
     places: [museum],
     categories: [],
@@ -38,6 +39,7 @@ function props(overrides: Partial<DayTimelinePlannerProps> = {}): DayTimelinePla
     onSetAssignmentTime: vi.fn().mockResolvedValue(undefined),
     onPlaceClick: vi.fn(),
     onEditPlace: vi.fn(),
+    onSelectDay: vi.fn(),
     ...overrides,
   };
 }
@@ -72,6 +74,25 @@ describe('DayTimelinePlanner', () => {
   beforeEach(() => {
     toastError.mockClear();
     window.__dragData = null;
+  });
+
+  it('navigates ordered days from a sticky header and disables navigation at the endpoints', async () => {
+    const user = userEvent.setup();
+    const previous = buildDay({ id: 9, title: 'Previous day', date: '2026-08-08' });
+    const next = buildDay({ id: 11, title: 'Next day', date: '2026-08-10' });
+    const onSelectDay = vi.fn();
+    const view = render(<DayTimelinePlanner {...props({ days: [previous, day, next], onSelectDay })} />);
+
+    const header = screen.getByTestId('timeline-day-header');
+    expect(header).toHaveStyle({ position: 'sticky', top: '0px' });
+    await user.click(screen.getByRole('button', { name: 'Previous day' }));
+    await user.click(screen.getByRole('button', { name: 'Next day' }));
+    expect(onSelectDay).toHaveBeenNthCalledWith(1, previous.id);
+    expect(onSelectDay).toHaveBeenNthCalledWith(2, next.id);
+
+    view.rerender(<DayTimelinePlanner {...props({ day: previous, days: [previous, day, next], onSelectDay })} />);
+    expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next day' })).toBeEnabled();
   });
 
   it('renders scheduled, unscheduled, and overlapping assignments', () => {
@@ -155,6 +176,33 @@ describe('DayTimelinePlanner', () => {
     response.reject(new Error('schedule failed'));
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('schedule failed'));
     expect(tray).toContainElement(screen.getByText('Museum'));
+  });
+
+  it('renders legacy effective times and preserves their actual duration while a move is pending', async () => {
+    const legacyPlace = buildPlace({
+      id: museum.id,
+      name: museum.name,
+      duration_minutes: 60,
+      place_time: '09:00',
+      end_time: '10:30',
+    });
+    const legacy = timedAssignment({
+      assignment_time: null,
+      assignment_end_time: null,
+      place: legacyPlace,
+    });
+    const response = deferred<Assignment | undefined>();
+    const onSetAssignmentTime = vi.fn().mockReturnValue(response.promise);
+    render(<DayTimelinePlanner {...props({ assignments: [legacy], onSetAssignmentTime })} />);
+    const grid = screen.getByRole('grid', { name: 'Day timeline' });
+    vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({ top: 0 } as DOMRect);
+
+    expect(screen.getByText('09:00 – 10:30')).toBeInTheDocument();
+    dropAt(grid, 300, { assignmentId: String(legacy.id) });
+
+    await waitFor(() => expect(onSetAssignmentTime).toHaveBeenCalledWith(10, legacy.id, { place_time: '11:00' }));
+    expect(screen.getByText('11:00 – 12:30')).toBeInTheDocument();
+    response.resolve(undefined);
   });
 
   it('renders a newly assigned POI in the grid while its schedule request is pending and rolls back to Unscheduled', async () => {
@@ -424,5 +472,27 @@ describe('DayTimelinePlanner', () => {
     expect(within(block).getByRole('button', { name: 'Move Museum' })).toHaveAttribute('tabindex', '0');
     expect(within(block).getByRole('button', { name: 'Edit Museum' })).toHaveAttribute('tabindex', '0');
     expect(within(block).getByRole('button', { name: 'Remove time' })).toHaveAttribute('tabindex', '0');
+  });
+
+  it('keeps touching minimum-height blocks and their controls visually separated without an overlap warning', () => {
+    const first = timedAssignment({ assignment_time: '09:00', assignment_end_time: '09:05' });
+    const second = timedAssignment({
+      id: 102,
+      place_id: 43,
+      place: buildPlace({ id: 43, name: 'Gallery' }),
+      assignment_time: '09:05',
+      assignment_end_time: '09:20',
+    });
+    render(<DayTimelinePlanner {...props({ assignments: [first, second] })} />);
+
+    const cells = screen.getAllByRole('gridcell');
+    expect(cells[0]).not.toHaveStyle({ left: cells[1]!.style.left });
+    expect(screen.queryByRole('status', { name: /overlapping activities/i })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('group', { name: 'Museum' })).getByRole('button', { name: 'Remove time' })
+    ).toBeVisible();
+    expect(
+      within(screen.getByRole('group', { name: 'Gallery' })).getByRole('button', { name: 'Remove time' })
+    ).toBeVisible();
   });
 });

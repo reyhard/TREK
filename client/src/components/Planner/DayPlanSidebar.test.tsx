@@ -190,6 +190,19 @@ describe('DayPlanSidebar', () => {
     expect(screen.queryByText('Second day')).not.toBeInTheDocument();
   });
 
+  it('passes ordered day navigation through the Timeline wrapper', async () => {
+    const user = userEvent.setup();
+    const first = buildDay({ id: 10, title: 'First day' });
+    const second = buildDay({ id: 11, title: 'Second day' });
+    const onSelectDay = vi.fn();
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [first, second], selectedDayId: first.id, onSelectDay })} />);
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    await user.click(screen.getByRole('button', { name: 'Next day' }));
+
+    expect(onSelectDay).toHaveBeenCalledWith(second.id);
+  });
+
   it('shows a selection prompt instead of mounting the list when Timeline mode has no selected day', () => {
     localStorage.setItem('day-plan-mode-1', 'timeline');
     render(

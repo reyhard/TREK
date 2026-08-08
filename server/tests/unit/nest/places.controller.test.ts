@@ -56,6 +56,16 @@ describe('PlacesController (parity with the legacy /api/trips/:tripId/places rou
   });
 
   describe('POST / (create)', () => {
+    it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without creating a place', (duration) => {
+      const create = vi.fn();
+      const controller = new PlacesController(svc({ create } as Partial<PlacesService>));
+
+      expect(thrown(() => controller.create(user, '5', { name: 'Spot', duration_minutes: duration }))).toMatchObject({
+        status: 400,
+      });
+      expect(create).not.toHaveBeenCalled();
+    });
+
     it('400 on an over-long name (length guard before permission)', () => {
       const canEdit = vi.fn().mockReturnValue(false); // would 403 if reached
       expect(thrown(() => new PlacesController(svc({ canEdit })).create(user, '5', { name: 'x'.repeat(201) }))).toEqual(
@@ -84,6 +94,18 @@ describe('PlacesController (parity with the legacy /api/trips/:tripId/places rou
       expect(new PlacesController(s).create(user, '5', { name: 'Spot' }, 'sock')).toEqual({ place: { id: 9 } });
       expect(broadcast).toHaveBeenCalledWith('5', 'place:created', { place: { id: 9 } }, 'sock');
       expect(onCreated).toHaveBeenCalledWith('5', 9);
+    });
+  });
+
+  describe('PUT /:id (update)', () => {
+    it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without updating a place', (duration) => {
+      const update = vi.fn();
+      const controller = new PlacesController(svc({ update } as Partial<PlacesService>));
+
+      expect(thrown(() => controller.update(user, '5', '9', { duration_minutes: duration }))).toMatchObject({
+        status: 400,
+      });
+      expect(update).not.toHaveBeenCalled();
     });
   });
 

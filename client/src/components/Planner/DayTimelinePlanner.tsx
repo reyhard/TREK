@@ -1,5 +1,5 @@
 import { formatDayTime, parseDayTime } from '@trek/shared';
-import { AlertTriangle, Clock, GripVertical, Pencil, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, GripVertical, Pencil, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '../../i18n';
@@ -10,6 +10,7 @@ import {
   buildTimelineEntries,
   TIMELINE_END,
   TIMELINE_PIXELS_PER_MINUTE,
+  timelineAssignmentTimes,
   timelineMinuteFromPointer,
   type TimelineEntry,
 } from './dayTimelineModel';
@@ -18,6 +19,7 @@ type AssignmentTimeUpdate = { place_time?: string | null; end_time?: string | nu
 
 export interface DayTimelinePlannerProps {
   day: Day;
+  days: Day[];
   assignments: Assignment[];
   places: Place[];
   categories: Category[];
@@ -32,6 +34,7 @@ export interface DayTimelinePlannerProps {
   ) => Promise<Assignment | undefined> | Assignment | undefined;
   onPlaceClick: (placeId: number | null, assignmentId?: number | null) => void;
   onEditPlace: (place: Place, assignmentId?: number) => void;
+  onSelectDay: (dayId: number) => void;
 }
 
 interface MoveState {
@@ -51,8 +54,9 @@ interface OptimisticTiming {
 }
 
 function assignmentDuration(assignment: Assignment): number {
-  const start = parseDayTime(assignment.assignment_time);
-  const end = parseDayTime(assignment.assignment_end_time, { allowEndOfDay: true });
+  const times = timelineAssignmentTimes(assignment);
+  const start = parseDayTime(times.start);
+  const end = parseDayTime(times.end, { allowEndOfDay: true });
   if (start !== null && end !== null && end > start) return end - start;
   return assignment.place.duration_minutes ?? 60;
 }
@@ -67,6 +71,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   day,
+  days,
   assignments,
   places,
   categories,
@@ -77,6 +82,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   onSetAssignmentTime,
   onPlaceClick,
   onEditPlace,
+  onSelectDay,
 }: DayTimelinePlannerProps) {
   const { t, locale } = useTranslation();
   const toast = useToast();
@@ -110,6 +116,9 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     });
   }, [assignments, day.id, localAssignments, optimisticTimings]);
   const timeline = useMemo(() => buildTimelineEntries(allAssignments), [allAssignments]);
+  const selectedDayIndex = days.findIndex((candidate) => candidate.id === day.id);
+  const previousDay = selectedDayIndex > 0 ? days[selectedDayIndex - 1] : undefined;
+  const nextDay = selectedDayIndex >= 0 ? days[selectedDayIndex + 1] : undefined;
 
   useEffect(() => {
     setLocalAssignments([]);
@@ -379,6 +388,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
       height: Math.max(duration * TIMELINE_PIXELS_PER_MINUTE, 30),
       lane: 0,
       laneCount: 1,
+      visualLane: 0,
+      visualLaneCount: 1,
       overlapping: false,
     };
 
@@ -546,13 +557,44 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
-      <header style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-faint)' }}>
-        <h2 className="text-content" style={{ fontSize: 16, margin: 0 }}>
-          {day.title || t('dayplan.dayN', { n: day.id })}
-        </h2>
-        <div className="text-content-faint" style={{ fontSize: 12 }}>
-          {formatDate(day.date, locale)}
+      <header
+        data-testid="timeline-day-header"
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 3,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border-faint)',
+          background: 'var(--bg-card)',
+        }}
+      >
+        <button
+          type="button"
+          aria-label={t('trip.timeline.previousDay')}
+          disabled={!previousDay}
+          onClick={() => previousDay && onSelectDay(previousDay.id)}
+        >
+          <ChevronLeft size={16} aria-hidden="true" />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 className="text-content" style={{ fontSize: 16, margin: 0 }}>
+            {day.title || t('dayplan.dayN', { n: day.id })}
+          </h2>
+          <div className="text-content-faint" style={{ fontSize: 12 }}>
+            {formatDate(day.date, locale)}
+          </div>
         </div>
+        <button
+          type="button"
+          aria-label={t('trip.timeline.nextDay')}
+          disabled={!nextDay}
+          onClick={() => nextDay && onSelectDay(nextDay.id)}
+        >
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
       </header>
 
       <div
@@ -632,8 +674,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
                   position: 'absolute',
                   top,
                   height: entry.height,
-                  left: `calc(${(entry.lane / entry.laneCount) * 100}% + 3px)`,
-                  width: `calc(${100 / entry.laneCount}% - 6px)`,
+                  left: `calc(${(entry.visualLane / entry.visualLaneCount) * 100}% + 3px)`,
+                  width: `calc(${100 / entry.visualLaneCount}% - 6px)`,
                   zIndex: preview === undefined ? 1 : 2,
                 }}
               >

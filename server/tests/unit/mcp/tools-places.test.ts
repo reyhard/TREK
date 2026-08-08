@@ -191,6 +191,25 @@ describe('Tool: create_place', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: update_place', () => {
+  it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without changing the place', async (duration) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id);
+    testDb.prepare('UPDATE places SET duration_minutes = 75 WHERE id = ?').run(place.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_place',
+        arguments: { tripId: trip.id, placeId: place.id, duration_minutes: duration },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(place.id)).toEqual({
+        duration_minutes: 75,
+      });
+    });
+  });
+
   it('updates specific fields and preserves others', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -250,6 +269,30 @@ describe('Tool: update_place', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: bulk_update_places', () => {
+  it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without changing any place', async (duration) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const a = createPlace(testDb, trip.id, { name: 'A' });
+    const b = createPlace(testDb, trip.id, { name: 'B' });
+    testDb.prepare('UPDATE places SET duration_minutes = 45 WHERE id = ?').run(a.id);
+    testDb.prepare('UPDATE places SET duration_minutes = 90 WHERE id = ?').run(b.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'bulk_update_places',
+        arguments: { tripId: trip.id, placeIds: [a.id, b.id], duration_minutes: duration },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(
+        testDb.prepare('SELECT id, duration_minutes FROM places WHERE id IN (?, ?) ORDER BY id').all(a.id, b.id),
+      ).toEqual([
+        { id: a.id, duration_minutes: 45 },
+        { id: b.id, duration_minutes: 90 },
+      ]);
+    });
+  });
+
   it('applies the same field to many places in one call', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
