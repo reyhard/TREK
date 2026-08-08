@@ -96,3 +96,30 @@
 ### Concerns
 
 - None in the requested fix-round scope.
+
+## Fix round 3/5 — Per-day reconciliation ownership
+
+### Implementation
+
+- Replaced completion-branch reconciliation ownership with an explicit coordinator per trip/day. It tracks the latest generation, every pending request, the dirty authoritative-day target, and the single active reconciliation owner.
+- Reconciliation ownership is acquired only when the day becomes idle. This covers both completion permutations: an older success followed by a newer failure, and a newer failure followed by an older success. A request started during an active refresh supersedes that owner; the idle completer then awaits the stale owner and starts the current refresh without allowing the stale response to apply.
+- Each owner still makes at most two list attempts. If both attempts fail, the coordinator clears the marker only while surfacing the reconciliation failure. When the owner also represents a failed timing mutation, the thrown message retains the original mutation failure and adds the authoritative reconciliation failure.
+- Per-assignment confirmed-version, optimistic rollback, and latest-request semantics remain unchanged.
+
+### RED evidence
+
+- `npm test --workspace=client -- src/store/slices/assignmentsSlice.test.ts`
+  - The reverse completion-order regression failed with stale sibling order because the older success could only request reconciliation using its obsolete start generation.
+  - The inherited permanent-failure regression received only `placement conflicts`; both failed list attempts were ignored and the dirty marker was deleted.
+  - The prior 14 focused tests passed in the clean RED run.
+
+### GREEN verification
+
+- `npm test --workspace=client -- src/store/slices/assignmentsSlice.test.ts`: 1 file, 16 tests passed.
+- `npm run typecheck --workspace=client`: passed (`tsc --noEmit`).
+- Prettier formatted both changed TypeScript files.
+- `git diff --check`: passed with no whitespace errors.
+
+### Concerns
+
+- None in the requested fix-round scope.

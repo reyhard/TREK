@@ -100,10 +100,10 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     await vi.waitFor(() => expect(assignmentsApi.list).toHaveBeenCalledTimes(1));
     const newer = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '08:00' });
     secondUpdate.resolve({ assignment: secondMoved });
+    firstRefresh.resolve({ assignments: [firstMoved, { ...second, order_index: 1 }] });
     await vi.waitFor(() => expect(assignmentsApi.list).toHaveBeenCalledTimes(2));
     secondRefresh.resolve({ assignments: [secondMoved, { ...firstMoved, order_index: 1 }] });
     await newer;
-    firstRefresh.resolve({ assignments: [firstMoved, { ...second, order_index: 1 }] });
     await older;
 
     expect(useTripStore.getState().assignments['10'][0]?.id).toBe(99);
@@ -159,6 +159,92 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     await vi.waitFor(() => {
       expect(useTripStore.getState().assignments['10']).toEqual([authoritativeSecond, firstMoved]);
     });
+  });
+
+  it('reconciles when a newer same-day update fails before the older update succeeds', async () => {
+    const first = buildAssignment({
+      id: 98,
+      day_id: 10,
+      order_index: 0,
+      assignment_time: '10:00',
+      assignment_end_time: '11:00',
+      place: buildPlace({ id: 11, name: 'A', place_time: '10:00', end_time: '11:00' }),
+    });
+    const second = buildAssignment({
+      id: 99,
+      day_id: 10,
+      order_index: 1,
+      assignment_time: '11:00',
+      assignment_end_time: '12:00',
+      place: buildPlace({ id: 12, name: 'B', place_time: '11:00', end_time: '12:00' }),
+    });
+    const firstUpdate = deferred<{ assignment: typeof first }>();
+    const secondUpdate = deferred<{ assignment: typeof second }>();
+    const firstMoved = {
+      ...first,
+      order_index: 1,
+      assignment_time: '12:00',
+      assignment_end_time: '13:00',
+      place: { ...first.place, place_time: '12:00', end_time: '13:00' },
+    };
+    const authoritativeSecond = { ...second, order_index: 0 };
+    seedStore(useTripStore, { assignments: { '10': [first, second] } });
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstUpdate.promise)
+      .mockReturnValueOnce(secondUpdate.promise);
+    vi.mocked(assignmentsApi.list).mockResolvedValue({ assignments: [authoritativeSecond, firstMoved] });
+
+    const older = useTripStore.getState().setAssignmentTime(1, 10, 98, { place_time: '12:00' });
+    const newer = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' });
+    secondUpdate.reject(new Error('placement conflicts'));
+    await expect(newer).rejects.toThrow('placement conflicts');
+
+    firstUpdate.resolve({ assignment: firstMoved });
+    await older;
+
+    expect(useTripStore.getState().assignments['10']).toEqual([authoritativeSecond, firstMoved]);
+  });
+
+  it('surfaces reconciliation failure alongside an inherited mutation failure', async () => {
+    const first = buildAssignment({
+      id: 98,
+      day_id: 10,
+      order_index: 0,
+      place: buildPlace({ id: 11, name: 'A', place_time: '10:00', end_time: '11:00' }),
+    });
+    const second = buildAssignment({
+      id: 99,
+      day_id: 10,
+      order_index: 1,
+      place: buildPlace({ id: 12, name: 'B', place_time: '11:00', end_time: '12:00' }),
+    });
+    const firstUpdate = deferred<{ assignment: typeof first }>();
+    const secondUpdate = deferred<{ assignment: typeof second }>();
+    const staleRefresh = deferred<{ assignments: (typeof first)[] }>();
+    const firstMoved = {
+      ...first,
+      assignment_time: '09:00',
+      assignment_end_time: '10:00',
+      place: { ...first.place, place_time: '09:00', end_time: '10:00' },
+    };
+    seedStore(useTripStore, { assignments: { '10': [first, second] } });
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstUpdate.promise)
+      .mockReturnValueOnce(secondUpdate.promise);
+    vi.mocked(assignmentsApi.list)
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockRejectedValue(new Error('authoritative day refresh unavailable'));
+
+    const older = useTripStore.getState().setAssignmentTime(1, 10, 98, { place_time: '09:00' });
+    firstUpdate.resolve({ assignment: firstMoved });
+    await vi.waitFor(() => expect(assignmentsApi.list).toHaveBeenCalledTimes(1));
+    const newer = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '08:00' });
+    staleRefresh.resolve({ assignments: [firstMoved, second] });
+    await older;
+
+    secondUpdate.reject(new Error('placement conflicts'));
+    await expect(newer).rejects.toThrow(/placement conflicts.*authoritative day refresh unavailable/i);
+    expect(assignmentsApi.list).toHaveBeenCalledTimes(3);
   });
 
   it('retries a transient day refresh failure before reporting timing success', async () => {
