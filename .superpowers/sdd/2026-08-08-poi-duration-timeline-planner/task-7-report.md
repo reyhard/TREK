@@ -48,7 +48,7 @@ The Playwright scenario ran against the isolated real backend and Vite client us
 - `artifacts/dark-timeline.png` — timeline controls, labels, blocks, and warnings retain clear contrast.
 - `artifacts/narrow-coarse-timeline.png` — narrow layout has no clipped controls or horizontal overflow; touch move handles remain visible.
 
-Artifacts live beside this report under `.superpowers/sdd/2026-08-08-poi-duration-timeline-planner/artifacts/`.
+These screenshots were captured and inspected during Task 7, then removed with the temporary SDD review artifacts during final workspace cleanup. The verified observations are preserved above.
 
 ## Acceptance-criteria mapping
 
