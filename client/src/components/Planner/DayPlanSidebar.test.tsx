@@ -190,17 +190,34 @@ describe('DayPlanSidebar', () => {
     expect(screen.queryByText('Second day')).not.toBeInTheDocument();
   });
 
-  it('passes ordered day navigation through the Timeline wrapper', async () => {
+  it('uses the Timeline callback for navigation while List headers use the existing callback', async () => {
     const user = userEvent.setup();
     const first = buildDay({ id: 10, title: 'First day' });
     const second = buildDay({ id: 11, title: 'Second day' });
     const onSelectDay = vi.fn();
-    render(<DayPlanSidebar {...makeDefaultProps({ days: [first, second], selectedDayId: first.id, onSelectDay })} />);
+    const onTimelineSelectDay = vi.fn();
+    const { unmount } = render(
+      <DayPlanSidebar
+        {...makeDefaultProps({
+          days: [first, second],
+          selectedDayId: first.id,
+          initialMode: 'timeline',
+          onSelectDay,
+          onTimelineSelectDay,
+        })}
+      />
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Timeline' }));
     await user.click(screen.getByRole('button', { name: 'Next day' }));
 
-    expect(onSelectDay).toHaveBeenCalledWith(second.id);
+    expect(onTimelineSelectDay).toHaveBeenCalledWith(second.id);
+    expect(onSelectDay).not.toHaveBeenCalled();
+
+    unmount();
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [first, second], selectedDayId: first.id, onSelectDay })} />);
+    await user.click(screen.getByText('First day'));
+
+    expect(onSelectDay).toHaveBeenCalledWith(first.id);
   });
 
   it('wires selected-day timeline context and existing controls while retaining List mode', async () => {
@@ -270,14 +287,26 @@ describe('DayPlanSidebar', () => {
     expect(screen.getByLabelText('Add Note')).toBeVisible();
   });
 
-  it('shows a selection prompt instead of mounting the list when Timeline mode has no selected day', () => {
-    localStorage.setItem('day-plan-mode-1', 'timeline');
+  it('lets Timeline choose an ordered day when no day is selected', async () => {
+    const user = userEvent.setup();
+    const first = buildDay({ id: 10, title: 'First day', date: '2026-08-09' });
+    const second = buildDay({ id: 11, title: 'Second day', date: '2026-08-10' });
+    const onTimelineSelectDay = vi.fn();
     render(
-      <DayPlanSidebar {...makeDefaultProps({ days: [buildDay({ title: 'Not mounted' })], selectedDayId: null })} />
+      <DayPlanSidebar
+        {...makeDefaultProps({
+          days: [first, second],
+          selectedDayId: null,
+          initialMode: 'timeline',
+          onTimelineSelectDay,
+        })}
+      />
     );
 
     expect(screen.getByText('Select a day to view its timeline.')).toBeInTheDocument();
-    expect(screen.queryByText('Not mounted')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Second day/ }));
+
+    expect(onTimelineSelectDay).toHaveBeenCalledWith(second.id);
   });
 
   // ── Rendering ───────────────────────────────────────────────────────────

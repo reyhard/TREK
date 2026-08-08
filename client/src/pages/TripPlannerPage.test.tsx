@@ -4,7 +4,7 @@ import { Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAssignment, buildDay, buildPlace, buildTrip, buildUser } from '../../tests/helpers/factories';
 import { server } from '../../tests/helpers/msw/server';
-import { act, fireEvent, render, screen, waitFor } from '../../tests/helpers/render';
+import { act, fireEvent, render, screen, waitFor, within } from '../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../tests/helpers/store';
 import { placeRepo } from '../repo/placeRepo';
 import { useAuthStore } from '../store/authStore';
@@ -70,7 +70,22 @@ const capturedPlacesSidebarProps: { current: Record<string, any> } = { current: 
 vi.mock('../components/Planner/DayPlanSidebar', () => ({
   default: (props: Record<string, any>) => {
     capturedDayPlanSidebarProps.current = props;
-    return React.createElement('div', { 'data-testid': 'day-plan-sidebar' });
+    const timelineChooser = props.initialMode === 'timeline' && props.selectedDayId == null;
+    return React.createElement(
+      'div',
+      { 'data-testid': 'day-plan-sidebar' },
+      timelineChooser
+        ? React.createElement(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'timeline-day-chooser',
+              onClick: () => props.onTimelineSelectDay?.(props.days[0]?.id),
+            },
+            'Choose timeline day'
+          )
+        : React.createElement('button', { type: 'button', 'data-testid': 'timeline-content-action' }, 'Timeline action')
+    );
   },
 }));
 
@@ -162,7 +177,9 @@ const capturedTransportModalProps: { current: Record<string, any> } = { current:
 vi.mock('../components/Planner/TransportModal', () => ({
   TransportModal: (props: Record<string, any>) => {
     capturedTransportModalProps.current = props;
-    return null;
+    return props.isOpen
+      ? React.createElement('button', { type: 'button', autoFocus: true, 'data-testid': 'transport-modal-focus' }, 'Transport editor')
+      : null;
   },
 }));
 
@@ -2035,32 +2052,18 @@ describe('TripPlannerPage', () => {
         expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
       });
 
-      // The mobile portal buttons are rendered to document.body.
-      // The "Plan" tab button has title="Plan"; the mobile portal button does not.
-      const mobilePlanBtn = Array.from(document.body.querySelectorAll('button')).find(
-        (b) => b.textContent === 'Plan' && !b.getAttribute('title')
-      );
+      const mobilePlanBtn = document.querySelector<HTMLButtonElement>('[data-mobile-sidebar-trigger="left"]');
+      expect(mobilePlanBtn).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(mobilePlanBtn!);
+      });
 
-      if (mobilePlanBtn) {
-        await act(async () => {
-          fireEvent.click(mobilePlanBtn);
-        });
-
-        // Mobile sidebar portal renders DayPlanSidebar — now two instances
-        await waitFor(() => {
-          expect(screen.getAllByTestId('day-plan-sidebar').length).toBeGreaterThanOrEqual(2);
-        });
-
-        // Close the mobile sidebar via the X button inside the portal header
-        const closeButtons = Array.from(document.body.querySelectorAll('button')).filter(
-          (b) => !b.textContent || b.textContent.trim() === ''
-        );
-        if (closeButtons.length > 0) {
-          await act(async () => {
-            fireEvent.click(closeButtons[0]);
-          });
-        }
-      }
+      // Mobile sidebar portal renders DayPlanSidebar — now two instances.
+      await waitFor(() => {
+        expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+      });
+      expect(capturedDayPlanSidebarProps.current.initialMode).toBe('list');
+      expect(mobilePlanBtn).toHaveStyle({ minHeight: '44px' });
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });
@@ -2084,21 +2087,158 @@ describe('TripPlannerPage', () => {
         expect(screen.getByTestId('places-sidebar')).toBeInTheDocument();
       });
 
-      // "Places" tab doesn't exist; the mobile portal "Places" button has no title
-      const mobilePlacesBtn = Array.from(document.body.querySelectorAll('button')).find(
-        (b) => b.textContent === 'Places' && !b.getAttribute('title')
-      );
+      const mobilePlacesBtn = screen.getByRole('button', { name: 'Places' });
+      await act(async () => {
+        fireEvent.click(mobilePlacesBtn);
+      });
 
-      if (mobilePlacesBtn) {
-        await act(async () => {
-          fireEvent.click(mobilePlacesBtn);
-        });
+      // PlacesSidebar renders in mobile sidebar portal.
+      await waitFor(() => {
+        expect(screen.getAllByTestId('places-sidebar')).toHaveLength(2);
+      });
 
-        // PlacesSidebar renders in mobile sidebar portal
-        await waitFor(() => {
-          expect(screen.getAllByTestId('places-sidebar').length).toBeGreaterThanOrEqual(2);
-        });
-      }
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-052: Mobile Timeline sheet is directly discoverable', () => {
+    it('opens Timeline in timeline mode and keeps its sheet mounted when selecting a day', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+      });
+
+      expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+      expect(capturedDayPlanSidebarProps.current.initialMode).toBe('timeline');
+      expect(typeof capturedDayPlanSidebarProps.current.onTimelineSelectDay).toBe('function');
+
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onTimelineSelectDay(day.id);
+      });
+
+      expect(useTripStore.getState().selectedDayId).toBe(day.id);
+      expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-053: Mobile sheets are accessible dialogs', () => {
+    it('focuses, traps, closes, and restores focus to the Timeline opener', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      const opener = await screen.findByRole('button', { name: 'Timeline' });
+      await act(async () => {
+        fireEvent.click(opener);
+      });
+
+      const dialog = screen.getByRole('dialog', { name: 'Timeline' });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+      expect(dialog).toHaveAttribute('aria-labelledby', 'mobile-sidebar-title');
+      expect(document.activeElement).toBe(dialog);
+
+      const close = screen.getByRole('button', { name: 'Close' });
+      expect(close).toHaveStyle({ minWidth: '44px', minHeight: '44px' });
+      fireEvent.keyDown(dialog, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+      fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(within(dialog).getByTestId('timeline-day-chooser'));
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: 'Timeline' })).not.toBeInTheDocument();
+      });
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Timeline' }));
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-054: Mobile sheet focus survives content replacement', () => {
+    it('recovers focus from a removed Timeline chooser and cycles its new controls', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+      });
+      const dialog = screen.getByRole('dialog', { name: 'Timeline' });
+      const chooser = screen.getByTestId('timeline-day-chooser');
+      chooser.focus();
+      fireEvent.click(chooser);
+
+      await waitFor(() => {
+        expect(useTripStore.getState().selectedDayId).toBe(day.id);
+        expect(within(dialog).getByTestId('timeline-content-action')).toBeInTheDocument();
+        const activeElement = document.activeElement;
+        expect(activeElement).toBeInstanceOf(HTMLElement);
+        expect(dialog).toContainElement(activeElement as HTMLElement);
+      });
+
+      const close = screen.getByRole('button', { name: 'Close' });
+      const action = within(dialog).getByTestId('timeline-content-action');
+      const activeElement = document.activeElement;
+      expect(activeElement).toBeInstanceOf(HTMLElement);
+      fireEvent.keyDown(activeElement as HTMLElement, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+      fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(action);
+      fireEvent.keyDown(action, { key: 'Tab' });
+      expect(document.activeElement).toBe(close);
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+
+    it('does not restore the launcher after a mobile action opens the transport editor', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+      const { day } = seedTripStore({ id: 42 });
+      renderPlannerPage(42);
+      act(() => {
+        vi.runAllTimers();
+      });
+      vi.useRealTimers();
+
+      const opener = document.querySelector<HTMLButtonElement>('[data-mobile-sidebar-trigger="left"]');
+      expect(opener).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(opener!);
+      });
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onPlanTransit?.(day.id, undefined);
+      });
+
+      const transportEditor = screen.getByTestId('transport-modal-focus');
+      expect(document.activeElement).toBe(transportEditor);
+      expect(document.activeElement).not.toBe(document.querySelector('[data-mobile-sidebar-trigger="left"]'));
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });

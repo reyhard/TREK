@@ -7,7 +7,8 @@ import type { Assignment, Category, Day, DayNote, Place, Reservation } from '../
 import { formatDate } from '../../utils/formatters';
 import { safeTransitMeta } from '../../utils/safeParseMetadata';
 import { useToast } from '../shared/Toast';
-import { getNoteIcon } from './DayPlanSidebar.constants';
+import { getNoteIcon, RES_ICONS, TRANSPORT_DETAIL_COLORS } from './DayPlanSidebar.constants';
+import { TimelineRouteToolbar } from './TimelineRouteToolbar';
 import {
   buildTimelineContextEntries,
   buildTimelineEntries,
@@ -547,7 +548,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           border: `${isSelected ? 2 : 1}px solid ${category?.color || 'var(--accent)'}`,
           background: isSelected
             ? 'var(--bg-selected)'
-            : `color-mix(in srgb, ${category?.color || 'var(--accent)'} 10%, transparent)`,
+            : `color-mix(in srgb, ${category?.color || 'var(--accent)'} 10%, var(--bg-card))`,
           padding: compact ? '2px 4px' : '6px 8px',
           overflow: compact ? 'visible' : 'hidden',
           boxShadow: overlapping ? '0 0 0 2px var(--warning), var(--shadow-sm)' : 'var(--shadow-sm)',
@@ -608,11 +609,22 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   const renderContext = (entry: TimelineContextEntry, scheduledEntry?: ScheduledTimelineContextEntry) => {
     const isTransport = entry.kind === 'transport';
     const NoteIcon = entry.kind === 'note' ? getNoteIcon(entry.note.icon) : null;
+    const transitMeta = isTransport ? safeTransitMeta(entry.sourceReservation) : null;
+    const TransportIcon = isTransport
+      ? transitMeta
+        ? RES_ICONS.transit
+        : RES_ICONS[entry.reservation.type] || RES_ICONS.transport_other
+      : null;
+    const transportColor = isTransport
+      ? transitMeta
+        ? TRANSPORT_DETAIL_COLORS.transit
+        : TRANSPORT_DETAIL_COLORS[entry.reservation.type] || TRANSPORT_DETAIL_COLORS.transport_other
+      : null;
     const contextLabel = isTransport
       ? t('trip.timeline.transportContext', { name: entry.title })
       : t('trip.timeline.noteContext', { name: entry.title });
     const transitHandler =
-      isTransport && safeTransitMeta(entry.sourceReservation) && onOpenTransit
+      isTransport && transitMeta && onOpenTransit
         ? () => onOpenTransit(entry.sourceReservation)
         : null;
     const editHandler =
@@ -634,8 +646,12 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
       height: '100%',
       boxSizing: 'border-box',
       borderRadius: 8,
-      border: isTransport ? '1px solid color-mix(in srgb, #3b82f6 42%, transparent)' : '1px solid var(--border-faint)',
-      background: isTransport ? 'color-mix(in srgb, #3b82f6 10%, transparent)' : 'var(--bg-hover)',
+      border: isTransport
+        ? `1px solid color-mix(in srgb, ${transportColor} 50%, var(--bg-card))`
+        : '1px solid color-mix(in srgb, var(--text-secondary) 20%, var(--bg-card))',
+      background: isTransport
+        ? `color-mix(in srgb, ${transportColor} 14%, var(--bg-card))`
+        : 'color-mix(in srgb, var(--text-secondary) 7%, var(--bg-card))',
       color: 'var(--text-primary)',
       padding: compact ? '2px 5px' : '6px 8px',
       overflow: compact ? 'visible' : 'hidden',
@@ -658,12 +674,14 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
             whiteSpace: compact ? 'nowrap' : undefined,
           }}
         >
-          {NoteIcon && (
-            <NoteIcon
-              aria-hidden="true"
-              size={compact ? 12 : 14}
-              style={{ display: 'inline', marginRight: 4, verticalAlign: 'text-bottom' }}
-            />
+          {(TransportIcon || NoteIcon) && (
+            <span style={{ display: 'inline-flex', marginRight: 4, verticalAlign: 'text-bottom', color: transportColor || undefined }}>
+              {TransportIcon ? (
+                <TransportIcon aria-hidden="true" size={compact ? 12 : 14} />
+              ) : (
+                <NoteIcon aria-hidden="true" size={compact ? 12 : 14} />
+              )}
+            </span>
           )}
           {entry.title}
         </strong>
@@ -705,7 +723,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           gap: 10,
           padding: '12px 16px',
           borderBottom: '1px solid var(--border-faint)',
-          background: 'var(--bg-card)',
+          background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-card))',
         }}
       >
         <button
@@ -713,6 +731,14 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           aria-label={t('trip.timeline.previousDay')}
           disabled={!previousDay}
           onClick={() => previousDay && onSelectDay(previousDay.id)}
+          style={{
+            border: '1px solid var(--border-faint)',
+            borderRadius: 7,
+            background: 'color-mix(in srgb, var(--accent) 5%, var(--bg-surface))',
+            color: 'var(--text-primary)',
+            opacity: previousDay ? 1 : 0.5,
+            cursor: previousDay ? 'pointer' : 'not-allowed',
+          }}
         >
           <ChevronLeft size={16} aria-hidden="true" />
         </button>
@@ -729,72 +755,28 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
           aria-label={t('trip.timeline.nextDay')}
           disabled={!nextDay}
           onClick={() => nextDay && onSelectDay(nextDay.id)}
+          style={{
+            border: '1px solid var(--border-faint)',
+            borderRadius: 7,
+            background: 'color-mix(in srgb, var(--accent) 5%, var(--bg-surface))',
+            color: 'var(--text-primary)',
+            opacity: nextDay ? 1 : 0.5,
+            cursor: nextDay ? 'pointer' : 'not-allowed',
+          }}
         >
           <ChevronRight size={16} aria-hidden="true" />
         </button>
       </header>
 
       {(onToggleRoute || onSetRouteProfile || onPlanTransit) && (
-        <div
-          role="toolbar"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 12px',
-            borderBottom: '1px solid var(--border-faint)',
-            background: 'var(--bg-card)',
-          }}
-        >
-          {onToggleRoute && (
-            <button
-              type="button"
-              aria-pressed={routeShown}
-              onClick={onToggleRoute}
-              style={{
-                padding: '4px 8px',
-                background: routeShown ? 'var(--bg-selected)' : 'transparent',
-              }}
-            >
-              {t('dayplan.route')}
-            </button>
-          )}
-          {onSetRouteProfile && (
-            <>
-              <button
-                type="button"
-                aria-pressed={routeProfile === 'walking'}
-                onClick={() => onSetRouteProfile('walking')}
-                style={{
-                  padding: '4px 8px',
-                  background: routeProfile === 'walking' ? 'var(--bg-selected)' : 'transparent',
-                }}
-              >
-                {t('dayplan.movement.walking')}
-              </button>
-              <button
-                type="button"
-                aria-pressed={routeProfile === 'driving'}
-                onClick={() => onSetRouteProfile('driving')}
-                style={{
-                  padding: '4px 8px',
-                  background: routeProfile === 'driving' ? 'var(--bg-selected)' : 'transparent',
-                }}
-              >
-                {t('dayplan.movement.driving')}
-              </button>
-            </>
-          )}
-          {onPlanTransit && (
-            <button
-              type="button"
-              onClick={() => onPlanTransit(day.id)}
-              style={{ marginLeft: 'auto', padding: '4px 8px' }}
-            >
-              {t('transit.title')}
-            </button>
-          )}
-        </div>
+        <TimelineRouteToolbar
+          dayId={day.id}
+          routeShown={routeShown}
+          routeProfile={routeProfile}
+          onToggleRoute={onToggleRoute}
+          onSetRouteProfile={onSetRouteProfile}
+          onPlanTransit={onPlanTransit}
+        />
       )}
 
       <div
