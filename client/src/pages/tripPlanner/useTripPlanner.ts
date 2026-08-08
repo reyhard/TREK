@@ -725,6 +725,7 @@ export function useTripPlanner() {
           await tripActions.removeAssignment(tripId, capturedTarget, capturedAssignmentId)
         })
       }
+      return assignment
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) }
   }, [selectedDayId, tripId, toast, updateRouteForDay, pushUndo])
 

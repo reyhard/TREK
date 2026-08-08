@@ -878,11 +878,14 @@ describe('TripPlannerPage', () => {
   });
 
   describe('FE-PAGE-PLANNER-023: handleAssignToDay covers assignment logic', () => {
-    it('calls onAssignToDay through captured PlacesSidebar props with a selected day', async () => {
+    it('returns the created assignment through the PlacesSidebar callback', async () => {
       vi.useFakeTimers();
 
       const { day } = seedTripStore({ id: 42 });
-      seedStore(useTripStore, { selectedDayId: day.id } as any);
+      const place = buildPlace({ id: 1, trip_id: 42 });
+      const assignment = buildAssignment({ id: 10, day_id: day.id, place });
+      const assignPlaceToDay = vi.fn().mockResolvedValue(assignment);
+      seedStore(useTripStore, { selectedDayId: day.id, places: [place], assignPlaceToDay } as any);
 
       renderPlannerPage(42);
 
@@ -896,10 +899,12 @@ describe('TripPlannerPage', () => {
         expect(screen.getByTestId('places-sidebar')).toBeInTheDocument();
       });
 
-      // Call onAssignToDay — covers handleAssignToDay body
+      let result: unknown;
       await act(async () => {
-        capturedPlacesSidebarProps.current.onAssignToDay?.(1, day.id, 0);
+        result = await capturedPlacesSidebarProps.current.onAssignToDay?.(1, day.id, 0);
       });
+
+      expect(result).toEqual(assignment);
     });
   });
 

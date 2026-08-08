@@ -1,4 +1,5 @@
 import { assignmentsApi } from '../../api/client'
+import type { AssignmentTimeRequest } from '@trek/shared'
 import type { StoreApi } from 'zustand'
 import type { TripStoreState } from '../tripStore'
 import type { Assignment, AssignmentsMap } from '../../types'
@@ -12,6 +13,7 @@ export interface AssignmentsSlice {
   removeAssignment: (tripId: number | string, dayId: number | string, assignmentId: number) => Promise<void>
   reorderAssignments: (tripId: number | string, dayId: number | string, orderedIds: number[]) => Promise<void>
   moveAssignment: (tripId: number | string, assignmentId: number, fromDayId: number | string, toDayId: number | string, toOrderIndex?: number | null) => Promise<void>
+  setAssignmentTime: (tripId: number | string, dayId: number | string, assignmentId: number, times: AssignmentTimeRequest) => Promise<Assignment>
   setAssignments: (assignments: AssignmentsMap) => void
 }
 
@@ -160,6 +162,48 @@ export const createAssignmentsSlice = (set: SetState, get: GetState): Assignment
     } catch (err: unknown) {
       set({ assignments: prevAssignments })
       throw new Error(getApiErrorMessage(err, 'Error moving assignment'))
+    }
+  },
+
+  setAssignmentTime: async (tripId, dayId, assignmentId, times) => {
+    const prevAssignments = get().assignments
+    const hasStartTime = Object.hasOwn(times, 'place_time')
+    const hasEndTime = Object.hasOwn(times, 'end_time')
+
+    set(state => ({
+      assignments: {
+        ...state.assignments,
+        [String(dayId)]: (state.assignments[String(dayId)] || []).map(assignment => {
+          if (assignment.id !== assignmentId) return assignment
+
+          return {
+            ...assignment,
+            place: {
+              ...assignment.place,
+              ...(hasStartTime ? { place_time: times.place_time } : {}),
+              ...(times.place_time === null
+                ? { end_time: null }
+                : hasEndTime ? { end_time: times.end_time } : {}),
+            },
+          }
+        }),
+      },
+    }))
+
+    try {
+      const data = await assignmentsApi.updateTime(tripId, assignmentId, times)
+      set(state => ({
+        assignments: {
+          ...state.assignments,
+          [String(dayId)]: (state.assignments[String(dayId)] || []).map(assignment =>
+            assignment.id === assignmentId ? data.assignment : assignment,
+          ),
+        },
+      }))
+      return data.assignment
+    } catch (err: unknown) {
+      set({ assignments: prevAssignments })
+      throw new Error(getApiErrorMessage(err, 'Error updating assignment time'))
     }
   },
 
