@@ -92,6 +92,9 @@ describe('DayTimelinePlanner', () => {
 
     const header = screen.getByTestId('timeline-day-header');
     expect(header).toHaveStyle({ position: 'sticky', top: '0px' });
+    expect(screen.getByRole('button', { name: 'Previous day' })).toHaveStyle({
+      background: 'color-mix(in srgb, var(--accent) 5%, var(--bg-surface))',
+    });
     await user.click(screen.getByRole('button', { name: 'Previous day' }));
     await user.click(screen.getByRole('button', { name: 'Next day' }));
     expect(onSelectDay).toHaveBeenNthCalledWith(1, previous.id);
@@ -159,10 +162,10 @@ describe('DayTimelinePlanner', () => {
     );
 
     expect(screen.getByRole('group', { name: 'Gallery' })).toHaveStyle({
-      background: 'color-mix(in srgb, #123456 10%, transparent)',
+      background: 'color-mix(in srgb, #123456 10%, var(--bg-card))',
     });
     expect(screen.getByRole('group', { name: 'Cafe' })).toHaveStyle({
-      background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+      background: 'color-mix(in srgb, var(--accent) 10%, var(--bg-card))',
     });
     expect(screen.getByRole('group', { name: 'Gardens' })).toHaveStyle({
       background: 'var(--bg-selected)',
@@ -219,11 +222,9 @@ describe('DayTimelinePlanner', () => {
     const noteCard = within(grid).getByRole('group', { name: 'Note: Board ferry, 08:30 – 08:45' });
     expect(within(transportCard).getByText('07:30 – 08:15')).toBeVisible();
     expect(within(noteCard).getByText('08:30 – 08:45')).toBeVisible();
-    expect(transportCard).toHaveStyle({
-      background: 'color-mix(in srgb, #3b82f6 10%, transparent)',
-    });
-    expect(transportCard.style.border).toBe('1px solid color-mix(in srgb, rgb(59, 130, 246) 42%, transparent)');
-    expect(noteCard).toHaveStyle({ background: 'var(--bg-hover)' });
+    expect(transportCard).toHaveStyle({ background: 'color-mix(in srgb, #06b6d4 14%, var(--bg-card))' });
+    expect(transportCard.style.border).toBe('1px solid color-mix(in srgb, #06b6d4 50%, var(--bg-card))');
+    expect(noteCard).toHaveStyle({ background: 'color-mix(in srgb, var(--text-secondary) 7%, var(--bg-card))' });
     expect(noteCard.querySelector('svg.lucide-clock')).toHaveAttribute('aria-hidden', 'true');
 
     const contextTray = screen.getByRole('region', { name: 'Timeline context' });
@@ -235,6 +236,52 @@ describe('DayTimelinePlanner', () => {
       expect(card).not.toHaveAttribute('draggable');
       expect(within(card).queryByRole('button', { name: /^(Move|Edit|Remove time)/ })).not.toBeInTheDocument();
     }
+  });
+
+  it('renders transport and context cards with semantic icons on token-based surfaces', () => {
+    const bus = buildReservation({
+      id: 505,
+      day_id: day.id,
+      type: 'bus',
+      title: 'Airport bus',
+      reservation_time: '07:30',
+    });
+    const transit = buildReservation({
+      id: 506,
+      day_id: day.id,
+      type: 'transit',
+      title: 'Metro connection',
+      reservation_time: '09:00',
+      reservation_end_time: '09:30',
+      metadata: JSON.stringify({ transit: { legs: [{ mode: 'rail' }] } }),
+    });
+    const note = buildDayNote({ id: 603, day_id: day.id, text: 'Check platform', time: '10:00', icon: 'Info' });
+    const activity = timedAssignment({
+      id: 104,
+      place: buildPlace({ id: 45, name: 'Market', category_id: null }),
+      place_id: 45,
+      assignment_time: '11:00',
+      assignment_end_time: '12:00',
+    });
+
+    render(
+      <DayTimelinePlanner
+        {...props({ canEdit: false, assignments: [activity], reservations: [bus, transit], notes: [note] })}
+      />
+    );
+
+    const busCard = screen.getByRole('group', { name: 'Transport: Airport bus, 07:30 – 07:45' });
+    const transitCard = screen.getByRole('group', { name: 'Transport: Metro connection, 09:00 – 09:30' });
+    const noteCard = screen.getByRole('group', { name: 'Note: Check platform, 10:00 – 10:15' });
+    const activityCard = screen.getByRole('group', { name: 'Market' });
+
+    expect(busCard.querySelector('svg.lucide-bus')).toHaveAttribute('aria-hidden', 'true');
+    expect(transitCard.querySelector('svg.lucide-tram-front')).toHaveAttribute('aria-hidden', 'true');
+    expect(busCard.style.background).toContain('var(--bg-card)');
+    expect(transitCard.style.background).toContain('rgb(124, 58, 237)');
+    expect(noteCard.style.background).toContain('var(--bg-card)');
+    expect(activityCard.style.background).toContain('var(--bg-card)');
+    expect(screen.getByTestId('timeline-day-header')).not.toHaveStyle({ background: 'var(--bg-card)' });
   });
 
   it('renders every synthetic leg but opens saved transit with its original reservation', async () => {
