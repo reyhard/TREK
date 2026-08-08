@@ -15,6 +15,8 @@ const trip: TranslationStrings = {
     'Press Enter to start moving. Use Up or Down for 15 minutes, Page Up or Page Down for 60 minutes, Enter to save, or Escape to cancel.',
   'trip.timeline.proposedTime': 'Proposed time {time}',
   'trip.timeline.overlapWarning': '{count} overlapping activities',
+  'trip.timeline.activityOverlap': '{name} overlaps another activity',
+  'trip.timeline.overlapBadge': 'Overlapping activity',
   'trip.timeline.endsAfterMidnight': 'This activity would end after midnight.',
 
   'trip.tabs.plan': '计划',

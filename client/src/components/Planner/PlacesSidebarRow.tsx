@@ -64,6 +64,9 @@ export const MemoPlaceRow = React.memo(function MemoPlaceRow({
         e.dataTransfer.effectAllowed = 'copy';
         window.__dragData = { placeId: String(place.id) };
       }}
+      onDragEnd={() => {
+        window.__dragData = null;
+      }}
       onClick={() => {
         if (selectMode) {
           toggleSelected(place.id);

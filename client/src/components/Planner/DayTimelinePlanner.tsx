@@ -1,5 +1,5 @@
 import { formatDayTime, parseDayTime } from '@trek/shared';
-import { Clock, GripVertical, Pencil, X } from 'lucide-react';
+import { AlertTriangle, Clock, GripVertical, Pencil, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTranslation } from '../../i18n';
@@ -45,6 +45,11 @@ interface PointerMoveState extends MoveState {
   moved: boolean;
 }
 
+interface OptimisticTiming {
+  assignment_time: string | null;
+  assignment_end_time: string | null;
+}
+
 function assignmentDuration(assignment: Assignment): number {
   const start = parseDayTime(assignment.assignment_time);
   const end = parseDayTime(assignment.assignment_end_time, { allowEndOfDay: true });
@@ -78,6 +83,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   const gridRef = useRef<HTMLDivElement>(null);
   const suppressClickRef = useRef(false);
   const [localAssignments, setLocalAssignments] = useState<Assignment[]>([]);
+  const [optimisticTimings, setOptimisticTimings] = useState<Record<number, OptimisticTiming>>({});
   const [previewMinutes, setPreviewMinutes] = useState<Record<number, number>>({});
   const [keyboardMove, setKeyboardMove] = useState<MoveState | null>(null);
   const [pointerMove, setPointerMove] = useState<PointerMoveState | null>(null);
@@ -88,12 +94,26 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     return [
       ...assignments,
       ...localAssignments.filter((assignment) => assignment.day_id === day.id && !sourceIds.has(assignment.id)),
-    ];
-  }, [assignments, day.id, localAssignments]);
+    ].map((assignment) => {
+      const timing = optimisticTimings[assignment.id];
+      return timing
+        ? {
+            ...assignment,
+            ...timing,
+            place: {
+              ...assignment.place,
+              place_time: timing.assignment_time,
+              end_time: timing.assignment_end_time,
+            },
+          }
+        : assignment;
+    });
+  }, [assignments, day.id, localAssignments, optimisticTimings]);
   const timeline = useMemo(() => buildTimelineEntries(allAssignments), [allAssignments]);
 
   useEffect(() => {
     setLocalAssignments([]);
+    setOptimisticTimings({});
     setPreviewMinutes({});
     setKeyboardMove(null);
     setPointerMove(null);
@@ -104,7 +124,31 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   useEffect(() => {
     const sourceIds = new Set(assignments.map((assignment) => assignment.id));
     setLocalAssignments((current) => current.filter((assignment) => !sourceIds.has(assignment.id)));
+    setOptimisticTimings((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([assignmentId, timing]) => {
+          const authoritative = assignments.find((assignment) => assignment.id === Number(assignmentId));
+          return (
+            !authoritative ||
+            authoritative.assignment_time !== timing.assignment_time ||
+            authoritative.assignment_end_time !== timing.assignment_end_time
+          );
+        })
+      )
+    );
   }, [assignments]);
+
+  const setOptimisticTiming = (assignmentId: number, timing: OptimisticTiming) => {
+    setOptimisticTimings((current) => ({ ...current, [assignmentId]: timing }));
+  };
+
+  const clearOptimisticTiming = (assignmentId: number) => {
+    setOptimisticTimings((current) => {
+      const next = { ...current };
+      delete next[assignmentId];
+      return next;
+    });
+  };
 
   const setPreview = (assignmentId: number, minute: number) => {
     setPreviewMinutes((current) => ({ ...current, [assignmentId]: minute }));
@@ -127,12 +171,18 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     }
     const placeTime = formatDayTime(minute);
     if (!placeTime) return false;
-    setPreview(assignment.id, minute);
+    const duration = assignmentDuration(assignment);
+    setOptimisticTiming(assignment.id, {
+      assignment_time: placeTime,
+      assignment_end_time: formatDayTime(minute + duration, { allowEndOfDay: true }),
+    });
+    clearPreview(assignment.id);
+    setAnnouncement(t('trip.timeline.proposedTime', { time: placeTime }));
     try {
       await onSetAssignmentTime(day.id, assignment.id, { place_time: placeTime });
-      clearPreview(assignment.id);
       return true;
     } catch (error) {
+      clearOptimisticTiming(assignment.id);
       clearPreview(assignment.id);
       toast.error(errorMessage(error, t('common.unknownError')));
       return false;
@@ -140,9 +190,11 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
   };
 
   const removeTime = async (assignment: Assignment) => {
+    setOptimisticTiming(assignment.id, { assignment_time: null, assignment_end_time: null });
     try {
       await onSetAssignmentTime(day.id, assignment.id, { place_time: null, end_time: null });
     } catch (error) {
+      clearOptimisticTiming(assignment.id);
       toast.error(errorMessage(error, t('common.unknownError')));
     }
   };
@@ -157,11 +209,11 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
 
   const handleGridDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (!canEdit) return;
     const minute = minuteAtPointer(event.clientY);
     const placeId = Number(getDragValue(event, 'placeId'));
     const assignmentId = Number(getDragValue(event, 'assignmentId'));
     window.__dragData = null;
+    if (!canEdit) return;
 
     if (Number.isInteger(placeId) && placeId > 0) {
       let created: Assignment | undefined;
@@ -172,6 +224,11 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
         return;
       }
       if (!created) return;
+      setLocalAssignments((current) =>
+        assignments.some((item) => item.id === created.id)
+          ? current.filter((item) => item.id !== created.id)
+          : [...current.filter((item) => item.id !== created.id), created]
+      );
       const scheduled = await moveAssignment(created, minute);
       if (scheduled) {
         const duration = assignmentDuration(created);
@@ -206,10 +263,10 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
 
   const handleUnscheduledDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (!canEdit) return;
     const assignmentId = Number(getDragValue(event, 'assignmentId'));
     const assignment = allAssignments.find((item) => item.id === assignmentId);
     window.__dragData = null;
+    if (!canEdit) return;
     if (assignment) await removeTime(assignment);
   };
 
@@ -311,6 +368,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
         ? null
         : `${formatDayTime(start)} – ${formatDayTime(end, { allowEndOfDay: true })}`;
     const category = categories.find((item) => item.id === activityPlace.category_id);
+    const compact = Boolean(scheduledEntry && scheduledEntry.height <= 45);
+    const overlapping = Boolean(scheduledEntry?.overlapping);
     const movementEntry: TimelineEntry = scheduledEntry ?? {
       ...assignment,
       start: timeline.gridStartMinute,
@@ -323,96 +382,160 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
       overlapping: false,
     };
 
+    const moveButton = canEdit ? (
+      <button
+        type="button"
+        tabIndex={0}
+        aria-label={t('trip.timeline.moveActivity', { name: activityName(assignment) })}
+        aria-describedby="timeline-move-instructions"
+        title={t('trip.timeline.move')}
+        draggable
+        onDragStart={(event) => {
+          event.stopPropagation();
+          event.dataTransfer.setData('assignmentId', String(assignment.id));
+          event.dataTransfer.effectAllowed = 'move';
+          window.__dragData = { assignmentId: String(assignment.id), fromDayId: String(day.id) };
+        }}
+        onDragEnd={() => {
+          window.__dragData = null;
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          handleMoveClick(movementEntry);
+        }}
+        onPointerDown={(event) => startPointerMove(event, movementEntry)}
+        onPointerMove={updatePointerMove}
+        onPointerUp={finishPointerMove}
+        onPointerCancel={cancelPointerMove}
+        onKeyDown={(event) => void handleMoveKeyDown(event, movementEntry)}
+        style={{
+          border: 0,
+          padding: compact ? 0 : 2,
+          background: 'transparent',
+          cursor: 'grab',
+          display: 'flex',
+          flexShrink: 0,
+          touchAction: 'none',
+        }}
+      >
+        <GripVertical size={compact ? 12 : 14} />
+      </button>
+    ) : null;
+
+    const editButton =
+      canEdit && place ? (
+        <button
+          type="button"
+          tabIndex={0}
+          aria-label={t('trip.timeline.editActivity', { name: activityName(assignment) })}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditPlace(place, assignment.id);
+          }}
+          style={{ border: 0, background: 'transparent', padding: compact ? 0 : 1, display: 'flex', flexShrink: 0 }}
+        >
+          <Pencil size={11} />
+        </button>
+      ) : null;
+
+    const removeButton =
+      canEdit && scheduledEntry ? (
+        <button
+          type="button"
+          tabIndex={0}
+          aria-label={t('trip.timeline.removeTime')}
+          onClick={(event) => {
+            event.stopPropagation();
+            void removeTime(assignment);
+          }}
+          style={{ border: 0, background: 'transparent', padding: compact ? 0 : 1, display: 'flex', flexShrink: 0 }}
+        >
+          <X size={11} />
+        </button>
+      ) : null;
+
+    const overlapIndicator = overlapping ? (
+      <span
+        title={t('trip.timeline.overlapBadge')}
+        aria-hidden="true"
+        style={{ color: 'var(--warning)', display: 'flex', flexShrink: 0 }}
+      >
+        <AlertTriangle size={compact ? 11 : 13} />
+      </span>
+    ) : null;
+
     return (
       <div
+        role="group"
+        aria-label={
+          overlapping
+            ? t('trip.timeline.activityOverlap', { name: activityName(assignment) })
+            : activityName(assignment)
+        }
         onClick={() => onPlaceClick(activityPlace.id, assignment.id)}
         aria-selected={isSelected}
         style={{
+          display: compact ? 'flex' : 'block',
+          alignItems: compact ? 'center' : undefined,
+          gap: compact ? 3 : undefined,
           minWidth: 0,
           height: '100%',
           boxSizing: 'border-box',
           borderRadius: 8,
           border: `${isSelected ? 2 : 1}px solid ${category?.color || 'var(--accent)'}`,
           background: 'var(--bg-card)',
-          padding: '6px 8px',
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow-sm)',
+          padding: compact ? '2px 4px' : '6px 8px',
+          overflow: compact ? 'visible' : 'hidden',
+          boxShadow: overlapping ? '0 0 0 2px var(--warning), var(--shadow-sm)' : 'var(--shadow-sm)',
           cursor: 'pointer',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <strong className="text-content" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
-            {activityName(assignment)}
-          </strong>
-          {canEdit && (
-            <button
-              type="button"
-              aria-label={t('trip.timeline.moveActivity', { name: activityName(assignment) })}
-              aria-describedby="timeline-move-instructions"
-              title={t('trip.timeline.move')}
-              draggable
-              onDragStart={(event) => {
-                event.stopPropagation();
-                event.dataTransfer.setData('assignmentId', String(assignment.id));
-                event.dataTransfer.effectAllowed = 'move';
-                window.__dragData = { assignmentId: String(assignment.id), fromDayId: String(day.id) };
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleMoveClick(movementEntry);
-              }}
-              onPointerDown={(event) => startPointerMove(event, movementEntry)}
-              onPointerMove={updatePointerMove}
-              onPointerUp={finishPointerMove}
-              onPointerCancel={cancelPointerMove}
-              onKeyDown={(event) => void handleMoveKeyDown(event, movementEntry)}
+        {compact ? (
+          <>
+            <strong
+              className="text-content"
               style={{
-                border: 0,
-                padding: 2,
-                background: 'transparent',
-                cursor: 'grab',
-                display: 'flex',
-                touchAction: 'none',
+                flex: 1,
+                minWidth: 0,
+                fontSize: 11,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
-              <GripVertical size={14} />
-            </button>
-          )}
-        </div>
-        {timeLabel && (
-          <div className="text-content-faint" style={{ fontSize: 11 }}>
-            {timeLabel}
-          </div>
-        )}
-        {canEdit && (
-          <div style={{ display: 'flex', gap: 4, marginTop: 3 }}>
-            {place && (
-              <button
-                type="button"
-                aria-label={t('trip.timeline.editActivity', { name: activityName(assignment) })}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onEditPlace(place, assignment.id);
-                }}
-                style={{ border: 0, background: 'transparent', padding: 1, display: 'flex' }}
-              >
-                <Pencil size={11} />
-              </button>
+              {activityName(assignment)}
+            </strong>
+            {timeLabel && (
+              <span className="text-content-faint" style={{ fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {timeLabel}
+              </span>
             )}
-            {scheduledEntry && (
-              <button
-                type="button"
-                aria-label={t('trip.timeline.removeTime')}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void removeTime(assignment);
-                }}
-                style={{ border: 0, background: 'transparent', padding: 1, display: 'flex' }}
-              >
-                <X size={11} />
-              </button>
+            {overlapIndicator}
+            {moveButton}
+            {editButton}
+            {removeButton}
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <strong className="text-content" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
+                {activityName(assignment)}
+              </strong>
+              {overlapIndicator}
+              {moveButton}
+            </div>
+            {timeLabel && (
+              <div className="text-content-faint" style={{ fontSize: 11 }}>
+                {timeLabel}
+              </div>
             )}
-          </div>
+            {canEdit && (
+              <div style={{ display: 'flex', gap: 4, marginTop: 3 }}>
+                {editButton}
+                {removeButton}
+              </div>
+            )}
+          </>
         )}
       </div>
     );

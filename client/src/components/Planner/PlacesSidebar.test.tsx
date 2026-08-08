@@ -54,11 +54,29 @@ const defaultProps = {
 
 beforeEach(() => {
   resetAllStores();
+  window.__dragData = null;
   seedStore(useAuthStore, { user: buildUser(), isAuthenticated: true });
   seedStore(useTripStore, { trip: buildTrip({ id: 1 }) });
 });
 
 describe('PlacesSidebar', () => {
+  it('clears cross-sidebar place drag data when the drag is canceled', () => {
+    const place = buildPlace({ id: 42, name: 'Museum' });
+    render(<PlacesSidebar {...defaultProps} places={[place]} />);
+    const row = screen.getByText('Museum').closest('[data-place-id="42"]');
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => ''),
+      effectAllowed: 'all',
+    };
+
+    fireEvent.dragStart(row!, { dataTransfer });
+    expect(window.__dragData).toEqual({ placeId: '42' });
+    fireEvent.dragEnd(row!, { dataTransfer });
+
+    expect(window.__dragData).toBeNull();
+  });
+
   it('shows a place recommended duration beneath its name', () => {
     render(<PlacesSidebar {...defaultProps} places={[buildPlace({ name: 'Museum', duration_minutes: 90 })]} />);
 
