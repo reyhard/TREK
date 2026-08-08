@@ -89,5 +89,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Làm phong phú các địa điểm thông qua Google',
   'places.enrichOnImportHint':
     'Tra cứu từng địa điểm đã nhập để điền ảnh, địa chỉ và thông tin liên hệ. Sử dụng khóa Google Maps của bạn.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

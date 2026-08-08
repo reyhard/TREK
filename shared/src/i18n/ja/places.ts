@@ -88,5 +88,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Googleで場所を補完',
   'places.enrichOnImportHint':
     'インポートした各場所を検索して、写真・住所・連絡先を追加します。Google Maps キーが必要です。',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

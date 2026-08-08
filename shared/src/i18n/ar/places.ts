@@ -89,5 +89,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'إثراء الأماكن عبر Google',
   'places.enrichOnImportHint':
     'يبحث عن كل مكان مستورد لإضافة الصور والعنوان وبيانات الاتصال. يتطلب مفتاح خرائط Google.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

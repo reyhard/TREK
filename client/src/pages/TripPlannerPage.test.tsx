@@ -1333,12 +1333,13 @@ describe('TripPlannerPage', () => {
   });
 
   describe('FE-PAGE-PLANNER-029: handleSavePlace edit path covers updatePlace logic', () => {
-    it('calls onEditPlace then onSave on PlaceFormModal to exercise the edit-place handler', async () => {
+    it('retains recommended duration while stripping assignment times from the POI update', async () => {
       vi.useFakeTimers();
 
       const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
       seedTripStore({ id: 42 });
-      seedStore(useTripStore, { places: [place] } as any);
+      const updatePlaceSpy = vi.fn().mockResolvedValue(place);
+      seedStore(useTripStore, { places: [place], updatePlace: updatePlaceSpy } as any);
 
       renderPlannerPage(42);
 
@@ -1359,8 +1360,20 @@ describe('TripPlannerPage', () => {
 
       // Now onSave uses the edit path (editingPlace is set)
       await act(async () => {
-        await capturedPlaceFormModalProps.current.onSave?.({ name: 'Updated', lat: 1, lng: 2 });
+        await capturedPlaceFormModalProps.current.onSave?.({
+          name: 'Updated',
+          lat: 1,
+          lng: 2,
+          duration_minutes: 120,
+          place_time: '09:00',
+          end_time: '11:00',
+        });
       });
+
+      const placeData = updatePlaceSpy.mock.calls[0][2];
+      expect(placeData).toMatchObject({ name: 'Updated', duration_minutes: 120 });
+      expect(placeData).not.toHaveProperty('place_time');
+      expect(placeData).not.toHaveProperty('end_time');
     });
   });
 

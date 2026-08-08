@@ -88,5 +88,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Perkaya tempat via Google',
   'places.enrichOnImportHint':
     'Mencari setiap tempat yang diimpor untuk menambahkan foto, alamat, dan kontak. Memerlukan kunci Google Maps.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

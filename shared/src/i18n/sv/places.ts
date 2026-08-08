@@ -89,5 +89,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Berika platser via Google',
   'places.enrichOnImportHint':
     'Sök upp varje importerad plats för att fylla i bilder, adress och kontaktuppgifter. Använder din Google Maps-nyckel.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

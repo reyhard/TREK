@@ -89,5 +89,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Arricchisci i luoghi con Google',
   'places.enrichOnImportHint':
     'Cerca ogni luogo importato per aggiungere foto, indirizzo e contatti. Usa la tua chiave Google Maps.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

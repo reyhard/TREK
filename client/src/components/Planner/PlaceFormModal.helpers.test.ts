@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { isGoogleMapsUrl } from './PlaceFormModal.helpers'
+import { DEFAULT_FORM, isGoogleMapsUrl } from './PlaceFormModal.helpers'
+
+describe('DEFAULT_FORM', () => {
+  it('defaults a new place to a one-hour recommended duration', () => {
+    expect(DEFAULT_FORM.duration_minutes).toBe('60')
+  })
+})
 
 describe('isGoogleMapsUrl', () => {
   it('accepts the short share hosts', () => {

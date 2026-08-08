@@ -18,10 +18,11 @@ import { DEFAULT_FORM, isGoogleMapsUrl, type PlaceFormData } from './PlaceFormMo
 
 // The submit payload mirrors the form, but lat/lng are parsed to numbers and
 // category_id is normalised, plus any files chosen before the place existed.
-export interface PlaceSubmitData extends Omit<PlaceFormData, 'lat' | 'lng' | 'category_id'> {
+export interface PlaceSubmitData extends Omit<PlaceFormData, 'lat' | 'lng' | 'category_id' | 'duration_minutes'> {
   lat: number | null;
   lng: number | null;
   category_id: string | null;
+  duration_minutes: number;
   _pendingFiles?: File[];
 }
 
@@ -135,6 +136,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
         lat: place.lat != null ? String(place.lat) : '',
         lng: place.lng != null ? String(place.lng) : '',
         category_id: place.category_id != null ? String(place.category_id) : '',
+        duration_minutes: String(place.duration_minutes ?? 60),
         place_time: timeSource.place_time || '',
         end_time: timeSource.end_time || '',
         notes: place.notes || '',
@@ -413,6 +415,9 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     form.place_time.length >= 5 &&
     form.end_time.length >= 5 &&
     form.end_time <= form.place_time;
+  const durationMinutes = Number(form.duration_minutes);
+  const hasDurationError =
+    !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1440;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -420,6 +425,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
       toast.error(t('places.nameRequired'));
       return;
     }
+    if (hasDurationError) return;
     // #1152: only for new places, and only on the first attempt — a second click
     // (with the warning already showing) is the explicit "add anyway" confirmation.
     if (!place && !duplicateWarning) {
@@ -438,6 +444,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
         lat: form.lat ? parseFloat(form.lat) : null,
         lng: form.lng ? parseFloat(form.lng) : null,
         category_id: form.category_id || null,
+        duration_minutes: durationMinutes,
         _pendingFiles: pendingFiles.length > 0 ? pendingFiles : undefined,
       });
       onClose();
@@ -505,6 +512,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     handleRemoveFile,
     handlePaste,
     hasTimeError,
+    hasDurationError,
     handleSubmit,
     duplicateWarning,
   };
@@ -569,6 +577,7 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
     handleRemoveFile,
     handlePaste,
     hasTimeError,
+    hasDurationError,
     handleSubmit,
     duplicateWarning,
   } = S;
@@ -593,7 +602,7 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || hasTimeError}
+            disabled={isSaving || hasTimeError || hasDurationError}
             className="rounded-lg bg-slate-900 px-6 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-60"
           >
             {isSaving
@@ -834,6 +843,33 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
               t={t}
             />
           )}
+
+          {/* Recommended duration applies to the POI itself, not a day assignment. */}
+          <div>
+            <label htmlFor="place-duration-minutes" className="mb-1 block text-sm font-medium text-gray-700">
+              {t('places.recommendedDuration')}
+            </label>
+            <NumericInput
+              id="place-duration-minutes"
+              mode="decimal"
+              min={5}
+              max={1440}
+              step={5}
+              value={form.duration_minutes}
+              onValueChange={(v) => handleChange('duration_minutes', v)}
+              aria-describedby={hasDurationError ? 'place-duration-minutes-hint place-duration-minutes-error' : 'place-duration-minutes-hint'}
+              aria-invalid={hasDurationError}
+              className="form-input"
+            />
+            <p id="place-duration-minutes-hint" className="mt-1 text-xs text-slate-500">
+              {t('places.recommendedDurationHint')}
+            </p>
+            {hasDurationError && (
+              <p id="place-duration-minutes-error" className="mt-1 text-xs text-red-600" role="alert">
+                {t('places.recommendedDurationInvalid')}
+              </p>
+            )}
+          </div>
 
           {/* Website */}
           <div>

@@ -89,5 +89,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Εμπλουτισμός τόπων μέσω Google',
   'places.enrichOnImportHint':
     'Αναζητά κάθε εισαγόμενο μέρος για να προσθέσει φωτογραφίες, διεύθυνση και στοιχεία επικοινωνίας. Απαιτεί κλειδί Google Maps.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

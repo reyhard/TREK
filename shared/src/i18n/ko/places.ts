@@ -87,5 +87,9 @@ const places: TranslationStrings = {
   'places.addAnyway': '그래도 추가',
   'places.enrichOnImport': 'Google로 장소 정보 보강',
   'places.enrichOnImportHint': '가져온 각 장소를 검색해 사진, 주소, 연락처를 추가합니다. Google Maps 키가 필요합니다.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

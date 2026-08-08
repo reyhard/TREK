@@ -85,5 +85,9 @@ const places: TranslationStrings = {
   'places.addAnyway': '仍然添加',
   'places.enrichOnImport': '通过 Google 丰富地点信息',
   'places.enrichOnImportHint': '查找每个导入的地点以补充照片、地址和联系方式。需要 Google Maps 密钥。',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

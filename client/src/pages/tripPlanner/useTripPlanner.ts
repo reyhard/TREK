@@ -570,7 +570,8 @@ export function useTripPlanner() {
     const pendingFiles = data._pendingFiles
     delete data._pendingFiles
     if (editingPlace) {
-      // Always strip time fields from place update — time is per-assignment only
+      // Strip only assignment-specific time fields; recommended duration belongs to
+      // the reusable place and deliberately remains in placeData.
       const { place_time, end_time, ...placeData } = data
       await tripActions.updatePlace(tripId, editingPlace.id, placeData)
       // If editing from assignment context, save time per-assignment

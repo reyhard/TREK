@@ -120,6 +120,13 @@ describe('PlaceFormModal', () => {
     expect(screen.getByDisplayValue('123 Main St')).toBeInTheDocument();
   });
 
+  it('FE-COMP-PLACEFORM-012b: hydrates the recommended duration from the saved place', () => {
+    const place = buildPlace({ name: 'Louvre', duration_minutes: 90 });
+    render(<PlaceFormModal {...defaultProps} place={place} />);
+
+    expect(screen.getByLabelText(/^(Recommended duration|places\.recommendedDuration)$/)).toHaveValue('90');
+  });
+
   it('FE-COMP-PLACEFORM-013: submitting empty form does not call onSave (name required)', async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
@@ -449,6 +456,23 @@ describe('PlaceFormModal', () => {
     expect(submitBtn).toBeDisabled();
   });
 
+  it.each(['4', '60.5', '1441'])(
+    'FE-COMP-PLACEFORM-027b: prevents saving an invalid recommended duration of %s minutes',
+    async (duration) => {
+      const user = userEvent.setup();
+      render(<PlaceFormModal {...defaultProps} place={buildPlace({ name: 'Museum' })} />);
+
+      const durationInput = screen.getByLabelText(/^(Recommended duration|places\.recommendedDuration)$/);
+      await user.clear(durationInput);
+      await user.type(durationInput, duration);
+
+      expect(
+        screen.getByText(/^(Enter a whole number from 5 to 1,440 minutes\.|places\.recommendedDurationInvalid)$/)
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Update$/i })).toBeDisabled();
+    }
+  );
+
   it('FE-PLANNER-PLACEFORM-028: time collision warning appears when assignments overlap', () => {
     // Create an assignment for the "current" place being edited
     const currentPlace = buildPlace({ name: 'My Event', place_time: '12:30', end_time: '13:30' });
@@ -529,6 +553,22 @@ describe('PlaceFormModal', () => {
     await user.click(screen.getByRole('button', { name: /^Add$/i }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ lat: 48.853 }));
+  });
+
+  it('FE-COMP-PLACEFORM-033b: onSave receives the recommended duration as a number', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const place = buildPlace({ name: 'Museum', duration_minutes: 90 });
+
+    render(<PlaceFormModal {...defaultProps} place={place} onSave={onSave} />);
+    const durationInput = screen.getByLabelText(/^(Recommended duration|places\.recommendedDuration)$/);
+    await user.clear(durationInput);
+    await user.type(durationInput, '120');
+    await user.click(screen.getByRole('button', { name: /^Update$/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ duration_minutes: 120 }));
+    });
   });
 
   it('FE-PLANNER-PLACEFORM-034: onSave error shows toast', async () => {

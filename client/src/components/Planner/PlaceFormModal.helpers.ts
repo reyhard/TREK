@@ -5,6 +5,7 @@ export interface PlaceFormData {
   lat: string
   lng: string
   category_id: string
+  duration_minutes: string
   place_time: string
   end_time: string
   notes: string
@@ -43,6 +44,7 @@ export const DEFAULT_FORM: PlaceFormData = {
   lat: '',
   lng: '',
   category_id: '',
+  duration_minutes: '60',
   place_time: '',
   end_time: '',
   notes: '',

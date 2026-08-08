@@ -91,5 +91,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Yerleri Google ile zenginleştir',
   'places.enrichOnImportHint':
     'İçe aktarılan her yeri arayarak fotoğraf, adres ve iletişim bilgilerini ekler. Google Maps anahtarı gerekir.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

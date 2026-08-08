@@ -90,5 +90,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Enriquir llocs mitjançant Google',
   'places.enrichOnImportHint':
     "Obté automàticament adreces, puntuacions i horaris d'obertura des de Google en importar.",
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;

@@ -89,5 +89,9 @@ const places: TranslationStrings = {
   'places.enrichOnImport': 'Helyek gazdagítása a Google-lel',
   'places.enrichOnImportHint':
     'Minden importált helyet megkeres, hogy fotókat, címet és elérhetőséget adjon hozzá. Google Maps-kulcs szükséges.',
+  'places.recommendedDuration': 'Recommended duration',
+  'places.recommendedDurationHint': 'Used to calculate the end time when this place is scheduled.',
+  'places.recommendedDurationInvalid': 'Enter a whole number from 5 to 1,440 minutes.',
+  'places.minutesShort': '{count} min',
 };
 export default places;
