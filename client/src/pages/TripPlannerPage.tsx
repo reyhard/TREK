@@ -1314,7 +1314,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 <div
                   className="bg-[rgba(0,0,0,0.3)]"
                   style={{ position: 'fixed', inset: 0, zIndex: 9999 }}
-                  onClick={closeMobileSidebar}
+                  onClick={() => closeMobileSidebar()}
                 >
                   <div
                     className="bg-surface-card"
@@ -1359,7 +1359,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                       <button
                         type="button"
                         aria-label={t('common.close')}
-                        onClick={closeMobileSidebar}
+                        onClick={() => closeMobileSidebar()}
                         className="bg-surface-tertiary text-content"
                         style={{
                           border: 'none',

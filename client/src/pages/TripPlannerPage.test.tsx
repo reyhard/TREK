@@ -2203,7 +2203,9 @@ describe('TripPlannerPage', () => {
 
       const close = screen.getByRole('button', { name: 'Close' });
       const action = within(dialog).getByTestId('timeline-content-action');
-      fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+      const activeElement = document.activeElement;
+      expect(activeElement).toBeInstanceOf(HTMLElement);
+      fireEvent.keyDown(activeElement as HTMLElement, { key: 'Tab' });
       expect(document.activeElement).toBe(close);
       fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
       expect(document.activeElement).toBe(action);
