@@ -156,6 +156,8 @@ export interface DayPlanSidebarProps {
   selectedPlaceId: number | null;
   selectedAssignmentId: number | null;
   onSelectDay: (dayId: number | null, skipFit?: boolean) => void;
+  initialMode?: DayPlanMode;
+  onTimelineSelectDay?: (dayId: number) => void;
   onPlaceClick: (placeId: number | null, assignmentId?: number | null) => void;
   onDayDetail: (day: Day) => void;
   accommodations?: Accommodation[];
@@ -3971,17 +3973,18 @@ const DayPlanList = React.memo(function DayPlanList(props: DayPlanSidebarProps) 
 });
 
 const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const can = useCanDo();
   const setAssignmentTime = useTripStore((state) => state.setAssignmentTime);
   const dayNotes = useTripStore((state) => state.dayNotes);
-  const [mode, setMode] = useState<DayPlanMode>(() => readDayPlanMode(props.tripId));
+  const [mode, setMode] = useState<DayPlanMode>(() => props.initialMode ?? readDayPlanMode(props.tripId));
 
   useEffect(() => {
-    setMode(readDayPlanMode(props.tripId));
-  }, [props.tripId]);
+    setMode(props.initialMode ?? readDayPlanMode(props.tripId));
+  }, [props.initialMode, props.tripId]);
 
   const selectedDay = props.days.find((day) => day.id === props.selectedDayId);
+  const selectTimelineDay = props.onTimelineSelectDay ?? ((dayId: number) => props.onSelectDay(dayId));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -4019,7 +4022,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             }
             onPlaceClick={props.onPlaceClick}
             onEditPlace={props.onEditPlace}
-            onSelectDay={(dayId) => props.onSelectDay(dayId)}
+            onSelectDay={selectTimelineDay}
             onToggleRoute={props.onToggleRoute}
             onSetRouteProfile={props.onSetRouteProfile}
             onPlanTransit={props.onPlanTransit}
@@ -4027,11 +4030,32 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             onEditTransport={props.onEditTransport}
           />
         ) : (
-          <div
-            className="text-content-faint"
-            style={{ display: 'grid', height: '100%', placeItems: 'center', padding: 24, textAlign: 'center' }}
-          >
-            {t('trip.timeline.selectDay')}
+          <div style={{ display: 'grid', height: '100%', placeItems: 'center', padding: 24, textAlign: 'center' }}>
+            <div style={{ display: 'grid', gap: 8, width: 'min(100%, 360px)' }}>
+              <div className="text-content-faint">{t('trip.timeline.selectDay')}</div>
+              {props.days.map((day) => (
+                <button
+                  key={day.id}
+                  type="button"
+                  onClick={() => selectTimelineDay(day.id)}
+                  className="text-content"
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '10px 12px',
+                    border: '1px solid var(--border-faint)',
+                    borderRadius: 8,
+                    background: 'var(--bg-surface)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span>{day.title || t('dayplan.dayN', { n: day.id })}</span>
+                  <span className="text-content-faint">{formatDate(day.date, locale)}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
