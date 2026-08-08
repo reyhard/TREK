@@ -484,10 +484,11 @@ export function updatePlaceDurationsMany(
       }
     }
 
-    const updateDuration = db.prepare('UPDATE places SET duration_minutes = ?, updated_at = ? WHERE id = ? AND trip_id = ?');
-    const updatedAt = Date.now();
+    const updateDuration = db.prepare(
+      'UPDATE places SET duration_minutes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND trip_id = ?',
+    );
     for (const { placeId, duration_minutes } of items) {
-      updateDuration.run(duration_minutes, updatedAt, placeId, tripId);
+      updateDuration.run(duration_minutes, placeId, tripId);
     }
 
     return items.map(({ placeId }) => getPlaceWithTags(placeId)!);

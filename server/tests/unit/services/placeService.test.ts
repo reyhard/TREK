@@ -370,6 +370,11 @@ describe('updatePlaceDurationsMany', () => {
 
     expect(updated.map((place) => place.id)).toEqual([second.id, first.id]);
     expect(updated.map((place) => place.duration_minutes)).toEqual([45, 120]);
+    expect(typeof updated[0].updated_at).toBe('string');
+    expect(updated[0].updated_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    const storedUpdatedAt = testDb.prepare('SELECT updated_at FROM places WHERE id = ?').get(second.id) as any;
+    expect(typeof storedUpdatedAt.updated_at).toBe('string');
+    expect(storedUpdatedAt.updated_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     expect(updated.map((place) => ({ name: place.name, notes: place.notes, address: place.address }))).toEqual([
       { name: 'Lunch', notes: 'Vegetarian', address: '2 Market Lane' },
       { name: 'Museum', notes: 'Keep this note', address: '1 Gallery Way' },
