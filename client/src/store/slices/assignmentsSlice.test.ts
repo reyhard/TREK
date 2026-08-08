@@ -110,6 +110,119 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     expect(useTripStore.getState().assignments['10'][0]?.assignment_time).toBe('08:00');
   });
 
+  it('reconciles the authoritative day after a newer same-day update fails', async () => {
+    const first = buildAssignment({
+      id: 98,
+      day_id: 10,
+      order_index: 0,
+      assignment_time: '10:00',
+      assignment_end_time: '11:00',
+      place: buildPlace({ id: 11, name: 'A', place_time: '10:00', end_time: '11:00' }),
+    });
+    const second = buildAssignment({
+      id: 99,
+      day_id: 10,
+      order_index: 1,
+      assignment_time: '11:00',
+      assignment_end_time: '12:00',
+      place: buildPlace({ id: 12, name: 'B', place_time: '11:00', end_time: '12:00' }),
+    });
+    const firstUpdate = deferred<{ assignment: typeof first }>();
+    const secondUpdate = deferred<{ assignment: typeof second }>();
+    const staleRefresh = deferred<{ assignments: (typeof first)[] }>();
+    const firstMoved = {
+      ...first,
+      order_index: 1,
+      assignment_time: '12:00',
+      assignment_end_time: '13:00',
+      place: { ...first.place, place_time: '12:00', end_time: '13:00' },
+    };
+    const authoritativeSecond = { ...second, order_index: 0 };
+    seedStore(useTripStore, { assignments: { '10': [first, second] } });
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstUpdate.promise)
+      .mockReturnValueOnce(secondUpdate.promise);
+    vi.mocked(assignmentsApi.list)
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockResolvedValueOnce({ assignments: [authoritativeSecond, firstMoved] });
+
+    const older = useTripStore.getState().setAssignmentTime(1, 10, 98, { place_time: '12:00' });
+    firstUpdate.resolve({ assignment: firstMoved });
+    await vi.waitFor(() => expect(assignmentsApi.list).toHaveBeenCalledTimes(1));
+
+    const newer = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' });
+    staleRefresh.resolve({ assignments: [authoritativeSecond, firstMoved] });
+    await older;
+    secondUpdate.reject(new Error('placement conflicts'));
+    await expect(newer).rejects.toThrow('placement conflicts');
+
+    await vi.waitFor(() => {
+      expect(useTripStore.getState().assignments['10']).toEqual([authoritativeSecond, firstMoved]);
+    });
+  });
+
+  it('retries a transient day refresh failure before reporting timing success', async () => {
+    const first = buildAssignment({
+      id: 98,
+      day_id: 10,
+      order_index: 0,
+      assignment_time: '10:00',
+      assignment_end_time: '11:00',
+      place: buildPlace({ id: 11, name: 'A', place_time: '10:00', end_time: '11:00' }),
+    });
+    const second = buildAssignment({
+      id: 99,
+      day_id: 10,
+      order_index: 1,
+      assignment_time: '11:00',
+      assignment_end_time: '12:00',
+      place: buildPlace({ id: 12, name: 'B', place_time: '11:00', end_time: '12:00' }),
+    });
+    const movedSecond = {
+      ...second,
+      order_index: 0,
+      assignment_time: '09:00',
+      assignment_end_time: '10:00',
+      place: { ...second.place, place_time: '09:00', end_time: '10:00' },
+    };
+    const reorderedFirst = { ...first, order_index: 1 };
+    seedStore(useTripStore, { assignments: { '10': [first, second] } });
+    vi.mocked(assignmentsApi.updateTime).mockResolvedValue({ assignment: movedSecond });
+    vi.mocked(assignmentsApi.list)
+      .mockRejectedValueOnce(new Error('authoritative day refresh unavailable'))
+      .mockResolvedValueOnce({ assignments: [movedSecond, reorderedFirst] });
+
+    await useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' });
+
+    expect(assignmentsApi.list).toHaveBeenCalledTimes(2);
+    expect(useTripStore.getState().assignments['10']).toEqual([movedSecond, reorderedFirst]);
+  });
+
+  it('reports reconciliation failure after bounded day refresh attempts', async () => {
+    const original = buildAssignment({
+      id: 99,
+      day_id: 10,
+      assignment_time: '11:00',
+      assignment_end_time: '12:00',
+      place: buildPlace({ id: 12, place_time: '11:00', end_time: '12:00' }),
+    });
+    const updated = {
+      ...original,
+      assignment_time: '09:00',
+      assignment_end_time: '10:00',
+      place: { ...original.place, place_time: '09:00', end_time: '10:00' },
+    };
+    seedStore(useTripStore, { assignments: { '10': [original] } });
+    vi.mocked(assignmentsApi.updateTime).mockResolvedValue({ assignment: updated });
+    vi.mocked(assignmentsApi.list).mockRejectedValue(new Error('authoritative day refresh unavailable'));
+
+    await expect(useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })).rejects.toThrow(
+      'authoritative day refresh unavailable'
+    );
+
+    expect(assignmentsApi.list).toHaveBeenCalledTimes(2);
+  });
+
   it('replaces the complete assignment projection with the authoritative response', async () => {
     const original = buildAssignment({
       id: 99,
@@ -127,6 +240,7 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     };
     seedStore(useTripStore, { assignments: { '10': [original] } });
     vi.mocked(assignmentsApi.updateTime).mockResolvedValue({ assignment: updated });
+    vi.mocked(assignmentsApi.list).mockResolvedValue({ assignments: [updated] });
 
     await expect(useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })).resolves.toEqual(
       updated
@@ -164,6 +278,7 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     const response = deferred<{ assignment: typeof original }>();
     seedStore(useTripStore, { assignments: { '10': [original] } });
     vi.mocked(assignmentsApi.updateTime).mockReturnValue(response.promise);
+    vi.mocked(assignmentsApi.list).mockResolvedValue({ assignments: [original] });
 
     const update = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: null });
 
@@ -201,6 +316,7 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     vi.mocked(assignmentsApi.updateTime)
       .mockReturnValueOnce(firstResponse.promise)
       .mockReturnValueOnce(secondResponse.promise);
+    vi.mocked(assignmentsApi.list).mockResolvedValue({ assignments: [newer] });
 
     const first = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' });
     const second = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' });
@@ -230,6 +346,7 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     vi.mocked(assignmentsApi.updateTime)
       .mockReturnValueOnce(firstResponse.promise)
       .mockReturnValueOnce(secondResponse.promise);
+    vi.mocked(assignmentsApi.list).mockResolvedValue({ assignments: [newer] });
 
     const first = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' });
     const second = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' });
@@ -283,6 +400,7 @@ describe('assignmentsSlice.setAssignmentTime', () => {
     };
     seedStore(useTripStore, { assignments: { '11': [stale] } });
     vi.mocked(assignmentsApi.updateTime).mockResolvedValue({ assignment: updated });
+    vi.mocked(assignmentsApi.list).mockResolvedValue({ assignments: [updated] });
 
     await expect(useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' })).resolves.toEqual(
       updated

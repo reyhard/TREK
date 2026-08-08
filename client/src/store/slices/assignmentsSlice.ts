@@ -15,6 +15,10 @@ interface AssignmentTimeRequestChain {
   pendingVersions: Set<number>;
 }
 
+type DayReconciliationResult = { status: 'applied' } | { status: 'superseded' } | { status: 'failed'; error: unknown };
+
+const MAX_DAY_RECONCILIATION_ATTEMPTS = 2;
+
 function reconcileAssignment(
   assignments: AssignmentsMap,
   assignmentId: number,
@@ -63,8 +67,16 @@ function reconcileAuthoritativeDay(
   dayId: number | string,
   authoritativeAssignments: Assignment[]
 ): AssignmentsMap {
+  const authoritativeIds = new Set(authoritativeAssignments.map((assignment) => assignment.id));
+  const assignmentsWithoutCrossDayCopies = Object.fromEntries(
+    Object.entries(assignments).map(([currentDayId, items]) => [
+      currentDayId,
+      currentDayId === String(dayId) ? items : items.filter((assignment) => !authoritativeIds.has(assignment.id)),
+    ])
+  ) as AssignmentsMap;
+
   return {
-    ...assignments,
+    ...assignmentsWithoutCrossDayCopies,
     [String(dayId)]: authoritativeAssignments,
   };
 }
@@ -97,6 +109,37 @@ export interface AssignmentsSlice {
 export const createAssignmentsSlice = (set: SetState, get: GetState): AssignmentsSlice => {
   const assignmentTimeChains = new Map<number, AssignmentTimeRequestChain>();
   const dayTimingVersions = new Map<string, number>();
+  const daysNeedingReconciliation = new Set<string>();
+
+  const reconcileCurrentDay = async (
+    tripId: number | string,
+    requestDayKey: string,
+    authoritativeDayId: number | string,
+    expectedDayVersion: number
+  ): Promise<DayReconciliationResult> => {
+    for (let attempt = 0; attempt < MAX_DAY_RECONCILIATION_ATTEMPTS; attempt += 1) {
+      if (dayTimingVersions.get(requestDayKey) !== expectedDayVersion) return { status: 'superseded' };
+
+      try {
+        const dayData = await assignmentsApi.list(tripId, authoritativeDayId);
+        if (dayTimingVersions.get(requestDayKey) !== expectedDayVersion) return { status: 'superseded' };
+
+        set((state) => ({
+          assignments: reconcileAuthoritativeDay(state.assignments, authoritativeDayId, dayData.assignments),
+        }));
+        daysNeedingReconciliation.delete(requestDayKey);
+        return { status: 'applied' };
+      } catch (error: unknown) {
+        if (dayTimingVersions.get(requestDayKey) !== expectedDayVersion) return { status: 'superseded' };
+        if (attempt === MAX_DAY_RECONCILIATION_ATTEMPTS - 1) {
+          daysNeedingReconciliation.delete(requestDayKey);
+          return { status: 'failed', error };
+        }
+      }
+    }
+
+    return { status: 'superseded' };
+  };
 
   return {
     assignPlaceToDay: async (tripId, dayId, placeId, position) => {
@@ -301,41 +344,38 @@ export const createAssignmentsSlice = (set: SetState, get: GetState): Assignment
       }
 
       try {
-        const data = await assignmentsApi.updateTime(tripId, assignmentId, times);
+        let data: { assignment: Assignment };
+        try {
+          data = await assignmentsApi.updateTime(tripId, assignmentId, times);
+        } catch (err: unknown) {
+          if (chain.latestVersion === requestVersion) {
+            set((state) => ({
+              assignments: reconcileAssignment(state.assignments, assignmentId, chain.confirmedAssignment),
+            }));
+          }
+
+          if (daysNeedingReconciliation.has(dayKey) && dayTimingVersions.get(dayKey) === dayRequestVersion) {
+            await reconcileCurrentDay(tripId, dayKey, chain.confirmedAssignment?.day_id ?? dayId, dayRequestVersion);
+          }
+          throw new Error(getApiErrorMessage(err, 'Error updating assignment time'));
+        }
+
         if (requestVersion > chain.confirmedVersion) {
           chain.confirmedVersion = requestVersion;
           chain.confirmedAssignment = data.assignment;
+          daysNeedingReconciliation.add(dayKey);
         }
         const hasNewerPendingRequest = [...chain.pendingVersions].some((version) => version > requestVersion);
         if (requestVersion === chain.confirmedVersion && !hasNewerPendingRequest) {
-          let authoritativeDay: Assignment[] | undefined;
-          try {
-            const dayData = await assignmentsApi.list(tripId, data.assignment.day_id);
-            authoritativeDay = dayData.assignments;
-          } catch {
-            // The timing mutation succeeded; retain its authoritative row if the
-            // follow-up day refresh is temporarily unavailable.
-          }
-          const stillLatestForAssignment =
-            requestVersion === chain.confirmedVersion &&
-            ![...chain.pendingVersions].some((version) => version > requestVersion);
-          const stillLatestForDay = dayTimingVersions.get(dayKey) === dayRequestVersion;
-          if (stillLatestForAssignment && stillLatestForDay) {
+          const reconciliation = await reconcileCurrentDay(tripId, dayKey, data.assignment.day_id, dayRequestVersion);
+          if (reconciliation.status === 'failed') {
             set((state) => ({
-              assignments: authoritativeDay
-                ? reconcileAuthoritativeDay(state.assignments, data.assignment.day_id, authoritativeDay)
-                : reconcileAssignment(state.assignments, assignmentId, data.assignment),
+              assignments: reconcileAssignment(state.assignments, assignmentId, data.assignment),
             }));
+            throw new Error(getApiErrorMessage(reconciliation.error, 'Error refreshing assignments'));
           }
         }
         return data.assignment;
-      } catch (err: unknown) {
-        if (chain.latestVersion === requestVersion) {
-          set((state) => ({
-            assignments: reconcileAssignment(state.assignments, assignmentId, chain.confirmedAssignment),
-          }));
-        }
-        throw new Error(getApiErrorMessage(err, 'Error updating assignment time'));
       } finally {
         chain.pendingVersions.delete(requestVersion);
         if (chain.pendingVersions.size === 0 && assignmentTimeChains.get(assignmentId) === chain) {

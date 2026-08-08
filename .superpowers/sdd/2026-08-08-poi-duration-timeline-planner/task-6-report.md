@@ -68,3 +68,31 @@
 
 - The earlier typecheck concern above is resolved by this round.
 - Existing planner/page/place suites continue to emit non-fatal MSW, React Router, and `act(...)` warnings; all requested tests pass.
+
+## Fix round 2/5 — Guaranteed whole-day timing reconciliation
+
+### Implementation
+
+- Successful timing mutations now mark their request day as needing authoritative reconciliation. A superseded refresh leaves that obligation in place so the current same-day request inherits it, including when that newer mutation fails.
+- Authoritative day refreshes are generation-guarded before and after the request, preventing stale responses from overwriting newer timing work. The current request retries one transient list failure; the two-attempt bound prevents an infinite retry loop.
+- If both authoritative refresh attempts fail after a successful mutation, the store retains the confirmed assignment row but rejects the operation instead of reporting row-only success. A successful full-day response also removes cross-day copies of its authoritative assignment IDs.
+- Existing per-assignment confirmed-version and rollback semantics remain intact.
+
+### RED evidence
+
+- `npm test --workspace=client -- src/store/slices/assignmentsSlice.test.ts`
+  - After restoring the worktree-local shared-package link, 2 new regressions failed while the existing 11 tests passed.
+  - The older-success/newer-failure case retained stale sibling order because the newer failure never replaced the invalidated refresh.
+  - The transient list-failure case retained only the changed row and never consumed the second authoritative full-day response.
+- A third bounded-failure regression required two failed list attempts to reject, protecting against both silent row-only success and unbounded retries.
+
+### GREEN verification
+
+- `npm test --workspace=client -- src/store/slices/assignmentsSlice.test.ts`: 1 file, 14 tests passed.
+- `npm run typecheck --workspace=client`: passed (`tsc --noEmit`).
+- Prettier formatted both changed TypeScript files.
+- `git diff --check`: passed with no whitespace errors.
+
+### Concerns
+
+- None in the requested fix-round scope.
