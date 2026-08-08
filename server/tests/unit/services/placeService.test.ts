@@ -11,6 +11,8 @@ import {
   getPlace,
   updatePlace,
   updatePlacesMany,
+  updatePlaceDurationsMany,
+  PlaceDurationBatchError,
   deletePlace,
   importGpx,
   importKmlPlaces,
@@ -347,6 +349,98 @@ describe('updatePlacesMany', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     expect(updatePlacesMany(String(trip.id), [], { notes: 'x' })).toEqual([]);
+  });
+});
+
+// ── updatePlaceDurationsMany ──────────────────────────────────────────────────
+
+describe('updatePlaceDurationsMany', () => {
+  it('updates heterogeneous durations in input order while preserving unrelated fields', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const first = createPlace(testDb, trip.id, { name: 'Museum' }) as any;
+    const second = createPlace(testDb, trip.id, { name: 'Lunch' }) as any;
+    testDb.prepare('UPDATE places SET notes = ?, address = ? WHERE id = ?').run('Keep this note', '1 Gallery Way', first.id);
+    testDb.prepare('UPDATE places SET notes = ?, address = ? WHERE id = ?').run('Vegetarian', '2 Market Lane', second.id);
+
+    const updated = updatePlaceDurationsMany(String(trip.id), [
+      { placeId: second.id, duration_minutes: 45 },
+      { placeId: first.id, duration_minutes: 120 },
+    ]) as any[];
+
+    expect(updated.map((place) => place.id)).toEqual([second.id, first.id]);
+    expect(updated.map((place) => place.duration_minutes)).toEqual([45, 120]);
+    expect(updated.map((place) => ({ name: place.name, notes: place.notes, address: place.address }))).toEqual([
+      { name: 'Lunch', notes: 'Vegetarian', address: '2 Market Lane' },
+      { name: 'Museum', notes: 'Keep this note', address: '1 Gallery Way' },
+    ]);
+  });
+
+  it.each([
+    {
+      label: 'missing place',
+      recommendations: (mine: any, _foreign: any) => [
+        { placeId: mine.id, duration_minutes: 45 },
+        { placeId: 99999, duration_minutes: 120 },
+      ],
+      code: 'PLACE_NOT_FOUND',
+      message: 'One or more places were not found in this trip.',
+    },
+    {
+      label: 'cross-trip place',
+      recommendations: (mine: any, foreign: any) => [
+        { placeId: mine.id, duration_minutes: 45 },
+        { placeId: foreign.id, duration_minutes: 120 },
+      ],
+      code: 'PLACE_NOT_FOUND',
+      message: 'One or more places were not found in this trip.',
+    },
+    {
+      label: 'duplicate place',
+      recommendations: (mine: any, _foreign: any) => [
+        { placeId: mine.id, duration_minutes: 45 },
+        { placeId: mine.id, duration_minutes: 120 },
+      ],
+      code: 'DUPLICATE_PLACE_ID',
+      message: (mine: any) => `Duplicate place ID: ${mine.id}.`,
+    },
+    {
+      label: 'non-integer duration',
+      recommendations: (mine: any, _foreign: any) => [{ placeId: mine.id, duration_minutes: 60.5 }],
+      code: 'INVALID_RECOMMENDATION',
+      message: (mine: any) => `Invalid recommended duration for place ${mine.id}.`,
+    },
+    {
+      label: 'out-of-range duration',
+      recommendations: (mine: any, _foreign: any) => [{ placeId: mine.id, duration_minutes: 1441 }],
+      code: 'INVALID_RECOMMENDATION',
+      message: (mine: any) => `Invalid recommended duration for place ${mine.id}.`,
+    },
+  ])('rolls back all updates for a $label', ({ recommendations, code, message }) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const other = createTrip(testDb, user.id);
+    const mine = createPlace(testDb, trip.id, { name: 'Mine' }) as any;
+    const foreign = createPlace(testDb, other.id, { name: 'Foreign' }) as any;
+    testDb.prepare('UPDATE places SET duration_minutes = ? WHERE id = ?').run(75, mine.id);
+    testDb.prepare('UPDATE places SET duration_minutes = ? WHERE id = ?').run(90, foreign.id);
+
+    let thrown: unknown;
+    try {
+      updatePlaceDurationsMany(String(trip.id), recommendations(mine, foreign));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(PlaceDurationBatchError);
+    expect((thrown as PlaceDurationBatchError).code).toBe(code);
+    expect((thrown as Error).message).toBe(typeof message === 'function' ? message(mine) : message);
+    expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(mine.id)).toEqual({
+      duration_minutes: 75,
+    });
+    expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(foreign.id)).toEqual({
+      duration_minutes: 90,
+    });
   });
 });
 

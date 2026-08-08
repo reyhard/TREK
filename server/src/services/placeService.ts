@@ -429,6 +429,72 @@ export function updatePlacesMany(
   return updated;
 }
 
+export interface PlaceDurationRecommendation {
+  placeId: number;
+  duration_minutes: number;
+}
+
+export type PlaceDurationBatchErrorCode = 'INVALID_RECOMMENDATION' | 'DUPLICATE_PLACE_ID' | 'PLACE_NOT_FOUND';
+
+export class PlaceDurationBatchError extends Error {
+  constructor(
+    public readonly code: PlaceDurationBatchErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PlaceDurationBatchError';
+  }
+}
+
+/**
+ * Apply individual model-provided duration estimates as an all-or-nothing
+ * update. Unlike updatePlacesMany, every requested place must belong to the
+ * trip so a partial update can never silently succeed.
+ */
+export function updatePlaceDurationsMany(
+  tripId: string,
+  recommendations: PlaceDurationRecommendation[],
+): NonNullable<ReturnType<typeof getPlaceWithTags>>[] {
+  const run = db.transaction((items: PlaceDurationRecommendation[]) => {
+    const seenPlaceIds = new Set<number>();
+    for (const recommendation of items) {
+      const { placeId, duration_minutes } = recommendation;
+      if (
+        !Number.isInteger(placeId) ||
+        placeId <= 0 ||
+        !Number.isInteger(duration_minutes) ||
+        duration_minutes < 5 ||
+        duration_minutes > 1440
+      ) {
+        throw new PlaceDurationBatchError(
+          'INVALID_RECOMMENDATION',
+          `Invalid recommended duration for place ${placeId}.`,
+        );
+      }
+      if (seenPlaceIds.has(placeId)) {
+        throw new PlaceDurationBatchError('DUPLICATE_PLACE_ID', `Duplicate place ID: ${placeId}.`);
+      }
+      seenPlaceIds.add(placeId);
+    }
+
+    const findPlace = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?');
+    for (const { placeId } of items) {
+      if (!findPlace.get(placeId, tripId)) {
+        throw new PlaceDurationBatchError('PLACE_NOT_FOUND', 'One or more places were not found in this trip.');
+      }
+    }
+
+    const updateDuration = db.prepare('UPDATE places SET duration_minutes = ?, updated_at = ? WHERE id = ? AND trip_id = ?');
+    const updatedAt = Date.now();
+    for (const { placeId, duration_minutes } of items) {
+      updateDuration.run(duration_minutes, updatedAt, placeId, tripId);
+    }
+
+    return items.map(({ placeId }) => getPlaceWithTags(placeId)!);
+  });
+  return run(recommendations);
+}
+
 // ---------------------------------------------------------------------------
 // Import GPX
 // ---------------------------------------------------------------------------

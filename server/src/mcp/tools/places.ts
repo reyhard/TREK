@@ -7,6 +7,8 @@ import { searchPlaces } from '../../services/mapsService';
 import {
   deletePlacesMany,
   updatePlacesMany,
+  updatePlaceDurationsMany,
+  PlaceDurationBatchError,
   importGoogleList,
   importNaverList,
   listPlaces,
@@ -78,6 +80,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
             .optional()
             .describe('Cost of this place/activity (e.g. ticket price, entry fee)'),
           currency: z.string().length(3).optional().describe('ISO 4217 currency code (e.g. "EUR", "USD")'),
+          duration_minutes: durationMinutesSchema.optional(),
         },
         annotations: TOOL_ANNOTATIONS_NON_IDEMPOTENT,
       },
@@ -97,6 +100,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
         phone,
         price,
         currency,
+        duration_minutes,
       }) => {
         if (isDemoUser(userId)) return demoDenied();
         if (!canAccessTrip(tripId, userId)) return noAccess();
@@ -116,6 +120,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
           phone,
           price,
           currency,
+          duration_minutes,
         });
         safeBroadcast(tripId, 'place:created', { place });
         return ok({ place });
@@ -161,6 +166,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
             .optional()
             .describe('Cost of this place/activity (e.g. ticket price, entry fee)'),
           currency: z.string().length(3).optional().describe('ISO 4217 currency code (e.g. "EUR", "USD")'),
+          duration_minutes: durationMinutesSchema.optional(),
         },
         annotations: TOOL_ANNOTATIONS_NON_IDEMPOTENT,
       },
@@ -182,6 +188,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
         assignment_notes,
         price,
         currency,
+        duration_minutes,
       }) => {
         if (isDemoUser(userId)) return demoDenied();
         if (!canAccessTrip(tripId, userId)) return noAccess();
@@ -205,6 +212,7 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
               phone,
               price,
               currency,
+              duration_minutes,
             });
             const assignment = createAssignment(dayId, place.id, assignment_notes ?? null);
             return { place, assignment };
@@ -545,6 +553,57 @@ export function registerPlaceTools(server: McpServer, userId: number, scopes: st
           updatedIds: updated.map((p) => p.id),
           skipped: placeIds.length - updated.length,
         });
+      },
+    );
+
+  if (W)
+    server.registerTool(
+      'apply_recommended_durations',
+      {
+        description:
+          'Apply duration estimates that the caller/model supplies after inspecting list_places. The server does not infer durations; every recommended place must belong to the trip.',
+        inputSchema: {
+          tripId: z.number().int().positive(),
+          recommendations: z
+            .array(
+              z.object({
+                placeId: z.number().int().positive(),
+                duration_minutes: durationMinutesSchema,
+              }),
+            )
+            .min(1)
+            .max(500)
+            .superRefine((recommendations, ctx) => {
+              const seenPlaceIds = new Set<number>();
+              recommendations.forEach(({ placeId }, index) => {
+                if (seenPlaceIds.has(placeId)) {
+                  ctx.addIssue({
+                    code: 'custom',
+                    path: [index, 'placeId'],
+                    message: `Duplicate place ID: ${placeId}.`,
+                  });
+                }
+                seenPlaceIds.add(placeId);
+              });
+            }),
+        },
+        annotations: TOOL_ANNOTATIONS_WRITE,
+      },
+      async ({ tripId, recommendations }) => {
+        if (isDemoUser(userId)) return demoDenied();
+        if (!canAccessTrip(tripId, userId)) return noAccess();
+        if (!hasTripPermission('place_edit', tripId, userId)) return permissionDenied();
+
+        try {
+          const updated = updatePlaceDurationsMany(String(tripId), recommendations);
+          for (const place of updated) safeBroadcast(tripId, 'place:updated', { place });
+          return ok({ count: updated.length, updatedIds: updated.map((place) => place.id) });
+        } catch (error) {
+          if (error instanceof PlaceDurationBatchError) {
+            return { content: [{ type: 'text' as const, text: error.message }], isError: true };
+          }
+          return { content: [{ type: 'text' as const, text: 'Failed to apply recommended durations.' }], isError: true };
+        }
       },
     );
 }
