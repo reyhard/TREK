@@ -1,8 +1,8 @@
+import { AssignmentTimingError } from '../../services/assignmentTiming';
 import type { User } from '../../types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AssignmentsService } from './assignments.service';
-import { AssignmentTimingError } from '../../services/assignmentTiming';
 import { Body, Controller, Delete, Get, Headers, HttpException, Param, Post, Put, UseGuards } from '@nestjs/common';
 
 type Trip = NonNullable<ReturnType<AssignmentsService['verifyTripAccess']>>;

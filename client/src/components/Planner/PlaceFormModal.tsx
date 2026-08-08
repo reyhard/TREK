@@ -416,8 +416,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     form.end_time.length >= 5 &&
     form.end_time <= form.place_time;
   const durationMinutes = Number(form.duration_minutes);
-  const hasDurationError =
-    !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1440;
+  const hasDurationError = !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1440;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -857,7 +856,11 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
               step={5}
               value={form.duration_minutes}
               onValueChange={(v) => handleChange('duration_minutes', v)}
-              aria-describedby={hasDurationError ? 'place-duration-minutes-hint place-duration-minutes-error' : 'place-duration-minutes-hint'}
+              aria-describedby={
+                hasDurationError
+                  ? 'place-duration-minutes-hint place-duration-minutes-error'
+                  : 'place-duration-minutes-hint'
+              }
               aria-invalid={hasDurationError}
               className="form-input"
             />

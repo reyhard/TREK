@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-
 import { addDayDuration, formatDayTime, parseDayTime } from './dayTime';
+
+import { describe, expect, it } from 'vitest';
 
 describe('parseDayTime', () => {
   it('converts a same-day time to minutes after midnight', () => {

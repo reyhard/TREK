@@ -1,4 +1,5 @@
 import { AssignmentTimingError, resolveAssignmentTiming } from '../../../src/services/assignmentTiming';
+
 import { describe, expect, it } from 'vitest';
 
 describe('resolveAssignmentTiming', () => {

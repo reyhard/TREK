@@ -2230,8 +2230,28 @@ describe('TripPlannerPage', () => {
         title: 'Test Transit',
         status: 'confirmed',
         endpoints: [
-          { role: 'from', sequence: 0, name: 'Old Origin', code: null, lat: 1, lng: 2, timezone: null, local_date: null, local_time: null },
-          { role: 'to', sequence: 1, name: 'Old Dest', code: null, lat: 3, lng: 4, timezone: null, local_date: null, local_time: null },
+          {
+            role: 'from',
+            sequence: 0,
+            name: 'Old Origin',
+            code: null,
+            lat: 1,
+            lng: 2,
+            timezone: null,
+            local_date: null,
+            local_time: null,
+          },
+          {
+            role: 'to',
+            sequence: 1,
+            name: 'Old Dest',
+            code: null,
+            lat: 3,
+            lng: 4,
+            timezone: null,
+            local_date: null,
+            local_time: null,
+          },
         ],
       };
 
@@ -2241,7 +2261,9 @@ describe('TripPlannerPage', () => {
 
       renderPlannerPage(42);
 
-      act(() => { vi.runAllTimers(); });
+      act(() => {
+        vi.runAllTimers();
+      });
       vi.useRealTimers();
 
       await waitFor(() => {
@@ -2279,7 +2301,9 @@ describe('TripPlannerPage', () => {
       vi.useFakeTimers();
       const { day } = seedTripStore({ id: 42 });
       renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
+      act(() => {
+        vi.runAllTimers();
+      });
       vi.useRealTimers();
       await waitFor(() => {
         expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
@@ -2302,7 +2326,9 @@ describe('TripPlannerPage', () => {
       vi.useFakeTimers();
       const { day } = seedTripStore({ id: 42 });
       renderPlannerPage(42);
-      act(() => { vi.runAllTimers(); });
+      act(() => {
+        vi.runAllTimers();
+      });
       vi.useRealTimers();
       await waitFor(() => {
         expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
