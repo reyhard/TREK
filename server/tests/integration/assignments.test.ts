@@ -386,9 +386,10 @@ describe('Assignment participants', () => {
     expect(found.participants).toHaveLength(2);
   });
 
-  it('ASSIGN-009 — PUT /time updates assignment time fields', async () => {
+  it('ASSIGN-009 — PUT /time derives and preserves assignment duration', async () => {
     const { user } = createUser(testDb);
     const { trip, day, place } = setupAssignmentFixtures(user.id);
+    testDb.prepare('UPDATE places SET duration_minutes = ? WHERE id = ?').run(90, place.id);
 
     const create = await request(app)
       .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
@@ -399,10 +400,34 @@ describe('Assignment participants', () => {
     const update = await request(app)
       .put(`/api/trips/${trip.id}/assignments/${assignmentId}/time`)
       .set('Cookie', authCookie(user.id))
-      .send({ place_time: '14:00', end_time: '16:00' });
+      .send({ place_time: '09:00' });
     expect(update.status).toBe(200);
-    // Time is embedded under assignment.place.place_time (COALESCEd from assignment_time)
-    expect(update.body.assignment.place.place_time).toBe('14:00');
-    expect(update.body.assignment.place.end_time).toBe('16:00');
+    expect(update.body.assignment.assignment_time).toBe('09:00');
+    expect(update.body.assignment.assignment_end_time).toBe('10:30');
+
+    const move = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${assignmentId}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_time: '13:00' });
+    expect(move.status).toBe(200);
+    expect(move.body.assignment.assignment_time).toBe('13:00');
+    expect(move.body.assignment.assignment_end_time).toBe('14:30');
+
+    const pastMidnight = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${assignmentId}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_time: '23:30' });
+    expect(pastMidnight.status).toBe(400);
+    expect(
+      testDb.prepare('SELECT assignment_time, assignment_end_time FROM day_assignments WHERE id = ?').get(assignmentId),
+    ).toEqual({ assignment_time: '13:00', assignment_end_time: '14:30' });
+
+    const clear = await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${assignmentId}/time`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_time: null, end_time: null });
+    expect(clear.status).toBe(200);
+    expect(clear.body.assignment.assignment_time).toBeNull();
+    expect(clear.body.assignment.assignment_end_time).toBeNull();
   });
 });

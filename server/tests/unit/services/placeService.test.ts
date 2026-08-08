@@ -195,6 +195,15 @@ describe('createPlace (service)', () => {
     expect(row.trip_id).toBe(trip.id);
   });
 
+  it('defaults duration_minutes to 60 when a place is created without one', () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const place = svcCreatePlace(String(trip.id), { name: 'Default duration' }) as any;
+
+    expect(place.duration_minutes).toBe(60);
+  });
+
   it('preserves route geometry when plugins create and update route places', () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -254,6 +263,16 @@ describe('updatePlace', () => {
     expect(updated.name).toBe('New');
     expect(updated.lat).toBe(48.8);
     expect(updated.lng).toBe(2.3);
+  });
+
+  it.each([5, 1440])('persists a valid duration_minutes value of %i', (durationMinutes) => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id, { name: 'Timed place' }) as any;
+
+    const updated = updatePlace(String(trip.id), String(place.id), { duration_minutes: durationMinutes }) as any;
+
+    expect(updated.duration_minutes).toBe(durationMinutes);
   });
 
   it('PLACE-SVC-014 — returns null for non-existent place', () => {

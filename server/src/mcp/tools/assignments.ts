@@ -119,11 +119,7 @@ export function registerAssignmentTools(server: McpServer, userId: number, scope
         if (!hasTripPermission('day_edit', tripId, userId)) return permissionDenied();
         const existing = getAssignmentForTrip(assignmentId, tripId);
         if (!existing) return { content: [{ type: 'text' as const, text: 'Assignment not found.' }], isError: true };
-        const assignment = updateTime(
-          assignmentId,
-          place_time !== undefined ? place_time : (existing as any).assignment_time,
-          end_time !== undefined ? end_time : (existing as any).assignment_end_time,
-        );
+        const assignment = updateTime(assignmentId, place_time, end_time);
         safeBroadcast(tripId, 'assignment:updated', { assignment });
         try {
           reconcileTripSkeletons(tripId);

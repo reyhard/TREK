@@ -1,6 +1,8 @@
 import { db } from '../db/database';
 import { AssignmentRow, DayAssignment } from '../types';
+import { resolveAssignmentTiming } from './assignmentTiming';
 import { loadTagsByPlaceIds, loadParticipantsByAssignmentIds, formatAssignmentWithPlace } from './queryHelpers';
+import type { AssignmentTimeRequest } from '@trek/shared';
 
 export function getAssignmentWithPlace(assignmentId: number | bigint) {
   const a = db
@@ -196,49 +198,82 @@ export function getParticipants(assignmentId: string | number) {
     .all(assignmentId);
 }
 
-export function updateTime(id: string | number, placeTime: string | null, endTime: string | null) {
-  db.prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?').run(
-    placeTime ?? null,
-    endTime ?? null,
-    id,
-  );
+export function updateTime(id: string | number, placeTime?: string | null, endTime?: string | null) {
+  const request: AssignmentTimeRequest = {};
+  if (placeTime !== undefined) request.place_time = placeTime;
+  if (endTime !== undefined) request.end_time = endTime;
 
-  // Auto-sort: reorder timed assignments chronologically within the day
-  if (placeTime) {
-    const assignment = db.prepare('SELECT day_id FROM day_assignments WHERE id = ?').get(id) as
-      | { day_id: number }
-      | undefined;
-    if (assignment) {
-      const dayAssignments = db
-        .prepare(
-          `
-        SELECT da.id, COALESCE(da.assignment_time, p.place_time) as effective_time
+  return db.transaction(() => {
+    const current = db
+      .prepare(
+        `
+        SELECT da.assignment_time, da.assignment_end_time,
+          COALESCE(da.assignment_time, p.place_time) AS effective_start,
+          COALESCE(da.assignment_end_time, p.end_time) AS effective_end,
+          p.duration_minutes
         FROM day_assignments da
-        JOIN places p ON da.place_id = p.id
-        WHERE da.day_id = ?
-        ORDER BY da.order_index ASC
+        JOIN places p ON p.id = da.place_id
+        WHERE da.id = ?
       `,
-        )
-        .all(assignment.day_id) as { id: number; effective_time: string | null }[];
+      )
+      .get(id) as
+      | {
+          assignment_time: string | null;
+          assignment_end_time: string | null;
+          effective_start: string | null;
+          effective_end: string | null;
+          duration_minutes: number | null;
+        }
+      | undefined;
 
-      // Separate timed and untimed, sort timed by time
-      const timed = dayAssignments
-        .filter((a) => a.effective_time)
-        .sort((a, b) => {
-          const ta = a.effective_time!.includes(':') ? a.effective_time! : '99:99';
-          const tb = b.effective_time!.includes(':') ? b.effective_time! : '99:99';
-          return ta.localeCompare(tb);
-        });
-      const untimed = dayAssignments.filter((a) => !a.effective_time);
+    if (!current) return null;
 
-      // Interleave: timed in chronological order, untimed keep relative position
-      const reordered = [...timed, ...untimed];
-      const update = db.prepare('UPDATE day_assignments SET order_index = ? WHERE id = ?');
-      reordered.forEach((a, i) => update.run(i, a.id));
+    const timing = resolveAssignmentTiming(
+      {
+        effectiveStart: current.effective_start,
+        effectiveEnd: current.effective_end,
+        recommendedDuration: current.duration_minutes,
+      },
+      request,
+    );
+    db.prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?').run(
+      timing.placeTime,
+      timing.endTime,
+      id,
+    );
+
+    // Auto-sort: reorder timed assignments chronologically within the day.
+    if (timing.placeTime) {
+      const assignment = db.prepare('SELECT day_id FROM day_assignments WHERE id = ?').get(id) as
+        | { day_id: number }
+        | undefined;
+      if (assignment) {
+        const dayAssignments = db
+          .prepare(
+            `
+            SELECT da.id, COALESCE(da.assignment_time, p.place_time) as effective_time
+            FROM day_assignments da
+            JOIN places p ON da.place_id = p.id
+            WHERE da.day_id = ?
+            ORDER BY da.order_index ASC
+          `,
+          )
+          .all(assignment.day_id) as { id: number; effective_time: string | null }[];
+        const timed = dayAssignments
+          .filter((a) => a.effective_time)
+          .sort((a, b) => {
+            const ta = a.effective_time!.includes(':') ? a.effective_time! : '99:99';
+            const tb = b.effective_time!.includes(':') ? b.effective_time! : '99:99';
+            return ta.localeCompare(tb);
+          });
+        const untimed = dayAssignments.filter((a) => !a.effective_time);
+        const update = db.prepare('UPDATE day_assignments SET order_index = ? WHERE id = ?');
+        [...timed, ...untimed].forEach((a, index) => update.run(index, a.id));
+      }
     }
-  }
 
-  return getAssignmentWithPlace(Number(id));
+    return getAssignmentWithPlace(Number(id));
+  })();
 }
 
 export function setParticipants(assignmentId: string | number, userIds: number[]) {

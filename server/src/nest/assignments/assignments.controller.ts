@@ -2,6 +2,7 @@ import type { User } from '../../types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AssignmentsService } from './assignments.service';
+import { AssignmentTimingError } from '../../services/assignmentTiming';
 import { Body, Controller, Delete, Get, Headers, HttpException, Param, Post, Put, UseGuards } from '@nestjs/common';
 
 type Trip = NonNullable<ReturnType<AssignmentsService['verifyTripAccess']>>;
@@ -165,7 +166,15 @@ export class AssignmentOpsController {
     if (!this.assignments.getAssignmentForTrip(id, tripId)) {
       throw new HttpException({ error: 'Assignment not found' }, 404);
     }
-    const assignment = this.assignments.updateTime(id, body.place_time, body.end_time);
+    let assignment;
+    try {
+      assignment = this.assignments.updateTime(id, body.place_time, body.end_time);
+    } catch (error) {
+      if (error instanceof AssignmentTimingError) {
+        throw new HttpException({ error: error.message }, 400);
+      }
+      throw error;
+    }
     this.assignments.broadcast(tripId, 'assignment:updated', { assignment }, socketId);
     this.assignments.reconcile(tripId, socketId);
     return { assignment };
