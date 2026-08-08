@@ -161,4 +161,46 @@ describe('assignmentsSlice.setAssignmentTime', () => {
 
     expect(useTripStore.getState().assignments).toEqual({ '11': [], '12': [updated] })
   })
+
+  it('rolls back two failed updates to the original confirmed assignment', async () => {
+    const original = buildAssignment({ id: 99, day_id: 10, place: buildPlace({ id: 12, place_time: '08:00', end_time: '09:00' }) })
+    const firstResponse = deferred<{ assignment: typeof original }>()
+    const secondResponse = deferred<{ assignment: typeof original }>()
+    seedStore(useTripStore, { assignments: { '10': [original] } })
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise)
+
+    const first = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })
+    const second = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' })
+    firstResponse.reject(new Error('first rejected'))
+    await expect(first).rejects.toThrow('first rejected')
+    secondResponse.reject(new Error('second rejected'))
+    await expect(second).rejects.toThrow('second rejected')
+
+    expect(useTripStore.getState().assignments['10']).toEqual([original])
+  })
+
+  it('rolls back a failed newer update to an older authoritative response', async () => {
+    const original = buildAssignment({ id: 99, day_id: 10, place: buildPlace({ id: 12, place_time: '08:00', end_time: '09:00' }) })
+    const firstAuthoritative = { ...original, assignment_time: '09:00', assignment_end_time: '10:00', place: { ...original.place, place_time: '09:00', end_time: '10:00' } }
+    const firstResponse = deferred<{ assignment: typeof original }>()
+    const secondResponse = deferred<{ assignment: typeof original }>()
+    seedStore(useTripStore, { assignments: { '10': [original] } })
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise)
+
+    const first = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })
+    const second = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' })
+    firstResponse.resolve({ assignment: firstAuthoritative })
+    await first
+
+    expect(useTripStore.getState().assignments['10'][0]?.place).toMatchObject({ place_time: '10:00' })
+
+    secondResponse.reject(new Error('second rejected'))
+    await expect(second).rejects.toThrow('second rejected')
+
+    expect(useTripStore.getState().assignments['10']).toEqual([firstAuthoritative])
+  })
 })

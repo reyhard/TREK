@@ -8,6 +8,37 @@ import { getApiErrorMessage } from '../../types'
 type SetState = StoreApi<TripStoreState>['setState']
 type GetState = StoreApi<TripStoreState>['getState']
 
+interface AssignmentTimeRequestChain {
+  latestVersion: number
+  confirmedVersion: number
+  confirmedAssignment: Assignment | undefined
+  pendingVersions: Set<number>
+}
+
+function reconcileAssignment(
+  assignments: AssignmentsMap,
+  assignmentId: number,
+  authoritativeAssignment: Assignment | undefined,
+): AssignmentsMap {
+  const assignmentsWithoutStaleCopy = Object.fromEntries(
+    Object.entries(assignments).map(([dayId, items]) => [
+      dayId,
+      items.filter(assignment => assignment.id !== assignmentId),
+    ]),
+  ) as AssignmentsMap
+
+  if (!authoritativeAssignment) return assignmentsWithoutStaleCopy
+
+  const authoritativeDayKey = String(authoritativeAssignment.day_id)
+  return {
+    ...assignmentsWithoutStaleCopy,
+    [authoritativeDayKey]: [
+      ...(assignmentsWithoutStaleCopy[authoritativeDayKey] || []),
+      authoritativeAssignment,
+    ],
+  }
+}
+
 export interface AssignmentsSlice {
   assignPlaceToDay: (tripId: number | string, dayId: number | string, placeId: number | string, position?: number | null) => Promise<Assignment | undefined>
   removeAssignment: (tripId: number | string, dayId: number | string, assignmentId: number) => Promise<void>
@@ -18,7 +49,7 @@ export interface AssignmentsSlice {
 }
 
 export const createAssignmentsSlice = (set: SetState, get: GetState): AssignmentsSlice => {
-  const assignmentTimeVersions = new Map<number, number>()
+  const assignmentTimeChains = new Map<number, AssignmentTimeRequestChain>()
 
   return {
   assignPlaceToDay: async (tripId, dayId, placeId, position) => {
@@ -169,11 +200,20 @@ export const createAssignmentsSlice = (set: SetState, get: GetState): Assignment
   },
 
   setAssignmentTime: async (tripId, dayId, assignmentId, times) => {
-    const requestVersion = (assignmentTimeVersions.get(assignmentId) || 0) + 1
-    assignmentTimeVersions.set(assignmentId, requestVersion)
-
     const dayKey = String(dayId)
     const previousAssignment = (get().assignments[dayKey] || []).find(assignment => assignment.id === assignmentId)
+    const chain = assignmentTimeChains.get(assignmentId) ?? {
+      latestVersion: 0,
+      confirmedVersion: 0,
+      confirmedAssignment: previousAssignment,
+      pendingVersions: new Set<number>(),
+    }
+    assignmentTimeChains.set(assignmentId, chain)
+
+    const requestVersion = chain.latestVersion + 1
+    chain.latestVersion = requestVersion
+    chain.pendingVersions.add(requestVersion)
+
     const hasStartTime = Object.hasOwn(times, 'place_time')
     const hasEndTime = Object.hasOwn(times, 'end_time')
     const optimisticAssignment = previousAssignment && {
@@ -200,40 +240,29 @@ export const createAssignmentsSlice = (set: SetState, get: GetState): Assignment
 
     try {
       const data = await assignmentsApi.updateTime(tripId, assignmentId, times)
-      if (assignmentTimeVersions.get(assignmentId) === requestVersion) {
-        set(state => {
-          const assignmentsWithoutStaleCopy = Object.fromEntries(
-            Object.entries(state.assignments).map(([currentDayId, items]) => [
-              currentDayId,
-              items.filter(assignment => assignment.id !== assignmentId),
-            ]),
-          ) as AssignmentsMap
-          const authoritativeDayKey = String(data.assignment.day_id)
-
-          return {
-            assignments: {
-              ...assignmentsWithoutStaleCopy,
-              [authoritativeDayKey]: [
-                ...(assignmentsWithoutStaleCopy[authoritativeDayKey] || []),
-                data.assignment,
-              ],
-            },
-          }
-        })
+      if (requestVersion > chain.confirmedVersion) {
+        chain.confirmedVersion = requestVersion
+        chain.confirmedAssignment = data.assignment
+      }
+      const hasNewerPendingRequest = [...chain.pendingVersions].some(version => version > requestVersion)
+      if (requestVersion === chain.confirmedVersion && !hasNewerPendingRequest) {
+        set(state => ({
+          assignments: reconcileAssignment(state.assignments, assignmentId, data.assignment),
+        }))
       }
       return data.assignment
     } catch (err: unknown) {
-      if (assignmentTimeVersions.get(assignmentId) === requestVersion && optimisticAssignment) {
+      if (chain.latestVersion === requestVersion) {
         set(state => ({
-          assignments: {
-            ...state.assignments,
-            [dayKey]: (state.assignments[dayKey] || []).map(assignment =>
-              assignment === optimisticAssignment ? previousAssignment : assignment,
-            ),
-          },
+          assignments: reconcileAssignment(state.assignments, assignmentId, chain.confirmedAssignment),
         }))
       }
       throw new Error(getApiErrorMessage(err, 'Error updating assignment time'))
+    } finally {
+      chain.pendingVersions.delete(requestVersion)
+      if (chain.pendingVersions.size === 0 && assignmentTimeChains.get(assignmentId) === chain) {
+        assignmentTimeChains.delete(assignmentId)
+      }
     }
   },
 
