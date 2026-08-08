@@ -250,15 +250,15 @@ describe('DayPlanSidebar', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Timeline' }));
-    expect(screen.getByLabelText('Transport: Morning train')).toBeVisible();
-    expect(screen.getByLabelText('Note: Board ferry')).toBeVisible();
+    expect(screen.getByLabelText('Transport: Morning train, 07:30 – 08:15')).toBeVisible();
+    expect(screen.getByLabelText('Note: Board ferry, 08:30 – 08:45')).toBeVisible();
     expect(screen.getByText('Route')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Walking')).toHaveAttribute('aria-pressed', 'true');
 
     await user.click(screen.getByText('Route'));
     await user.click(screen.getByText('Driving'));
     await user.click(screen.getByText('Public transit'));
-    await user.click(screen.getByLabelText('Transport: Morning train'));
+    await user.click(screen.getByLabelText('Transport: Morning train, 07:30 – 08:15'));
     await user.click(screen.getByLabelText('Transport: Island connection'));
     expect(onToggleRoute).toHaveBeenCalledTimes(1);
     expect(onSetRouteProfile).toHaveBeenCalledWith('driving');
