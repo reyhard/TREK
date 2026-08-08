@@ -44,7 +44,8 @@ export function timelineMinuteFromPointer(
   pxPerMinute: number,
 ): number {
   if (!Number.isFinite(pxPerMinute) || pxPerMinute <= 0) return startMinute
-  return snapTimelineMinute(startMinute + (clientY - bounds.top) / pxPerMinute)
+  const snappedMinute = snapTimelineMinute(startMinute + (clientY - bounds.top) / pxPerMinute)
+  return Math.min(Math.max(snappedMinute, startMinute), TIMELINE_END - TIMELINE_SNAP_MINUTES)
 }
 
 export function buildTimelineEntries(assignments: Assignment[]): TimelineResult {

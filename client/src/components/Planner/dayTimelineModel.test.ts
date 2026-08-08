@@ -23,6 +23,16 @@ describe('day timeline model', () => {
     expect(timelineMinuteFromPointer(160, { top: 100 }, 360, 1)).toBe(420)
   })
 
+  it('keeps pointer-derived starts within the selectable timeline range', () => {
+    const bounds = { top: 100 }
+
+    expect(timelineMinuteFromPointer(100, bounds, 360, 1)).toBe(360)
+    expect(timelineMinuteFromPointer(80, bounds, 360, 1)).toBe(360)
+    expect(timelineMinuteFromPointer(1180, bounds, 360, 1)).toBe(1425)
+    expect(timelineMinuteFromPointer(1200, bounds, 360, 1)).toBe(1425)
+    expect(timelineMinuteFromPointer(70, bounds, 330, 1)).toBe(330)
+  })
+
   it('separates unscheduled assignments and marks direct overlaps', () => {
     const result = buildTimelineEntries([
       assignment(1, '09:00', '10:00'),
