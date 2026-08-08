@@ -450,6 +450,14 @@ describe('day timeline model', () => {
       ]);
     });
 
+    it('caps a minimum-height marker at the end-of-day grid boundary', () => {
+      expect(
+        layoutTimelineVisualItems([{ key: 'note:late', start: 1425, end: 1440, height: 30 }], 360)
+      ).toEqual([
+        { key: 'note:late', top: 1065, height: 15, visualLane: 0, visualLaneCount: 1 },
+      ]);
+    });
+
     it('sorts deterministically by start, end, and key without mutating its input', () => {
       const items = [
         { key: 'z', start: 600, end: 630, height: 30 },

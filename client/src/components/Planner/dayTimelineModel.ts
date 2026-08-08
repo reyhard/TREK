@@ -142,7 +142,9 @@ export function layoutTimelineVisualItems(
 
   for (const item of sorted) {
     const top = (item.start - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE;
-    const visualEnd = top + item.height;
+    const gridEnd = (TIMELINE_END - gridStartMinute) * TIMELINE_PIXELS_PER_MINUTE;
+    const height = Math.min(item.height, Math.max(0, gridEnd - top));
+    const visualEnd = top + height;
     if (top >= groupEnd) {
       finishGroup();
       groupEntries = [];
@@ -157,7 +159,7 @@ export function layoutTimelineVisualItems(
     const layout: TimelineVisualLayout = {
       key: item.key,
       top,
-      height: item.height,
+      height,
       visualLane,
       visualLaneCount: 1,
     };

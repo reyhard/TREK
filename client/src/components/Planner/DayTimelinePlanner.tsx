@@ -7,6 +7,7 @@ import type { Assignment, Category, Day, DayNote, Place, Reservation } from '../
 import { formatDate } from '../../utils/formatters';
 import { safeTransitMeta } from '../../utils/safeParseMetadata';
 import { useToast } from '../shared/Toast';
+import { getNoteIcon } from './DayPlanSidebar.constants';
 import {
   buildTimelineContextEntries,
   buildTimelineEntries,
@@ -606,7 +607,8 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
 
   const renderContext = (entry: TimelineContextEntry, scheduledEntry?: ScheduledTimelineContextEntry) => {
     const isTransport = entry.kind === 'transport';
-    const label = isTransport
+    const NoteIcon = entry.kind === 'note' ? getNoteIcon(entry.note.icon) : null;
+    const contextLabel = isTransport
       ? t('trip.timeline.transportContext', { name: entry.title })
       : t('trip.timeline.noteContext', { name: entry.title });
     const transitHandler =
@@ -622,6 +624,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
     const timeLabel = scheduledEntry
       ? `${formatDayTime(scheduledEntry.start)} – ${formatDayTime(scheduledEntry.end, { allowEndOfDay: true })}`
       : null;
+    const label = timeLabel ? `${contextLabel}, ${timeLabel}` : contextLabel;
     const style: React.CSSProperties = {
       display: compact ? 'flex' : 'block',
       alignItems: compact ? 'center' : undefined,
@@ -655,6 +658,13 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
             whiteSpace: compact ? 'nowrap' : undefined,
           }}
         >
+          {NoteIcon && (
+            <NoteIcon
+              aria-hidden="true"
+              size={compact ? 12 : 14}
+              style={{ display: 'inline', marginRight: 4, verticalAlign: 'text-bottom' }}
+            />
+          )}
           {entry.title}
         </strong>
         {timeLabel && (
@@ -886,6 +896,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
                   left: `calc(${(layout.visualLane / layout.visualLaneCount) * 100}% + 3px)`,
                   width: `calc(${100 / layout.visualLaneCount}% - 6px)`,
                   zIndex: preview === undefined ? 1 : 2,
+                  overflow: layout.height < entry.height ? 'hidden' : undefined,
                 }}
               >
                 {renderActivity(entry, entry)}
@@ -905,6 +916,7 @@ export const DayTimelinePlanner = React.memo(function DayTimelinePlanner({
                   left: `calc(${(layout.visualLane / layout.visualLaneCount) * 100}% + 3px)`,
                   width: `calc(${100 / layout.visualLaneCount}% - 6px)`,
                   zIndex: 1,
+                  overflow: layout.height < entry.height ? 'hidden' : undefined,
                 }}
               >
                 {renderContext(entry, entry)}

@@ -199,8 +199,8 @@ describe('DayTimelinePlanner', () => {
       title: 'Flexible bus',
       reservation_time: 'after lunch',
     });
-    const timedNote = buildDayNote({ id: 601, day_id: day.id, text: 'Board ferry', time: '08:30' });
-    const untimedNote = buildDayNote({ id: 602, day_id: day.id, text: 'Buy tickets', time: null });
+    const timedNote = buildDayNote({ id: 601, day_id: day.id, text: 'Board ferry', time: '08:30', icon: 'Clock' });
+    const untimedNote = buildDayNote({ id: 602, day_id: day.id, text: 'Buy tickets', time: null, icon: 'Ticket' });
 
     render(
       <DayTimelinePlanner
@@ -213,8 +213,10 @@ describe('DayTimelinePlanner', () => {
     );
 
     const grid = screen.getByRole('grid', { name: 'Day timeline' });
-    const transportCard = within(grid).getByRole('group', { name: 'Transport: Morning train' });
-    const noteCard = within(grid).getByRole('group', { name: 'Note: Board ferry' });
+    const transportCard = within(grid).getByRole('group', {
+      name: 'Transport: Morning train, 07:30 – 08:15',
+    });
+    const noteCard = within(grid).getByRole('group', { name: 'Note: Board ferry, 08:30 – 08:45' });
     expect(within(transportCard).getByText('07:30 – 08:15')).toBeVisible();
     expect(within(noteCard).getByText('08:30 – 08:45')).toBeVisible();
     expect(transportCard).toHaveStyle({
@@ -222,10 +224,13 @@ describe('DayTimelinePlanner', () => {
     });
     expect(transportCard.style.border).toBe('1px solid color-mix(in srgb, rgb(59, 130, 246) 42%, transparent)');
     expect(noteCard).toHaveStyle({ background: 'var(--bg-hover)' });
+    expect(noteCard.querySelector('svg.lucide-clock')).toHaveAttribute('aria-hidden', 'true');
 
     const contextTray = screen.getByRole('region', { name: 'Timeline context' });
     expect(within(contextTray).getByRole('group', { name: 'Transport: Flexible bus' })).toBeVisible();
-    expect(within(contextTray).getByRole('group', { name: 'Note: Buy tickets' })).toBeVisible();
+    const untimedNoteCard = within(contextTray).getByRole('group', { name: 'Note: Buy tickets' });
+    expect(untimedNoteCard).toBeVisible();
+    expect(untimedNoteCard.querySelector('svg.lucide-ticket')).toHaveAttribute('aria-hidden', 'true');
     for (const card of [transportCard, noteCard, ...within(contextTray).getAllByRole('group')]) {
       expect(card).not.toHaveAttribute('draggable');
       expect(within(card).queryByRole('button', { name: /^(Move|Edit|Remove time)/ })).not.toBeInTheDocument();
@@ -252,14 +257,28 @@ describe('DayTimelinePlanner', () => {
 
     render(<DayTimelinePlanner {...props({ reservations: [savedTransit], onOpenTransit, onEditTransport })} />);
 
-    const legs = screen.getAllByRole('button', { name: 'Transport: Island connection' });
-    expect(legs).toHaveLength(2);
+    const firstLeg = screen.getByRole('button', {
+      name: 'Transport: Island connection, 09:00 – 10:00',
+    });
+    const secondLeg = screen.getByRole('button', {
+      name: 'Transport: Island connection, 11:00 – 12:30',
+    });
     expect(screen.getByText('09:00 – 10:00')).toBeVisible();
     expect(screen.getByText('11:00 – 12:30')).toBeVisible();
-    await user.click(legs[1]!);
+    expect(firstLeg).toBeVisible();
+    await user.click(secondLeg);
     expect(onOpenTransit).toHaveBeenCalledTimes(1);
     expect(onOpenTransit.mock.calls[0]![0]).toBe(savedTransit);
     expect(onEditTransport).not.toHaveBeenCalled();
+  });
+
+  it('clips a minimum-height context marker at the end-of-day grid boundary', () => {
+    const lateNote = buildDayNote({ id: 603, day_id: day.id, text: 'Late reminder', time: '23:50' });
+
+    render(<DayTimelinePlanner {...props({ canEdit: false, notes: [lateNote] })} />);
+
+    const card = screen.getByRole('group', { name: 'Note: Late reminder, 23:45 – 24:00' });
+    expect(card.parentElement).toHaveStyle({ top: '1065px', height: '15px', overflow: 'hidden' });
   });
 
   it('edits ordinary transport only through the exact editable callback path', async () => {
@@ -274,17 +293,17 @@ describe('DayTimelinePlanner', () => {
     const onEditTransport = vi.fn();
     const view = render(<DayTimelinePlanner {...props({ reservations: [transport], onEditTransport })} />);
 
-    await user.click(screen.getByRole('button', { name: 'Transport: Airport bus' }));
+    await user.click(screen.getByRole('button', { name: 'Transport: Airport bus, 13:00 – 13:15' }));
     expect(onEditTransport).toHaveBeenCalledTimes(1);
     expect(onEditTransport.mock.calls[0]![0]).toBe(transport);
 
     view.rerender(<DayTimelinePlanner {...props({ reservations: [transport], canEdit: false, onEditTransport })} />);
-    expect(screen.queryByRole('button', { name: 'Transport: Airport bus' })).not.toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Transport: Airport bus' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Transport: Airport bus, 13:00 – 13:15' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Transport: Airport bus, 13:00 – 13:15' })).toBeVisible();
 
     view.rerender(<DayTimelinePlanner {...props({ reservations: [transport] })} />);
-    expect(screen.queryByRole('button', { name: 'Transport: Airport bus' })).not.toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Transport: Airport bus' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Transport: Airport bus, 13:00 – 13:15' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Transport: Airport bus, 13:00 – 13:15' })).toBeVisible();
   });
 
   it('exposes route state, profile selection, and transit planning through the focused toolbar', async () => {
