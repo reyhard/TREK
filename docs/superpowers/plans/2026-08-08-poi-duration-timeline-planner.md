@@ -560,7 +560,7 @@ Pointer drag starts only from the handle after `pointerdown`, captures the point
 
 - [ ] **Step 8: Integrate without changing List behavior**
 
-Keep `useDayPlanSidebar(props)` as the existing List implementation. Add mode state at the `DayPlanSidebar` component boundary; when Timeline is active, render `DayTimelinePlanner` with `props` plus the stable store timing action. All current callers continue passing the same planner props. Change `onAssignToDay`'s prop type to return `Promise<Assignment | undefined> | Assignment | undefined`.
+Rename the current memoized render function to an internal `DayPlanList` that alone calls `useDayPlanSidebar(props)`. Export a new memoized `DayPlanSidebar` wrapper that owns the persisted mode and renders either `DayPlanList` or `DayTimelinePlanner`; this obeys React's hook rules and avoids running the large list hook in Timeline mode. All current callers continue passing the same planner props. Change `onAssignToDay`'s prop type to return `Promise<Assignment | undefined> | Assignment | undefined`.
 
 - [ ] **Step 9: Show recommended duration in the place row and add translations**
 
