@@ -2,6 +2,7 @@ import {
   assignmentCreateRequestSchema,
   assignmentMoveRequestSchema,
   assignmentParticipantsRequestSchema,
+  assignmentTimeRequestSchema,
 } from './assignment.schema';
 
 import { describe, it, expect } from 'vitest';
@@ -26,5 +27,22 @@ describe('assignmentParticipantsRequestSchema', () => {
   it('requires a numeric user_ids array', () => {
     expect(assignmentParticipantsRequestSchema.safeParse({ user_ids: [1, 2] }).success).toBe(true);
     expect(assignmentParticipantsRequestSchema.safeParse({ user_ids: 'no' }).success).toBe(false);
+  });
+});
+
+describe('assignmentTimeRequestSchema', () => {
+  it('preserves an explicitly supplied start time', () => {
+    expect(assignmentTimeRequestSchema.parse({ place_time: '09:00' })).toEqual({ place_time: '09:00' });
+  });
+
+  it('accepts explicit null values', () => {
+    expect(assignmentTimeRequestSchema.parse({ place_time: null, end_time: null })).toEqual({
+      place_time: null,
+      end_time: null,
+    });
+  });
+
+  it('rejects a start time outside the same day', () => {
+    expect(assignmentTimeRequestSchema.safeParse({ place_time: '25:00' }).success).toBe(false);
   });
 });

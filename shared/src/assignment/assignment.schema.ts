@@ -62,9 +62,12 @@ export const assignmentMoveRequestSchema = z.object({
 });
 export type AssignmentMoveRequest = z.infer<typeof assignmentMoveRequestSchema>;
 
+const startTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+const endTimeSchema = z.string().regex(/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/);
+
 export const assignmentTimeRequestSchema = z.object({
-  place_time: z.string().nullable().optional(),
-  end_time: z.string().nullable().optional(),
+  place_time: startTimeSchema.nullable().optional(),
+  end_time: endTimeSchema.nullable().optional(),
 });
 export type AssignmentTimeRequest = z.infer<typeof assignmentTimeRequestSchema>;
 

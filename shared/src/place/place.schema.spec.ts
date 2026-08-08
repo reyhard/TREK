@@ -19,6 +19,18 @@ describe('placeCreateRequestSchema', () => {
     ).toBe(true);
     expect(placeCreateRequestSchema.safeParse({ lat: 1 }).success).toBe(false);
   });
+
+  it('accepts whole durations from five minutes through one day', () => {
+    for (const duration_minutes of [5, 60, 1440]) {
+      expect(placeCreateRequestSchema.safeParse({ name: 'Museum', duration_minutes }).success).toBe(true);
+    }
+  });
+
+  it('rejects durations outside the supported whole-minute range', () => {
+    for (const duration_minutes of [0, 4, 60.5, 1441]) {
+      expect(placeCreateRequestSchema.safeParse({ name: 'Museum', duration_minutes }).success).toBe(false);
+    }
+  });
 });
 
 describe('placeUpdateRequestSchema', () => {

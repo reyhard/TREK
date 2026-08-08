@@ -17,6 +17,7 @@ import { z } from 'zod';
 const open = z.record(z.string(), z.unknown());
 const latitudeSchema = z.number().finite().min(-90).max(90);
 const longitudeSchema = z.number().finite().min(-180).max(180);
+export const durationMinutesSchema = z.number().int().min(5).max(1440);
 
 export const placeCoordinatesSchema = z.object({
   lat: latitudeSchema,
@@ -66,7 +67,7 @@ export const placeSchema = z.object({
   reservation_datetime: z.string().nullable().optional(),
   place_time: z.string().nullable().optional(),
   end_time: z.string().nullable().optional(),
-  duration_minutes: z.number().nullable().optional(),
+  duration_minutes: durationMinutesSchema.nullable().optional(),
   notes: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
   google_place_id: z.string().nullable().optional(),
@@ -101,7 +102,7 @@ export const assignmentPlaceSchema = z.object({
   currency: z.string().nullable().optional(),
   place_time: z.string().nullable().optional(),
   end_time: z.string().nullable().optional(),
-  duration_minutes: z.number().nullable().optional(),
+  duration_minutes: durationMinutesSchema.nullable().optional(),
   notes: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
   transport_mode: z.string().nullable().optional(),
@@ -114,13 +115,19 @@ export const assignmentPlaceSchema = z.object({
 });
 export type AssignmentPlace = z.infer<typeof assignmentPlaceSchema>;
 
-export const placeCreateRequestSchema = open.and(z.object({ name: z.string().min(1) }));
+export const placeCreateRequestSchema = open.and(
+  z.object({
+    name: z.string().min(1),
+    duration_minutes: durationMinutesSchema.optional(),
+  }),
+);
 export type PlaceCreateRequest = z.infer<typeof placeCreateRequestSchema>;
 
 export const placeUpdateRequestSchema = open.and(
   z.object({
     lat: latitudeSchema.optional(),
     lng: longitudeSchema.optional(),
+    duration_minutes: durationMinutesSchema.optional(),
   }),
 );
 export type PlaceUpdateRequest = z.infer<typeof placeUpdateRequestSchema>;
