@@ -162,6 +162,18 @@ export const MemoPlaceRow = React.memo(function MemoPlaceRow({
             </span>
           </div>
         )}
+        {place.duration_minutes != null && (
+          <div
+            className="text-content-faint"
+            style={{
+              marginTop: 2,
+              fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
+              lineHeight: 1.2,
+            }}
+          >
+            {t('places.minutesShort', { count: place.duration_minutes })}
+          </div>
+        )}
       </div>
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
         {!selectMode && !inDay && selectedDayId && (

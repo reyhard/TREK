@@ -59,6 +59,12 @@ beforeEach(() => {
 });
 
 describe('PlacesSidebar', () => {
+  it('shows a place recommended duration beneath its name', () => {
+    render(<PlacesSidebar {...defaultProps} places={[buildPlace({ name: 'Museum', duration_minutes: 90 })]} />);
+
+    expect(screen.getByText('90 min')).toBeInTheDocument();
+  });
+
   it('FE-COMP-PLACES-001: renders without crashing', () => {
     render(<PlacesSidebar {...defaultProps} />);
     expect(document.body).toBeInTheDocument();

@@ -177,6 +177,29 @@ beforeEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('DayPlanSidebar', () => {
+  it('shows the existing day list by default and mounts only the selected day in Timeline mode', async () => {
+    const user = userEvent.setup();
+    const first = buildDay({ id: 10, title: 'First day' });
+    const second = buildDay({ id: 11, title: 'Second day' });
+    render(<DayPlanSidebar {...makeDefaultProps({ days: [first, second], selectedDayId: first.id })} />);
+
+    expect(screen.getByText('First day')).toBeInTheDocument();
+    expect(screen.getByText('Second day')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(screen.getByText('First day')).toBeInTheDocument();
+    expect(screen.queryByText('Second day')).not.toBeInTheDocument();
+  });
+
+  it('shows a selection prompt instead of mounting the list when Timeline mode has no selected day', () => {
+    localStorage.setItem('day-plan-mode-1', 'timeline');
+    render(
+      <DayPlanSidebar {...makeDefaultProps({ days: [buildDay({ title: 'Not mounted' })], selectedDayId: null })} />
+    );
+
+    expect(screen.getByText('Select a day to view its timeline.')).toBeInTheDocument();
+    expect(screen.queryByText('Not mounted')).not.toBeInTheDocument();
+  });
+
   // ── Rendering ───────────────────────────────────────────────────────────
 
   it('FE-PLANNER-DAYPLAN-001: renders without crashing', () => {

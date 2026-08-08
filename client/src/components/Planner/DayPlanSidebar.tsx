@@ -49,6 +49,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useTripStore } from '../../store/tripStore';
 import type {
   Accommodation,
+  Assignment,
   AssignmentsMap,
   Category,
   Day,
@@ -91,6 +92,7 @@ import PlaceAvatar from '../shared/PlaceAvatar';
 import { useToast } from '../shared/Toast';
 import { getCategoryIcon } from '../shared/categoryIcons';
 import DayMovementTotalRow, { type RouteMetricStatus } from './DayMovementTotalRow';
+import { DayPlanModeSwitch, readDayPlanMode, type DayPlanMode } from './DayPlanModeSwitch';
 import { RES_ICONS, getNoteIcon } from './DayPlanSidebar.constants';
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter';
 import { MobileAddPlaceButton } from './DayPlanSidebarMobileAddPlaceButton';
@@ -100,6 +102,7 @@ import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal
 import { DayPlanSidebarToolbar } from './DayPlanSidebarToolbar';
 import { DayPlanSidebarTrackSummary } from './DayPlanSidebarTrackSummary';
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal';
+import { DayTimelinePlanner } from './DayTimelinePlanner';
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps';
 import { getConnectorTransitPrefill, getNextConnectorTarget, isTransitMergedItem } from './transitConnector';
 import { TransitItineraryInline, TransitLegChips, TransitTitle } from './transitDisplay';
@@ -142,7 +145,7 @@ function hasValidRouteMetrics(segment: RouteSegment | undefined): segment is Rou
   );
 }
 
-interface DayPlanSidebarProps {
+export interface DayPlanSidebarProps {
   tripId: number;
   trip: Trip;
   days: Day[];
@@ -161,7 +164,11 @@ interface DayPlanSidebarProps {
   onAddDay?: (position?: number) => void;
   onUpdateDayTitle: (dayId: number, title: string) => void;
   onRouteCalculated: (route: RouteResult | null) => void;
-  onAssignToDay: (placeId: number, dayId: number, position?: number) => void;
+  onAssignToDay: (
+    placeId: number,
+    dayId: number,
+    position?: number
+  ) => Promise<Assignment | undefined> | Assignment | undefined;
   onRemoveAssignment: (dayId: number, assignmentId: number) => void;
   onEditPlace: (place: Place, assignmentId?: number) => void;
   onDeletePlace: (placeId: number) => void;
@@ -1406,7 +1413,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   };
 }
 
-const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarProps) {
+const DayPlanList = React.memo(function DayPlanList(props: DayPlanSidebarProps) {
   const S = useDayPlanSidebar(props);
   // A stable key for the current selection. A multi-day place renders one row per
   // day (same place_id, different assignment ids); selecting it by place_id alone
@@ -3959,6 +3966,63 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
       {/* Budget-Fußzeile */}
       <DayPlanSidebarFooter totalCostLabel={totalCostLabel} t={t} />
       <ContextMenu menu={ctxMenu.menu} onClose={ctxMenu.close} />
+    </div>
+  );
+});
+
+const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarProps) {
+  const { t } = useTranslation();
+  const can = useCanDo();
+  const setAssignmentTime = useTripStore((state) => state.setAssignmentTime);
+  const [mode, setMode] = useState<DayPlanMode>(() => readDayPlanMode(props.tripId));
+
+  useEffect(() => {
+    setMode(readDayPlanMode(props.tripId));
+  }, [props.tripId]);
+
+  const selectedDay = props.days.find((day) => day.id === props.selectedDayId);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          padding: '8px 12px',
+          borderBottom: '1px solid var(--border-faint)',
+          flexShrink: 0,
+        }}
+      >
+        <DayPlanModeSwitch tripId={props.tripId} mode={mode} onModeChange={setMode} />
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {mode === 'list' ? (
+          <DayPlanList {...props} />
+        ) : selectedDay ? (
+          <DayTimelinePlanner
+            day={selectedDay}
+            assignments={props.assignments[String(selectedDay.id)] ?? []}
+            places={props.places}
+            categories={props.categories}
+            canEdit={can('day_edit', props.trip)}
+            selectedPlaceId={props.selectedPlaceId}
+            selectedAssignmentId={props.selectedAssignmentId}
+            onAssignToDay={props.onAssignToDay}
+            onSetAssignmentTime={(dayId, assignmentId, times) =>
+              setAssignmentTime(props.tripId, dayId, assignmentId, times)
+            }
+            onPlaceClick={props.onPlaceClick}
+            onEditPlace={props.onEditPlace}
+          />
+        ) : (
+          <div
+            className="text-content-faint"
+            style={{ display: 'grid', height: '100%', placeItems: 'center', padding: 24, textAlign: 'center' }}
+          >
+            {t('trip.timeline.selectDay')}
+          </div>
+        )}
+      </div>
     </div>
   );
 });

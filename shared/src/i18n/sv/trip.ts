@@ -1,6 +1,22 @@
 import type { TranslationStrings } from '../types';
 
 const trip: TranslationStrings = {
+  'trip.timeline.viewMode': 'Day plan view',
+  'trip.timeline.mode.list': 'List',
+  'trip.timeline.mode.timeline': 'Timeline',
+  'trip.timeline.selectDay': 'Select a day to view its timeline.',
+  'trip.timeline.unscheduled': 'Unscheduled',
+  'trip.timeline.gridLabel': 'Day timeline',
+  'trip.timeline.move': 'Move',
+  'trip.timeline.moveActivity': 'Move {name}',
+  'trip.timeline.editActivity': 'Edit {name}',
+  'trip.timeline.removeTime': 'Remove time',
+  'trip.timeline.moveInstructions':
+    'Press Enter to start moving. Use Up or Down for 15 minutes, Page Up or Page Down for 60 minutes, Enter to save, or Escape to cancel.',
+  'trip.timeline.proposedTime': 'Proposed time {time}',
+  'trip.timeline.overlapWarning': '{count} overlapping activities',
+  'trip.timeline.endsAfterMidnight': 'This activity would end after midnight.',
+
   'trip.tabs.plan': 'Plan',
   'trip.tabs.transports': 'Transporter',
   'trip.tabs.reservations': 'Bokningar',
