@@ -18,10 +18,12 @@ vi.mock('../../api/client', async (importOriginal) => {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((complete) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((complete, fail) => {
     resolve = complete
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 describe('assignmentsSlice.setAssignmentTime', () => {
@@ -83,5 +85,80 @@ describe('assignmentsSlice.setAssignmentTime', () => {
 
     response.resolve({ assignment: original })
     await update
+  })
+
+  it('keeps the newer authoritative assignment when an older update resolves last', async () => {
+    const original = buildAssignment({ id: 99, day_id: 10, place: buildPlace({ id: 12, place_time: '08:00', end_time: '09:00' }) })
+    const older = { ...original, assignment_time: '09:00', assignment_end_time: '10:00', place: { ...original.place, place_time: '09:00', end_time: '10:00' } }
+    const newer = { ...original, assignment_time: '10:00', assignment_end_time: '11:00', place: { ...original.place, place_time: '10:00', end_time: '11:00' } }
+    const firstResponse = deferred<{ assignment: typeof original }>()
+    const secondResponse = deferred<{ assignment: typeof original }>()
+    seedStore(useTripStore, { assignments: { '10': [original] } })
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise)
+
+    const first = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })
+    const second = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' })
+    secondResponse.resolve({ assignment: newer })
+    await second
+    firstResponse.resolve({ assignment: older })
+    await first
+
+    expect(useTripStore.getState().assignments['10']).toEqual([newer])
+  })
+
+  it('keeps the newer authoritative assignment when an older update fails last', async () => {
+    const original = buildAssignment({ id: 99, day_id: 10, place: buildPlace({ id: 12, place_time: '08:00', end_time: '09:00' }) })
+    const newer = { ...original, assignment_time: '10:00', assignment_end_time: '11:00', place: { ...original.place, place_time: '10:00', end_time: '11:00' } }
+    const firstResponse = deferred<{ assignment: typeof original }>()
+    const secondResponse = deferred<{ assignment: typeof original }>()
+    seedStore(useTripStore, { assignments: { '10': [original] } })
+    vi.mocked(assignmentsApi.updateTime)
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise)
+
+    const first = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })
+    const second = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' })
+    secondResponse.resolve({ assignment: newer })
+    await second
+    firstResponse.reject(new Error('placement conflicts'))
+    await expect(first).rejects.toThrow('placement conflicts')
+
+    expect(useTripStore.getState().assignments['10']).toEqual([newer])
+  })
+
+  it('rolls back only the failed assignment while preserving unrelated changes', async () => {
+    const original = buildAssignment({ id: 99, day_id: 10, place: buildPlace({ id: 12, place_time: '08:00', end_time: '09:00' }) })
+    const unrelated = buildAssignment({ id: 100, day_id: 11, place: buildPlace({ id: 13, name: 'Before' }) })
+    const response = deferred<{ assignment: typeof original }>()
+    seedStore(useTripStore, { assignments: { '10': [original], '11': [unrelated] } })
+    vi.mocked(assignmentsApi.updateTime).mockReturnValue(response.promise)
+
+    const update = useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '09:00' })
+    useTripStore.setState(state => ({
+      assignments: {
+        ...state.assignments,
+        '11': [{ ...unrelated, place: { ...unrelated.place, name: 'Changed elsewhere' } }],
+      },
+    }))
+    response.reject(new Error('placement conflicts'))
+    await expect(update).rejects.toThrow('placement conflicts')
+
+    expect(useTripStore.getState().assignments).toEqual({
+      '10': [original],
+      '11': [{ ...unrelated, place: { ...unrelated.place, name: 'Changed elsewhere' } }],
+    })
+  })
+
+  it('upserts an authoritative response into its returned day when the local row is absent', async () => {
+    const stale = buildAssignment({ id: 99, day_id: 11, place: buildPlace({ id: 12, place_time: '08:00', end_time: '09:00' }) })
+    const updated = { ...stale, day_id: 12, assignment_time: '10:00', assignment_end_time: '11:00', place: { ...stale.place, place_time: '10:00', end_time: '11:00' } }
+    seedStore(useTripStore, { assignments: { '11': [stale] } })
+    vi.mocked(assignmentsApi.updateTime).mockResolvedValue({ assignment: updated })
+
+    await expect(useTripStore.getState().setAssignmentTime(1, 10, 99, { place_time: '10:00' })).resolves.toEqual(updated)
+
+    expect(useTripStore.getState().assignments).toEqual({ '11': [], '12': [updated] })
   })
 })

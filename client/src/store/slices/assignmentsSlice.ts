@@ -17,7 +17,10 @@ export interface AssignmentsSlice {
   setAssignments: (assignments: AssignmentsMap) => void
 }
 
-export const createAssignmentsSlice = (set: SetState, get: GetState): AssignmentsSlice => ({
+export const createAssignmentsSlice = (set: SetState, get: GetState): AssignmentsSlice => {
+  const assignmentTimeVersions = new Map<number, number>()
+
+  return {
   assignPlaceToDay: async (tripId, dayId, placeId, position) => {
     const state = get()
     const place = state.places.find(p => p.id === parseInt(String(placeId)))
@@ -166,43 +169,70 @@ export const createAssignmentsSlice = (set: SetState, get: GetState): Assignment
   },
 
   setAssignmentTime: async (tripId, dayId, assignmentId, times) => {
-    const prevAssignments = get().assignments
+    const requestVersion = (assignmentTimeVersions.get(assignmentId) || 0) + 1
+    assignmentTimeVersions.set(assignmentId, requestVersion)
+
+    const dayKey = String(dayId)
+    const previousAssignment = (get().assignments[dayKey] || []).find(assignment => assignment.id === assignmentId)
     const hasStartTime = Object.hasOwn(times, 'place_time')
     const hasEndTime = Object.hasOwn(times, 'end_time')
-
-    set(state => ({
-      assignments: {
-        ...state.assignments,
-        [String(dayId)]: (state.assignments[String(dayId)] || []).map(assignment => {
-          if (assignment.id !== assignmentId) return assignment
-
-          return {
-            ...assignment,
-            place: {
-              ...assignment.place,
-              ...(hasStartTime ? { place_time: times.place_time } : {}),
-              ...(times.place_time === null
-                ? { end_time: null }
-                : hasEndTime ? { end_time: times.end_time } : {}),
-            },
-          }
-        }),
+    const optimisticAssignment = previousAssignment && {
+      ...previousAssignment,
+      place: {
+        ...previousAssignment.place,
+        ...(hasStartTime ? { place_time: times.place_time } : {}),
+        ...(times.place_time === null
+          ? { end_time: null }
+          : hasEndTime ? { end_time: times.end_time } : {}),
       },
-    }))
+    }
 
-    try {
-      const data = await assignmentsApi.updateTime(tripId, assignmentId, times)
+    if (optimisticAssignment) {
       set(state => ({
         assignments: {
           ...state.assignments,
-          [String(dayId)]: (state.assignments[String(dayId)] || []).map(assignment =>
-            assignment.id === assignmentId ? data.assignment : assignment,
+          [dayKey]: (state.assignments[dayKey] || []).map(assignment =>
+            assignment === previousAssignment ? optimisticAssignment : assignment,
           ),
         },
       }))
+    }
+
+    try {
+      const data = await assignmentsApi.updateTime(tripId, assignmentId, times)
+      if (assignmentTimeVersions.get(assignmentId) === requestVersion) {
+        set(state => {
+          const assignmentsWithoutStaleCopy = Object.fromEntries(
+            Object.entries(state.assignments).map(([currentDayId, items]) => [
+              currentDayId,
+              items.filter(assignment => assignment.id !== assignmentId),
+            ]),
+          ) as AssignmentsMap
+          const authoritativeDayKey = String(data.assignment.day_id)
+
+          return {
+            assignments: {
+              ...assignmentsWithoutStaleCopy,
+              [authoritativeDayKey]: [
+                ...(assignmentsWithoutStaleCopy[authoritativeDayKey] || []),
+                data.assignment,
+              ],
+            },
+          }
+        })
+      }
       return data.assignment
     } catch (err: unknown) {
-      set({ assignments: prevAssignments })
+      if (assignmentTimeVersions.get(assignmentId) === requestVersion && optimisticAssignment) {
+        set(state => ({
+          assignments: {
+            ...state.assignments,
+            [dayKey]: (state.assignments[dayKey] || []).map(assignment =>
+              assignment === optimisticAssignment ? previousAssignment : assignment,
+            ),
+          },
+        }))
+      }
       throw new Error(getApiErrorMessage(err, 'Error updating assignment time'))
     }
   },
@@ -210,4 +240,5 @@ export const createAssignmentsSlice = (set: SetState, get: GetState): Assignment
   setAssignments: (assignments) => {
     set({ assignments })
   },
-})
+  }
+}
