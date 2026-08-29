@@ -119,11 +119,11 @@ plugin-install fixtures pinned `trek` to the 3.x window (`>=3.2.0 <4.0.0` /
 4 dev-link + 17 registry. This is exactly the class of failure upstream fixed in
 `a9b0cccb` (adopted at Task 01); after the adoption the three suites pass 100/100.
 
-Post-adoption state:
+Post-adoption state (one complete `npm run test --workspace=server` run, exit 0):
 
 ```
- Test Files  3 passed | 458 passed | 1 skipped (462)     # server workspace
-      Tests  0 failed | 8909 passed | 22 skipped (8931)
+ Test Files  459 passed | 1 skipped (460)     # server workspace
+      Tests  8893 passed | 22 skipped (8915)
 ```
 
 New/other regression status after the Task 01 adoptions (`a9b0cccb` + `f1bbd94f`):
