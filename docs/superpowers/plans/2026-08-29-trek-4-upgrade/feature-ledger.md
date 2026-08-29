@@ -1213,17 +1213,22 @@ No production behavior was changed by this task; the ledger is documentation onl
    only*: run the ported reducer against the 4.0 store, confirm no regression on
    optimistic `updatePositions`, and accept the live-reorder latency. Not a classification
    deferral.
-3. Determine whether any deployed client holds legacy `plugin:<id>:*` scopes (F16) and/or calls
-   `/api/plugins/:id/*` with a fork-issued `trekoa_` token (F17) → decides the shared
-   `COMPAT_ONLY` layer. Until that population is proven, both stay `OBSOLETE` (F16) / `OBSOLETE`
-   (F17) with no port.
+3. ~~Determine whether any deployed client holds legacy `plugin:<id>:*` scopes (F16) and/or calls
+   `/api/plugins/:id/*` with a fork-issued `trekoa_` token (F17)~~ — **RESOLVED in Task 03: no
+   COMPAT_ONLY layer.** v4.0.0 has no plugin MCP tool surface and no inbound `trekoa_` resource
+   proxy; `plugins:use` (upstream) gates a plugin-MCP-tool surface v4.0.0 lacks. The fork's
+   dynamic plugin scopes are absent from the v4.0.0 scope model — default-deny pinned by
+   PLUGIN-SCOPES-001/002/003 (`tests/unit/mcp/scopes.test.ts`). No mapper is added (nothing to
+   map onto; adding `plugins:use` alone would be dead code). F16/F17 stay `OBSOLETE` with no port.
 4. ~~F23 static-token wording~~ — **RESOLVED in Task 00: accept upstream, do not re-apply
    `380b890c`** (see F23). Task 03 may validate the wording in place but the no-removal decision
    is final.
 5. ~~F02 error-redaction parity check~~ — **RESOLVED in Task 00: DROP** — the redaction was
    reverted by sync merge `68fe32c7` before the frozen fork; no delta exists (see F02).
-6. F34 (plugin-OAuth broker nonce + config-fingerprint) is `FORK_ONLY` and is ported in Task 03
-   (OAuth/MCP compatibility) with the mismatch regression test.
+6. ~~F34 (plugin-OAuth broker nonce + config-fingerprint)~~ — **RESOLVED in Task 03: ported.**
+   Commit `2431e633` binds the outbound broker's authorize `state` to nonce(16) + provider-config
+   fingerprint and validates it on callback with `timingSafeEqual` (TDD F34-001/002/003 in
+   `tests/unit/plugins/plugin-oauth.service.test.ts`), keeping upstream PKCE/state/TTL.
 7. ~~F35/F36/F37 map/route-visibility family~~ — **RESOLVED in Task 00: all three RETAIN/PORT**
    (see F35/F36/F37). Route-toggle semantics, booking-route endpoint bounds, and connection-ID
    deduplication are each classified `FORK_ONLY` with a port decision and characterization
