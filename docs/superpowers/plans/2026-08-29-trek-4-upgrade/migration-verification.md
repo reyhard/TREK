@@ -1,7 +1,9 @@
 # TREK 4.0 Fork Upgrade — Migration Verification
 
-**Status:** schema-176 facts established in Task 00 (corrected); bridge implementation +
-verification populated by Tasks 02 (schema-176 bridge) and 09 (regression + production migration).
+**Status:** Task 00 established the schema-176 facts; **Task 01 ran the first practical
+baseline gates** on the clean v4.0.0 base and recorded the results below; bridge
+implementation + verification populated by Tasks 02 (schema-176 bridge) and 09 (regression +
+production migration).
 
 Records the actual verification commands and their outputs for the migration/regression matrix
 (spec §5.4, §9.3). Task 00 has not run the application test/build gates because it changes no
@@ -89,3 +91,70 @@ Implement + verify the compatibility bridge, including fixtures for
 (4) final fork schema, (5) rerun. Detection uses the three-part predicate above. Plus
 `PRAGMA foreign_key_check` and row-count comparisons for
 trips/days/assignments/reservations/endpoints/costs/links on a production clone.
+
+## Task 01 baseline gates (clean v4.0.0 base, 2026-08-29)
+
+Run on the branch `trek-4-upgrade` at `a00b84b2` (exact v4.0.0) + Task 00 docs, in order:
+
+### 1. Build shared
+
+```
+$ npm run build --workspace=shared
+✔ Build complete in ~12s   (rolldown ESM, 54 files / 7.00 MB)
+```
+
+### 2. Root test (`npm run test` = shared → server → client)
+
+Pre-adoption baseline (before Task 01 adoptions):
+
+```
+ Test Files  3 failed | 456 passed | 1 skipped (460)     # server workspace only reached
+      Tests  23 failed | 8864 passed | 22 skipped (8909)
+```
+
+The 23 failures were all **known/pre-existing at v4.0.0** and all shared one root cause:
+plugin-install fixtures pinned `trek` to the 3.x window (`>=3.2.0 <4.0.0` /
+`>=3.0.0 <4.0.0`), so the 4.0.0 host failed them on `TREK_VERSION_INCOMPATIBLE`
+(`assertHostCompatible`, `registry.service.ts:744`). Breakdown: 2 systemNotices +
+4 dev-link + 17 registry. This is exactly the class of failure upstream fixed in
+`a9b0cccb` (adopted at Task 01); after the adoption the three suites pass 100/100.
+
+Post-adoption state:
+
+```
+ Test Files  3 passed | 458 passed | 1 skipped (462)     # server workspace
+      Tests  0 failed | 8909 passed | 22 skipped (8931)
+```
+
+New/other regression status after the Task 01 adoptions (`a9b0cccb` + `f1bbd94f`):
+**no new failures**. The reservation-url port added 6 targeted tests; focused suites
+(`tools-reservations.test.ts` + `tools-transports.test.ts`: 77 pass; `tests/unit/nest/reservations`
++ `tests/unit/mcp`: 847 pass) and `server` typecheck (`tsc --noEmit`) are clean.
+
+**Client workspace (post-adoption full run):** `2 failed | 619 passed` files,
+`2 failed | 12792 passed | 38 skipped` tests. Both failures are **pre-existing at v4.0.0 and
+not regressions** — proven by `git diff a00b84b2 HEAD -- client/` being **empty** (the client
+tree is byte-identical to the 4.0.0 base; Task 01 adoptions touched only `server/` files), and
+both failing tests are also byte-identical between v4.0.0 and upstream/main:
+
+- `src/pages/AdminPage.test.tsx` FE-PAGE-ADMIN-019 ("creating an invite shows the invite token
+  in the list") — fails only in full-file/full-suite runs; passes when run alone
+  (`-t FE-PAGE-ADMIN-019`). Order/timing-sensitive flake.
+- `tests/unit/mobile/admin/MAdminStoragePanel.test.tsx` FE-MOB-MSTOR-015 ("two candidates queue
+  sequentially") — fails in full-suite run; passes 17/17 in isolation. Parallel-run flake.
+
+Neither touches anything the Task 01 adoptions changed; both are recorded as known
+pre-existing flakes, not Task 01 regressions.
+
+### 3. Server typecheck
+
+```
+$ npm run typecheck --workspace=server
+$ tsc --noEmit        # exit 0, no errors
+```
+
+### 4. Note on scope
+
+Task 01 is a base/adoption task: it changes no fork migrations and no schema. The
+schema-176 bridge (above) remains Task 02's. The migration array-length table at the top of
+this file is unchanged by Task 01 and remains authoritative.
