@@ -12,6 +12,10 @@ F26 definitive)
 f1b09e5b client deltas F32/F33, stale-geometry PRESERVE policy F07/F08, F23 accept-upstream,
 F17 concrete OAuth-proxy comparison + broker hardening F34, schema-198 wording, auditable
 per-family upstream-refresh log)
+**Re-reviewed 3:** 2026-08-29 (Task 00 critical-finding remediation — map/route-visibility family
+from `9c11cfa6`/`c4f834f9`/`5d3385bc`/`75edfe25`: route-toggle semantics F35, booking-route
+endpoint visibility/bounds F36, persisted connection-ID deduplication F37; all three classified
+`FORK_ONLY` with RETAIN/PORT decisions; F12 commit list completed with the reposition restore)
 
 This ledger is the evidence-backed, one-by-one inventory of every behavior in the
 `reyhard/TREK` fork that is not simply upstream `v3.4.1`. It is the mandatory
@@ -108,7 +112,7 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F09 | Reservation `url` over MCP | e9a1f3e0 | `UPSTREAMED_CURRENT` | — | Adopt `f1bbd94f`; never add separate `link` field |
 | F10 | Existing Cost → reservation linking | 92aee6e1, 287975b6, b3b68d0a, f8d6f8f7, 41159e73, ae1758ac, 13fbe370 | `FORK_ONLY` | — | Implement atop 4.0 Costs/Reservations |
 | F11 | Multiple cost links / safe unlink | (with F10; ae1758ac) | `FORK_ONLY` | — | Preserve relationship semantics |
-| F12 | POI marker reposition | ae7649bd, 019cdf55, 63936e2e | `FORK_ONLY` | Desktop + mobile (mobile inspector preserved by 63936e2e) | Port to Leaflet/GL/map state |
+| F12 | POI marker reposition | ae7649bd, 019cdf55, 63936e2e, 5d3385bc, 75edfe25 | `FORK_ONLY` | Desktop + mobile (mobile inspector preserved by 63936e2e; draggable-marker restore in 75edfe25) | Port to Leaflet/GL/map state |
 | F13 | Track-aware route bypass + movement totals | c4823a57 … b409eb87 (~27, merge 4ce5c739) | `FORK_ONLY` | — | Port domain onto current routing pipeline |
 | F14 | Transit-distance → movement | 4dcfb114 | `FORK_ONLY` | Consume upstream transit leg data (`leg.distance` in `transit.service.ts`), do not duplicate storage | Consume upstream transit leg data |
 | F15 | Timeline planner (draggable + duration + context/duration MCP + mobile) | 203cdeae … 814ed86a (~42) | `FORK_ONLY` | `duration_minutes` model already upstream — consume it, never re-add; mobile served by upstream `MPlanTimeline` | Reimplement against 4.0 planner |
@@ -131,6 +135,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F32 | Editable transit `status` + `confirmation_number` in `TransitJourneyModal` | f1b09e5b | `FORK_ONLY` | Desktop + mobile (modal reachable from the mobile sidebar portal); backend already persists both fields via the generic reservation update | Port the two generic editable fields onto 4.0 `TransitJourneyModal` |
 | F33 | Cross-day end-date display in `DayPlanSidebarTransportDetailModal` | f1b09e5b | `FORK_ONLY` | Desktop + mobile (modal opened from `DayPlanSidebar`, which renders in the mobile sidebar portal) | Port end-date extraction + `→ end date` line onto the 4.0 modal |
 | F34 | Outbound plugin-OAuth broker nonce + provider-config fingerprint binding | ea08df9b | `FORK_ONLY` | **Security hardening** — bind authorize `state` to nonce + provider-config fingerprint, validate on callback (block token exchange stored under a changed config) | Port onto 4.0 `plugins/oauth/plugin-oauth.service.ts`, keeping upstream PKCE/state/TTL |
+| F35 | Route-toggle semantics (routeShown/distance-unit no-OSRM-refetch) | 9c11cfa6, c4f834f9 | `FORK_ONLY` | Desktop + mobile — visibility-only toggles must not re-fetch OSRM; route hidden/shown via `enabled` return gating | Port `enabledRef` + `enabled ? route : null` gating onto 4.0 `useRouteCalculation`; keep FE-HOOK-ROUTE-022/023/024 |
+| F36 | Booking-route endpoint visibility/bounds | 75edfe25 (+5d3385bc type/test reconcile) | `FORK_ONLY` | Desktop + mobile — map fit/bounds include endpoints of *visible* booking routes; `fitKey` bumps when visibleConnections change | Port `visibleReservationEndpointPoints` + bounds/fitKey integration onto 4.0 `MapView`/`MapViewGL`/`useTripPlanner` |
+| F37 | Persisted connection-ID deduplication | 75edfe25 | `FORK_ONLY` | Desktop + mobile (store-level util) — `trek:visible-connections` ids never accumulate duplicates | Port `new Set` dedup in `parseStoredConnections`/`toggleConnectionId` + fork dedup tests |
 
 ---
 
@@ -373,8 +380,16 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 ### F12 — POI marker reposition — `FORK_ONLY`
 
 - **Fork commits:** `ae7649bd` (reposition saved place markers), `019cdf55` (harden rollback),
-  `63936e2e` (preserve mobile inspector while saving).
+  `63936e2e` (preserve mobile inspector while saving), `5d3385bc` (reconcile map types — adds
+  `repositionPlaceId`/`canRepositionPlaces` to `MapViewGL` Props and `canReposition`/
+  `isRepositioning`/`onStartReposition`/`onCancelReposition` to `PlaceInspectorProps`; removes
+  fork-specific reposition tests), `75edfe25` (restore reposition with the map renderers'
+  draggable-marker + clustering-exclusion paths and FE-COMP-MAPVIEW-021/022/023 +
+  FE-COMP-MAPVIEWGL-015 tests).
 - **Fork behavior:** enter reposition mode, move a saved place marker, save/cancel with rollback.
+  The reposition marker is pulled out of the marker cluster and made draggable with a
+  suppressed click after drag-end (MapView Leaflet `MemoMarker` drag handlers; MapViewGL
+  `createMarkerElement` `repositioning` flag + `draggable` marker + `dragstart`/`dragend`).
 - **Affected:** `client/src/components/Map/MapView.tsx`, `MapViewGL.tsx`, `MapView.types.ts`,
   `Planner/PlaceInspector.tsx`, `pages/tripPlanner/useTripPlanner.ts`, `useRouteCalculation.ts`.
 - **v4.0 evidence:** only a trace of "reposition" in `useRouteCalculation.ts`; no reposition UI.
@@ -924,6 +939,112 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Tests:** fork plugin-oauth tests (state format, config-fingerprint mismatch rejects the
   callback) are characterization; re-target onto the 4.0 broker test.
 
+### F35 — Route-toggle semantics (routeShown/distance-unit no-OSRM-refetch) — `FORK_ONLY`
+
+- **Fork commits:** `9c11cfa6` (exclude distance-unit and booking-route visibility from
+  route-calculation deps), `c4f834f9` (gate route return on enabled, fix DistanceUnit test
+  value, add routeShown toggle tests). Linear chain, both in `v3.4.1..fork`, neither an
+  ancestor of `v4.0.0`/`upstream/main`.
+- **Fork behavior:** `useRouteCalculation` treats `routeShown` and `distance_unit` as
+  *visibility/format-only* inputs — toggling them must not re-fetch OSRM:
+  - `distanceUnit` was removed from the store subscription and from the `useCallback`/`useEffect`
+    dependency arrays (`9c11cfa6`), so flipping km↔mi no longer calls `recalculateRouteWithLegs`;
+  - `enabled` (the `routeShown` prop) is likewise excluded from the dep arrays, and a live
+    `enabledRef` is used inside `updateRouteForDay` to avoid a stale closure (`9c11cfa6`);
+  - the returned `route`/`routeSegments` are **gated on `enabled`**: `route: enabled ? route :
+    null` and `routeSegments: enabled ? routeSegments : []` (`c4f834f9`) — `routeShown=false`
+    hides the rendered route instantly and `routeShown=true` restores it from cached state,
+    both **without** re-fetching OSRM.
+- **Affected:** `client/src/hooks/useRouteCalculation.ts` (fork blob `a6677776…`; `enabledRef`
+  at lines 77–78, `!enabledRef.current` guard at 117, return gating at 200–201), integration
+  test `client/tests/integration/hooks/useRouteCalculation.test.ts` (FE-HOOK-ROUTE-022/023/024).
+- **v4.0 evidence:** `v4.0.0:client/src/hooks/useRouteCalculation.ts` (blob `f66df234…`) keeps
+  `enabled` AND `distanceUnit` in BOTH the `useCallback` deps and the effect deps (lines 274
+  and 298), subscribes `distanceUnit` at line 39, and returns `route`/`routeSegments` ungated
+  (line 264). Toggling `enabled` re-runs the effect → re-fetches OSRM; changing km↔mi re-runs
+  the effect → re-fetches OSRM.
+- **Current upstream:** same — `upstream/main:client/src/hooks/useRouteCalculation.ts` (blob
+  `702beaf2…`) subscribes `distanceUnit` (line 39) and keeps `enabled`+`distanceUnit` in the
+  deps (lines 274/298) with `if (!dayId || !enabled)` early-return (line 44); route returned
+  ungated. No `enabledRef`, no return gating.
+- **Mobile outcome:** desktop + mobile — `useRouteCalculation` is consumed by `useTripPlanner`
+  (called with `routeShown` as the `enabled` arg at `client/src/pages/tripPlanner/useTripPlanner.ts:477`),
+  which feeds both the desktop planner and the mobile sidebar portal; no per-renderer work.
+- **Migration action:** port the `enabledRef` + return-gating (`enabled ? route : null`) onto
+  4.0 `useRouteCalculation`, keeping the deps-exclusion for `enabled`/`distanceUnit` so
+  visibility/format toggles never trigger an OSRM refetch. This is a client-only delta.
+- **Tests:** fork FE-HOOK-ROUTE-022 (distance_unit change → no `recalculateRouteWithLegs`),
+  FE-HOOK-ROUTE-023 (enabled off → route hidden, no OSRM), FE-HOOK-ROUTE-024 (enabled on →
+  route restored, no OSRM) are characterization; re-target onto the 4.0 hook test.
+
+### F36 — Booking-route endpoint visibility/bounds — `FORK_ONLY`
+
+- **Fork commits:** `75edfe25` (include booking route endpoints in bounds; deduplicate IDs also
+  here — split to F37), `5d3385bc` (reconcile booking-route visibility, map types, sidebar mock;
+  type/test reconciliation only). Both fork-only.
+- **Fork behavior:** the map's fit/bounds must include the endpoints of *visible* booking routes
+  (the from/to stops of reservations currently shown by the route-visibility toggle), so a
+  toggled-on booking route is never half-cropped off-screen:
+  - `visibleReservationEndpointPoints()` added to `reservationRoutes.ts` — collects finite
+    `{lat,lng}` pairs from every endpoint of reservations passing `visibleRouteReservations`
+    (i.e. honoring `visibleConnectionIds` + `showTransitRoutes`);
+  - `MapView` (`BoundsController`) now accepts `reservationEndpointCoords` and includes them in
+    BOTH the initial fit (`fitTo([...placeCoords, ...reservationEndpointCoords])`) and the
+    route-arrival re-fit;
+  - `MapViewGL` includes `reservationEndpointCoords` in its initial `computeMapViewport` framing
+    and in the GL `fitBounds` points;
+  - `useTripPlanner` adds a `visibleConnectionsRef` effect that bumps `fitKey` whenever the
+    resolved visible-connection id set changes — so toggling a booking route on/off re-fits the
+    map to that route's endpoints.
+- **Affected:** `client/src/utils/reservationRoutes.ts` (fork blob `29690724…`),
+  `client/src/components/Map/MapView.tsx` (fork blob `b56327de…`, `BoundsController`),
+  `client/src/components/Map/MapViewGL.tsx` (fork blob `10ce7fe3…`),
+  `client/src/pages/tripPlanner/useTripPlanner.ts` (fork blob `cb3998cb…`, lines 366–373),
+  tests `reservationRoutes.test.ts` (`visibleReservationEndpointPoints` describe block) and
+  MapView/MapViewGL test files.
+- **v4.0 evidence:** `v4.0.0:client/src/utils/reservationRoutes.ts` (blob `3f5cc5f2…`) has **no**
+  `visibleReservationEndpointPoints` (only `visibleRouteReservations`); `v4.0.0` `MapView.tsx`
+  `BoundsController` (lines 280–334) fits `places`+`routeCoords` only; `v4.0.0` `MapViewGL.tsx`
+  (lines 1345–1346) fits `routeCoords`+`markerPoints` only; `v4.0.0` `useTripPlanner.ts` has no
+  `visibleConnectionsRef`/fitKey-on-visibleConnections effect (only fitKey on trip/day select).
+- **Current upstream:** identical — `upstream/main` `MapView.tsx` (blob `c119af4a…`),
+  `MapViewGL.tsx` (blob `f82c0335…`), `useTripPlanner.ts` (blob `a7f1aa39…`); no
+  `visibleReservationEndpointPoints` anywhere in upstream (`git grep` = 0 hits).
+- **Mobile outcome:** desktop + mobile — both map renderers (Leaflet + GL) render in the desktop
+  planner and the mobile sidebar portal; the endpoint-bounds helper is shared.
+- **Migration action:** port `visibleReservationEndpointPoints` and the two fit integrations
+  (initial viewport framing + bounds fitting) onto 4.0 `MapView`/`MapViewGL`, plus the
+  `visibleConnections`→`fitKey` effect in 4.0 `useTripPlanner`. Client-only.
+- **Tests:** fork `reservationRoutes.test.ts` `visibleReservationEndpointPoints` suite
+  (returns coords for visible reservations, excludes hidden, includes transit when
+  showTransitRoutes, filters non-finite coords, preserves zero coords) is characterization;
+  re-target onto the 4.0 utility test.
+
+### F37 — Persisted connection-ID deduplication — `FORK_ONLY`
+
+- **Fork commit:** `75edfe25` (deduplicate IDs — same commit as F36; split into its own row
+  because the behavior is a distinct, independently-testable invariant).
+- **Fork behavior:** `parseStoredConnections` and `toggleConnectionId` in `connectionsVisibility.ts`
+  dedupe the persisted id list with `[...new Set(...)]`, so the `trek:visible-connections:<tripId>`
+  localStorage value never accumulates duplicate reservation ids (from legacy bare-array storage,
+  from a malformed tagged object, or from toggle-race double-adds). The invariant: `ids` is always
+  a unique array after any parse/toggle.
+- **Affected:** `client/src/utils/connectionsVisibility.ts` (fork blob `67982a3b…`, dedupe at
+  lines 37/48 in `parseStoredConnections` and lines 76–77 in `toggleConnectionId`), test
+  `client/src/utils/connectionsVisibility.test.ts` ("deduplication" describe block, 4 tests).
+- **v4.0 evidence:** `v4.0.0:client/src/utils/connectionsVisibility.ts` (blob `edacd326…`) has
+  **no** dedup — `parseStoredConnections` returns `ids: parsed` / `ids: obj.ids` verbatim and
+  `toggleConnectionId` filters/adds without a `Set`. Blob identical to v3.4.1 base.
+- **Current upstream:** identical — `upstream/main:client/src/utils/connectionsVisibility.ts`
+  blob `edacd326…` (same as v3.4.1/v4.0.0), no dedup.
+- **Mobile outcome:** desktop + mobile — store/util-level helper shared by the planner and the
+  mobile shell; no per-renderer work.
+- **Migration action:** port the `new Set` deduplication into 4.0
+  `parseStoredConnections`/`toggleConnectionId` with the fork's dedup tests. Client-only.
+- **Tests:** fork `connectionsVisibility.test.ts` dedup block (legacy-array dedup, tagged-object
+  dedup, toggle-preserves-uniqueness on add/remove, unique-add when stored already duplicate) is
+  characterization; re-target onto the 4.0 utility test.
+
 ---
 
 ## 6. MCP tool/resource/scope diff (summary)
@@ -1027,6 +1148,38 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `STATIC_TOKEN_DEPRECATION_NOTICE`, `auth.mcp.ts:26` `token_auth_notice`, `sessionManager.ts:12`,
   `IntegrationsTab.tsx:351,481`. None of these alter MCP tool results, so no agent/tool contract
   break; decision is to keep upstream's notice (no re-apply of `380b890c`).
+- **F35/F36/F37 evidence (re-review 3, map/route-visibility family `9c11cfa6`→`c4f834f9`→
+  `5d3385bc`→`75edfe25`):** all four are in `v3.4.1..fork` and NOT ancestors of `v4.0.0`/
+  `upstream/main` (`git merge-base --is-ancestor <c> v4.0.0` and `<c> upstream/main` both NO for
+  all four). 
+  - F35: fork `useRouteCalculation.ts` blob `a6677776…` (`enabledRef` lines 77–78, `!enabledRef.current`
+    guard line 117, return gating `route: enabled ? route : null` / `routeSegments: enabled ?
+    routeSegments : []` lines 200–201, no `distanceUnit` subscription) vs v4.0.0 blob `f66df234…`
+    and upstream/main blob `702beaf2…` (both keep `distanceUnit` at line 39 and `enabled`+`distanceUnit`
+    in the deps at lines 274/298, return ungated at v4.0.0:264). Fork tests FE-HOOK-ROUTE-022
+    (line 907), -023 (935), -024 (959) in `tests/integration/hooks/useRouteCalculation.test.ts`
+    (fork blob `dc4b7788…`); upstream test has only the pre-existing FE-HOOK-ROUTE-022/023/024
+    set with different meanings (single-multi-waypoint, #1597 check-in, layover) — no no-OSRM-
+    refetch-on-toggle coverage.
+  - F36: fork `reservationRoutes.ts` blob `29690724…` adds `visibleReservationEndpointPoints`
+    (lines 25–38) vs v4.0.0/upstream blob `3f5cc5f2…` (absent); fork `MapView.tsx` blob
+    `b56327de…` `BoundsController` includes `reservationEndpointCoords` (lines 310/316/325) vs
+    v4.0.0 blob `cbabfd6a…` (fits places+routeCoords only, lines 325/334); fork `MapViewGL.tsx`
+    blob `10ce7fe3…` includes endpoint points in `computeMapViewport` (line 358) and GL
+    `fitBounds` (lines 1078–1083) vs v4.0.0 blob `4b4cf624…` (line 1345–1346, routeCoords+
+    markerPoints only) and upstream/main blob `f82c0335…` (same, `git grep visibleReservationEndpointPoints
+    upstream/main` = 0 hits); fork `useTripPlanner.ts` blob `cb3998cb…` has the
+    `visibleConnectionsRef`→`fitKey` effect (lines 366–373) vs v4.0.0 blob `93172a5a…`/upstream
+    blob `a7f1aa39…` (absent).
+  - F37: fork `connectionsVisibility.ts` blob `67982a3b…` (`new Set` dedup in `parseStoredConnections`
+    at lines 37/48 and `toggleConnectionId` at lines 76–77) vs v4.0.0/upstream/v3.4.1 blob
+    `edacd326…` (no dedup; `ids: parsed` / `ids: obj.ids` verbatim). Fork test
+    `connectionsVisibility.test.ts` blob `9c86a3fe…` "deduplication" block (4 tests) vs v4.0.0
+    blob `086e25b4…` (no dedup tests).
+  - F12 completion: `5d3385bc` (MapViewGL Props + PlaceInspectorProps reposition fields) and
+    `75edfe25` (draggable reposition restore + FE-COMP-MAPVIEW-021/022/023 /
+    FE-COMP-MAPVIEWGL-015 tests) added to F12's commit list; upstream `MapViewGL.tsx` reposition
+    hits remain the marker-`reposition`/`repositionPins` helper only (not a place-reposition mode).
 - **Per-row current-upstream blobs (re-review):** PlacesSidebarHeader `a760588d…`; MapView
   `c119af4a…`/MapViewGL `f82c0335…`; TransitSearchPanel `e08f2534…`/connector `e61dbff9…`;
   `link_budget_item_to_reservation` grep=0; movementStats/DayMovementTotalRow absent
@@ -1071,6 +1224,10 @@ No production behavior was changed by this task; the ledger is documentation onl
    reverted by sync merge `68fe32c7` before the frozen fork; no delta exists (see F02).
 6. F34 (plugin-OAuth broker nonce + config-fingerprint) is `FORK_ONLY` and is ported in Task 03
    (OAuth/MCP compatibility) with the mismatch regression test.
+7. ~~F35/F36/F37 map/route-visibility family~~ — **RESOLVED in Task 00: all three RETAIN/PORT**
+   (see F35/F36/F37). Route-toggle semantics, booking-route endpoint bounds, and connection-ID
+   deduplication are each classified `FORK_ONLY` with a port decision and characterization
+   tests. No deferral remains; Task 08/09 validates the ported behavior at runtime only.
 
 ---
 
@@ -1106,3 +1263,6 @@ No production behavior was changed by this task; the ledger is documentation onl
 | F32 transit status/confirmation edit | desktop + mobile (TransitJourneyModal via sidebar portal) |
 | F33 cross-day end-date display | desktop + mobile (DayPlanSidebar modal via sidebar portal) |
 | F34 plugin-OAuth broker hardening | backend/API only |
+| F35 route-toggle semantics | desktop + mobile (hook shared by desktop + mobile sidebar portal) |
+| F36 booking-route endpoint bounds | desktop + mobile (both map renderers) |
+| F37 connection-ID dedup | desktop + mobile (store/util-level) |
