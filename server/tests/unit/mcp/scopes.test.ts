@@ -292,3 +292,37 @@ describe('canShareTrips', () => {
     expect(canShareTrips([])).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// F16/F17 — plugin OAuth scopes are NOT part of the v4.0.0 scope model.
+//
+// The reyhard/TREK fork minted dynamic per-plugin scopes
+// (`plugin:<id>:read` / `plugin:<id>:write`, server/src/services/oauthResources.ts)
+// to gate an inbound `trekoa_` resource proxy on `/api/plugins/:id/*` (F17).
+// v4.0.0 has no such proxy (plugins run in sandboxed iframes on their own
+// origin) and no plugin MCP tool surface, so those scopes must NOT exist here:
+// default-deny. The canonical coarse `plugins:use` OAuth scope exists only in
+// current upstream to gate plugin MCP tools (plugin-mcp-tools.ts), a surface
+// v4.0.0 does not have — so it is not added either (nothing to gate; would be
+// dead code). These tests pin that default-deny so the legacy grammar can
+// never creep back in.
+// ---------------------------------------------------------------------------
+
+describe('F16/F17 — legacy dynamic plugin scopes stay out of the scope model', () => {
+  it('PLUGIN-SCOPES-001: the dynamic plugin:<id>:read/write grammar is not a valid scope', () => {
+    const result = validateScopes(['plugin:flight-tracker:read', 'plugin:flight-tracker:write']);
+    expect(result.valid).toBe(false);
+    expect(result.invalid).toContain('plugin:flight-tracker:read');
+    expect(result.invalid).toContain('plugin:flight-tracker:write');
+  });
+
+  it('PLUGIN-SCOPES-002: no scope carries a plugin: prefix at all (no dynamic grammar)', () => {
+    const pluginScoped = ALL_SCOPES.filter((s) => s.startsWith('plugin:'));
+    expect(pluginScoped).toEqual([]);
+  });
+
+  it('PLUGIN-SCOPES-003: there is no plugins:use scope (no plugin MCP tool surface to gate at v4.0.0)', () => {
+    expect(ALL_SCOPES).not.toContain('plugins:use');
+    expect(validateScopes(['plugins:use']).valid).toBe(false);
+  });
+});

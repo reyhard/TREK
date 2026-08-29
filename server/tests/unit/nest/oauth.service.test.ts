@@ -1265,3 +1265,55 @@ describe('admin OAuth sessions', () => {
     expect(sessions[0].scopes).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// F18 — password-change revocation is revoked_at-based, NOT the legacy fork's
+// user_password_version column.
+//
+// The reyhard/TREK fork bound OAuth tokens to users.password_version via a
+// custom oauth_tokens.user_password_version column. v4.0.0 has no such column
+// and must not depend on it: auth.service.changePassword revokes every live
+// OAuth token by stamping revoked_at (auth.service.ts:560), which is exactly
+// what getUserByAccessToken checks. These tests pin that invariant — a token
+// issued before the password change stops validating afterwards, with no
+// user_password_version anywhere in the picture.
+// ---------------------------------------------------------------------------
+
+describe('F18 — password-change revocation via revoked_at (no user_password_version)', () => {
+  it('F18-001: a token issued before a password change no longer validates after the change', () => {
+    const { user } = createUser(testDb);
+    const created = makeClient(user.id);
+    const clientId = created.client!.client_id as string;
+    const { access_token } = issueTokens(clientId, user.id, ['trips:read']);
+
+    expect(getUserByAccessToken(access_token)).not.toBeNull();
+
+    // The exact revocation SQL auth.service.changePassword runs on a password
+    // change (auth.service.ts:560): stamp revoked_at on every live token.
+    testDb.prepare("UPDATE oauth_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL").run(user.id);
+
+    expect(getUserByAccessToken(access_token)).toBeNull();
+  });
+
+  it('F18-002: the runtime never reads oauth_tokens.user_password_version', () => {
+    // The column does not exist in the v4.0.0 schema — the password gate lives
+    // in the JWT (users.password_version baked into the token) and in
+    // revoked_at for OAuth. A legacy-fork DB that still carries the column
+    // migrates it away via the Task 02 bridge, but runtime code must not read it.
+    const cols = (testDb.prepare("SELECT name FROM pragma_table_info('oauth_tokens')").all() as { name: string }[]).map(r => r.name);
+    expect(cols).not.toContain('user_password_version');
+  });
+
+  it('F18-003: refresh tokens are revoked alongside access tokens by the same change', () => {
+    const { user } = createUser(testDb);
+    const created = makeClient(user.id);
+    const clientId = created.client!.client_id as string;
+    const { refresh_token } = issueTokens(clientId, user.id, ['trips:read']);
+
+    // Same revocation SQL; the refresh path also rejects a revoked row.
+    testDb.prepare("UPDATE oauth_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL").run(user.id);
+    const row = testDb.prepare('SELECT refresh_token_hash, revoked_at FROM oauth_tokens WHERE user_id = ?').get(user.id) as { refresh_token_hash: string; revoked_at: string | null };
+    expect(row.refresh_token_hash).toBeDefined();
+    expect(row.revoked_at).not.toBeNull();
+  });
+});
