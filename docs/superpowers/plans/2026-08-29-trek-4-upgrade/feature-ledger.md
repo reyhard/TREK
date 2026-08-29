@@ -5,6 +5,9 @@
 **Status:** Complete feature ledger with evidence (Task 00 gate)
 **Revised:** 2026-08-29 (review-fix pass — single-class classifications, migration-176
 signature, mobile outcomes, added F26/F27)
+**Re-reviewed:** 2026-08-29 (re-review remediation — ntfy credential isolation F28,
+client-robustness F29/F30/F31, exact path+blob on every current-upstream comparison,
+F26 definitive)
 
 This ledger is the evidence-backed, one-by-one inventory of every behavior in the
 `reyhard/TREK` fork that is not simply upstream `v3.4.1`. It is the mandatory
@@ -115,8 +118,12 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F23 | Static-token deprecation-warning patch | 380b890c | `PARTIAL` | Inspect upstream wording in Task 03; patch only if still wrong | Inspect upstream wording first |
 | F24 | Upstream 3.4.x sync cluster | 5e1e3f0d, aa364b3f, 3ce600da, 68fe32c7 (+ Task 2–13 fixes) | `UPSTREAMED_V4` | — | Already in v3.4.1/v4.0.0; no migration action |
 | F25 | Deployment env-var normalization (Task 12) | f935b1dd, 6ecbc093, 44bce05b, 3bce7b5f … | `UPSTREAMED_V4` | Env vars (`DEMO_MODE`, `BACKUP_UPLOAD_LIMIT_MB`, `OVERPASS_URL`, `OVERPASS_TIMEOUT_MS`) already declared at `v4.0.0` in charts/`.env.example`/app-config | Re-check 4.0 env inventory rather than porting |
-| F26 | Live `reservation:positions` client handler + stale-visibility cleanup | 01b83434, ef79ae11 | `FORK_ONLY` | Server event is upstream (REST + MCP broadcast); only the client **reducer** is fork-only — upstream client deliberately ignores the event (`IGNORED_WS_EVENTS`); desktop + mobile (store-level) | Port the reducer case + stale cleanup onto 4.0 store |
+| F26 | Live `reservation:positions` client handler + stale-visibility cleanup | 01b83434, ef79ae11 | `FORK_ONLY` | **Definitive decision: RETAIN/PORT** — server event is upstream (REST + MCP broadcast); only the client **reducer** is fork-only; upstream client ignores the event (`IGNORED_WS_EVENTS`) but the fork's live merge + stale cleanup removes a real deleted-id failure mode; desktop + mobile (store-level); Task 08 is validation only, not a classification deferral | Port the reducer case + stale cleanup onto 4.0 store |
 | F27 | Plugin registry screenshot fallback | 7975d992 | `FORK_ONLY` | Backend/API only (registry browse/detail projection) | Port `?.trim() ||` fallback to 4.0 `registry.service.ts` |
+| F28 | ntfy admin-token credential isolation | c8950368, f2482d31 | `FORK_ONLY` | **Security hardening** — never fall back to the admin token for a per-user ntfy send or the `/api/notifications/test-ntfy` endpoint; admin token only for admin-global sends | Port to 4.0 `channels/builtins.ts` + `notifications.controller.ts` (remove the two upstream fallbacks) |
+| F29 | Client settings normalization | b8700146, f1b09e5b | `FORK_ONLY` | Desktop + mobile settings surfaces (store-level) | Port `normalizeSettings` onto 4.0 `settingsStore` (coexist with upstream `withNormalizedTileUrl`) |
+| F30 | Client focus restoration + a11y utilities | b8700146, f1b09e5b | `FORK_ONLY` | Desktop + mobile (shared `Modal` used by both shells) | Port `accessibility.ts` (`respectReducedMotion`, `saveFocusForRestore`/`restoreFocus`) + `Modal` focus restore; `isRtlLanguage` already upstream — don't port |
+| F31 | safeParseMetadata defensive parsing | f1b09e5b, a30a6a17 | `FORK_ONLY` | Desktop + mobile (planner/PDF/shared-trip views) | Port `safeParseMetadata`/`safeTransitMeta` and replace raw `JSON.parse` in the 4.0 equivalents of the listed sites |
 
 ---
 
@@ -136,7 +143,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **v4.0 evidence:** `client/src/components/Planner/DayPlanSidebarRouteConnector.tsx` and
   per-leg travel mode + `TransitSearchPanel.tsx` exist at `v4.0.0`. Connector concept is
   upstream's own per-leg mode resolution.
-- **Current upstream:** same files present at `upstream/main` (33a33e7b).
+- **Current upstream:** same — `upstream/main:client/src/components/Planner/DayPlanSidebarRouteConnector.tsx`
+  (blob `e61dbff9…`, identical to v4.0.0) and `upstream/main:client/src/components/Planner/TransitSearchPanel.tsx`
+  (blob `e08f2534…`). The fork's `transitConnector.ts`/`transitSearchTypes.ts` are absent upstream.
 - **Mobile outcome:** desktop + mobile (upstream's own connector/per-leg surfaces render in
   both the desktop sidebar and the mobile sidebar portal).
 - **Migration action:** drop fork connector UI; rely on upstream per-leg travel mode.
@@ -155,11 +164,13 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Affected:** `server/src/mcp/tools/transit.ts`, `server/src/services/transit*`, shared usage limiter.
 - **v4.0 evidence:** `server/src/nest/transit/transit.mcp.ts` registers
   `search_transit_stops`, `search_transit_routes`, `create_transit_journey` (NestJS). Present at `v4.0.0`.
-- **Current upstream:** same three tools at `upstream/main`. Rate limiting is upstream:
-  `server/src/nest/transit/transit.mcp.ts:41` `rateLimit()` over `RateLimitService` with
-  identical buckets (`mcp_transit_geocode` 300, `mcp_transit_plan` 60) and a 15-minute
-  window; REST is limited via `transit.controller.ts:23`. The fork's `transitRateLimit.ts`
-  hardening is functionally superseded.
+- **Current upstream:** same three tools — `upstream/main:server/src/nest/transit/transit.mcp.ts`
+  (blob `3517b1c2…`), `transit.controller.ts` (blob `7f6293f7…`), `transit.service.ts` (blob
+  `beff0957…`). Rate limiting is upstream: `transit.mcp.ts:41` `rateLimit()` over the shared
+  limiter (`server/src/nest/common/rate-limit.service.ts`, blob `eae58058…`, identical at
+  v4.0.0/upstream-main) with identical buckets (`mcp_transit_geocode` 300, `mcp_transit_plan`
+  60) and a 15-minute window; REST is limited via `transit.controller.ts:23`. The fork's
+  `transitRateLimit.ts` hardening is functionally superseded.
 - **Recommendation:** the "hardening → PARTIAL" hedge in the original draft was withdrawn:
   upstream implements the same usage limiting. Verify nothing else (e.g. error-redaction
   wording) differs before closing F02.
@@ -176,7 +187,8 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `PlacesSidebarList.tsx`, `usePlacesSidebar.ts`, `shared/src/i18n/*/places.ts`.
 - **v4.0 evidence:** `v4.0.0:client/src/components/Planner/PlacesSidebarHeader.tsx` already has
   `{ id: 'unplanned' }` / `{ id: 'planned' }` filter options (lines ~89–98).
-- **Current upstream:** present at `upstream/main`.
+- **Current upstream:** present — `upstream/main:client/src/components/Planner/PlacesSidebarHeader.tsx`
+  blob `a760588d…` (identical to v4.0.0), `unplanned`/`planned` filter options at lines 95–96.
 - **Mobile outcome:** desktop + mobile (PlacesSidebar is rendered in both the desktop planner
   and the mobile sidebar portal).
 - **Migration action:** drop fork implementation; retain a characterization test.
@@ -190,7 +202,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **v4.0 evidence:** `selectedDayId` present in `v4.0.0` `MapView.tsx`, `MapViewGL.tsx`,
   `PlacesSidebarList.tsx`, `PlacesSidebarRow.tsx`, `DayPlanSidebar.tsx` — selected-day transit
   visibility is upstream behavior.
-- **Current upstream:** present.
+- **Current upstream:** present — `upstream/main:client/src/components/Map/MapView.tsx` blob
+  `c119af4a…` and `upstream/main:client/src/components/Map/MapViewGL.tsx` blob `f82c0335…`
+  both carry `selectedDayId` transit scoping.
 - **Mobile outcome:** desktop + mobile (selected-day transit visibility drives both map renderers
   and the mobile map).
 - **Migration action:** drop fork `reservationRoutes` scoping.
@@ -201,7 +215,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Fork behavior:** prefill transit search when launched from a connector.
 - **Affected:** `client/src/pages/TripPlannerPage.tsx`.
 - **v4.0 evidence:** `TransitSearchPanel.tsx` + `DayPlanSidebarRouteConnector.tsx` present at `v4.0.0`.
-- **Current upstream:** present.
+- **Current upstream:** present — `upstream/main:client/src/components/Planner/TransitSearchPanel.tsx`
+  blob `e08f2534…` and `upstream/main:client/src/components/Planner/DayPlanSidebarRouteConnector.tsx`
+  blob `e61dbff9…` (connector identical to v4.0.0).
 - **Mobile outcome:** desktop + mobile (connector-launched prefill works in the transport modal
   opened from the mobile sidebar too).
 - **Migration action:** convert old fix into regression tests; verify edge cases (notes/timed neighbors).
@@ -287,7 +303,10 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   (`link_budget_item_to_reservation`), `budget-reservation-linking.test.ts`.
 - **v4.0 evidence:** `link_budget_item_to_reservation` **absent** at `v4.0.0` and `upstream/main`.
   (Upstream has `linkBudgetItemToReservation` internally on create; no standalone link tool.)
-- **Current upstream:** absent.
+- **Current upstream:** absent — `git grep link_budget_item_to_reservation upstream/main -- server`
+  = 0 hits. Internal `linkBudgetItemToReservation` present only as a private helper in
+  `upstream/main:server/src/nest/budget/budget.service.ts` and used from
+  `server/src/nest/reservations/reservations.mcp.ts` (blob `9671187c…`).
 - **Mobile outcome:** backend/API + Budget-tab surface (desktop + mobile read the link state).
 - **Migration action:** implement atop 4.0 Costs/Reservations services (spec §7.1 invariants).
 - **Tests:** fork `budget-reservation-linking.test.ts` is characterization; invariants per spec §7.1.
@@ -301,6 +320,11 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `Planner/PlaceInspector.tsx`, `pages/tripPlanner/useTripPlanner.ts`, `useRouteCalculation.ts`.
 - **v4.0 evidence:** only a trace of "reposition" in `useRouteCalculation.ts`; no reposition UI.
 - **Current upstream:** only `MapViewGL.tsx` + `useRouteCalculation.ts` traces; no feature.
+  Exact: `upstream/main:client/src/components/Map/MapViewGL.tsx` (blob `f82c0335…`) — the
+  "reposition" hits are a marker-reposition helper (`reposition`/`repositionPins`, lines 312–355
+  and 483–484), **not** a place-reposition mode; `upstream/main:client/src/hooks/useRouteCalculation.ts`
+  (blob `702beaf2…`) has no reposition UI. Fork reposition files
+  (`client/src/components/Map/MapView.types.ts` reposition mode) absent upstream.
 - **Mobile outcome:** desktop + mobile — `63936e2e` preserved the mobile inspector during save,
   so the feature must keep working on the mobile map.
 - **Migration action:** port to Leaflet/GL/map state (spec §7.2).
@@ -321,7 +345,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   routes, `DayMovementTotalRow.tsx`, `movementStats.test.ts`.
 - **v4.0 evidence:** `movementStats.ts` / `getTrackMovement` / `trackMovement` **absent** at
   `v4.0.0` and `upstream/main`.
-- **Current upstream:** absent.
+- **Current upstream:** absent — `git cat-file -e upstream/main:client/src/utils/movementStats.ts`
+  fails (no such blob) and `upstream/main:client/src/components/Planner/DayMovementTotalRow.tsx`
+  also absent; `git grep -c 'getTrackMovement|trackMovement' upstream/main -- client` = 0 hits.
 - **Mobile outcome:** desktop + mobile — the totals row renders in `DayPlanSidebar`, which is
   used in the mobile sidebar portal too.
 - **Migration action:** port minimum pure/domain layer + UI onto 4.0 routing (spec §7.4).
@@ -364,9 +390,12 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `DayTimelinePlanner`/`TimelineRouteToolbar`/`dayTimelineModel` are **absent** at `v4.0.0`.
   Mobile timeline `MobileMapTimeline.tsx` exists at `v3.4.1` already (upstream), so mobile timeline
   is not fork-only; the fork's desktop draggable timeline is.
-- **Current upstream:** `DayTimelinePlanner`/`apply_recommended_durations` absent. Upstream mobile
-  has `client/src/mobile/screens/trip/plan/MPlanTimeline.tsx` (+ `useMPlanDragReorder.ts`, long-press
-  drag reorder #1997, `planTimelineModel.ts`).
+- **Current upstream:** `DayTimelinePlanner`/`apply_recommended_durations` absent —
+  `git cat-file -e upstream/main:client/src/components/Planner/DayTimelinePlanner.tsx` fails and
+  `git grep -c apply_recommended_durations upstream/main -- server` = 0 hits. Upstream mobile
+  has `upstream/main:client/src/mobile/screens/trip/plan/MPlanTimeline.tsx` (blob `e513cf90…`),
+  `upstream/main:client/src/mobile/screens/trip/plan/useMPlanDragReorder.ts` (blob `604088c4…`,
+  long-press drag reorder #1997), and `planTimelineModel.ts`.
 - **Mobile outcome:** desktop draggable timeline = **desktop** (`DayTimelinePlanner` is desktop);
   **mobile** is served by upstream `MPlanTimeline` (already supports drag reorder). The fork's
   `68050306` mobile-sidebar "timeline" entry overlaps upstream's mobile timeline — do not rebuild it.
@@ -405,7 +434,11 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `pages/OAuthAuthorizePage.tsx`, `server/src/bootstrap.ts`, `plugin-sdk/src/index.ts`.
 - **v4.0 evidence:** 4.0 has its own plugin runtime (Nest `server/src/nest/plugins/*`, 519 nest files)
   that is more complete; fork's bridge-era proxy is superseded.
-- **Current upstream:** current plugin stack (plugin-contributed MCP tools etc.) supersedes.
+- **Current upstream:** current plugin stack supersedes — `upstream/main:server/src/nest/plugins/`
+  present (77 files: `supervisor/`, `host/rpc-host.ts`, `install/`, `runtime/egress-policy.ts`,
+  `contributions/*`, `registry/`); fork's `server/src/services/oauthResources.ts` is absent
+  upstream (`git cat-file -e upstream/main:server/src/services/oauthResources.ts` fails), and
+  `server/src/services/` = 0 files at upstream/main.
 - **Mobile outcome:** backend/API only (plugin runtime/grants); any client surface follows the
   OAuth consent flow on both desktop and mobile.
 - **Migration action:** delta audit only; never wholesale port the 3.4 bridge.
@@ -417,10 +450,14 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `oauth_tokens.user_password_version` and backfills it from `users.password_version`. Binds OAuth
   tokens to password-change invalidation.
 - **Affected:** `server/src/db/migrations.ts` (fork schema version = **176**).
-- **v4.0 evidence:** `v4.0.0:server/src/db/migrations.ts` has **no** `user_password_version`
-  migration; upstream owns its own 176–198 sequence (schema **198**, **not** 195 — corrected
-  from the original draft). Upstream 3.4 = schema **175**.
-- **Current upstream:** same; 4.0 auth/revocation architecture may make the column obsolete.
+- **v4.0 evidence:** `v4.0.0:server/src/db/migrations.ts` (blob `bc77e730…`) has **no**
+  `user_password_version` migration; upstream owns its own 176–198 sequence (schema **198**,
+  **not** 195 — corrected from the original draft). Upstream 3.4 = schema **175**
+  (`v3.4.1:server/src/db/migrations.ts`, blob `bdf76d0b…`).
+- **Current upstream:** same — `upstream/main:server/src/db/migrations.ts` (blob `f6519964…`)
+  has no `user_password_version` (git grep = 0); schema **200**. 4.0 auth/revocation
+  architecture (token revocation on password change via the Nest auth module) may make the
+  column obsolete — leave to Task 02 bridge, not a ported feature.
 - **Mobile outcome:** backend/API only (auth/token model).
 - **Recommendation:** `OBSOLETE` for the column. DB compatibility is a Task 02 bridge concern
   (see `migration-verification.md`), not a ported feature. Do NOT recreate the column as a new
@@ -453,7 +490,16 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Fork commit:** `380b890c` (remove static-token deprecation notice).
 - **Fork behavior:** removed deprecation notices attached to static MCP tokens.
 - **Affected:** `server/src/mcp/index.ts`, `sessionManager.ts`, `tools.ts`, `prompts.ts`, `trips.ts`.
-- **v4.0 evidence:** `sessionManager.ts` still references deprecation at `v4.0.0`/`upstream/main`.
+- **v4.0 evidence:** `v4.0.0:server/src/mcp/sessionManager.ts` (blob `f71b15f3…`) still
+  references deprecation. `v4.0.0:client/src/components/Settings/IntegrationsTab.tsx` (blob
+  `b0aaaac3…`) still shows the "Deprecated" badge and the `apiTokensDeprecated` callout.
+- **Current upstream:** same — `upstream/main:server/src/mcp/sessionManager.ts` (blob
+  `a0e260d8…`, line 12 `triggers deprecation prompt`); upstream additionally surfaces the
+  notice in the new Nest MCP layers: `upstream/main:server/src/nest/auth/auth.mcp.ts:20–31`
+  (static-token deprecation notice) and `upstream/main:server/src/nest/mcp-transport/mcp-transport.constants.ts:78`
+  (`deprecated and will stop working in a future version`); `upstream/main:client/src/components/Settings/IntegrationsTab.tsx`
+  (blob `28ef1e62…`, lines 351/476/481) still shows "Deprecated" + the callout. The fork's
+  `380b890c` removal is thus a fork-only divergence from a still-present upstream warning.
 - **Mobile outcome:** backend/API only (token auth wording).
 - **Recommendation:** inspect current upstream wording in Task 03; patch only if still wrong.
 - **Migration action:** inspect current upstream wording first; patch only if still wrong.
@@ -467,6 +513,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Determination:** these bring the fork base up to 3.4.1 parity. The same concepts (Synology,
   ntfy, Kosovo, airtrail, arrive-by) are all present at `v4.0.0` and `upstream/main` — they are
   upstream content, not fork deltas. Classified `UPSTREAMED_V4` (v4.0.0 already implements them).
+  Note: `151d5934` here is **ntfy topic isolation** (per-user topic, upstream now has
+  `resolveNtfyUrl` semantics); the fork's **admin-credential isolation** is a separate,
+  fork-only behavior tracked as F28 (commits `c8950368`/`f2482d31`).
 - **Mobile outcome:** n/a (upstream content, not fork UI).
 - **Migration action:** none.
 
@@ -478,7 +527,11 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   declared in `charts/trek/templates/configmap.yaml`, `charts/trek/values.yaml`,
   `server/.env.example`, and `server/src/app-config/` (`env.schema.ts`, `derive.ts`). No fork
   deploy delta survives.
-- **Current upstream:** same deploy surfaces present.
+- **Current upstream:** same deploy surfaces present — `upstream/main:charts/trek/templates/configmap.yaml`
+  (blob `d6d6e8c8…`), `charts/trek/values.yaml` (blob `4af6bd9b…`), `server/.env.example`
+  (blob `ef5d3d65…`), `server/src/app-config/env.schema.ts` (blob `f2d61adb…`),
+  `server/src/app-config/derive.ts` (blob `0f017f26…`). All four env vars (`DEMO_MODE`,
+  `BACKUP_UPLOAD_LIMIT_MB`, `OVERPASS_URL`, `OVERPASS_TIMEOUT_MS`) verified present in all five.
 - **Mobile outcome:** n/a (deployment config).
 - **Recommendation:** re-verify the full 4.0 env inventory during deploy work; do not port.
 - **Migration action:** none (already upstreamed).
@@ -509,12 +562,23 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `day_plan_position` model is upstream. Only the **client reducer** + stale cleanup is fork-only.
 - **Mobile outcome:** desktop + mobile — this is a store-level handler shared by the desktop
   planner and the mobile shell; no per-renderer work.
+- **Recommendation (definitive Task 00 decision — RETAIN/PORT):** classify `FORK_ONLY`; the
+  fork's live reducer + stale-visibility cleanup **is retained and ported**. Rationale:
+  (1) the server already broadcasts `reservation:positions` upstream, so acting on it is
+  purely additive on the client and requires no protocol change; (2) the fork carries a
+  complete characterization suite (FE-WSEVT-RESERV-006/006b/006c/007/008/010) proving the
+  day_positions merge + stale-cleanup semantics, which upstream's `IGNORED_WS_EVENTS`
+  behavior does not cover; (3) it removes a real failure mode — after a collaborator reorders
+  a reservation, another open client holding the old id in `visible-connections` would keep
+  rendering a deleted reservation until the next full `reservation:updated`/page load. The
+  upstream optimistic-only path is a latency trade, not a correctness guarantee, and the fork
+  treats the missing id as the bug. Task 08 validation (runtime latency/UX check of the
+  ported reducer against the 4.0 store) is recorded separately in §8 and is **not** a
+  classification deferral.
 - **Migration action:** port the reducer case + stale-visibility cleanup onto the 4.0 store
   (`remoteEventHandler.ts` + `connectionsVisibility.ts`), and move `reservation:positions` out of
-  `IGNORED_WS_EVENTS` with a characterization test. Alternatively, if the product accepts
-  upstream's optimistic-only behavior, mark `OBSOLETE` after confirming collaborator reorder
-  latency is acceptable — decide in Task 08.
-- **Tests:** fork FE-WSEVT-RESERV-006/007/008 are characterization.
+  `IGNORED_WS_EVENTS`, keeping the fork's characterization tests.
+- **Tests:** fork FE-WSEVT-RESERV-006/006b/006c/007/008/010 are the retention suite.
 
 ### F27 — Plugin registry screenshot fallback — `FORK_ONLY`
 
@@ -533,6 +597,149 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Migration action:** port the `?.trim() ||` fallback to 4.0 `registry.service.ts` (both
   browse and detail) with the fork's registry test adapted.
 - **Tests:** fork `registry.test.ts` "empty screenshotUrl" case is characterization.
+
+### F28 — ntfy admin-token credential isolation — `FORK_ONLY` (security)
+
+- **Fork commits:** `c8950368` (remove admin-token fallback from per-user ntfy sends; add
+  NTFY-SVCB-005b), `f2482d31` (remove admin-token fallback from `test-ntfy` controller
+  endpoint; add NTFY-CTRL-001/002/003). Both in `v3.4.1..fork-pre-4.0-2026-08-29` and not
+  ancestors of `v4.0.0`/`upstream/main`.
+- **Fork behavior:** a per-user ntfy send uses `userCfg?.token ?? null` — the admin token is
+  **never** attached to a user-scoped destination. The `/api/notifications/test-ntfy`
+  endpoint resolves `token && token !== MASKED ? token : (userCfg?.token ?? null)` — the
+  masked placeholder / omitted token resolves to the user's own token or `null`, never the
+  admin's. This prevents the admin ntfy credential from being sent to a server/topic chosen
+  by a normal user.
+- **Affected:** `server/src/services/notifications/builtins.ts` (fork blob `d30d14e7…` line
+  98), `server/src/nest/notifications/notifications.controller.ts` (fork blob `23fb4c91…`
+  line 97), tests `server/tests/unit/services/notificationService.test.ts`
+  (NTFY-SVCB-005b, line 732) and `server/tests/unit/nest/notifications.controller.test.ts`
+  (NTFY-CTRL-001/002/003).
+- **v4.0 evidence:** `v4.0.0:server/src/nest/notifications/channels/builtins.ts` (blob
+  `d55e13d9…`) line 95: `ntfy.sendNtfy(url, userCfg?.token ?? adminCfg.token, …)` —
+  fallback **present**. `v4.0.0:server/src/nest/notifications/notifications.controller.ts`
+  (blob `29c4d4a8…`) lines 105–107: `userCfg?.token ?? adminCfg.token ?? null` — fallback
+  **present**.
+- **Current upstream:** identical — `upstream/main` `channels/builtins.ts` (blob
+  `d55e13d9…`, same as v4.0.0) line 95 still uses `userCfg?.token ?? adminCfg.token`;
+  `notifications.controller.ts` (blob `29c4d4a8…`) lines 105–107 still use
+  `userCfg?.token ?? adminCfg.token ?? null`. The upstream test
+  `server/tests/unit/nest/notifications.controller.test.ts` only covers the saved-token
+  reuse path (adminCfg with `token: null`), never the no-user-token case; upstream
+  `notification-transports.test.ts` covers `resolveNtfyUrl` topic isolation (#1608) but not
+  token fallback. No upstream test asserts the admin fallback.
+- **Security treatment:** this is the fork's only *credential-exfiltration* hardening in the
+  notification family — the admin ntfy token belongs to the admin's server and must never be
+  forwarded to a per-user topic/server. Port **both** removals: `sendToUser` (keep admin
+  token only in `sendGlobal`, where the destination is the admin's own topic/server) and the
+  `test-ntfy` resolution. Admin-global send (`sendGlobal`) still uses `adminCfg.token` —
+  unchanged.
+- **API treatment:** `/api/notifications/test-ntfy` semantics change vs upstream: a user with
+  no personal token and no explicit body token now gets `token: null` (no `Authorization`
+  header), instead of the admin token. 400-error bodies and the MASKED placeholder behavior
+  are unchanged.
+- **Test treatment:** port NTFY-SVCB-005b ("no Authorization header when user has no token")
+  and NTFY-CTRL-001/002/003 as security regression tests against the 4.0
+  `channels/builtins.ts` + `notifications.controller.ts` (nest) surfaces.
+- **Mobile outcome:** backend/API only — the settings UI (desktop + mobile) writes the same
+  `ntfy_token` config; the isolation is purely in server-side send/test resolution.
+- **Migration action:** `FORK_ONLY`; port the two one-line removals onto 4.0
+  `channels/builtins.ts:95` and `notifications.controller.ts:105–107`, with the fork's tests
+  adapted to the Nest channel registry shape.
+
+### F29 — Client settings normalization — `FORK_ONLY`
+
+- **Fork commits:** `b8700146` (add `normalizeSettings`), `f1b09e5b` (preserve
+  `'auto'`/`'system'` dark_mode strings). Both fork-only.
+- **Fork behavior:** `normalizeSettings(raw)` in `client/src/store/settingsStore.ts`
+  (fork blob `282c23f7…`) coerces legacy string `dark_mode` (`'light'`/`'dark'`/`'true'`) to
+  boolean while preserving `'auto'`/`'system'`; null/undefined `dark_mode` falls back to
+  `DEFAULT_SETTINGS.dark_mode`; validates `temperature_unit`/`distance_unit`/`time_format`
+  against whitelists; forces `blur_booking_codes` to `false` when missing. `loadSettings`
+  routes incoming settings through it (SETTINGS-MIGRATE-001..008).
+- **Affected:** `client/src/store/settingsStore.ts` (fork blob `282c23f7…`),
+  `client/src/store/settingsStore.test.ts`.
+- **v4.0 evidence:** `v4.0.0:client/src/store/settingsStore.ts` (blob `e559816b…`) has **no**
+  `normalizeSettings` — `loadSettings` merges raw `data.settings` (only `withNormalizedTileUrl`
+  tile-URL normalization is applied). `dark_mode` is typed `boolean | string` at v4.0.0
+  (`client/src/types.ts:111`) and the server accepts `[true, false, 'light', 'dark', 'auto']`
+  (`v4.0.0:server/src/nest/settings/settings.service.ts:57`).
+- **Current upstream:** identical — `upstream/main:client/src/store/settingsStore.ts` blob
+  `e559816b…` (same as v4.0.0), no `normalizeSettings`; `upstream/main` server
+  `settings.mcp.ts:54` / `settings.service.ts:62` still accept the string dark_mode values.
+  Upstream relies on the server already sending valid values; it does not defensively
+  normalize a legacy/malformed row.
+- **Mobile outcome:** desktop + mobile — this is store-level normalization consumed by the
+  settings UI on both shells.
+- **Migration action:** port `normalizeSettings` onto the 4.0 `settingsStore`, *coexisting*
+  with upstream's `withNormalizedTileUrl` (tile-URL cleanup) rather than replacing it; keep
+  the whitelist coercion and the `blur_booking_codes` security default.
+- **Tests:** fork SETTINGS-MIGRATE-001..008 are characterization; re-target against 4.0
+  `Settings` type (which already has `distance_unit?: DistanceUnit`, `blur_booking_codes?`).
+
+### F30 — Client focus restoration + a11y utilities — `FORK_ONLY`
+
+- **Fork commits:** `b8700146` (add `client/src/utils/accessibility.ts` with
+  `respectReducedMotion`), `f1b09e5b` (add `saveFocusForRestore`/`restoreFocus`), wire into
+  `client/src/components/shared/Modal.tsx` (fork blob `42d5482b…`). Also `b8700146` updated
+  the OAuth scope display tests and `geo:read` i18n strings (scope-label parity with the
+  fork's server scope model).
+- **Fork behavior:** `Modal` saves the focused element on open and restores it (rAF) on
+  close; `respectReducedMotion` reads `prefers-reduced-motion`. Tests FE-A11Y-001..010 cover
+  RTL detection (via upstream `isRtlLanguage`), reduced-motion, Escape/Enter keyboard, and
+  defensive transit-metadata handling.
+- **Affected:** `client/src/utils/accessibility.ts` (fork blob `b4b525ab…`),
+  `client/src/components/shared/Modal.tsx` (fork blob `42d5482b…`),
+  `client/src/__tests__/accessibility.test.tsx`, `client/src/components/Planner/transitDisplay.test.tsx`.
+- **v4.0 evidence:** `client/src/utils/accessibility.ts` **absent** at `v4.0.0`;
+  `v4.0.0:client/src/components/shared/Modal.tsx` (blob `9a26a19c…`) has **no** focus
+  save/restore. `isRtlLanguage` IS upstream (`v4.0.0:shared/src/i18n/languages.ts`).
+- **Current upstream:** same — `upstream/main` has no `client/src/utils/accessibility.ts`;
+  `upstream/main:client/src/components/shared/Modal.tsx` blob `9a26a19c…` (identical to
+  v4.0.0) — no focus restore; `isRtlLanguage` present in `shared/src/i18n/languages.ts`.
+- **Mobile outcome:** desktop + mobile — `Modal` is the shared dialog used by both the
+  desktop planner and the mobile shell.
+- **Migration action:** port `accessibility.ts` + the `Modal` focus save/restore onto 4.0.
+  Do **not** port `isRtlLanguage` (already upstream). Scope-label i18n parity is part of F16
+  (plugin scopes) and needs no separate migration beyond the `plugins:use` wording.
+- **Tests:** fork FE-A11Y-001..010 are characterization (RTL/reduced-motion/keyboard/modal
+  focus); re-target against 4.0 `Modal`.
+
+### F31 — safeParseMetadata defensive parsing — `FORK_ONLY`
+
+- **Fork commits:** `f1b09e5b` (add `client/src/utils/safeParseMetadata.ts` with
+  `safeParseMetadata` + `safeTransitMeta`; convert `DayPlanSidebar`, `TransportModal`,
+  `TransitJourneyModal`, `ReservationsPanel`, `PlaceInspector`, `ReservationModal`,
+  `DayPlanSidebarTransportDetailModal`, `Modal`), `a30a6a17` (replace the remaining raw
+  `JSON.parse` sites in `TripPDF.tsx`, `ReservationsPanel.tsx`, `SharedTripPage.tsx`; add
+  regression tests). Both fork-only.
+- **Fork behavior:** reservation/transit `metadata` (which may be a JSON *string*) is parsed
+  only via `safeParseMetadata` — malformed/null/array/empty metadata returns `{}` instead of
+  throwing a render-crash. `safeTransitMeta` is the canonical `meta.transit` guard (requires
+  a valid `legs` array). This eliminates a whole class of render-crash vectors in public
+  (unauthenticated) shared-trip views and the PDF exporter.
+- **Affected:** `client/src/utils/safeParseMetadata.ts` (fork blob `1fa476b4…`),
+  `client/src/components/PDF/TripPDF.tsx`, `client/src/pages/SharedTripPage.tsx`,
+  `client/src/components/Planner/ReservationsPanel.tsx`, `DayPlanSidebar.tsx`,
+  `DayPlanSidebarTransportDetailModal.tsx`, `PlaceInspector.tsx`, `TransitJourneyModal.tsx`,
+  `TransportModal.tsx`, `ReservationModal.tsx`; tests `TripPDF.test.ts`,
+  `ReservationsPanel.test.tsx`, `SharedTripPage.test.tsx`.
+- **v4.0 evidence:** `client/src/utils/safeParseMetadata.ts` **absent** at `v4.0.0`;
+  `v4.0.0:client/src/pages/SharedTripPage.tsx` still calls raw `JSON.parse`
+  (`typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : r.metadata || {}`,
+  lines 670 and 885); `v4.0.0:client/src/components/PDF/TripPDF.tsx` uses raw `JSON.parse`
+  at its reservation branch.
+- **Current upstream:** same — `upstream/main` has no `safeParseMetadata.ts`; raw
+  `JSON.parse` still at `upstream/main:client/src/pages/SharedTripPage.tsx:670,885` and in
+  `TripPDF.tsx`/`ReservationsPanel.tsx`.
+- **Mobile outcome:** desktop + mobile — these components render in the shared planner and
+  the mobile shell; the shared-trip view is a public page on both.
+- **Migration action:** port `safeParseMetadata`/`safeTransitMeta` and replace the raw
+  `JSON.parse` sites in the 4.0 equivalents of the listed components (public shared-trip,
+  PDF, reservations panel, day-plan sidebar).
+- **Tests:** fork `TripPDF.test.ts`, `ReservationsPanel.test.tsx`, `SharedTripPage.test.tsx`
+  (malformed string, null, array, valid metadata) are characterization; re-target onto 4.0
+  component tests.
 
 ---
 
@@ -580,6 +787,30 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   in `IGNORED_WS_EVENTS` (`wsEventPolicy.ts:95`) at both.
 - **F27 evidence:** `git show 7975d992` (in `v3.4.1..fork`, absent upstream); fork registry blob
   `26042bba…` uses `?.trim() ||`; v4.0.0 blob `c56935ca…` and upstream/main blob `6ca36032…` use `??`.
+- **F28 evidence (re-review):** `git show c8950368` / `git show f2482d31` (in `v3.4.1..fork`,
+  absent from `v4.0.0`/`upstream/main`); fork `services/notifications/builtins.ts` blob
+  `d30d14e7…` line 98 `userCfg?.token ?? null`; fork controller blob `23fb4c91…` line 97
+  `userCfg?.token ?? null`; v4.0.0 AND upstream-main `nest/notifications/channels/builtins.ts`
+  blob `d55e13d9…` line 95 `userCfg?.token ?? adminCfg.token`; controller blob `29c4d4a8…`
+  lines 105–107 `userCfg?.token ?? adminCfg.token ?? null`. Fork tests: NTFY-SVCB-005b
+  (services/notificationService.test.ts:732), NTFY-CTRL-001/002/003 (nest
+  notifications.controller.test.ts, blob `320c901c…`).
+- **F29–F31 evidence (re-review):** `git show b8700146` / `f1b09e5b` / `a30a6a17` (all in
+  `v3.4.1..fork`, absent upstream). Fork `settingsStore.ts` blob `282c23f7…` vs
+  upstream/v4.0.0 blob `e559816b…` (no `normalizeSettings`); fork `accessibility.ts` blob
+  `b4b525ab…` and fork `Modal.tsx` blob `42d5482b…` vs upstream/v4.0.0 `Modal.tsx` blob
+  `9a26a19c…` (no focus restore); fork `safeParseMetadata.ts` blob `1fa476b4…` vs absent
+  upstream (`client/src/pages/SharedTripPage.tsx:670,885` still raw `JSON.parse`). `isRtlLanguage`
+  confirmed upstream (`shared/src/i18n/languages.ts`) — not fork-only.
+- **Per-row current-upstream blobs (re-review):** PlacesSidebarHeader `a760588d…`; MapView
+  `c119af4a…`/MapViewGL `f82c0335…`; TransitSearchPanel `e08f2534…`/connector `e61dbff9…`;
+  `link_budget_item_to_reservation` grep=0; movementStats/DayMovementTotalRow absent
+  (`git cat-file -e` fails); DayTimelinePlanner absent, MPlanTimeline `e513cf90…`/
+  useMPlanDragReorder `604088c4…`; nest/plugins 77 files, `oauthResources.ts` absent;
+  migrations.ts blob `f6519964…` (schema 200) and `bc77e730…` (v4.0.0, 198); sessionManager
+  `a0e260d8…`/`f71b15f3…` + new Nest deprecation surfaces (`auth.mcp.ts:20–31`,
+  `mcp-transport.constants.ts:78`, IntegrationsTab `28ef1e62…`); deploy surfaces
+  `d6d6e8c8…`/`4af6bd9b…`/`ef5d3d65…`/`f2d61adb…`/`0f017f26…`.
 - Three spec-named upstream SHAs verified in `upstream/main` and not in `v4.0.0` (§3).
 
 No production behavior was changed by this task; the ledger is documentation only.
@@ -589,13 +820,14 @@ No production behavior was changed by this task; the ledger is documentation onl
 ## 8. Open items for later tasks (non-blocking for Task 00 gate)
 
 1. F07/F08: pick one explicit stale-geometry policy when transit endpoints change (spec §7.3).
-2. F26: confirm in Task 08 whether the fork's live `reservation:positions` reducer is retained
-   (port) or upstream's optimistic-only behavior is accepted (mark `OBSOLETE`). This is the only
-   deliberately deferred classification, and it is a client-latency product decision, not an
-   evidence gap.
+2. F26: **decision is made (RETAIN/PORT — see F26).** Remaining work is Task 08 *validation
+   only*: run the ported reducer against the 4.0 store, confirm no regression on
+   optimistic `updatePositions`, and accept the live-reorder latency. Not a classification
+   deferral.
 3. Determine whether any deployed client holds legacy `plugin:<id>:*` scopes (F16) → decides the
    `COMPAT_ONLY` layer.
-4. Static-token wording check (F23).
+4. Static-token wording check (F23) — confirmed the deprecation notice still exists upstream
+   (multiple Nest surfaces), so Task 03 must decide whether to re-apply the fork's removal.
 5. F02 error-redaction wording parity check (only candidate F02 delta).
 
 ---
@@ -625,3 +857,7 @@ No production behavior was changed by this task; the ledger is documentation onl
 | F23 static-token wording | backend/API only |
 | F26 reservation:positions reducer | desktop + mobile (store-level) |
 | F27 registry screenshot | backend/API only |
+| F28 ntfy credential isolation | backend/API only |
+| F29 settings normalization | desktop + mobile (store-level) |
+| F30 focus/a11y utilities | desktop + mobile (shared Modal) |
+| F31 safeParseMetadata | desktop + mobile (planner/PDF/shared-trip) |
