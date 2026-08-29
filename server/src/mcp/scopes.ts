@@ -32,6 +32,17 @@ export const SCOPES = {
   JOURNEY_READ:        'journey:read',
   JOURNEY_WRITE:       'journey:write',
   JOURNEY_SHARE:       'journey:share',
+  // One coarse scope, and a fourth mode rather than a per-plugin group. Which
+  // plugins are installed is runtime data, so a per-plugin scope cannot be
+  // statically enumerated: it would break the ${group}:${mode} derivation and
+  // the AssertExact guards in nest-mcp-policy.ts, and its consent copy could
+  // not be written ahead of time for a third-party plugin name. Tokens issued
+  // before a plugin existed could never carry its scope either.
+  //
+  // Per-plugin granularity already exists one layer down, as the admin's
+  // mcp:tools grant, and that is the real boundary: this scope only decides
+  // whether plugin tools are advertised to a client at all.
+  PLUGINS_USE:         'plugins:use',
 } as const;
 
 export type Scope = typeof SCOPES[keyof typeof SCOPES];
@@ -40,6 +51,23 @@ export type Scope = typeof SCOPES[keyof typeof SCOPES];
 export type ScopeGroup = Scope extends `${infer G}:${string}` ? G : never;
 
 export const ALL_SCOPES: Scope[] = Object.values(SCOPES) as Scope[];
+
+/**
+ * Scopes a client must ask for BY NAME, never handed out by a default.
+ *
+ * plugins:use runs third-party code as the caller. Nobody registering an MCP
+ * client intends to turn that on implicitly, so it is excluded from the DCR
+ * fallback below and from the client-side presets. Asking for it explicitly
+ * still works.
+ */
+export const OPT_IN_ONLY_SCOPES: readonly Scope[] = ['plugins:use'];
+
+/**
+ * What a Dynamic Client Registration gets when it names no scopes at all.
+ * A scope in this list is pre-selected at consent, so "the user still
+ * approves it" is not a reason to include something they never asked for.
+ */
+export const DEFAULT_CLIENT_SCOPES: Scope[] = ALL_SCOPES.filter((s) => !OPT_IN_ONLY_SCOPES.includes(s));
 
 export interface ScopeInfo {
   label: string;
@@ -77,6 +105,7 @@ export const SCOPE_INFO: Record<Scope, ScopeInfo> = {
   'journey:read':        { label: 'View journeys',              description: 'Read journeys, entries, and contributor list',                          group: 'Journey' },
   'journey:write':       { label: 'Manage journeys',            description: 'Create, update, and delete journeys and their entries',                 group: 'Journey' },
   'journey:share':       { label: 'Manage journey links',       description: 'Create, update, and revoke public share links for journeys',            group: 'Journey' },
+  'plugins:use':         { label: 'Run plugin tools',           description: 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token', group: 'Plugins' },
 };
 
 // ---------------------------------------------------------------------------

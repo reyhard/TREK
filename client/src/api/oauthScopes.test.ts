@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SCOPE_GROUPS, ALL_SCOPES, SCOPE_GROUP_NAMES, getScopesByGroup } from './oauthScopes'
+import { SCOPE_GROUPS, ALL_SCOPES, SCOPE_GROUP_NAMES, getScopesByGroup, PRESET_OPT_IN_ONLY } from './oauthScopes'
 
 // The consent page mirrors the server's scope list by hand, so read the server
 // file and compare. Parsing keeps this a client-only test (no server import).
@@ -31,6 +31,7 @@ describe('SCOPE_GROUPS', () => {
       'vacay:read', 'vacay:write',
       'geo:read', 'weather:read',
       'journey:read', 'journey:write', 'journey:share',
+      'plugins:use',
     ]
     for (const scope of expected) {
       expect(SCOPE_GROUPS).toHaveProperty(scope)
@@ -121,5 +122,20 @@ describe('getScopesByGroup', () => {
     const groups = getScopesByGroup(t)
     expect(groups['Trips']).toBeDefined()
     expect(groups['oauth.scope.group.trips']).toBeUndefined()
+  })
+
+  it('FE-OAUTH-SCOPES-012: plugins:use is opt-in-only and never in a preset', () => {
+    // plugins:use runs third-party code as the caller, so the "everything
+    // except deletes" presets must NOT hand it out implicitly. Holding the
+    // line here is what keeps the next opt-in-only scope from leaking.
+    expect(PRESET_OPT_IN_ONLY).toContain('plugins:use')
+    // The five full-access presets + the read-only preset all exclude it:
+    const presetFilters = [
+      (s: string) => !s.includes(':delete'),
+      (s: string) => s.endsWith(':read'),
+    ]
+    for (const fn of presetFilters) {
+      expect(ALL_SCOPES.filter(s => fn(s) && !PRESET_OPT_IN_ONLY.has(s))).not.toContain('plugins:use')
+    }
   })
 })

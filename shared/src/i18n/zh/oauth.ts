@@ -15,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': '地图服务',
   'oauth.scope.group.weather': '天气',
   'oauth.scope.group.journey': '旅程',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': '查看行程和行程计划',
   'oauth.scope.trips:read.description': '读取行程、天数、每日笔记和成员',
   'oauth.scope.trips:write.label': '编辑行程和行程计划',
@@ -73,6 +75,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': '创建、更新和删除旅程及其条目',
   'oauth.scope.journey:share.label': '管理旅程链接',
   'oauth.scope.journey:share.description': '创建、更新和撤销旅程的公开分享链接',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': '正在授权…',
   'oauth.authorize.loading': '正在加载…',
   'oauth.authorize.errorTitle': '授权错误',

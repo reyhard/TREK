@@ -15,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Clima',
   'oauth.scope.group.journey': 'Travesia',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Mostra els viatges i itineraris',
   'oauth.scope.trips:read.description': 'Llegeix viatges, dies, notes i membres',
   'oauth.scope.trips:write.label': 'Edita els viatges i itineraris',
@@ -75,6 +77,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': 'Crea, actualitza i elimina travesies i les seves entrades',
   'oauth.scope.journey:share.label': 'Gestiona els enllaços de travesies',
   'oauth.scope.journey:share.description': 'Crea, actualitza i revoca enllaços públics per compartir per a travesies',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Autoritzant…',
   'oauth.authorize.loading': 'Carregant…',
   'oauth.authorize.errorTitle': "Error d'autorització",

@@ -15,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': '地図',
   'oauth.scope.group.weather': '天気',
   'oauth.scope.group.journey': '日記',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': '旅行・旅程を表示',
   'oauth.scope.trips:read.description': '旅行、日程、メモ、メンバーを閲覧',
   'oauth.scope.trips:write.label': '旅行・旅程を編集',
@@ -75,6 +77,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': '日記やエントリーの作成・編集・削除',
   'oauth.scope.journey:share.label': '日記共有を管理',
   'oauth.scope.journey:share.description': '公開共有リンクの作成・更新・無効化',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

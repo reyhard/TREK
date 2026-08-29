@@ -15,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': '天氣',
   'oauth.scope.group.journey': '旅程',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': '檢視行程與旅遊計畫',
   'oauth.scope.trips:read.description': '讀取行程、天數、每日筆記及成員',
   'oauth.scope.trips:write.label': '編輯行程與旅遊計畫',
@@ -73,6 +75,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': '建立、更新及刪除旅程及其條目',
   'oauth.scope.journey:share.label': '管理旅程連結',
   'oauth.scope.journey:share.description': '建立、更新及撤銷旅程的公開分享連結',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

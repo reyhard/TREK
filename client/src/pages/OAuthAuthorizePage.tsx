@@ -160,7 +160,7 @@ export default function OAuthAuthorizePage(): React.ReactElement {
                                                 className="mt-0.5 rounded flex-shrink-0"
                                             />
                                             <span className="mt-0.5 text-base leading-none flex-shrink-0">
-                                    {s.endsWith(':delete') ? '🗑️' : s.endsWith(':write') ? '✏️' : '👁️'}
+                                    {s.endsWith(':delete') ? '🗑️' : s.endsWith(':write') ? '✏️' : s.endsWith(':use') ? '▶️' : '👁️'}
                                   </span>
                                             <div className="min-w-0">
                                               <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{keys ? t(keys.labelKey) : s}</p>
@@ -186,7 +186,7 @@ export default function OAuthAuthorizePage(): React.ReactElement {
                                     return (
                                         <div key={s} className="flex items-start gap-2.5 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
                                 <span className="mt-0.5 text-base leading-none flex-shrink-0">
-                                  {s.endsWith(':delete') ? '🗑️' : s.endsWith(':write') ? '✏️' : '👁️'}
+                                  {s.endsWith(':delete') ? '🗑️' : s.endsWith(':write') ? '✏️' : s.endsWith(':use') ? '▶️' : '👁️'}
                                 </span>
                                           <div className="min-w-0">
                                             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{keys ? t(keys.labelKey) : s}</p>

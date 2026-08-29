@@ -15,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Géo',
   'oauth.scope.group.weather': 'Météo',
   'oauth.scope.group.journey': 'Journal de voyage',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Voir les voyages et itinéraires',
   'oauth.scope.trips:read.description': 'Lire les voyages, jours, notes et membres',
   'oauth.scope.trips:write.label': 'Modifier les voyages et itinéraires',
@@ -78,6 +80,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Gérer les liens de journaux de voyage',
   'oauth.scope.journey:share.description':
     'Créer, modifier et révoquer des liens de partage publics pour les journaux de voyage',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

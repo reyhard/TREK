@@ -26,7 +26,7 @@ import { InvalidClientMetadataError, ServerError } from '@modelcontextprotocol/s
 import { TrekClientsStore, TrekOAuthProvider } from '../../../src/nest/oauth/oauth-sdk.provider';
 import { OauthModule } from '../../../src/nest/oauth/oauth.module';
 import type { AddonsService } from '../../../src/nest/addons/addons.service';
-import { ALL_SCOPES } from '../../../src/mcp/scopes';
+import { DEFAULT_CLIENT_SCOPES } from '../../../src/mcp/scopes';
 import type { OauthService } from '../../../src/nest/oauth/oauth.service';
 import type { AuditService } from '../../../src/nest/audit/audit.service';
 import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth';
@@ -179,12 +179,16 @@ describe('TrekClientsStore.registerClient', () => {
     expect(vi.mocked(oauth.createOAuthClient).mock.calls[1][1]).toBe('x'.repeat(100));
   });
 
-  it('SDKP-015: absent scope defaults to every scope (consent still narrows later)', async () => {
+  it('SDKP-015: absent scope defaults to DEFAULT_CLIENT_SCOPES, excluding the opt-in plugins:use', async () => {
     const oauth = makeOauth();
     await new TrekClientsStore(oauth).registerClient({
       redirect_uris: ['https://a.example.com/cb'], token_endpoint_auth_method: 'none',
     } as never);
-    expect(vi.mocked(oauth.createOAuthClient).mock.calls[0][3]).toEqual(ALL_SCOPES);
+    // A DCR that names no scopes gets every NON-opt-in scope — a client that
+    // never asked for third-party tool execution must not have it pre-selected.
+    expect(vi.mocked(oauth.createOAuthClient).mock.calls[0][3]).toEqual(DEFAULT_CLIENT_SCOPES);
+    expect(DEFAULT_CLIENT_SCOPES).not.toContain('plugins:use');
+    expect(vi.mocked(oauth.createOAuthClient).mock.calls[0][3]).not.toContain('plugins:use');
   });
 
   it('SDKP-016: unknown scopes are filtered; nothing valid left is an error', async () => {

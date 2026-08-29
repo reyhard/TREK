@@ -15,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Időjárás',
   'oauth.scope.group.journey': 'Útinaplók',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Utazások és útvonalak megtekintése',
   'oauth.scope.trips:read.description': 'Utazások, napok, napi feljegyzések és tagok olvasása',
   'oauth.scope.trips:write.label': 'Utazások és útvonalak szerkesztése',
@@ -78,6 +80,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Útinapló-linkek kezelése',
   'oauth.scope.journey:share.description':
     'Nyilvános megosztási linkek létrehozása, frissítése és visszavonása útinaplókhoz',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

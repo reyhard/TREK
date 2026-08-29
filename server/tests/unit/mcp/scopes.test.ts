@@ -12,6 +12,8 @@ import {
   canShareTrips,
   ALL_SCOPES,
   SCOPE_INFO,
+  OPT_IN_ONLY_SCOPES,
+  DEFAULT_CLIENT_SCOPES,
 } from '../../../src/mcp/scopes';
 
 // ---------------------------------------------------------------------------
@@ -46,7 +48,7 @@ describe('ALL_SCOPES', () => {
     expect(ALL_SCOPES.length).toBeGreaterThan(0);
   });
 
-  it('derives exactly the 14 known scope groups (ScopeGroup lockstep)', () => {
+  it('derives exactly the 15 known scope groups (ScopeGroup lockstep)', () => {
     // The runtime half of the ScopeGroup lockstep — the type half is
     // MCP_ACCESS_GROUPS_MATCH_SCOPE_GROUPS in src/mcp/nest-mcp-policy.ts,
     // covered by `npm run typecheck`. If this list changes, the MCP
@@ -62,6 +64,7 @@ describe('ALL_SCOPES', () => {
       'notifications',
       'packing',
       'places',
+      'plugins',
       'reservations',
       'todos',
       'trips',
@@ -321,8 +324,11 @@ describe('F16/F17 — legacy dynamic plugin scopes stay out of the scope model',
     expect(pluginScoped).toEqual([]);
   });
 
-  it('PLUGIN-SCOPES-003: there is no plugins:use scope (no plugin MCP tool surface to gate at v4.0.0)', () => {
-    expect(ALL_SCOPES).not.toContain('plugins:use');
-    expect(validateScopes(['plugins:use']).valid).toBe(false);
+  it('PLUGIN-SCOPES-003: plugins:use is a valid, opt-in-only scope (out of the DCR default)', () => {
+    expect(ALL_SCOPES).toContain('plugins:use');
+    expect(validateScopes(['plugins:use']).valid).toBe(true);
+    // Opt-in only: a DCR that names no scopes must NOT receive it.
+    expect(OPT_IN_ONLY_SCOPES).toContain('plugins:use');
+    expect(DEFAULT_CLIENT_SCOPES).not.toContain('plugins:use');
   });
 });

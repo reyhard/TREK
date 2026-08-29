@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronRight, Copy, KeyRound, Plus, RefreshCw, Term
 import { useTranslation } from '../../../i18n'
 import { useToast } from '../../../components/shared/Toast'
 import { authApi, oauthApi } from '../../../api/client'
-import { ALL_SCOPES } from '../../../api/oauthScopes'
+import { ALL_SCOPES, PRESET_OPT_IN_ONLY } from '../../../api/oauthScopes'
 import MScopeGroupPicker from './MScopeGroupPicker'
 import MSheet from '../../components/MSheet'
 import MToggle from '../../components/MToggle'
@@ -20,13 +20,19 @@ interface OAuthPreset {
   scopes: string[]
 }
 
+// A preset is written as "everything except deletes", so a NEW scope would join
+// it silently. plugins:use turns on third-party tool execution, which nobody
+// would have chosen by installing an editor — keep it out of every preset.
+const presetScopes = (fn: (s: string) => boolean) =>
+  ALL_SCOPES.filter((s) => fn(s) && !PRESET_OPT_IN_ONLY.has(s))
+
 const OAUTH_PRESETS: OAuthPreset[] = [
-  { id: 'claude-web', label: 'Claude.ai', name: 'Claude.ai', uris: 'https://claude.ai/api/mcp/auth_callback', scopes: ALL_SCOPES.filter((s) => !s.includes(':delete')) },
-  { id: 'claude-desktop', label: 'Claude Desktop', name: 'Claude Desktop', uris: 'http://localhost', scopes: ALL_SCOPES.filter((s) => !s.includes(':delete')) },
-  { id: 'cursor', label: 'Cursor', name: 'Cursor', uris: 'http://localhost', scopes: ALL_SCOPES.filter((s) => !s.includes(':delete')) },
-  { id: 'vscode', label: 'VS Code', name: 'VS Code / Copilot', uris: 'http://localhost', scopes: ALL_SCOPES.filter((s) => s.endsWith(':read')) },
-  { id: 'windsurf', label: 'Windsurf', name: 'Windsurf', uris: 'http://localhost', scopes: ALL_SCOPES.filter((s) => !s.includes(':delete')) },
-  { id: 'zed', label: 'Zed', name: 'Zed', uris: 'http://localhost', scopes: ALL_SCOPES.filter((s) => !s.includes(':delete')) },
+  { id: 'claude-web', label: 'Claude.ai', name: 'Claude.ai', uris: 'https://claude.ai/api/mcp/auth_callback', scopes: presetScopes((s) => !s.includes(':delete')) },
+  { id: 'claude-desktop', label: 'Claude Desktop', name: 'Claude Desktop', uris: 'http://localhost', scopes: presetScopes((s) => !s.includes(':delete')) },
+  { id: 'cursor', label: 'Cursor', name: 'Cursor', uris: 'http://localhost', scopes: presetScopes((s) => !s.includes(':delete')) },
+  { id: 'vscode', label: 'VS Code', name: 'VS Code / Copilot', uris: 'http://localhost', scopes: presetScopes((s) => s.endsWith(':read')) },
+  { id: 'windsurf', label: 'Windsurf', name: 'Windsurf', uris: 'http://localhost', scopes: presetScopes((s) => !s.includes(':delete')) },
+  { id: 'zed', label: 'Zed', name: 'Zed', uris: 'http://localhost', scopes: presetScopes((s) => !s.includes(':delete')) },
 ]
 
 interface OAuthClient {

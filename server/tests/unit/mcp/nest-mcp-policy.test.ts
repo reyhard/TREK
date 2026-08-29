@@ -78,4 +78,15 @@ describe('trekMcpAccessPolicy', () => {
     expect(trekMcpAccessPolicy({ group: 'budget', mode: 'read' }, ctx)).toBe(true);
     expect(trekMcpAccessPolicy({ group: 'trips', mode: 'read' }, ctx)).toBe(false);
   });
+
+  it('PLUGINS:USE-001: plugin tools are gated by the plugins:use scope (default-deny)', () => {
+    // Static/full-access sessions see plugin tools.
+    expect(trekMcpAccessPolicy({ group: 'plugins', mode: 'use' }, { userId: 1, scopes: null, isStaticToken: true })).toBe(true);
+    // A session that explicitly holds plugins:use sees them.
+    expect(trekMcpAccessPolicy({ group: 'plugins', mode: 'use' }, { userId: 1, scopes: ['plugins:use'], isStaticToken: false })).toBe(true);
+    // Anything else is denied — the coarse scope is the gate, never implied by other scopes.
+    expect(trekMcpAccessPolicy({ group: 'plugins', mode: 'use' }, { userId: 1, scopes: ['trips:read', 'budget:write'], isStaticToken: false })).toBe(false);
+    // Dynamic per-plugin scopes are not valid modes/groups.
+    expect(trekMcpAccessPolicy({ group: 'plugins', mode: 'use' }, { userId: 1, scopes: ['plugin:flight-tracker:read'], isStaticToken: false })).toBe(false);
+  });
 });
