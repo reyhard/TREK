@@ -67,7 +67,7 @@ export function trimUserWhitespace(db: Database.Database): boolean {
   return hadCollision;
 }
 
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: Database.Database, targetVersion?: number): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
   const versionRow = db.prepare('SELECT version FROM schema_version').get() as { version: number } | undefined;
   let currentVersion = versionRow?.version ?? 0;
@@ -80,6 +80,42 @@ function runMigrations(db: Database.Database): void {
       console.log('[DB] Schema already up-to-date, setting version to', currentVersion);
     } else {
       db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(0);
+    }
+  }
+
+  // Legacy fork schema-176 compatibility bridge.
+  //
+  // The reyhard/TREK fork built on v3.4.1 carried its own migration 176 at the
+  // same numeric slot upstream 4.0 uses for "half vacation days": the fork's
+  // array index 175 added `oauth_tokens.user_password_version`, whereas
+  // upstream's index 175 adds `vacay_entries.fraction`. A legacy fork DB
+  // therefore reports schema_version 176 and has NO `fraction` column.
+  //
+  // Unmodified v4.0.0 would start its loop at i=176, silently skip index 175,
+  // and end at schema 198 with `fraction` missing — every vacay SUM(fraction)
+  // query then crashes at runtime. This bridge recognises the EXACT legacy-fork
+  // signature and rewinds schema_version to 175 so the normal upstream 176–198
+  // sequence runs, adding `fraction` (index 175), `vacay_shares` (index 176)
+  // and everything after.
+  //
+  // Fail-closed by construction: only the three-part predicate rewinds. An
+  // unrelated schema-176 database (fraction already present, no fork column,
+  // or both signatures) is never rewritten — no data loss, no rewind, no
+  // generic downgrade.
+  if (currentVersion === 176) {
+    const hasUserPasswordVersion = db
+      .prepare("SELECT 1 FROM pragma_table_info('oauth_tokens') WHERE name = 'user_password_version'")
+      .get();
+    const hasFraction = db
+      .prepare("SELECT 1 FROM pragma_table_info('vacay_entries') WHERE name = 'fraction'")
+      .get();
+    if (hasUserPasswordVersion && !hasFraction) {
+      console.log(
+        '[DB] Legacy fork schema-176 detected (oauth_tokens.user_password_version present, ' +
+          'vacay_entries.fraction absent) — rewinding to schema 175 so upstream migration 176 runs.',
+      );
+      db.prepare('UPDATE schema_version SET version = ?').run(175);
+      currentVersion = 175;
     }
   }
 
@@ -4138,9 +4174,14 @@ function runMigrations(db: Database.Database): void {
     },
   ];
 
-  if (currentVersion < migrations.length) {
-    for (let i = currentVersion; i < migrations.length; i++) {
-      console.log(`[DB] Running migration ${i + 1}/${migrations.length}`);
+  const finalVersion = targetVersion ?? migrations.length;
+  if (finalVersion < currentVersion || finalVersion > migrations.length) {
+    throw new Error(`Invalid migration target ${finalVersion}; current version is ${currentVersion}`);
+  }
+
+  if (currentVersion < finalVersion) {
+    for (let i = currentVersion; i < finalVersion; i++) {
+      console.log(`[DB] Running migration ${i + 1}/${finalVersion}`);
       try {
         const migration = migrations[i];
         if (typeof migration === 'function') {
@@ -4163,7 +4204,7 @@ function runMigrations(db: Database.Database): void {
         process.exit(1);
       }
     }
-    console.log(`[DB] Migrations complete — schema version ${migrations.length}`);
+    console.log(`[DB] Migrations complete — schema version ${finalVersion}`);
   }
 }
 
