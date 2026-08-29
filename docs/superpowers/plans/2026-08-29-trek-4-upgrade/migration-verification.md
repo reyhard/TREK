@@ -1,9 +1,9 @@
 # TREK 4.0 Fork Upgrade — Migration Verification
 
 **Status:** Task 00 established the schema-176 facts; **Task 01 ran the first practical
-baseline gates** on the clean v4.0.0 base and recorded the results below; bridge
-implementation + verification populated by Tasks 02 (schema-176 bridge) and 09 (regression +
-production migration).
+baseline gates** on the clean v4.0.0 base; **Task 02 implemented the legacy fork schema-176
+compatibility bridge** (commit `4d8a3443`, see below) with the full fixture matrix; Task 09
+runs the production-clone regression on a real dump.
 
 Records the actual verification commands and their outputs for the migration/regression matrix
 (spec §5.4, §9.3). Task 00 has not run the application test/build gates because it changes no
@@ -91,6 +91,88 @@ Implement + verify the compatibility bridge, including fixtures for
 (4) final fork schema, (5) rerun. Detection uses the three-part predicate above. Plus
 `PRAGMA foreign_key_check` and row-count comparisons for
 trips/days/assignments/reservations/endpoints/costs/links on a production clone.
+
+## Task 02 — legacy fork schema-176 compatibility bridge (IMPLEMENTED 2026-08-29)
+
+Commit `4d8a3443` (`feat(db): legacy fork schema-176 compatibility bridge`).
+
+### The collision (confirmed numerically)
+
+- v4.0.0 migration array = **198** entries (schema 0→198). Migration **176**
+  ("half vacation days", #552) is **array index 175** — `ALTER TABLE
+  vacay_entries ADD COLUMN fraction REAL NOT NULL DEFAULT 1` (guarded).
+  Migration **177** (`vacay_shares`) is **array index 176**.
+- fork-pre-4.0 migration array = **176** entries; fork **array index 175** is
+  `oauth_tokens.user_password_version` (add + backfill from `users.password_version`).
+- A legacy fork DB therefore reports `schema_version = 176` and has
+  `oauth_tokens.user_password_version` **present** but `vacay_entries.fraction`
+  **absent** (upstream migration 176 never ran).
+- Unmodified v4.0.0 on that DB: `currentVersion = 176` → loop starts at
+  `i = 176` → runs 176..197 → final schema **198** but `fraction` is **never
+  added** (index 175 silently skipped). Every `vacay.service.ts` `SUM(fraction)`
+  query then crashes at runtime. This was proven RED before the bridge
+  (BRIDGE-001 failed: `fraction` absent after migrate).
+
+### The bridge (exact signature, fail-closed)
+
+In `runMigrations`, immediately after the version-0 handling:
+
+```
+if (currentVersion === 176) {
+  hasUserPasswordVersion = oauth_tokens.user_password_version present?
+  hasFraction           = vacay_entries.fraction present?
+  if (hasUserPasswordVersion && !hasFraction) {
+    UPDATE schema_version SET version = 175;   // rewind
+    currentVersion = 175;
+  }
+}
+```
+
+The normal loop then runs upstream index 175 (`fraction`), 176 (`vacay_shares`),
+… 197 → schema 198. Idempotent (a second startup at 198 rewinds nothing),
+fail-closed (only the exact three-part predicate rewinds; fraction-present,
+fork-column-absent, and both-signatures states are never rewritten), preserves
+all data, adds no new migration slot, and does **not** re-create or drop
+`user_password_version` (upstream never defined it; leaving it is data-preserving).
+
+Also re-added `runMigrations(db, targetVersion?)` (fork's signature; v4.0.0 had
+dropped it) so tests build faithful intermediate-state fixtures.
+
+### Test matrix (12 tests, `tests/unit/db/legacy-fork-176-bridge.test.ts`)
+
+| Test | Scenario | Outcome |
+| --- | --- | --- |
+| TARGET-001..003 | runMigrations(db, N) intermediate/out-of-range/below-current | green |
+| BRIDGE-001 | legacy fork 176 → 198 with `fraction` + `vacay_shares`; fork column preserved | green |
+| BRIDGE-002 | unrelated 176 (fraction present, no fork col) → not rewritten | green |
+| BRIDGE-003 | 176 with BOTH signatures → deliberately not rewritten | green |
+| BRIDGE-004 | 176 without fork column → no legacy handling (no rewind) | green |
+| BRIDGE-005 | rerun after bridge → idempotent | green |
+| MATRIX-001 | upstream 175 → 198 normal | green |
+| MATRIX-002 | legacy fork 176 w/ data → 198, row counts preserved, `foreign_key_check` = [] | green |
+| MATRIX-003 | upstream 195 → 198 normal | green |
+| MATRIX-004/005 | final fork schema migrate + second startup no-op | green |
+
+Full server suite after the bridge: **`460 passed | 1 skipped (461)` files,
+`8905 passed | 22 skipped (8927)` tests, exit 0** (was 8893 at Task 01 close;
++12 = the new bridge tests). `server` typecheck (`tsc --noEmit`) clean.
+Migration-hygiene destructive-scan still green (the bridge adds only an
+`UPDATE schema_version`, no DDL).
+
+### Production-clone verification (Task 02 gate)
+
+MATRIX-002 builds a representative clone (user, trip, day, place, reservation,
+budget item), migrates it from the legacy fork-176 state, and asserts:
+- every row count (users/trips/days/places/reservations/budget_items) is
+  preserved exactly;
+- critical rows (reservation title, budget total_price, trip id) read back
+  unchanged;
+- `PRAGMA foreign_key_check` returns `[]`;
+- schema ends at 198 with `vacay_entries.fraction` present.
+
+This is the in-memory analogue of the file-backed production clone. A real
+file-backed clone test of an exported fork DB remains available for Task 09 to
+run against an actual dump (same commands).
 
 ## Task 01 baseline gates (clean v4.0.0 base, 2026-08-29)
 
