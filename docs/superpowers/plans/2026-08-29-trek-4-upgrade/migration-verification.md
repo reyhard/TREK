@@ -2,8 +2,9 @@
 
 **Status:** Task 00 established the schema-176 facts; **Task 01 ran the first practical
 baseline gates** on the clean v4.0.0 base; **Task 02 implemented the legacy fork schema-176
-compatibility bridge** (commit `4d8a3443`, see below) with the full fixture matrix; Task 09
-runs the production-clone regression on a real dump.
+compatibility bridge** (commit `4d8a3443`) with the full fixture matrix including the
+**file-backed production-clone representative fixture** (CLONE-001, commit `3ec7581a`);
+Task 09 runs the same commands against a real exported dump for final regression.
 
 Records the actual verification commands and their outputs for the migration/regression matrix
 (spec §5.4, §9.3). Task 00 has not run the application test/build gates because it changes no
@@ -138,7 +139,7 @@ all data, adds no new migration slot, and does **not** re-create or drop
 Also re-added `runMigrations(db, targetVersion?)` (fork's signature; v4.0.0 had
 dropped it) so tests build faithful intermediate-state fixtures.
 
-### Test matrix (12 tests, `tests/unit/db/legacy-fork-176-bridge.test.ts`)
+### Test matrix (15 tests, `tests/unit/db/legacy-fork-176-bridge.test.ts`)
 
 | Test | Scenario | Outcome |
 | --- | --- | --- |
@@ -152,27 +153,38 @@ dropped it) so tests build faithful intermediate-state fixtures.
 | MATRIX-002 | legacy fork 176 w/ data → 198, row counts preserved, `foreign_key_check` = [] | green |
 | MATRIX-003 | upstream 195 → 198 normal | green |
 | MATRIX-004/005 | final fork schema migrate + second startup no-op | green |
+| OAUTH-001 | real oauth_tokens row w/ `user_password_version`=3 survives bridge+198 intact | green |
+| OAUTH-002 | oauth_tokens count unchanged by bridge + migration (no row loss) | green |
+| CLONE-001 | **file-backed** production-clone fixture (plugin + oauth + endpoint rows) → 198, all row counts preserved, `foreign_key_check` = [] | green |
 
-Full server suite after the bridge: **`460 passed | 1 skipped (461)` files,
-`8905 passed | 22 skipped (8927)` tests, exit 0** (was 8893 at Task 01 close;
-+12 = the new bridge tests). `server` typecheck (`tsc --noEmit`) clean.
-Migration-hygiene destructive-scan still green (the bridge adds only an
+Full server suite after the bridge + review-finding tests: **`460 passed | 1 skipped
+(461)` files, `8908 passed | 22 skipped (8930)` tests, exit 0** (was 8893 at Task 01
+close; +12 bridge matrix + 3 review-finding tests). `server` typecheck (`tsc --noEmit`)
+clean. Migration-hygiene destructive-scan still green (the bridge adds only an
 `UPDATE schema_version`, no DDL).
 
-### Production-clone verification (Task 02 gate)
+### Production-clone verification (Task 02 gate — file-backed, NOT deferred)
 
-MATRIX-002 builds a representative clone (user, trip, day, place, reservation,
-budget item), migrates it from the legacy fork-176 state, and asserts:
-- every row count (users/trips/days/places/reservations/budget_items) is
-  preserved exactly;
-- critical rows (reservation title, budget total_price, trip id) read back
-  unchanged;
-- `PRAGMA foreign_key_check` returns `[]`;
-- schema ends at 198 with `vacay_entries.fraction` present.
+Two layers now cover the gate:
 
-This is the in-memory analogue of the file-backed production clone. A real
-file-backed clone test of an exported fork DB remains available for Task 09 to
-run against an actual dump (same commands).
+1. **CLONE-001 (file-backed, on-disk SQLite)** — the required file-backed
+   production-clone representative fixture. Builds a real `better-sqlite3` file DB
+   in a temp dir with representative production data: user (password_version=3),
+   trip, day, place, reservation, budget item, **plugin** (`flight-tracker`),
+   reservation endpoint, oauth client + token. Migrates from the legacy fork-176
+   state and asserts:
+   - every representative row count — users / trips / days / places /
+     reservations / budget_items / **plugins** / reservation_endpoints /
+     oauth_clients / oauth_tokens — is preserved **exactly** before vs after;
+   - the plugin row (`id/name/status`) and the oauth token's
+     `user_password_version` (=3) read back unchanged post-migration;
+   - `PRAGMA foreign_key_check` returns `[]`.
+   A real file-backed clone of an exported fork DB can additionally be run against
+   an actual dump with the same commands (Task 09 regression), but the file-backed
+   representative fixture is implemented here as the task requires.
+
+2. **MATRIX-002 (in-memory)** — the lighter in-memory analogue (row counts +
+   FK check + critical reservation/cost/trip rows).
 
 ## Task 01 baseline gates (clean v4.0.0 base, 2026-08-29)
 
