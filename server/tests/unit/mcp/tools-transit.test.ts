@@ -533,4 +533,44 @@ describe('MCP transit tools', () => {
       expect(routes.dropped).toBe(1);
     });
   });
+
+  it('F06-COMPAT: a stored transit journey is editable through the generic update_transport (no dedicated fork tool)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const created = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: {
+            tripId: trip.id,
+            dayId: day.id,
+            from,
+            to,
+            itinerary: { ...itinerary, duration: 1, walkSeconds: 1 },
+          },
+        }),
+      ) as any;
+      expect(created.reservation.type).toBe('transit');
+      expect(created.reservation.status).toBe('confirmed');
+
+      // The canonical stored-transit edit path is the generic transport update.
+      // A stored transit journey must be editable through update_transport — its
+      // notes/confirmation/title change without a new provider search.
+      const updated = parseToolResult(
+        await harness.client.callTool({
+          name: 'update_transport',
+          arguments: {
+            tripId: trip.id,
+            reservationId: created.reservation.id,
+            title: 'Namba → Umeda (edited)',
+            notes: 'edited via generic update_transport',
+          },
+        }),
+      ) as any;
+      expect(updated.reservation.title).toBe('Namba → Umeda (edited)');
+      expect(updated.reservation.notes).toBe('edited via generic update_transport');
+      expect(updated.reservation.type).toBe('transit');
+    });
+  });
 });
