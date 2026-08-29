@@ -19,7 +19,7 @@ import { createElement, useEffect, useRef } from 'react';
 import { renderIconMarkup } from '../utils/iconMarkup';
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { getCategoryIcon } from '../components/shared/categoryIcons';
-import { CARTO_LIGHT, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../constants/mapDefaults';
+import { CARTO_LIGHT, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_MAX_ZOOM } from '../constants/mapDefaults';
 import { SUPPORTED_LANGUAGES, useTranslation } from '../i18n';
 import { useSettingsStore } from '../store/settingsStore';
 import { avatarSrc } from '../utils/avatarSrc';
@@ -486,6 +486,9 @@ export default function SharedTripPage() {
                 center={initialView.center}
                 zoom={initialView.zoom}
                 zoomControl={false}
+                // Same reason as the planner map: a vector basemap contributes
+                // no zoom ceiling, and fitBounds below asks for one.
+                maxZoom={MAP_MAX_ZOOM}
                 style={{ width: '100%', height: '100%' }}
               >
                 <TileLayer
