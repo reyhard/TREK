@@ -159,4 +159,37 @@ describe('PluginOAuthService', () => {
     svc.disconnect('p', 42);
     expect(svc.status('p', 42).connected).toBe(false);
   });
+
+  it('F34-001: a state minted under one provider config is rejected after the admin changes the config (fingerprint binding)', async () => {
+    const url = new URL(svc.startConnect('p', 42, NOW));
+    const state = url.searchParams.get('state')!;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ access_token: 'AT' }) } as Response);
+
+    // Admin changes the provider client credentials / endpoints while the flow
+    // is in flight. The callback must NOT exchange the code and store the token
+    // under the new config — the flow must be restarted instead. Same DB so the
+    // state row is still present; only the plugin config changes.
+    (getDb.current as unknown as InstanceType<typeof Database>)
+      .prepare('UPDATE plugins SET config = ? WHERE id = ?')
+      .run(JSON.stringify({ ...CFG, oauth_client_id: 'enc:client-CHANGED' }), 'p');
+    await expect(svc.completeCallback('p', 42, 'the-code', state, NOW + 1000)).rejects.toThrow(
+      /configuration changed|changed/,
+    );
+  });
+
+  it('F34-002: a state minted under one provider config is accepted when the config is unchanged', async () => {
+    const url = new URL(svc.startConnect('p', 42, NOW));
+    const state = url.searchParams.get('state')!;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ access_token: 'AT' }) } as Response);
+
+    await expect(svc.completeCallback('p', 42, 'the-code', state, NOW + 1000)).resolves.toBeUndefined();
+  });
+
+  it('F34-003: startConnect bakes a nonce + config fingerprint into the state (nonce replay defence, opaque state)', () => {
+    const url = new URL(svc.startConnect('p', 42, NOW));
+    const state = url.searchParams.get('state')!;
+    // The composite state is nonce(16) || fingerprint(16) || rand(24) — base64url.
+    const buf = Buffer.from(state, 'base64url');
+    expect(buf.length).toBe(56);
+  });
 });
