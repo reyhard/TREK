@@ -8,6 +8,10 @@ signature, mobile outcomes, added F26/F27)
 **Re-reviewed:** 2026-08-29 (re-review remediation — ntfy credential isolation F28,
 client-robustness F29/F30/F31, exact path+blob on every current-upstream comparison,
 F26 definitive)
+**Re-reviewed 2:** 2026-08-29 (Task 00 review remediation — F02 redaction split/decision,
+f1b09e5b client deltas F32/F33, stale-geometry PRESERVE policy F07/F08, F23 accept-upstream,
+F17 concrete OAuth-proxy comparison + broker hardening F34, schema-198 wording, auditable
+per-family upstream-refresh log)
 
 This ledger is the evidence-backed, one-by-one inventory of every behavior in the
 `reyhard/TREK` fork that is not simply upstream `v3.4.1`. It is the mandatory
@@ -21,7 +25,7 @@ precondition for every implementation task (Tasks 01–09).
 | --- | --- |
 | Fork | `reyhard/TREK` (origin remote) |
 | Upstream | `mauriceboe/TREK` (upstream remote; GitHub rename target of `liketrek/TREK`) |
-| Frozen fork tag | `fork-pre-4.0-2026-08-29` (lightweight, points at commit) |
+| Frozen fork tag | `fork-pre-4.0-2026-08-29` (local **annotated** tag; target verified `814ed86a2f7172905cc837d6b6488ccd6285c1fe`; not pushed) |
 | Fork HEAD SHA | `814ed86a2f7172905cc837d6b6488ccd6285c1fe` |
 | Fork HEAD subject | `merge: timeline mobile visual polish` (2026-08-08) |
 | Common upstream ancestor/tag | `v3.4.1` = `a0994658890eae96624fb9cbe7f55867f047fea2` |
@@ -94,13 +98,13 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | ID | Feature family | Fork commits | Classification | Recommendation | Migration action |
 | --- | --- | --- | --- | --- | --- |
 | F01 | Per-leg connector / public-transit action | 28920cc0 … 34e658d3 (9) | `UPSTREAMED_V4` | — | Drop old connector UI; use upstream per-leg travel mode + transit planning |
-| F02 | Transitous MCP search/create | 37310302 … 4b02c932 (~20) | `UPSTREAMED_V4` | Fork's usage-limiter hardening is duplicated by upstream `RateLimitService` (identical buckets 300/60, 15-min window, MCP + REST); verify nothing else is missing | Use Nest MCP transit; no hardening port expected |
+| F02 | Transitous MCP search/create | 37310302 … 4b02c932 (~20) | `UPSTREAMED_V4` | **Definitive: DROP the error-redaction delta** — `e982e35b`/`efc35a90` added redaction but the upstream-3.4 sync merge `68fe32c7` reverted it at the frozen fork; frozen fork exposes `err.message` exactly like upstream (`errorResult`, transit.mcp.ts:34–38). No security/API delta; no port | Use Nest MCP transit; no hardening port expected |
 | F03 | Planned-only POI filter | 45648ade, f38af78f, 455dc4f2, caea30bb, edb7464a | `UPSTREAMED_V4` | — | Drop fork implementation; retain characterization test |
 | F04 | Selected-day transit geometry | 567e9c89, f667bb43, 6b58ffce, e7323cd7 | `UPSTREAMED_V4` | — | Drop fork `reservationRoutes` scoping |
 | F05 | Transit connector prefill | a97e4552 | `UPSTREAMED_V4` | — | Convert to regression tests |
 | F06 | Edit stored transit over MCP | 97ee89a5, 5a5ab75c, c4209c57 | `UPSTREAMED_CURRENT` | Keep dedicated tool as thin alias **only** if an agent depends on the tool name | Adopt `aa5002b2`; use generic `update_transport` |
-| F07 | Transit endpoint backend replacement | 4ebbb819, 6bff6fb1, c138235b, 822ff9b4 (+UI/`e6309321`) | `UPSTREAMED_CURRENT` | Manual-geometry semantics (`route_geometry` on places) is the only candidate `PARTIAL` delta — characterize before porting | Use generic transport update path |
-| F08 | Map-side transit endpoint editor | 4bc62ec5, 6fbc3d52, 2d734584, 48356079 | `FORK_ONLY` | Desktop + mobile (reachable from mobile sidebar portal) | Port UI/domain onto 4.0 map/planner |
+| F07 | Transit endpoint backend replacement | 4ebbb819, 6bff6fb1, c138235b, 822ff9b4 (+UI/`e6309321`) | `UPSTREAMED_CURRENT` | **Stale-geometry policy decided: PRESERVE** — endpoint edits update stop coordinates only; the saved provider itinerary/geometry (`metadata.transit`, `route_geometry`) is retained unchanged until a new Transitous search replaces it (fork `updateTransitRouteEndpoints` and upstream `update_transport` endpoints-only semantics agree). No geometry invalidation | Use generic transport update path; port the preserve-policy as a characterization test |
+| F08 | Map-side transit endpoint editor | 4bc62ec5, 6fbc3d52, 2d734584, 48356079 | `FORK_ONLY` | Desktop + mobile (reachable from mobile sidebar portal); port keeps the F07 PRESERVE policy (editor save updates pins only, never recomputes geometry/legs) | Port UI/domain onto 4.0 map/planner |
 | F09 | Reservation `url` over MCP | e9a1f3e0 | `UPSTREAMED_CURRENT` | — | Adopt `f1bbd94f`; never add separate `link` field |
 | F10 | Existing Cost → reservation linking | 92aee6e1, 287975b6, b3b68d0a, f8d6f8f7, 41159e73, ae1758ac, 13fbe370 | `FORK_ONLY` | — | Implement atop 4.0 Costs/Reservations |
 | F11 | Multiple cost links / safe unlink | (with F10; ae1758ac) | `FORK_ONLY` | — | Preserve relationship semantics |
@@ -109,13 +113,13 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F14 | Transit-distance → movement | 4dcfb114 | `FORK_ONLY` | Consume upstream transit leg data (`leg.distance` in `transit.service.ts`), do not duplicate storage | Consume upstream transit leg data |
 | F15 | Timeline planner (draggable + duration + context/duration MCP + mobile) | 203cdeae … 814ed86a (~42) | `FORK_ONLY` | `duration_minutes` model already upstream — consume it, never re-add; mobile served by upstream `MPlanTimeline` | Reimplement against 4.0 planner |
 | F16 | Dynamic `plugin:<id>:read/write` scopes | 3752d481, 97ee89a5 (shared) | `OBSOLETE` | Add isolated `COMPAT_ONLY` layer only if a deployed client is proven to hold legacy scopes | Prefer `plugins:use` + admin MCP grants |
-| F17 | Fork plugin OAuth/runtime stack (resource proxy) | 112f656a | `PARTIAL` | Delta audit only; never wholesale port the 3.4 bridge | Delta audit only |
+| F17 | Fork plugin OAuth/runtime stack (resource proxy) | 112f656a | `OBSOLETE` | **Concrete: inbound `trekoa_` resource-proxy token auth + dynamic `plugin:<id>:read/write` gating is a bridge-era mechanism** — upstream proxy (blob `f75ae8cf…`) authenticates plugin routes only by JWT session; 4.0 plugin apps run in a sandboxed iframe on their own origin; superseded by the 4.0 proxy + `plugins:use` scope (F16). Outbound broker hardening split to F34 | Do not port; accept upstream JWT-session proxy |
 | F18 | `oauth_tokens.user_password_version` | 112f656a, 8bc507ef, 4d2654b4 | `OBSOLETE` | DB compatibility is a Task 02 bridge concern, not a ported feature; do not recreate the column | Schema-176 compatibility bridge (Task 02) |
 | F19 | reservation endpoints/day positions/needs_review model | (pre-3.4.1 base) | `UPSTREAMED_V4` | — | Use upstream model |
 | F20 | Old MCP bootstrap/session bridge | 112f656a (touched `bootstrap.ts`/`sessionManager.ts`) | `OBSOLETE` | — | Do not port |
 | F21 | Old `server/src/services/*` | (79 files present at fork) | `OBSOLETE` | — | Translate only still-required behavior to Nest |
 | F22 | Old WebSocket bridge | (in services) | `OBSOLETE` | — | Use current event/broadcast path |
-| F23 | Static-token deprecation-warning patch | 380b890c | `PARTIAL` | Inspect upstream wording in Task 03; patch only if still wrong | Inspect upstream wording first |
+| F23 | Static-token deprecation-warning patch | 380b890c | `OBSOLETE` | **Definitive: DROP the fork's removal — accept upstream.** Current upstream (33a33e7b) still surfaces the deprecation on 4 surfaces (`STATIC_TOKEN_DEPRECATION_NOTICE`, `auth.mcp.ts` `token_auth_notice` prompt, `sessionManager.ts:12`, `IntegrationsTab.tsx` badge+callout). A text notice breaks no agent/tool contract; no compat requirement | Do not re-apply `380b890c`; keep upstream's notice |
 | F24 | Upstream 3.4.x sync cluster | 5e1e3f0d, aa364b3f, 3ce600da, 68fe32c7 (+ Task 2–13 fixes) | `UPSTREAMED_V4` | — | Already in v3.4.1/v4.0.0; no migration action |
 | F25 | Deployment env-var normalization (Task 12) | f935b1dd, 6ecbc093, 44bce05b, 3bce7b5f … | `UPSTREAMED_V4` | Env vars (`DEMO_MODE`, `BACKUP_UPLOAD_LIMIT_MB`, `OVERPASS_URL`, `OVERPASS_TIMEOUT_MS`) already declared at `v4.0.0` in charts/`.env.example`/app-config | Re-check 4.0 env inventory rather than porting |
 | F26 | Live `reservation:positions` client handler + stale-visibility cleanup | 01b83434, ef79ae11 | `FORK_ONLY` | **Definitive decision: RETAIN/PORT** — server event is upstream (REST + MCP broadcast); only the client **reducer** is fork-only; upstream client ignores the event (`IGNORED_WS_EVENTS`) but the fork's live merge + stale cleanup removes a real deleted-id failure mode; desktop + mobile (store-level); Task 08 is validation only, not a classification deferral | Port the reducer case + stale cleanup onto 4.0 store |
@@ -124,6 +128,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F29 | Client settings normalization | b8700146, f1b09e5b | `FORK_ONLY` | Desktop + mobile settings surfaces (store-level) | Port `normalizeSettings` onto 4.0 `settingsStore` (coexist with upstream `withNormalizedTileUrl`) |
 | F30 | Client focus restoration + a11y utilities | b8700146, f1b09e5b | `FORK_ONLY` | Desktop + mobile (shared `Modal` used by both shells) | Port `accessibility.ts` (`respectReducedMotion`, `saveFocusForRestore`/`restoreFocus`) + `Modal` focus restore; `isRtlLanguage` already upstream — don't port |
 | F31 | safeParseMetadata defensive parsing | f1b09e5b, a30a6a17 | `FORK_ONLY` | Desktop + mobile (planner/PDF/shared-trip views) | Port `safeParseMetadata`/`safeTransitMeta` and replace raw `JSON.parse` in the 4.0 equivalents of the listed sites |
+| F32 | Editable transit `status` + `confirmation_number` in `TransitJourneyModal` | f1b09e5b | `FORK_ONLY` | Desktop + mobile (modal reachable from the mobile sidebar portal); backend already persists both fields via the generic reservation update | Port the two generic editable fields onto 4.0 `TransitJourneyModal` |
+| F33 | Cross-day end-date display in `DayPlanSidebarTransportDetailModal` | f1b09e5b | `FORK_ONLY` | Desktop + mobile (modal opened from `DayPlanSidebar`, which renders in the mobile sidebar portal) | Port end-date extraction + `→ end date` line onto the 4.0 modal |
+| F34 | Outbound plugin-OAuth broker nonce + provider-config fingerprint binding | ea08df9b | `FORK_ONLY` | **Security hardening** — bind authorize `state` to nonce + provider-config fingerprint, validate on callback (block token exchange stored under a changed config) | Port onto 4.0 `plugins/oauth/plugin-oauth.service.ts`, keeping upstream PKCE/state/TTL |
 
 ---
 
@@ -160,20 +167,45 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   (provider usage limits + stale cleanup), `7f6144e9` (search/plan), `e982e35b` (redact
   failures), `efc35a90` (scope provider errors), `3ff6ad87` (create/replace), `ceae8146` (docs).
 - **Fork behavior:** Transitous-backed MCP tools `search_transit_stops`, `search_transit_routes`,
-  `create_transit_journey` plus provider usage limiting and error redaction.
+  `create_transit_journey` plus provider usage limiting.
 - **Affected:** `server/src/mcp/tools/transit.ts`, `server/src/services/transit*`, shared usage limiter.
 - **v4.0 evidence:** `server/src/nest/transit/transit.mcp.ts` registers
   `search_transit_stops`, `search_transit_routes`, `create_transit_journey` (NestJS). Present at `v4.0.0`.
 - **Current upstream:** same three tools — `upstream/main:server/src/nest/transit/transit.mcp.ts`
-  (blob `3517b1c2…`), `transit.controller.ts` (blob `7f6293f7…`), `transit.service.ts` (blob
-  `beff0957…`). Rate limiting is upstream: `transit.mcp.ts:41` `rateLimit()` over the shared
-  limiter (`server/src/nest/common/rate-limit.service.ts`, blob `eae58058…`, identical at
+  (blob `3517b1c2…`, identical at v4.0.0 and upstream/main), `transit.controller.ts` (blob
+  `7f6293f7…`), `transit.service.ts` (blob `beff0957…`). Rate limiting is upstream:
+  `transit.mcp.ts:41` `rateLimit()` over the shared limiter
+  (`server/src/nest/common/rate-limit.service.ts`, blob `eae58058…`, identical at
   v4.0.0/upstream-main) with identical buckets (`mcp_transit_geocode` 300, `mcp_transit_plan`
   60) and a 15-minute window; REST is limited via `transit.controller.ts:23`. The fork's
   `transitRateLimit.ts` hardening is functionally superseded.
-- **Recommendation:** the "hardening → PARTIAL" hedge in the original draft was withdrawn:
-  upstream implements the same usage limiting. Verify nothing else (e.g. error-redaction
-  wording) differs before closing F02.
+- **Unexpected-error redaction — definitive decision (re-review finding F02):**
+  - **Status: DROP (do not port).** `e982e35b` ("redact unexpected transit failures") and
+    `efc35a90` ("scope transit provider errors") ARE in `v3.4.1..fork-pre-4.0` but their
+    behavior does **not** survive at the frozen fork. The upstream-3.4 sync merge `68fe32c7`
+    ("merge: synchronize frozen upstream TREK 3.4", 2026-07-20) re-wrote
+    `server/src/mcp/tools/transit.ts` and took the upstream `errorResult(err, fallback)`
+    shape, dropping the fork's `EXPECTED_TRANSIT_ERRORS` redaction. Verified: the first
+    parent of `68fe32c7` (`^1`) still contains 4 `EXPECTED_TRANSIT` references; the merged
+    tree (`^2`/result) has 0.
+  - **Frozen fork state:** `fork-pre-4.0:server/src/mcp/tools/transit.ts` (blob `61be7217…`)
+    uses `errorResult(err, fallback)` at lines 45–49 and returns `err instanceof Error ?
+    err.message : fallback` — behaviourally identical to upstream `transit.mcp.ts:34–38`.
+    The fork's own `tools-transit.test.ts` carries **0** redaction assertions. The only
+    generic-catch redaction left at the frozen fork is `update_transit_journey`'s
+    `'Failed to update transit journey.'` (line 263) — that belongs to F06, not F02.
+  - **Security treatment:** no credential/secret is exposed by surfacing a Transitous
+    provider/validation `Error.message`; the fork shipped without the redaction from
+    2026-07-20 onward, matching upstream. Re-introducing redaction would be a NEW hardening
+    beyond the fork delta and would diverge from upstream's public MCP tool contract
+    (assistants rely on `err.message` for diagnostics).
+  - **API treatment:** upstream `errorResult` returns the provider/validation message when
+    the error is an `Error`, else the fallback — identical to the frozen fork. No API
+    change; do not alter `transit.mcp.ts:34–38`.
+  - **Test treatment:** no fork redaction tests exist at the frozen point to port; upstream
+    transit tests (`transit.service.test.ts`, `transit-itinerary.helpers.test.ts`) are the
+    target. No characterization test required for a delta that does not exist.
+  - **Mobile outcome:** backend/API only.
 - **Migration action:** use Nest MCP transit; no hardening port expected.
 - **Tests:** upstream `transit.service.test.ts` (itinerary parsing), `transit-itinerary.helpers.test.ts`;
   fork `transitRateLimit.test.ts` is superseded by upstream `rate-limit.service.test.ts`.
@@ -248,25 +280,49 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `c138235b` (REST API), `822ff9b4` (MCP tool `update_transit_route_endpoints`), `e6309321`
   (`route_geometry` + coordinate validation).
 - **Fork behavior:** atomically replace a stored transit journey's endpoints (REST + MCP), with
-  `route_geometry` persisted on places.
+  `route_geometry` persisted on places. `updateTransitRouteEndpoints` (fork blob
+  `server/src/services/transitRouteEndpointService.ts`) updates only the `from`/`to` rows of
+  `reservation_endpoints` (name/lat/lng); the tool description states it "preserves the saved
+  provider itinerary, legs, timing, geometry, statistics, metadata, status, title, notes, and
+  day-plan position. Does not call Transitous or create walking legs."
 - **Affected:** `server/src/mcp/tools/transit.ts` (`update_transit_route_endpoints`),
-  reservation service, `places` `route_geometry` column.
+  `server/src/services/transitRouteEndpointService.ts`, `reservations.controller.ts`,
+  `shared/src/reservation/reservation.schema.ts` (`transitRouteEndpointsUpdateRequestSchema`),
+  `places` `route_geometry` column.
 - **v4.0 evidence:** `update_transit_route_endpoints` absent at `v4.0.0`; `route_geometry`
-  present in 4.0 model (`v4.0.0:server/src/nest/journey/journey-domain.service.ts`, `db/schema.ts`).
+  present in 4.0 model (`v4.0.0:server/src/nest/journey/journey-domain.service.ts:815–831`,
+  `db/migrations.ts:693` — `ALTER TABLE places ADD COLUMN route_geometry TEXT`, guarded).
 - **Current upstream:** `update_transit_route_endpoints` absent; generic `update_transport` covers
   stored-transit endpoint replacement (`endpoints[]` replaces the full stop list; `TRANSPORT_TYPES`
-  includes `'transit'`). Manual geometry is `PARTIAL` — reuse upstream geometry representation.
-- **Recommendation:** single class `UPSTREAMED_CURRENT`. The only candidate `PARTIAL` delta is
-  the manual-geometry semantics (what happens to `route_geometry`/`leg distance` when endpoints
-  change) — decide one explicit policy (spec §7.3) rather than leaving stale geometry.
-- **Migration action:** use generic transport update path; port only proven missing geometry semantics.
-- **Tests:** fork `transit.test.ts` endpoint-replacement tests → re-target onto `update_transport`.
+  includes `'transit'`; `server/src/nest/reservations/reservations.mcp.ts` blob `9671187c…`).
+  An endpoints-only `update_transport` (no `metadata`, no `legs`) leaves the stored
+  `metadata.transit` (provider itinerary/geometry) untouched — the tool description documents
+  that `legs[]` without `metadata` keeps `metadata.transit`, and `metadata` is only replaced
+  wholesale when explicitly passed.
+- **Stale-geometry policy — definitive decision (re-review finding F07/F08):**
+  **PRESERVE (never invalidate, never silently re-route).** An endpoint edit updates the stop
+  coordinates only; the saved provider itinerary and route geometry (`metadata.transit`, legs,
+  leg distances, `route_geometry`) are retained unchanged until a new Transitous search
+  replaces them. This is simultaneously (a) the frozen fork's own documented + tested
+  `updateTransitRouteEndpoints` behavior and (b) upstream `update_transport`'s endpoints-only
+  semantics, so the 4.0 port has no new server logic — only a characterization test proving the
+  preserve-invariant. This is the explicit policy required by spec §7.3; there is no remaining
+  deferral.
+- **Migration action:** use generic transport update path (`update_transport`); port the
+  preserve-policy as a characterization test (endpoints-only update leaves `metadata.transit`
+  and legs unchanged, performs no provider search). The fork REST surface
+  (`transitRouteEndpointsUpdateRequestSchema`) maps onto `update_transport`'s `endpoints[]`.
+- **Tests:** fork `tools-transit.test.ts` endpoint-replacement tests + fork
+  `shared/src/reservation/reservation.schema.test.ts` (schema) → re-target onto
+  `update_transport`; add the preserve-invariant regression test.
 
 ### F08 — Map-side transit endpoint editor — `FORK_ONLY`
 
 - **Fork commits:** `4bc62ec5` (edit transit map endpoints), `6fbc3d52` (client flow),
   `2d734584` (gate on `reservation_edit`; guard blank coords), `48356079` (lock rendering).
-- **Fork behavior:** drag/edit a stored transit route's endpoints directly on the map.
+- **Fork behavior:** drag/edit a stored transit route's endpoints directly on the map; the
+  editor's save goes through `updateTransitRouteEndpoints`, which applies the **F07 PRESERVE
+  policy** (pins move; provider itinerary/geometry stays untouched; no provider search).
 - **Affected:** `client/src/components/Planner/TransitRouteEndpointEditor.tsx`,
   `TransitJourneyModal.tsx` (fork blob `d1a82100…`), map rendering, reservation store.
 - **v4.0 evidence:** no equivalent editor at `v4.0.0`. `TransitJourneyModal.tsx` at `v4.0.0`
@@ -275,8 +331,11 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   (identical to v4.0.0); no editor.
 - **Mobile outcome:** desktop + mobile — `TransitJourneyModal` is opened from the desktop
   sidebar *and* the mobile sidebar portal (`onOpenTransit`), so the editor must work on both.
-- **Migration action:** port UI/domain onto 4.0 map/planner; backend via upstream `update_transport`.
-- **Tests:** fork `TransitRouteEndpointEditor.test.tsx` is characterization.
+- **Migration action:** port UI/domain onto 4.0 map/planner; backend via upstream `update_transport`
+  (or the F07 characterization path), keeping the PRESERVE policy: the editor never recomputes
+  geometry/legs and never triggers a provider search.
+- **Tests:** fork `TransitRouteEndpointEditor.test.tsx` (map-only warning, invalid coords,
+  unchanged-value block, cancel-without-save, zero-coord guard, i18n) is characterization.
 
 ### F09 — Reservation `url` over MCP — `UPSTREAMED_CURRENT`
 
@@ -424,24 +483,54 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   tests + documented removal path, spec §8.1).
 - **Migration action:** `OBSOLETE`; do not port the dynamic scope grammar as primary architecture.
 
-### F17 — Fork plugin OAuth/runtime stack (resource proxy) — `PARTIAL`
+### F17 — Fork plugin OAuth/runtime stack (resource proxy) — `OBSOLETE`
 
-- **Fork commit:** `112f656a` (add OAuth plugin resource proxy).
-- **Fork behavior:** resource-proxy plumbing so a plugin's OAuth provider can proxy resources
-  through the host (client `oauthScopes.ts`, `ScopeGroupPicker`, `OAuthAuthorizePage`,
-  `server/src/bootstrap.ts`, plugin-sdk).
-- **Affected:** `client/src/api/oauthScopes.ts`, `components/OAuth/ScopeGroupPicker.tsx`,
-  `pages/OAuthAuthorizePage.tsx`, `server/src/bootstrap.ts`, `plugin-sdk/src/index.ts`.
-- **v4.0 evidence:** 4.0 has its own plugin runtime (Nest `server/src/nest/plugins/*`, 519 nest files)
-  that is more complete; fork's bridge-era proxy is superseded.
-- **Current upstream:** current plugin stack supersedes — `upstream/main:server/src/nest/plugins/`
-  present (77 files: `supervisor/`, `host/rpc-host.ts`, `install/`, `runtime/egress-policy.ts`,
-  `contributions/*`, `registry/`); fork's `server/src/services/oauthResources.ts` is absent
-  upstream (`git cat-file -e upstream/main:server/src/services/oauthResources.ts` fails), and
-  `server/src/services/` = 0 files at upstream/main.
+- **Fork commits:** `112f656a` (add OAuth plugin resource proxy), `ea08df9b` (harden OAuth
+  broker, gate MCP plugin-resource listing, SDK parity).
+- **Fork behavior (inbound resource proxy, F17):** a plugin route may declare
+  `oauthScope?: 'read' | 'write'` in its manifest (plugin-sdk `index.ts:345`); the fork's
+  `plugins-proxy.controller.ts` (blob `54333953…`) then accepts a `trekoa_` OAuth bearer
+  token on that route, validates `getUserByAccessToken(oauthRaw)` with
+  `info.audience === pluginResourceUri(pluginId)` (`server/src/services/oauthResources.ts`),
+  and gates read/write via `isPluginScopeAllowed(info.scopes, pluginId, route.oauthScope)`
+  (read satisfied by `plugin:<id>:read` *or* `write`; write only by `write`). Non-OAuth
+  requests fall back to the JWT session path. The dynamic `plugin:<id>:read|write` scope
+  grammar and resource URI are defined in `oauthResources.ts`.
+- **Affected:** `server/src/nest/plugins/plugins-proxy.controller.ts`, `plugin-oauth.service.ts`,
+  `server/src/services/oauthResources.ts`, plugin-sdk/supervisor route schema, client
+  `oauthScopes.ts` / `ScopeGroupPicker` / `OAuthAuthorizePage`.
+- **v4.0 evidence:** `v4.0.0:server/src/nest/plugins/plugins-proxy.controller.ts` (blob
+  `f75ae8cf…`) authenticates authenticated routes **only** via JWT session
+  (`extractToken` + `verifyJwtAndLoadUser`); there is **no** `trekoa_` bearer path, **no**
+  `oauthScope` route declaration, and **no** `isPluginScopeAllowed`/`pluginResourceUri`
+  gating. `oauthResources.ts` is absent (0 files in `server/src/services/` at v4.0.0).
+- **Current upstream:** identical — `plugins-proxy.controller.ts` blob `f75ae8cf…` at
+  `upstream/main` (same as v4.0.0); upstream's plugin OAuth is **outbound only**
+  (`server/src/nest/plugins/oauth/plugin-oauth.service.ts`, blob `c1e658ba…`, identical at
+  v4.0.0/upstream-main — host-brokered plugin-as-OAuth-client with PKCE+state; no inbound
+  resource tokens). The 4.0 client model runs plugin apps in a sandboxed iframe on the
+  plugin's own origin, so a plugin app talks to its own origin, not TREK's
+  `/api/plugins/:id/*`.
+- **Classification: `OBSOLETE`.** The inbound `trekoa_` resource-proxy token auth + dynamic
+  per-plugin scope gating is a bridge-era mechanism superseded by (1) the 4.0 sandboxed-iframe
+  model, (2) the already-upstream JWT-session plugin proxy, and (3) the coarse `plugins:use`
+  scope + admin MCP-tool grants (F16, `092223c2`).
+- **Compatibility requirement:** none by default. `trekoa_` tokens have no upstream
+  equivalent. The only scenario that would force a compat layer is a deployed external client
+  that (a) holds fork-issued `plugin:<id>:read/write` OAuth scopes **and** (b) calls
+  `/api/plugins/:id/*` with a `trekoa_` token. That population is exactly the F16
+  `COMPAT_ONLY` gate; if triggered, the compat layer must map onto the same JWT/`plugins:use`
+  gates — never resurrect a parallel token type. Recorded, not deferred.
+- **Tests:** fork `plugins-proxy.test.ts` OAuth-scoped proxy auth cases (valid token, audience
+  check, scope gating, write-read fallthrough) characterize the mechanism. On 4.0 they
+  re-target as **security regression**: the 4.0 proxy MUST reject a `trekoa_` bearer with 401
+  (no broker exists to validate it) and a JWT from an unprivileged user with 401/403. The
+  fork's redirect-safety (`toRelativeLocation`) and header-allowlist tests are already
+  upstream (`f75ae8cf…` carries the same SAFE_* logic).
 - **Mobile outcome:** backend/API only (plugin runtime/grants); any client surface follows the
   OAuth consent flow on both desktop and mobile.
-- **Migration action:** delta audit only; never wholesale port the 3.4 bridge.
+- **Migration action:** do not port the inbound resource-proxy token auth; accept upstream's
+  JWT-session proxy. Task 03 validates OAuth/MCP compatibility, including the F16 compat gate.
 
 ### F18 — `oauth_tokens.user_password_version` migration — `OBSOLETE`
 
@@ -461,7 +550,9 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Mobile outcome:** backend/API only (auth/token model).
 - **Recommendation:** `OBSOLETE` for the column. DB compatibility is a Task 02 bridge concern
   (see `migration-verification.md`), not a ported feature. Do NOT recreate the column as a new
-  post-195 migration (spec §5.3).
+  migration appended after the upstream sequence (upstream 4.0 schema is **198**; upstream/main
+  is **200** — spec §5.3's "post-195" refers to the old plan's wrong count and must be read as
+  "post-198"; the corrected wording is: never add a column upstream never defined).
 - **Migration action:** **schema-176 compatibility bridge (Task 02)** — detect the legacy fork
   signature, translate migration state, then run upstream 176–198.
 
@@ -485,24 +576,32 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `server/src/nest/` = **519** (fork: 215). 4.0 completed the NestJS migration.
 - **Migration action:** do not restore deleted services/MCP-bootstrap/session-manager/WS bridge.
 
-### F23 — Static-token deprecation-warning patch — `PARTIAL`
+### F23 — Static-token deprecation-warning patch — `OBSOLETE`
 
 - **Fork commit:** `380b890c` (remove static-token deprecation notice).
-- **Fork behavior:** removed deprecation notices attached to static MCP tokens.
-- **Affected:** `server/src/mcp/index.ts`, `sessionManager.ts`, `tools.ts`, `prompts.ts`, `trips.ts`.
+- **Fork behavior:** removed deprecation notices attached to static MCP tokens (server
+  `index.ts`/`sessionManager.ts`/`tools.ts`/`prompts.ts`/`trips.ts`) and the client
+  `IntegrationsTab.tsx` "Deprecated" badge + `apiTokensDeprecated` callout.
 - **v4.0 evidence:** `v4.0.0:server/src/mcp/sessionManager.ts` (blob `f71b15f3…`) still
   references deprecation. `v4.0.0:client/src/components/Settings/IntegrationsTab.tsx` (blob
   `b0aaaac3…`) still shows the "Deprecated" badge and the `apiTokensDeprecated` callout.
-- **Current upstream:** same — `upstream/main:server/src/mcp/sessionManager.ts` (blob
-  `a0e260d8…`, line 12 `triggers deprecation prompt`); upstream additionally surfaces the
-  notice in the new Nest MCP layers: `upstream/main:server/src/nest/auth/auth.mcp.ts:20–31`
-  (static-token deprecation notice) and `upstream/main:server/src/nest/mcp-transport/mcp-transport.constants.ts:78`
-  (`deprecated and will stop working in a future version`); `upstream/main:client/src/components/Settings/IntegrationsTab.tsx`
-  (blob `28ef1e62…`, lines 351/476/481) still shows "Deprecated" + the callout. The fork's
-  `380b890c` removal is thus a fork-only divergence from a still-present upstream warning.
-- **Mobile outcome:** backend/API only (token auth wording).
-- **Recommendation:** inspect current upstream wording in Task 03; patch only if still wrong.
-- **Migration action:** inspect current upstream wording first; patch only if still wrong.
+- **Current upstream (re-verified at `33a33e7b`):** the static-token deprecation is present on
+  **four** surfaces — `upstream/main:server/src/mcp/sessionManager.ts` (blob `a0e260d8…`, line
+  12 `triggers deprecation prompt`); `upstream/main:server/src/nest/mcp-transport/mcp-transport.constants.ts:76–79`
+  (`STATIC_TOKEN_DEPRECATION_NOTICE` = "deprecated and will stop working in a future version");
+  `upstream/main:server/src/nest/auth/auth.mcp.ts:26` (`token_auth_notice` prompt, gated on
+  `ctx.isStaticToken`); `upstream/main:client/src/components/Settings/IntegrationsTab.tsx`
+  (blob `28ef1e62…`, lines 351/481 "Deprecated" badge + callout).
+- **Definitive decision (re-review finding F23):** **accept upstream — do not re-apply
+  `380b890c`.** The deprecation notice is a deliberate upstream UX product decision; it is
+  text-only, does not alter any MCP tool result, and therefore breaks no agent/tool contract —
+  there is no compatibility requirement to remove it. The fork's removal is a fork-only
+  divergence with no surviving rationale on 4.0. Classification `OBSOLETE` (the removal patch
+  is superseded / not needed; do not port).
+- **Mobile outcome:** backend/API only (token auth wording); the client badge/callout renders
+  on the desktop + mobile settings surface, both of which keep upstream's wording.
+- **Migration action:** keep upstream's static-token deprecation as-is; Task 03 may validate the
+  wording in-place but the decision (no removal) is final and is not a Task 03 deferral.
 
 ### F24 — Upstream 3.4.x sync cluster — not fork behavior — `UPSTREAMED_V4`
 
@@ -741,6 +840,90 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   (malformed string, null, array, valid metadata) are characterization; re-target onto 4.0
   component tests.
 
+### F32 — Editable transit `status` + `confirmation_number` in `TransitJourneyModal` — `FORK_ONLY`
+
+- **Fork commit:** `f1b09e5b` ("generic transit fields" — the same commit that introduced
+  F29/F30/F31; this UI delta was missing from the earlier inventory).
+- **Fork behavior:** `TransitJourneyModal` (fork blob `d1a82100…`) renders a "Generic fields:
+  status + confirmation number — editable regardless of route" section when `canEdit`: a
+  pending/confirmed `select` bound to `res.status` and a text input bound to
+  `res.confirmation_number`. `onSave` gains `status?: string; confirmation_number?: string |
+  null` and the save payload routes through `tripActions.updateReservation` →
+  `reservationsApi.update` (the generic REST reservation update), not a transit-specific path.
+- **Affected:** `client/src/components/Planner/TransitJourneyModal.tsx` (lines ~94–95, 171–182,
+  759–805), `client/src/pages/TripPlannerPage.tsx:1830–1843` (onSave wiring), test
+  `TransitJourneyModal.test.tsx` FE-PLANNER-TRANSITJOURNEY-006.
+- **v4.0 evidence:** `v4.0.0:client/src/components/Planner/TransitJourneyModal.tsx` (blob
+  `37cda894…`) has **no** status/confirmation_number editing surface (grep for
+  `confirmation_number|confirmationNumber|status` = 0 hits beyond the base). The backend
+  already supports both fields: `shared/src/reservation/reservation.schema.ts` carries
+  `status`/`confirmation_number` on the reservation model and the update body
+  (`reservationUpdateRequestSchema` is open), and `reservations.service.ts` persists both.
+- **Current upstream:** identical — `TransitJourneyModal.tsx` blob `37cda894…` at
+  `upstream/main` (same as v4.0.0); no editing surface for these generic fields on a transit
+  journey.
+- **Mobile outcome:** desktop + mobile — `TransitJourneyModal` is opened from the desktop
+  sidebar and the mobile sidebar portal, so the two fields must render/editable on both.
+- **Migration action:** port the two generic editable fields onto the 4.0 `TransitJourneyModal`,
+  wiring `onSave` through 4.0 `updateReservation` (fields already accepted by the open update
+  schema). No server change.
+- **Tests:** fork FE-PLANNER-TRANSITJOURNEY-006 ("status and confirmation fields are
+  editable") is characterization; re-target onto the 4.0 modal test.
+
+### F33 — Cross-day end-date display in `DayPlanSidebarTransportDetailModal` — `FORK_ONLY`
+
+- **Fork commit:** `f1b09e5b` (same commit; also missing from the earlier inventory).
+- **Fork behavior:** `DayPlanSidebarTransportDetailModal` (fork blob `7ed90c36…`) extracts
+  the **end date** from `reservation_end_time` (`const { date: endDate, time: endTime } =
+  splitReservationDateTime(...)`) and, when it differs from the start date, appends a
+  `→ <end date>, <end time>` segment to the header line — so an overnight / multi-day
+  journey shows its real end date instead of a single start date with an ambiguous end time.
+- **Affected:** `client/src/components/Planner/DayPlanSidebarTransportDetailModal.tsx`
+  (header date/time block), opened from `DayPlanSidebar.tsx:3951`.
+- **v4.0 evidence:** `v4.0.0:client/src/components/Planner/DayPlanSidebarTransportDetailModal.tsx`
+  (blob `231e1e1a…`) extracts only the end **time** (`const { time: endTime } =
+  splitReservationDateTime(res.reservation_end_time)`); a cross-day journey renders as one
+  start date plus an end time, which can read as earlier than the start (ambiguous/wrong).
+- **Current upstream:** identical — blob `231e1e1a…` at `upstream/main` (same as v4.0.0);
+  upstream's `DayPlanSidebarTransportDetailModal.test.tsx` has **no** cross-day/end-date
+  case.
+- **Mobile outcome:** desktop + mobile — the modal is opened from `DayPlanSidebar`, which
+  renders in both the desktop sidebar and the mobile sidebar portal.
+- **Migration action:** port the end-date extraction and the conditional `→ end date, end time`
+  line onto the 4.0 modal; keep the same-day formatting unchanged (start date, time – end time).
+- **Tests:** no fork test exists for this modal; add a characterization test
+  (end-date shown when `end_day_id`/`reservation_end_time` crosses midnight) re-targeted onto
+  the 4.0 `DayPlanSidebarTransportDetailModal.test.tsx`.
+
+### F34 — Outbound plugin-OAuth broker nonce + provider-config fingerprint binding — `FORK_ONLY` (security)
+
+- **Fork commit:** `ea08df9b` (harden OAuth broker — also touches F17's gating; this broker
+  hardening is split out as its own behavior).
+- **Fork behavior:** `plugin-oauth.service.ts` (fork blob `a624edbc…`) mints the authorize
+  `state` as `nonce(16) || configFingerprint(16) || stateRand(24)` (base64url), where
+  `configFingerprint = sha256(authorizeUrl|tokenUrl|clientId)[:16]`; `completeCallback`
+  validates the baked fingerprint against the **current** provider config with
+  `crypto.timingSafeEqual` and fails the flow ("OAuth provider configuration changed — please
+  restart the connection flow") if the admin changed the client credentials/endpoints while
+  the flow was in flight — preventing a token exchange succeeding under one config and being
+  stored under another. Nonce defends against state replay.
+- **Affected:** `server/src/nest/plugins/plugin-oauth.service.ts` (`startConnect`,
+  `completeCallback`, `validateProviderBinding`).
+- **v4.0 evidence:** `v4.0.0:server/src/nest/plugins/oauth/plugin-oauth.service.ts` (blob
+  `c1e658ba…`) binds state only to `plugin_id` + `user_id` (PKCE + single-use + TTL); no
+  nonce and no config-fingerprint binding.
+- **Current upstream:** identical — blob `c1e658ba…` at `upstream/main` (same as v4.0.0).
+- **Security treatment:** this is the fork's plugin-OAuth broker hardening (admin credential
+  swap mid-flow). Port it: it strengthens 4.0's existing broker without changing the public
+  API surface (the `state` value is opaque to the provider and plugin).
+- **Mobile outcome:** backend/API only (outbound broker; client sees only the standard OAuth
+  consent flow).
+- **Migration action:** port the nonce + config-fingerprint state construction and the
+  callback-time fingerprint validation onto 4.0 `plugins/oauth/plugin-oauth.service.ts`,
+  keeping upstream's PKCE/state/TTL and SSRF fast-fail (`assertSafeHttps`).
+- **Tests:** fork plugin-oauth tests (state format, config-fingerprint mismatch rejects the
+  callback) are characterization; re-target onto the 4.0 broker test.
+
 ---
 
 ## 6. MCP tool/resource/scope diff (summary)
@@ -802,15 +985,67 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `9a26a19c…` (no focus restore); fork `safeParseMetadata.ts` blob `1fa476b4…` vs absent
   upstream (`client/src/pages/SharedTripPage.tsx:670,885` still raw `JSON.parse`). `isRtlLanguage`
   confirmed upstream (`shared/src/i18n/languages.ts`) — not fork-only.
+- **F02 redaction evidence (re-review, definitive DROP):** `git show e982e35b` /
+  `git show efc35a90` (both in `v3.4.1..fork`). `git show 68fe32c7^1:server/src/mcp/tools/transit.ts
+  | grep -c EXPECTED_TRANSIT` → 4; `git show 68fe32c7^2:.../transit.ts | grep -c EXPECTED_TRANSIT`
+  → 0; the upstream-3.4 sync merge `68fe32c7` (2026-07-20) reverted the redaction. Frozen fork
+  `fork-pre-4.0:server/src/mcp/tools/transit.ts` blob `61be7217…` (45–49) uses upstream-shaped
+  `errorResult` (`err instanceof Error ? err.message : fallback`); fork `tools-transit.test.ts`
+  has 0 redaction assertions. Upstream `transit.mcp.ts:34–38` blob `3517b1c2…` identical at
+  v4.0.0 and upstream/main.
+- **F32/F33 evidence (re-review, f1b09e5b client deltas):** fork `TransitJourneyModal.tsx` blob
+  `d1a82100…` (status + confirmation_number editable, lines 94–95/171–182/759–805) vs
+  upstream/v4.0.0 blob `37cda894…` (no such fields; grep `confirmation_number|confirmationNumber|status`
+  = 0 hits in the component); fork `DayPlanSidebarTransportDetailModal.tsx` blob `7ed90c36…`
+  (end-date extraction + `→ end date, end time`) vs upstream/v4.0.0 blob `231e1e1a…` (only
+  `const { time: endTime }`; no end-date display; upstream modal test has no cross-day case).
+  Backend support confirmed upstream: `shared/src/reservation/reservation.schema.ts`
+  `status`/`confirmation_number` + open `reservationUpdateRequestSchema` (upstream/main and
+  v4.0.0), `reservations.service.ts` persists both, `PUT :id` (`reservations.controller.ts:99–112`).
+  Fork test: FE-PLANNER-TRANSITJOURNEY-006.
+- **F07/F08 stale-geometry evidence (re-review, PRESERVE policy):** fork
+  `services/transitRouteEndpointService.ts` `updateTransitRouteEndpoints` updates only
+  `reservation_endpoints` from/to rows; tool description in `mcp/tools/transit.ts:283–287`
+  "preserves the saved provider itinerary, legs, timing, geometry, statistics, metadata,
+  status, title, notes, and day-plan position"; upstream `update_transport`
+  (`reservations.mcp.ts:773–796`, blob `9671187c…`) replaces stops via `endpoints[]` and only
+  replaces `metadata` when explicitly passed ("Sending legs[] without metadata keeps the
+  stored metadata (departure_airport, airtrail_ids, transit)"). `route_geometry` on places is
+  upstream (v4.0.0 + upstream/main `migrations.ts:693`, `places.service.ts`,
+  `journey-domain.service.ts:815–831`).
+- **F17/F34 evidence (re-review):** fork `plugins-proxy.controller.ts` blob `54333953…` (lines
+  115–126 `route.auth` block: `trekoa_` bearer + `audience === pluginResourceUri` +
+  `isPluginScopeAllowed`) vs upstream/v4.0.0 blob `f75ae8cf…` (JWT-session only; no `trekoa_`,
+  no `oauthScope`); fork
+  `services/oauthResources.ts` blob `bd7a1b3e…` (dynamic `plugin:<id>:read|write` grammar) absent
+  upstream; upstream `plugins/oauth/plugin-oauth.service.ts` blob `c1e658ba…` (outbound broker,
+  PKCE+state, identical v4.0.0/upstream-main) vs fork `plugin-oauth.service.ts` blob `a624edbc…`
+  (nonce(16)||configFingerprint(16)||stateRand(24) state + `validateProviderBinding` timing-safe
+  fingerprint check).
+- **F23 static-token evidence (re-review, accept upstream):** `git show 380b890c` (removal) is
+  fork-only; re-verified at `upstream/main` 33a33e7b: `mcp-transport.constants.ts:76–79`
+  `STATIC_TOKEN_DEPRECATION_NOTICE`, `auth.mcp.ts:26` `token_auth_notice`, `sessionManager.ts:12`,
+  `IntegrationsTab.tsx:351,481`. None of these alter MCP tool results, so no agent/tool contract
+  break; decision is to keep upstream's notice (no re-apply of `380b890c`).
 - **Per-row current-upstream blobs (re-review):** PlacesSidebarHeader `a760588d…`; MapView
   `c119af4a…`/MapViewGL `f82c0335…`; TransitSearchPanel `e08f2534…`/connector `e61dbff9…`;
   `link_budget_item_to_reservation` grep=0; movementStats/DayMovementTotalRow absent
   (`git cat-file -e` fails); DayTimelinePlanner absent, MPlanTimeline `e513cf90…`/
   useMPlanDragReorder `604088c4…`; nest/plugins 77 files, `oauthResources.ts` absent;
   migrations.ts blob `f6519964…` (schema 200) and `bc77e730…` (v4.0.0, 198); sessionManager
-  `a0e260d8…`/`f71b15f3…` + new Nest deprecation surfaces (`auth.mcp.ts:20–31`,
-  `mcp-transport.constants.ts:78`, IntegrationsTab `28ef1e62…`); deploy surfaces
+  `a0e260d8…`/`f71b15f3…` + new Nest deprecation surfaces (`auth.mcp.ts:26`,
+  `mcp-transport.constants.ts:76–79`, IntegrationsTab `28ef1e62…` lines 351/481); deploy surfaces
   `d6d6e8c8…`/`4af6bd9b…`/`ef5d3d65…`/`f2d61adb…`/`0f017f26…`.
+- **Upstream-refresh evidence (re-review, spec §2 + plan "refresh upstream before each feature
+  family"):** every per-family evidence line above was queried against `upstream/main` after an
+  auditable `git fetch upstream --prune` executed **before each family batch** (F01–F05,
+  F06–F09, F10–F12, F13–F15, F16–F18, F19–F25, F26–F31, F32–F33). All 8 fetches exited 0 and
+  `upstream/main` remained **`33a33e7b1d113f0742ac609305cc549a4806d31b`** ("chore: bump version
+  to 4.1.1") throughout (2026-08-29T17:53:05Z–17:53:09Z; full per-batch log:
+  `/tmp/opencode/trek-4-upstream-fetch-log.txt`). No fabricated per-family fetches: the log is
+  the real command output, and because upstream did not move during Task 00, one verified SHA
+  covers every family. The base was **not** moved: `fork-pre-4.0-2026-08-29` still resolves to
+  `814ed86a2f7172905cc837d6b6488ccd6285c1fe`.
 - Three spec-named upstream SHAs verified in `upstream/main` and not in `v4.0.0` (§3).
 
 No production behavior was changed by this task; the ledger is documentation only.
@@ -819,16 +1054,23 @@ No production behavior was changed by this task; the ledger is documentation onl
 
 ## 8. Open items for later tasks (non-blocking for Task 00 gate)
 
-1. F07/F08: pick one explicit stale-geometry policy when transit endpoints change (spec §7.3).
+1. ~~F07/F08 stale-geometry policy~~ — **RESOLVED in Task 00: PRESERVE** (see F07). Task 04
+   validates the ported behavior only, with the preserve-invariant test.
 2. F26: **decision is made (RETAIN/PORT — see F26).** Remaining work is Task 08 *validation
    only*: run the ported reducer against the 4.0 store, confirm no regression on
    optimistic `updatePositions`, and accept the live-reorder latency. Not a classification
    deferral.
-3. Determine whether any deployed client holds legacy `plugin:<id>:*` scopes (F16) → decides the
-   `COMPAT_ONLY` layer.
-4. Static-token wording check (F23) — confirmed the deprecation notice still exists upstream
-   (multiple Nest surfaces), so Task 03 must decide whether to re-apply the fork's removal.
-5. F02 error-redaction wording parity check (only candidate F02 delta).
+3. Determine whether any deployed client holds legacy `plugin:<id>:*` scopes (F16) and/or calls
+   `/api/plugins/:id/*` with a fork-issued `trekoa_` token (F17) → decides the shared
+   `COMPAT_ONLY` layer. Until that population is proven, both stay `OBSOLETE` (F16) / `OBSOLETE`
+   (F17) with no port.
+4. ~~F23 static-token wording~~ — **RESOLVED in Task 00: accept upstream, do not re-apply
+   `380b890c`** (see F23). Task 03 may validate the wording in place but the no-removal decision
+   is final.
+5. ~~F02 error-redaction parity check~~ — **RESOLVED in Task 00: DROP** — the redaction was
+   reverted by sync merge `68fe32c7` before the frozen fork; no delta exists (see F02).
+6. F34 (plugin-OAuth broker nonce + config-fingerprint) is `FORK_ONLY` and is ported in Task 03
+   (OAuth/MCP compatibility) with the mismatch regression test.
 
 ---
 
@@ -861,3 +1103,6 @@ No production behavior was changed by this task; the ledger is documentation onl
 | F29 settings normalization | desktop + mobile (store-level) |
 | F30 focus/a11y utilities | desktop + mobile (shared Modal) |
 | F31 safeParseMetadata | desktop + mobile (planner/PDF/shared-trip) |
+| F32 transit status/confirmation edit | desktop + mobile (TransitJourneyModal via sidebar portal) |
+| F33 cross-day end-date display | desktop + mobile (DayPlanSidebar modal via sidebar portal) |
+| F34 plugin-OAuth broker hardening | backend/API only |
