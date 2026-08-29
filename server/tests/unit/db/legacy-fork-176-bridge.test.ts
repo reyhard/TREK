@@ -15,6 +15,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createTables } from '../../../src/db/schema';
 import { runMigrations } from '../../../src/db/migrations';
 import {
@@ -52,12 +55,35 @@ function schemaVersion(): number {
  * Builds the exact legacy-fork schema-176 state:
  *  - runs the upstream 0..174 chain (schema 175), identical to what the fork
  *    had at v3.4.1 parity;
+ *  - seeds a REAL oauth_tokens row (as a genuine fork DB had): a client + token
+ *    issued BEFORE the fork's migration 176, whose owner bumped `password_version`
+ *    to 3 — so the backfill below binds the token to version 3;
  *  - applies the fork's index-175 migration (`oauth_tokens.user_password_version`
  *    + backfill) exactly as fork-pre-4.0 does;
  *  - leaves schema_version at 176.
  */
 function buildLegacyFork176(): void {
   runMigrations(db, 175);
+  const { user } = createUser(db);
+  db.prepare('UPDATE users SET password_version = 3 WHERE id = ?').run(user.id);
+  db.prepare(`
+    INSERT INTO oauth_clients (id, user_id, name, client_id, client_secret_hash)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('legacy-fork-client', user.id, 'Legacy Fork MCP', 'legacy-fork-client-id', 'hashed-secret');
+  db.prepare(`
+    INSERT INTO oauth_tokens (
+      client_id, user_id, access_token_hash, refresh_token_hash,
+      scopes, access_token_expires_at, refresh_token_expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    'legacy-fork-client-id',
+    user.id,
+    'legacy-fork-access-hash',
+    'legacy-fork-refresh-hash',
+    '[]',
+    '2030-01-01T00:00:00.000Z',
+    '2030-01-01T00:00:00.000Z',
+  );
   db.exec('ALTER TABLE oauth_tokens ADD COLUMN user_password_version INTEGER NOT NULL DEFAULT 0');
   db.exec(`
     UPDATE oauth_tokens
@@ -254,5 +280,150 @@ describe('legacy fork schema-176 bridge — RED/GREEN 3 (complete fixture matrix
     runMigrations(db);
     expect(schemaVersion()).toBe(198);
     expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+});
+
+describe('legacy fork schema-176 bridge — review finding 2 (real oauth_tokens preservation)', () => {
+  it('OAUTH-001: a real oauth_tokens row with user_password_version survives the bridge + migration with its value intact', () => {
+    // A genuine fork DB had OAuth tokens issued BEFORE the fork's migration 176,
+    // whose user_password_version was backfilled from users.password_version.
+    // That row and its bound version must survive the bridge + upstream 176–198.
+    buildLegacyFork176();
+
+    const tokenBefore = db
+      .prepare('SELECT user_password_version FROM oauth_tokens WHERE access_token_hash = ?')
+      .get('legacy-fork-access-hash') as { user_password_version: number } | undefined;
+    expect(tokenBefore).toBeDefined();
+    expect(tokenBefore!.user_password_version).toBe(3);
+
+    runMigrations(db);
+
+    const tokenAfter = db
+      .prepare('SELECT id, user_id, user_password_version FROM oauth_tokens WHERE access_token_hash = ?')
+      .get('legacy-fork-access-hash') as { id: number; user_id: number; user_password_version: number } | undefined;
+    expect(tokenAfter).toBeDefined();
+    expect(tokenAfter!.user_password_version).toBe(3);
+    expect(tokenAfter!.user_id).toBeGreaterThan(0);
+    // Foreign keys still reference the surviving client + user.
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('OAUTH-002: the oauth_tokens count is unchanged by the bridge + migration (no row loss)', () => {
+    buildLegacyFork176();
+    const countBefore = (db.prepare('SELECT COUNT(*) AS n FROM oauth_tokens').get() as { n: number }).n;
+    expect(countBefore).toBeGreaterThan(0);
+
+    runMigrations(db);
+
+    const countAfter = (db.prepare('SELECT COUNT(*) AS n FROM oauth_tokens').get() as { n: number }).n;
+    expect(countAfter).toBe(countBefore);
+  });
+});
+
+describe('legacy fork schema-176 bridge — review finding 1 (file-backed production-clone fixture)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trek-fork176-clone-'));
+  let fileDb: Database.Database;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = path.join(tmpDir, `clone-${Math.random().toString(36).slice(2)}.db`);
+    fileDb = new Database(dbPath);
+    fileDb.exec('PRAGMA journal_mode = WAL');
+    fileDb.exec('PRAGMA busy_timeout = 5000');
+    fileDb.exec('PRAGMA foreign_keys = ON');
+    createTables(fileDb);
+  });
+
+  afterEach(() => {
+    fileDb.close();
+    for (const suffix of ['', '-wal', '-shm']) {
+      fs.rmSync(`${dbPath}${suffix}`, { force: true });
+    }
+  });
+
+  /** Builds a faithful file-backed legacy fork-176 clone with representative production data. */
+  function buildFileBackedLegacyFork176(): void {
+    runMigrations(fileDb, 175);
+
+    const { user } = createUser(fileDb);
+    fileDb.prepare('UPDATE users SET password_version = 3 WHERE id = ?').run(user.id);
+    const trip = createTrip(fileDb, user.id);
+    const day = createDay(fileDb, trip.id);
+    const place = createPlace(fileDb, trip.id);
+    const reservation = createReservation(fileDb, trip.id, { title: 'Flight to Paris', type: 'flight' });
+    createBudgetItem(fileDb, trip.id, { name: 'Hotel', total_price: 120 });
+    // A stored plugin (as a real fork install would have) + a reservation endpoint.
+    fileDb.prepare(`
+      INSERT INTO plugins (id, name, description, type, version, status, permissions, config)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('flight-tracker', 'Flight Tracker', 'Live flight status', 'integration', '1.0.0', 'active', '[]', '{}');
+    fileDb.prepare(`
+      INSERT INTO reservation_endpoints (reservation_id, role, sequence, name, lat, lng)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(reservation.id, 'from', 0, 'Zurich', 47.3769, 8.5417);
+
+    // Fork's index-175 migration: user_password_version + backfill.
+    fileDb.exec('ALTER TABLE oauth_tokens ADD COLUMN user_password_version INTEGER NOT NULL DEFAULT 0');
+    fileDb.prepare(`
+      INSERT INTO oauth_clients (id, user_id, name, client_id, client_secret_hash)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('clone-fork-client', user.id, 'Clone Fork MCP', 'clone-fork-client-id', 'hashed-secret');
+    fileDb.prepare(`
+      INSERT INTO oauth_tokens (
+        client_id, user_id, access_token_hash, refresh_token_hash,
+        scopes, access_token_expires_at, refresh_token_expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'clone-fork-client-id',
+      user.id,
+      'clone-fork-access-hash',
+      'clone-fork-refresh-hash',
+      '[]',
+      '2030-01-01T00:00:00.000Z',
+      '2030-01-01T00:00:00.000Z',
+    );
+    fileDb.exec(`
+      UPDATE oauth_tokens
+      SET user_password_version = COALESCE(
+        (SELECT password_version FROM users WHERE users.id = oauth_tokens.user_id),
+        0
+      )
+    `);
+    fileDb.prepare('UPDATE schema_version SET version = ?').run(176);
+  }
+
+  it('CLONE-001: file-backed production clone migrates legacy fork 176 preserving every representative row count + FK integrity', () => {
+    buildFileBackedLegacyFork176();
+
+    const tableCounts = [
+      'users', 'trips', 'days', 'places', 'reservations', 'budget_items',
+      'plugins', 'reservation_endpoints', 'oauth_clients', 'oauth_tokens',
+    ];
+    const countOf = (t: string) => (fileDb.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n;
+    const before = Object.fromEntries(tableCounts.map((t) => [t, countOf(t)]));
+    // Every representative surface is populated in the clone.
+    for (const t of ['users', 'plugins', 'oauth_tokens', 'reservation_endpoints']) {
+      expect(before[t], `clone seeds ${t}`).toBeGreaterThan(0);
+    }
+
+    runMigrations(fileDb);
+
+    const fileVersion = (fileDb.prepare('SELECT version FROM schema_version').get() as { version: number }).version;
+    expect(fileVersion).toBe(198);
+    for (const t of tableCounts) {
+      expect(countOf(t), `row count preserved for ${t}`).toBe(before[t]);
+    }
+    // Plugin + token rows readable post-migration.
+    expect(fileDb.prepare('SELECT id, name, status FROM plugins WHERE id = ?').get('flight-tracker')).toEqual({
+      id: 'flight-tracker',
+      name: 'Flight Tracker',
+      status: 'active',
+    });
+    const token = fileDb
+      .prepare('SELECT user_password_version FROM oauth_tokens WHERE access_token_hash = ?')
+      .get('clone-fork-access-hash') as { user_password_version: number };
+    expect(token.user_password_version).toBe(3);
+    // Foreign keys intact across the whole clone.
+    expect(fileDb.pragma('foreign_key_check')).toEqual([]);
   });
 });
