@@ -44,6 +44,23 @@ import {
  * wiring container that lays out the day/map/places panes and modals.
  * Behaviour is identical to the previous in-component logic.
  */
+
+/** Optimistic patch of a place's coordinates in both the places list and its assignments. */
+function patchPlaceCoordinates(placeId: number, coordinates: { lat: number; lng: number }): void {
+  useTripStore.setState(state => ({
+    places: state.places.map(place => place.id === placeId ? { ...place, ...coordinates } : place),
+    assignments: Object.fromEntries(Object.entries(state.assignments).map(([dayId, items]) => {
+      if (!items.some(assignment => assignment.place?.id === placeId)) return [dayId, items]
+      return [
+        dayId,
+        items.map(assignment => assignment.place?.id === placeId
+          ? { ...assignment, place: { ...assignment.place, ...coordinates } }
+          : assignment),
+      ]
+    })),
+  }))
+}
+
 export function useTripPlanner() {
   const { id } = useParams<{ id: string }>()
   // The route param is a string; convert once here so every downstream component
@@ -195,6 +212,92 @@ export function useTripPlanner() {
   }, [tripId])
   const { leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight } = useResizablePanels()
   const { selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment } = usePlaceSelection()
+
+  // ── POI reposition mode ─────────────────────────────────────────────────────
+  // Dragging a saved place's marker to a new map position (fork F12). A small
+  // additive mode: entering captures the original coordinates, the drag updates
+  // only the pending store copy until Save, and Save/Cancel/error all roll the
+  // store back to the original coordinates on failure. Saves ride the canonical
+  // tripActions.updatePlace path (no duplicate place-update code).
+  const canEditPlaces = can('place_edit', trip)
+  const [repositionPlaceId, setRepositionPlaceId] = useState<number | null>(null)
+  const repositionOriginalRef = useRef<{ lat: number; lng: number } | null>(null)
+
+  const startPlaceReposition = useCallback((place: Place) => {
+    if (place.lat == null || place.lng == null) return
+    const coordinates = { lat: Number(place.lat), lng: Number(place.lng) }
+    if (!canEditPlaces || !Number.isFinite(coordinates.lat) || !Number.isFinite(coordinates.lng)
+      || coordinates.lat < -90 || coordinates.lat > 90 || coordinates.lng < -180 || coordinates.lng > 180) {
+      if (!canEditPlaces) toast.error(t('inspector.movePermissionDenied'))
+      return
+    }
+    setSelectedPlaceId(place.id)
+    setRepositionPlaceId(place.id)
+    repositionOriginalRef.current = coordinates
+  }, [canEditPlaces, setSelectedPlaceId, toast, t])
+
+  const cancelPlaceReposition = useCallback(() => {
+    setRepositionPlaceId(null)
+    repositionOriginalRef.current = null
+  }, [])
+
+  const isRepositioningPlace = useCallback((placeId: number) => repositionPlaceId === placeId, [repositionPlaceId])
+
+  const handlePlaceRepositionEnd = useCallback(async (placeId: number, coordinates: { lat: number; lng: number }) => {
+    if (repositionPlaceId !== placeId) return
+    if (!Number.isFinite(coordinates.lat) || !Number.isFinite(coordinates.lng)
+      || coordinates.lat < -90 || coordinates.lat > 90 || coordinates.lng < -180 || coordinates.lng > 180) {
+      console.warn('Ignored invalid place coordinates')
+      setRepositionPlaceId(null)
+      repositionOriginalRef.current = null
+      return
+    }
+    const original = repositionOriginalRef.current
+    if (!original) {
+      setRepositionPlaceId(null)
+      return
+    }
+    // No movement → exit the mode without a write.
+    if (Math.abs(original.lat - coordinates.lat) < 1e-7 && Math.abs(original.lng - coordinates.lng) < 1e-7) {
+      setRepositionPlaceId(null)
+      repositionOriginalRef.current = null
+      return
+    }
+    // Optimistically patch the store, then persist through the canonical path.
+    patchPlaceCoordinates(placeId, coordinates)
+    try {
+      await tripActions.updatePlace(tripId, placeId, { lat: coordinates.lat, lng: coordinates.lng })
+      setRepositionPlaceId(null)
+      repositionOriginalRef.current = null
+      toast.success(t('inspector.placeMoved'))
+    } catch {
+      patchPlaceCoordinates(placeId, original)
+      setRepositionPlaceId(null)
+      repositionOriginalRef.current = null
+      toast.error(t('inspector.moveFailed'))
+    }
+  }, [repositionPlaceId, tripId, tripActions, toast, t])
+
+  // Exit reposition mode when the place disappears or the user loses the right.
+  useEffect(() => {
+    if (repositionPlaceId == null) return
+    const stillEligible = canEditPlaces && places.some(place => place.id === repositionPlaceId)
+    if (!stillEligible) {
+      setRepositionPlaceId(null)
+      repositionOriginalRef.current = null
+    }
+  }, [canEditPlaces, places, repositionPlaceId])
+
+  // Escape exits reposition mode while it is active.
+  useEffect(() => {
+    if (repositionPlaceId == null) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') cancelPlaceReposition()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [repositionPlaceId, cancelPlaceReposition])
+  // ── / POI reposition mode ───────────────────────────────────────────────────
   const [showDayDetail, setShowDayDetail] = useState<Day | null>(null)
   const [dayDetailCollapsed, setDayDetailCollapsed] = useState(false)
   const [showPlaceForm, setShowPlaceForm] = useState<boolean>(false)
@@ -1035,6 +1138,7 @@ export function useTripPlanner() {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
+    repositionPlaceId, isRepositioningPlace, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,

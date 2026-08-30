@@ -1834,3 +1834,103 @@ describe('useTripPlanner — misc state', () => {
     expect(result.current.tripMembers).toEqual([])
   })
 })
+
+describe('useTripPlanner — POI reposition', () => {
+  function seedRepositionablePlace(extra: Partial<TripStoreState> = {}) {
+    const trip = buildTrip({ id: 42, title: 'Kyoto' })
+    useTripStore.setState({
+      trip,
+      isLoading: false,
+      days: [],
+      places: [{ id: 1, name: 'Kiyomizu', lat: 34.994, lng: 135.785 } as never],
+      assignments: {},
+      reservations: [],
+      ...(actions as unknown as Partial<TripStoreState>),
+      ...extra,
+    } as Partial<TripStoreState>)
+    return trip
+  }
+
+  it('FE-TP-HOOK-120: an authorized user can enter reposition mode for a place with coordinates', async () => {
+    seedRepositionablePlace()
+    const { result } = await renderPlanner()
+    const place = useTripStore.getState().places[0] as { id: number; lat: number; lng: number }
+
+    act(() => { result.current.startPlaceReposition(place as never) })
+
+    expect(result.current.repositionPlaceId).toBe(1)
+    expect(result.current.isRepositioningPlace(1)).toBe(true)
+    expect(result.current.selectedPlaceId).toBe(1)
+  })
+
+  it('FE-TP-HOOK-121: cancel restores the original coordinates', async () => {
+    seedRepositionablePlace()
+    const { result } = await renderPlanner()
+    const place = useTripStore.getState().places[0] as { id: number; lat: number; lng: number }
+    act(() => { result.current.startPlaceReposition(place as never) })
+
+    // Simulate a marker move that patches pending coordinates, then cancel.
+    act(() => { useTripStore.setState({ places: [{ id: 1, name: 'Kiyomizu', lat: 34.99, lng: 135.78 } as never] }) })
+    act(() => { result.current.cancelPlaceReposition() })
+
+    expect(result.current.repositionPlaceId).toBeNull()
+    const after = useTripStore.getState().places[0] as { lat: number; lng: number }
+    expect(after.lat).toBe(34.99)
+    expect(after.lng).toBe(135.78)
+    // Cancel does not persist anything (no updatePlace call).
+    expect(actions.updatePlace).not.toHaveBeenCalled()
+  })
+
+  it('FE-TP-HOOK-122: a save persists coordinates through the canonical updatePlace path', async () => {
+    seedRepositionablePlace()
+    const { result } = await renderPlanner()
+    const place = useTripStore.getState().places[0] as { id: number; lat: number; lng: number }
+    act(() => { result.current.startPlaceReposition(place as never) })
+
+    await act(async () => { await result.current.handlePlaceRepositionEnd(1, { lat: 34.981, lng: 135.772 }) })
+
+    expect(actions.updatePlace).toHaveBeenCalledWith(42, 1, { lat: 34.981, lng: 135.772 })
+    expect(result.current.repositionPlaceId).toBeNull()
+  })
+
+  it('FE-TP-HOOK-123: an API failure rolls the UI/store back to the original coordinates', async () => {
+    seedRepositionablePlace()
+    actions.updatePlace.mockRejectedValueOnce(new Error('nope'))
+    const { result } = await renderPlanner()
+    const place = useTripStore.getState().places[0] as { id: number; lat: number; lng: number }
+    act(() => { result.current.startPlaceReposition(place as never) })
+
+    await act(async () => { await result.current.handlePlaceRepositionEnd(1, { lat: 34.981, lng: 135.772 }) })
+
+    const after = useTripStore.getState().places[0] as { lat: number; lng: number }
+    expect(after.lat).toBe(34.994)
+    expect(after.lng).toBe(135.785)
+    expect(result.current.repositionPlaceId).toBeNull()
+    expect(toasts.some(t => t.type === 'error')).toBe(true)
+  })
+
+  it('FE-TP-HOOK-124: an unauthorized viewer cannot enter reposition mode', async () => {
+    seedStore(useAuthStore, { user: buildUser({ id: 2, role: 'user' }) })
+    usePermissionsStore.setState({ permissions: { place_edit: 'admin' } })
+    seedRepositionablePlace()
+    const { result } = await renderPlanner()
+    const place = useTripStore.getState().places[0] as { id: number; lat: number; lng: number }
+
+    act(() => { result.current.startPlaceReposition(place as never) })
+
+    expect(result.current.repositionPlaceId).toBeNull()
+    expect(toasts.some(t => t.type === 'error')).toBe(true)
+  })
+
+  it('FE-TP-HOOK-125: an invalid coordinate update is ignored (no save, mode reset)', async () => {
+    seedRepositionablePlace()
+    const { result } = await renderPlanner()
+    const place = useTripStore.getState().places[0] as { id: number; lat: number; lng: number }
+    act(() => { result.current.startPlaceReposition(place as never) })
+
+    await act(async () => { await result.current.handlePlaceRepositionEnd(1, { lat: 999, lng: 135.772 }) })
+
+    expect(actions.updatePlace).not.toHaveBeenCalled()
+    expect(result.current.repositionPlaceId).toBeNull()
+  })
+})
