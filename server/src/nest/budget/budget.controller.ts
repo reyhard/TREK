@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequirePermission, TripAccessGuard } from '../permissions/trip-access.guard';
 import { Trip } from '../permissions/trip.decorator';
+import { PermissionsService } from '../permissions/permissions.service';
 import type { TripAccess } from '../database/database.service';
 import {
   BudgetCreateItemDto,
@@ -52,7 +53,10 @@ import {
 // passes, so the HTTP and MCP paths cannot demand different rights.
 @UseGuards(JwtAuthGuard, TripAccessGuard)
 export class BudgetController {
-  constructor(private readonly budget: BudgetService) {}
+  constructor(
+    private readonly budget: BudgetService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
 
 
@@ -183,11 +187,20 @@ export class BudgetController {
   @Put(':id')
   async update(
     @CurrentUser() user: User,
+    @Trip() trip: TripAccess,
     @Param('tripId') tripId: string,
     @Param('id') id: string,
     @Body() body: BudgetUpdateItemDto,
     @Headers('x-socket-id') socketId?: string,
   ) {
+    // A body that carries reservation_id links or unlinks an existing cost to a
+    // reservation — the same relationship mutation the MCP link/unlink tools gate
+    // on BOTH budget_edit and reservation_edit. Match that exactly here; a
+    // budget-only update (no reservation_id) keeps the budget_edit-only gate.
+    if (body.reservation_id !== undefined
+      && !this.permissions.checkPermission('reservation_edit', user.role, trip.user_id, user.id, trip.user_id !== user.id)) {
+      throw new HttpException({ error: 'No permission' }, 403);
+    }
     const updated = await this.budget.update(id, tripId, body);
     if (!updated) {
       throw new HttpException({ error: 'Budget item not found' }, 404);
