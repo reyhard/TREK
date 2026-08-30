@@ -78,6 +78,9 @@ export interface SupervisorTuning {
   activationTimeoutMs?: number;
 }
 
+/** Immutable empty grant set for an inactive/unknown plugin (grantsOf). */
+const EMPTY_GRANTS: ReadonlySet<string> = new Set();
+
 const DEFAULTS: Required<SupervisorTuning> = {
   heartbeatTimeoutMs: 20_000, // 3–4 missed 5s beats
   crashWindowMs: 5 * 60_000,
@@ -255,6 +258,12 @@ export class PluginSupervisor {
   exportsOf(id: string): string[] {
     const sup = this.running.get(id);
     return sup && sup.status === 'active' ? sup.exports : [];
+  }
+
+  /** The grant set an ACTIVE plugin holds (what the admin consented to). */
+  grantsOf(id: string): ReadonlySet<string> {
+    const sup = this.running.get(id);
+    return sup && sup.status === 'active' ? sup.granted : EMPTY_GRANTS;
   }
 
   /** Ids of ACTIVE plugins that subscribed to `event` emitted by `sourceId`. */

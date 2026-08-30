@@ -386,6 +386,11 @@ export const KNOWN_PERMISSIONS = [
   // applies. Nothing is sent to the server; the plugin's server code never sees a
   // position unless its own client ships it through one of its routes.
   'geolocation:read',
+  // Lets the plugin publish tools on TREK's own MCP server, so an assistant can
+  // call into it as the requesting user. The real boundary is this grant (the
+  // user-facing plugins:use OAuth scope only decides whether plugin tools are
+  // advertised to a client at all).
+  'mcp:tools',
 ] as const;
 
 /**
@@ -429,6 +434,9 @@ export const HOOK_PERMISSION = {
   journalEntryProvider: 'hook:journal-entry-provider',
   tripCardProvider: 'hook:trip-card-provider',
   notificationChannel: 'hook:notification-channel',
+  // The one entry whose permission is not hook:*-shaped; the mcp:tools grant is
+  // what authorises a plugin to publish MCP tools.
+  mcpToolProvider: 'mcp:tools',
 } as const satisfies Record<string, KnownPermission>;
 
 export type HookKey = keyof typeof HOOK_PERMISSION;

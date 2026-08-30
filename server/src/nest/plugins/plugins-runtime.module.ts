@@ -4,6 +4,7 @@ import { PluginsService } from './plugins.service';
 import { PluginUserSettingsService } from './plugin-user-settings.service';
 import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginHooks } from './plugin-hooks.service';
+import { PluginMcpToolsService } from './plugin-mcp-tools.service';
 import { PluginRegistryService } from './registry/registry.service';
 import { PluginRpcHostFactory } from './host/plugin-rpc-host.factory';
 import { PluginRpcRegistryService } from './host/rpc-kit/registry.service';
@@ -77,6 +78,8 @@ import { JourneyDomainModule } from '../journey/journey-domain.module';
     PluginRpcRegistryService,
     // Owns no wire method; declares and performs all 18 host-to-plugin hook calls.
     PluginHooks,
+    // Advertises plugin-published MCP tools and dispatches their calls.
+    PluginMcpToolsService,
     // The wire surface that belongs to no domain: the plugin's own sqlite, its
     // namespaced entity metadata, and the host-mediated calls (user lookup,
     // broadcasts, notifications, LLM, OAuth, scheduler).

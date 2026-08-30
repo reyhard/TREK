@@ -70,12 +70,25 @@ export interface RouteProfileCapability {
   icon?: string;
 }
 
+/** One MCP tool the plugin advertises on TREK's MCP server. Requires `mcp:tools`.
+ * Plugin-local name; advertised as `plugin_<pluginId>_<name>`. */
+export interface McpToolCapability {
+  name: string;
+  title?: string;
+  description: string;
+  /** JSON Schema for the arguments, advertised verbatim. */
+  inputSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+}
+
 export interface PluginCapabilities {
   widget?: WidgetCapability;
   tripPage?: TripPageCapability;
   notificationChannel?: NotificationChannelCapability;
   /** Routing profiles offered via the routeProvider hook (max 3). */
   routeProfiles?: RouteProfileCapability[];
+  /** MCP tools offered via the mcpToolProvider hook (max 8). */
+  mcpTools?: McpToolCapability[];
   /** Function names this plugin exposes to its dependents via ctx.plugins.call. */
   provides?: string[];
   /** Event names this plugin publishes to its dependents via ctx.events.emit. */
@@ -195,6 +208,14 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
   }
   if (m.operatorEgress === true && !permissions.some((p) => p === 'http:outbound' || p.startsWith('http:outbound:'))) {
     throw new ManifestError('operatorEgress requires an http:outbound permission');
+  }
+  // MCP tools are a grant-gated capability: advertising them requires the
+  // mcp:tools permission, exactly like notificationChannel requires its hook.
+  const capsObj = m.capabilities && typeof m.capabilities === 'object' && !Array.isArray(m.capabilities)
+    ? m.capabilities as Record<string, unknown>
+    : null;
+  if (capsObj && Array.isArray(capsObj.mcpTools) && !permissions.includes('mcp:tools')) {
+    throw new ManifestError('capabilities.mcpTools requires the "mcp:tools" permission');
   }
   // An empty egress[] is only legal for an operatorEgress plugin: its hosts are
   // admin-supplied post-install, so the manifest has nothing to declare. It is NOT
@@ -377,6 +398,8 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
   if (provides.length) out.provides = provides;
   const emits = parseCapabilityNames(c.emits, 'emits');
   if (emits.length) out.emits = emits;
+  const mcpTools = parseMcpToolCapabilities(c.mcpTools);
+  if (mcpTools.length) out.mcpTools = mcpTools;
   return out;
 }
 
@@ -422,6 +445,33 @@ function parseCapabilityNames(raw: unknown, field: string): string[] {
   for (const v of raw) {
     if (typeof v !== 'string' || !CAPABILITY_NAME_RE.test(v)) throw new ManifestError(`invalid capabilities.${field} entry "${String(v)}"`);
     if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+/** Validate `capabilities.mcpTools`: well-formed names, bounded, de-duplicated. */
+function parseMcpToolCapabilities(raw: unknown): McpToolCapability[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) throw new ManifestError('capabilities.mcpTools must be an array');
+  if (raw.length > 8) throw new ManifestError('capabilities.mcpTools: at most 8 tools');
+  const out: McpToolCapability[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ManifestError('capabilities.mcpTools entries must be objects');
+    const t = v as Record<string, unknown>;
+    if (typeof t.name !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(t.name)) {
+      throw new ManifestError(`capabilities.mcpTools: invalid tool name "${String(t.name)}"`);
+    }
+    if (out.some((x) => x.name === t.name)) throw new ManifestError(`capabilities.mcpTools: duplicate tool name "${t.name}"`);
+    if (typeof t.description !== 'string' || !t.description.trim()) {
+      throw new ManifestError(`capabilities.mcpTools: tool "${t.name}" requires a description`);
+    }
+    out.push({
+      name: t.name,
+      ...(typeof t.title === 'string' && t.title.trim() ? { title: t.title.trim().slice(0, 80) } : {}),
+      description: t.description.trim().slice(0, 1024),
+      ...(t.inputSchema && typeof t.inputSchema === 'object' && !Array.isArray(t.inputSchema) ? { inputSchema: t.inputSchema as Record<string, unknown> } : {}),
+      ...(t.annotations && typeof t.annotations === 'object' && !Array.isArray(t.annotations) ? { annotations: t.annotations as Record<string, unknown> } : {}),
+    });
   }
   return out;
 }

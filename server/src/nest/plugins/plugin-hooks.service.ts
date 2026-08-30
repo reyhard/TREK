@@ -18,6 +18,12 @@ export interface HookRouteRequest {
   waypoints: unknown[];
 }
 
+/** One MCP tool invocation dispatched to a plugin that published it. */
+export interface HookMcpToolCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
 /**
  * Every host-to-plugin hook call, in one place.
  *
@@ -145,5 +151,17 @@ export class PluginHooks {
   @PluginHook('notificationChannel', { permission: 'hook:notification-channel', fn: 'test', timeoutMs: 8000 })
   testNotification(pluginId: string, userSettings: unknown): Promise<unknown> {
     return this.runtime.invokeHook(pluginId, 'notificationChannel', 'test', [userSettings], undefined, 8000);
+  }
+
+  /**
+   * Run one MCP tool the plugin published. The mcp:tools grant (not a hook:*
+   * permission) is what authorises it, and the acting user is forwarded so any
+   * trip read the tool makes is membership-checked against the caller. The
+   * budget is the longest of the read hooks because the tool may talk to a
+   * third-party API.
+   */
+  @PluginHook('mcpToolProvider', { permission: 'mcp:tools', fn: 'callTool', timeoutMs: 15_000 })
+  callMcpTool(pluginId: string, call: HookMcpToolCall, userId: number): Promise<unknown> {
+    return this.runtime.invokeHook(pluginId, 'mcpToolProvider', 'callTool', [call], userId, 15_000);
   }
 }

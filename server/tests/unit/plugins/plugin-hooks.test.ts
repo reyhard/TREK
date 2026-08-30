@@ -45,6 +45,7 @@ const CONTRACTS: Array<[hook: string, fn: string, timeoutMs: number]> = [
   ['tripCardProvider', 'getCards', 5000],
   ['notificationChannel', 'send', 8000],
   ['notificationChannel', 'test', 8000],
+  ['mcpToolProvider', 'callTool', 15_000],
 ];
 
 describe('PluginHooks contracts', () => {

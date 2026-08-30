@@ -29,7 +29,7 @@ import { hostSatisfies, hostVersion } from './install/host-compat';
 import { keyFingerprint } from './signature-status';
 import { AuditService } from '../audit/audit.service';
 import { AddonsService } from '../addons/addons.service';
-import type { PluginDependency } from './install/manifest';
+import type { PluginDependency, McpToolCapability } from './install/manifest';
 import type { VersionMismatch, PluginDepRow } from './dependencies';
 import { parseDependencies, disabledRequiredAddons, resolveDependencyState, enableOrder, findDependentsTransitive, DependencyCycleError } from './dependencies';
 
@@ -953,6 +953,11 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   providersOf(hook: string): string[] {
     return this.supervisor.providersOf(hook);
   }
+
+  /** The grant set an ACTIVE plugin holds (what the admin consented to). */
+  grantsOf(id: string): ReadonlySet<string> {
+    return this.supervisor.grantsOf(id);
+  }
   /**
    * Ask ONE plugin's provider hook for data (host→plugin). A tighter default
    * timeout than a route call so a slow provider can't delay the core response;
@@ -1146,6 +1151,25 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
       const c = JSON.parse(row.capabilities || '{}') as Record<string, unknown>;
       const v = c[field];
       return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * A plugin's declared `capabilities.mcpTools` (from the DB). Each entry is the
+   * signed manifest's declaration — the auditable half of the two-sided gate
+   * (the running build must also report implementing the tool via the
+   * mcpToolProvider hook, enforced by providersOf).
+   */
+  mcpToolCapabilities(id: string): McpToolCapability[] {
+    const row = this.db.prepare('SELECT capabilities FROM plugins WHERE id = ?').get(id) as { capabilities: string } | undefined;
+    if (!row) return [];
+    try {
+      const c = JSON.parse(row.capabilities || '{}') as Record<string, unknown>;
+      const tools = c.mcpTools;
+      if (!Array.isArray(tools)) return [];
+      return tools.filter((t): t is McpToolCapability => !!t && typeof t === 'object' && typeof (t as McpToolCapability).name === 'string');
     } catch {
       return [];
     }

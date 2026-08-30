@@ -72,6 +72,17 @@ describe('parseManifest', () => {
     expect(m.settings[0]).toMatchObject({ key: 'api_key', secret: true, scope: 'instance' });
   });
 
+  it('parses capabilities.mcpTools when the mcp:tools grant is held', () => {
+    const m = parseManifest({
+      ...base,
+      permissions: ['mcp:tools'],
+      capabilities: { mcpTools: [{ name: 'flight', title: 'Flight', description: 'Live flight status', inputSchema: { code: { type: 'string' } } }] },
+    });
+    expect(m.capabilities?.mcpTools).toEqual([
+      { name: 'flight', title: 'Flight', description: 'Live flight status', inputSchema: { code: { type: 'string' } } },
+    ]);
+  });
+
   it('accepts exact, single-label (self-hoster sibling), and wildcard outbound hosts', () => {
     const m = parseManifest({ ...base, permissions: ['http:outbound:api.x.com', 'http:outbound:*.example.com', 'http:outbound:redis'], egress: ['api.x.com', '*.example.com', 'redis'] });
     expect(m.permissions).toContain('http:outbound:*.example.com');
@@ -94,6 +105,11 @@ describe('parseManifest', () => {
     ['bad egress host', { ...base, permissions: ['http:outbound:api.x.com'], egress: ['api.x.com', 'no spaces here'] }, /invalid egress host/],
     ['not an object', 'nope', /not an object/],
     ['missing name', { id: 'x-plugin', version: '1.0.0', type: 'page' }, /missing\/invalid "name"/],
+    ['mcpTools without grant', { ...base, permissions: [], capabilities: { mcpTools: [{ name: 'flight', description: 'd' }] } }, /mcpTools requires the "mcp:tools" permission/],
+    ['mcpTools not an array', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: 'nope' } }, /mcpTools must be an array/],
+    ['mcpTools too many', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: Array.from({ length: 9 }, (_, i) => ({ name: `t${i}`, description: 'd' })) } }, /at most 8 tools/],
+    ['mcpTools bad name', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'Has Space', description: 'd' }] } }, /invalid tool name/],
+    ['mcpTools missing description', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'flight' }] } }, /requires a description/],
   ])('rejects: %s', (_label, input, re) => {
     expect(() => parseManifest(input)).toThrow(ManifestError);
     expect(() => parseManifest(input)).toThrow(re as RegExp);

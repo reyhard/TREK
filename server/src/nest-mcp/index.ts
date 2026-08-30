@@ -28,6 +28,8 @@ export {
   type McpAttachOptions,
   type McpContext,
   type McpDeclarativeAccess,
+  type McpDynamicTool,
+  type McpDynamicToolSource,
   type McpEntry,
   type McpEntryKind,
   type McpModuleOptions,
