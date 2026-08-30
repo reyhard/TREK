@@ -5,7 +5,7 @@ import { assignmentsApi, reservationsApi, weatherApi } from '../../../../api/cli
 import { usePluginStore } from '../../../../store/pluginStore'
 import { getDayBookendHotels } from '../../../../utils/dayOrder'
 import { getDisplayTimeForDay, getMergedItems, getTransportForDay } from '../../../../utils/dayMerge'
-import { calculateDayMovementTotals, normalizeMovementMode, type MovementMode } from '../../../../utils/movementStats'
+import { calculateMovementTotalsFromParts, normalizeMovementMode, type MovementMode } from '../../../../utils/movementStats'
 import { dayCoMapsUrl, dayGoogleMapsUrl, optimizeDayOrder } from '../lib/dayRoute'
 import {
   buildPlanRows, breaksChronology, findUpNext, hotelChipsForDay, hotelLegsForDay, itemHasTime,
@@ -27,7 +27,7 @@ import type { MergedItem } from '../../../../utils/dayMerge'
 export function useMPlanTimeline(planner: TripPlanner) {
   const {
     tripId, days, assignments, reservations, tripAccommodations, selectedDayId,
-    places, t, language, settings, toast, tripActions, pushUndo, updateRouteForDay, routeProfile,
+    t, language, settings, toast, tripActions, pushUndo, updateRouteForDay, routeProfile,
   } = planner
 
   const dayNotes = useTripStore(s => s.dayNotes)
@@ -62,7 +62,6 @@ export function useMPlanTimeline(planner: TripPlanner) {
   const {
     routeSegments: connSegments,
     movementParts,
-    routeEligibility,
     routeMetricStatus,
   } = useRouteCalculation(
     { assignments } as unknown as Parameters<typeof useRouteCalculation>[0],
@@ -90,31 +89,17 @@ export function useMPlanTimeline(planner: TripPlanner) {
       driving: { mode: 'driving' as const, durationSeconds: 0, distanceMeters: 0, durationComplete: true, distanceComplete: true, contributionCount: 0 },
       cycling: { mode: 'cycling' as const, durationSeconds: 0, distanceMeters: 0, durationComplete: true, distanceComplete: true, contributionCount: 0 },
     }
-    const hotelSegments = new Set([
-      hotelLegs.top?.seg,
-      hotelLegs.bottom?.seg,
-    ])
-    const connectorLegs = Object.fromEntries(
-      connSegments.filter(segment => !hotelSegments.has(segment)).map((segment, index) => [index, segment]),
-    )
-    const routeExpected = routeEligibility?.hasRoutedConnectors ?? connSegments.length > 0
+    const routeExpected = movementParts.some(part => part.kind === 'routed')
     const status: RouteMetricStatus = routeMetricStatus ?? (routeExpected ? 'complete' : 'idle')
-    return calculateDayMovementTotals({
+    return calculateMovementTotalsFromParts({
       dayId: day.id,
       activeProfile: normalizeMovementMode(day.default_transport_mode ?? routeProfile),
-      routeLegs: connectorLegs,
-      hotelLegs: {
-        top: hotelLegs.top?.seg,
-        bottom: hotelLegs.bottom?.seg,
-      },
-      assignments: dayAssignments,
-      places,
-      reservations,
       movementParts,
+      reservations,
       routeMetricsComplete: status === 'complete' || !routeExpected,
       routeMetricsExpected: routeExpected,
     })
-  }, [day, dayAssignments, connSegments, hotelLegs, movementParts, places, reservations, routeEligibility, routeMetricStatus, routeProfile])
+  }, [day, movementParts, reservations, routeMetricStatus, routeProfile])
 
   const movementStatus: RouteMetricStatus = routeMetricStatus === 'loading'
     ? 'loading'

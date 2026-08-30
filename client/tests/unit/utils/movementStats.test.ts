@@ -4,6 +4,7 @@ import {
   calculateDayMovementTotals,
   calculateDayMovementStats,
   combineMovementTotals,
+  calculateMovementTotalsFromParts,
   createRouteContributions,
   createTrackContributions,
   createTransitWalkContributions,
@@ -209,6 +210,24 @@ describe('calculateDayMovementStats + combineMovementTotals — TDD 5 (mixed day
       routeMetricsExpected: false,
     })
 
+    expect(totals.walking.distanceMeters).toBe(800)
+    expect(totals.walking.contributionCount).toBe(1)
+  })
+
+  it('canonical totals ignore assignment-linked transit reservations omitted from the day plan', () => {
+    const included = { id: 41, type: 'transit', day_id: 7, metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } } as any
+    const excluded = { id: 42, type: 'transit', day_id: 7, assignment_id: 99, metadata: { transit: { legs: [{ mode: 'WALK', duration: 900, distance: 1200 }] } } } as any
+
+    const totals = calculateMovementTotalsFromParts({
+      dayId: 7,
+      activeProfile: 'walking',
+      movementParts: [{ kind: 'transit', key: 'transit:reservation-41', reservationId: 41 }],
+      reservations: [included, excluded],
+      routeMetricsComplete: true,
+      routeMetricsExpected: false,
+    })
+
+    expect(totals.walking.durationSeconds).toBe(600)
     expect(totals.walking.distanceMeters).toBe(800)
     expect(totals.walking.contributionCount).toBe(1)
   })

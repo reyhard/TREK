@@ -251,56 +251,88 @@ export interface CalculateDayMovementInput {
   routeMetricsExpected: boolean;
 }
 
+export interface CalculateMovementTotalsFromPartsInput {
+  dayId: number;
+  activeProfile: MovementMode;
+  movementParts: ResolvedMovementPart[];
+  reservations: Reservation[];
+  routeMetricsComplete: boolean;
+  routeMetricsExpected: boolean;
+}
+
 const MOVEMENT_MODES: MovementMode[] = ['walking', 'driving', 'cycling'];
 
-function dayMovementContributions(input: CalculateDayMovementInput): MovementContribution[] {
-  const mode: MovementMode = input.activeProfile;
-  const contributions: MovementContribution[] = input.movementParts
-    ? [
-        ...input.movementParts.flatMap((part): MovementContribution[] => {
-          if (part.kind === 'track') {
-            return [{
-              key: part.key,
-              mode: part.mode,
-              source: 'track' as const,
-              sourceId: part.assignmentId,
-              durationSeconds: part.duration,
-              distanceMeters: part.distance,
-            }];
-          }
-          if (part.kind === 'routed') {
-            return [{
-              key: part.key,
-              mode: normalizeMovementMode(part.profile),
-              source: part.placement.kind === 'hotel-top' || part.placement.kind === 'hotel-bottom'
-                ? 'hotel-bookend' as const
-                : 'route' as const,
-              sourceId: part.key,
-              durationSeconds: part.duration,
-              distanceMeters: part.distance,
-            }];
-          }
-          return [];
-        }),
-        ...createTransitWalkContributions(
-          input.dayId,
-          input.reservations,
-          new Set(input.movementParts
-            .filter((part): part is Extract<ResolvedMovementPart, { kind: 'transit' }> => part.kind === 'transit')
-            .map(part => part.reservationId)),
-        ),
-      ]
-    : [
-        ...createRouteContributions(input.dayId, mode, input.routeLegs),
-        ...createHotelBookendContributions(input.dayId, mode, input.hotelLegs),
-        ...createTransitWalkContributions(input.dayId, input.reservations),
-        ...createTrackContributions(input.dayId, input.assignments, input.places),
-      ];
-  const hasCanonicalRoutedPart = input.movementParts?.some(part => part.kind === 'routed') ?? false;
-  if (input.routeMetricsExpected && !input.routeMetricsComplete && (!input.movementParts || !hasCanonicalRoutedPart)) {
+function canonicalMovementContributions(input: CalculateMovementTotalsFromPartsInput): MovementContribution[] {
+  const contributions: MovementContribution[] = [
+    ...input.movementParts.flatMap((part): MovementContribution[] => {
+      if (part.kind === 'track') {
+        return [{
+          key: part.key,
+          mode: part.mode,
+          source: 'track' as const,
+          sourceId: part.assignmentId,
+          durationSeconds: part.duration,
+          distanceMeters: part.distance,
+        }];
+      }
+      if (part.kind === 'routed') {
+        return [{
+          key: part.key,
+          mode: normalizeMovementMode(part.profile),
+          source: part.placement.kind === 'hotel-top' || part.placement.kind === 'hotel-bottom'
+            ? 'hotel-bookend' as const
+            : 'route' as const,
+          sourceId: part.key,
+          durationSeconds: part.duration,
+          distanceMeters: part.distance,
+        }];
+      }
+      return [];
+    }),
+    ...createTransitWalkContributions(
+      input.dayId,
+      input.reservations,
+      new Set(input.movementParts
+        .filter((part): part is Extract<ResolvedMovementPart, { kind: 'transit' }> => part.kind === 'transit')
+        .map(part => part.reservationId)),
+    ),
+  ];
+  const hasCanonicalRoutedPart = input.movementParts.some(part => part.kind === 'routed');
+  if (input.routeMetricsExpected && !input.routeMetricsComplete && !hasCanonicalRoutedPart) {
     contributions.push({
       key: `route:${input.dayId}:missing`,
-      mode,
+      mode: input.activeProfile,
+      source: 'route',
+      sourceId: 'missing',
+      durationSeconds: null,
+      distanceMeters: null,
+    });
+  }
+  return contributions;
+}
+
+function dayMovementContributions(input: CalculateDayMovementInput): MovementContribution[] {
+  if (input.movementParts) {
+    return canonicalMovementContributions({
+      dayId: input.dayId,
+      activeProfile: input.activeProfile,
+      movementParts: input.movementParts,
+      reservations: input.reservations,
+      routeMetricsComplete: input.routeMetricsComplete,
+      routeMetricsExpected: input.routeMetricsExpected,
+    });
+  }
+
+  const contributions = [
+    ...createRouteContributions(input.dayId, input.activeProfile, input.routeLegs),
+    ...createHotelBookendContributions(input.dayId, input.activeProfile, input.hotelLegs),
+    ...createTransitWalkContributions(input.dayId, input.reservations),
+    ...createTrackContributions(input.dayId, input.assignments, input.places),
+  ];
+  if (input.routeMetricsExpected && !input.routeMetricsComplete) {
+    contributions.push({
+      key: `route:${input.dayId}:missing`,
+      mode: input.activeProfile,
       source: 'route',
       sourceId: 'missing',
       durationSeconds: null,
@@ -322,6 +354,15 @@ export function calculateDayMovementTotals(
 ): Record<MovementMode, MovementTotal> {
   return combineMovementTotals(
     MOVEMENT_MODES.map(mode => aggregateMovementContributions(mode, dayMovementContributions(input))),
+  );
+}
+
+export function calculateMovementTotalsFromParts(
+  input: CalculateMovementTotalsFromPartsInput,
+): Record<MovementMode, MovementTotal> {
+  const contributions = canonicalMovementContributions(input);
+  return combineMovementTotals(
+    MOVEMENT_MODES.map(mode => aggregateMovementContributions(mode, contributions)),
   );
 }
 

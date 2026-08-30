@@ -11,12 +11,13 @@ import { buildAssignment, buildDayNote, buildPlace, buildReservation } from '../
 import { buildPlanner, buildTripActions } from '../../../helpers/mobileTrip'
 import { resetAllStores, seedStore } from '../../../helpers/store'
 import { act, renderHook, waitFor } from '../../../helpers/render'
+import type { ResolvedMovementPart } from '../../../../src/utils/resolveDayMovementPlan'
 
 // FE-MOB-PLTL-001 to FE-MOB-PLTL-045
 
 // The connector calculation is its own hook with real OSRM calls — stubbed here so
 // the timeline sees exactly the legs a test wants to match against.
-const routeCalc = vi.hoisted(() => ({ segments: [] as unknown[], movementParts: undefined as unknown[] | undefined }))
+const routeCalc = vi.hoisted(() => ({ segments: [] as unknown[], movementParts: [] as unknown[] }))
 vi.mock('../../../../src/hooks/useRouteCalculation', () => ({
   useRouteCalculation: () => ({
     routeSegments: routeCalc.segments,
@@ -97,7 +98,7 @@ describe('useMPlanTimeline', () => {
     resetAllStores()
     usePluginStore.setState({ plugins: [] })
     routeCalc.segments = []
-    routeCalc.movementParts = undefined
+    routeCalc.movementParts = []
     vi.spyOn(weatherApi, 'get').mockResolvedValue(FORECAST)
     vi.spyOn(assignmentsApi, 'updateTransport').mockResolvedValue({})
     vi.spyOn(reservationsApi, 'updatePositions').mockResolvedValue({})
@@ -702,12 +703,33 @@ describe('useMPlanTimeline', () => {
       id: 43, type: 'transit', day_id: 2,
       metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } }),
     })
+    const excludedTransit = buildReservation({
+      id: 44, type: 'transit', day_id: 2, assignment_id: 41,
+      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 900, distance: 1200 }] } }),
+    })
     routeCalc.segments = [seg([48.35, 16.35], [48.4, 16.4])]
+    routeCalc.movementParts = [
+      {
+        kind: 'track', key: 'track:assignment-41:48.3,16.3>48.35,16.35', assignmentId: 41, placeId: 401,
+        from: { lat: 48.3, lng: 16.3, source: 'track-start', assignmentId: 41, placeId: 401 },
+        to: { lat: 48.35, lng: 16.35, source: 'track-end', assignmentId: 41, placeId: 401 },
+        geometry: [[48.3, 16.3], [48.35, 16.35]], start: [48.3, 16.3], end: [48.35, 16.35],
+        mode: 'walking', duration: 3600, distance: 5000, durationSource: 'poi-times',
+      },
+      {
+        kind: 'routed', key: 'routed:assignment-41:48.35,16.35>48.4,16.4',
+        from: { lat: 48.35, lng: 16.35, source: 'track-end', assignmentId: 41, placeId: 401 },
+        to: { lat: 48.4, lng: 16.4, source: 'place', assignmentId: 42, placeId: 402 },
+        placement: { kind: 'after-assignment', assignmentId: 41 }, profile: 'driving',
+        geometry: [[48.35, 16.35], [48.4, 16.4]], distance: 1200, duration: 600, routeSegment: null,
+      },
+      { kind: 'transit', key: 'transit:reservation-43', reservationId: 43 },
+    ] as ResolvedMovementPart[]
     seedStore(useTripStore, { assignments: { '2': [track, next] } })
     const { result } = await renderTimeline(makePlanner({
       assignments: { '2': [track, next] },
       places: [track.place!, next.place!],
-      reservations: [transit],
+      reservations: [transit, excludedTransit],
     }))
 
     expect(result.current.movementTotals.walking.durationSeconds).toBe(3600 + 600)
