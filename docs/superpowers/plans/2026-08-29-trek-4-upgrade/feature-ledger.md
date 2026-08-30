@@ -110,8 +110,8 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F07 | Transit endpoint backend replacement | 4ebbb819, 6bff6fb1, c138235b, 822ff9b4 (+UI/`e6309321`) | `UPSTREAMED_CURRENT` | **Stale-geometry policy decided: PRESERVE** — endpoint edits update stop coordinates only; the saved provider itinerary/geometry (`metadata.transit`, `route_geometry`) is retained unchanged until a new Transitous search replaces it (fork `updateTransitRouteEndpoints` and upstream `update_transport` endpoints-only semantics agree). No geometry invalidation | Use generic transport update path; port the preserve-policy as a characterization test |
 | F08 | Map-side transit endpoint editor | 4bc62ec5, 6fbc3d52, 2d734584, 48356079 | `PORTED` (Task 04) | Desktop + mobile (reachable from mobile sidebar portal); port keeps the F07 PRESERVE policy (editor save updates pins only, never recomputes geometry/legs) | Port UI/domain onto 4.0 map/planner — DONE: editor + modal wiring submit full `endpoints[]` via canonical reservation update |
 | F09 | Reservation `url` over MCP | e9a1f3e0 | `UPSTREAMED_CURRENT` | — | Adopt `f1bbd94f`; never add separate `link` field |
-| F10 | Existing Cost → reservation linking | 92aee6e1, 287975b6, b3b68d0a, f8d6f8f7, 41159e73, ae1758ac, 13fbe370 | `FORK_ONLY` | — | Implement atop 4.0 Costs/Reservations |
-| F11 | Multiple cost links / safe unlink | (with F10; ae1758ac) | `FORK_ONLY` | — | Preserve relationship semantics |
+| F10 | Existing Cost → reservation linking | 92aee6e1, 287975b6, b3b68d0a, f8d6f8f7, 41159e73, ae1758ac, 13fbe370 | `PORTED` (Task 05) | — | Implement atop 4.0 Costs/Reservations — DONE: canonical service methods + REST `reservation_id` update + MCP link/unlink tools + client unlink-not-delete |
+| F11 | Multiple cost links / safe unlink | (with F10; ae1758ac) | `PORTED` (Task 05) | — | Preserve relationship semantics — DONE: multi-link cardinality + deep-preserve unlink |
 | F12 | POI marker reposition | ae7649bd, 019cdf55, 63936e2e, 5d3385bc, 75edfe25 | `FORK_ONLY` | Desktop + mobile (mobile inspector preserved by 63936e2e; draggable-marker restore in 75edfe25) | Port to Leaflet/GL/map state |
 | F13 | Track-aware route bypass + movement totals | c4823a57 … b409eb87 (~27, merge 4ce5c739) | `FORK_ONLY` | — | Port domain onto current routing pipeline |
 | F14 | Transit-distance → movement | 4dcfb114 | `FORK_ONLY` | Consume upstream transit leg data (`leg.distance` in `transit.service.ts`), do not duplicate storage | Consume upstream transit leg data |
@@ -368,7 +368,7 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Migration action:** adopt `f1bbd94f`; canonical property is `url` (never a separate `link`).
 - **Tests:** upstream reservations MCP tests cover `url`; characterize fork's `url` behavior.
 
-### F10/F11 — Existing Cost → reservation linking + safe unlink — `FORK_ONLY`
+### F10/F11 — Existing Cost → reservation linking + safe unlink — `PORTED` (Task 05)
 
 - **Fork commits:** `92aee6e1` (budget reservation link service), `287975b6` (MCP
   `link_budget_item_to_reservation`), `b3b68d0a` (scope enforcement), `f8d6f8f7` (unlink null
@@ -385,8 +385,20 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   `upstream/main:server/src/nest/budget/budget.service.ts` and used from
   `server/src/nest/reservations/reservations.mcp.ts` (blob `9671187c…`).
 - **Mobile outcome:** backend/API + Budget-tab surface (desktop + mobile read the link state).
-- **Migration action:** implement atop 4.0 Costs/Reservations services (spec §7.1 invariants).
-- **Tests:** fork `budget-reservation-linking.test.ts` is characterization; invariants per spec §7.1.
+- **Migration action (DONE at Task 05):** implemented atop 4.0 Costs/Reservations services.
+  Canonical domain methods on `BudgetService`: `linkExistingBudgetItemToReservation` +
+  `unlinkBudgetItemFromReservation` (trip-scoped, transactional, set/clear only
+  `budget_items.reservation_id`; every other cost field deep-preserved). REST path: added
+  `reservation_id` to `budgetUpdateItemRequestSchema` → `BudgetService.updateBudgetItem`
+  routes it through the canonical methods (PUT /:id broadcasts `budget:updated`). MCP:
+  `link_budget_item_to_reservation` + `unlink_budget_item_from_reservation` on
+  `budget.mcp.ts` calling the same methods, gated on BOTH `budget_edit` AND
+  `reservation_edit`, broadcasting `budget:updated`. Client: ReservationModal + TransportModal
+  "remove expense" now UNLINKS (`updateBudgetItem` with `reservation_id: null`) instead of
+  deleting the cost — the expense-reconstruction-as-unlink mechanism is removed.
+- **Tests (DONE):** BUDGET-LINK-001..014 (service, incl. deep-equality before/after unlink,
+  multi-link cardinality, wrong-trip rejects, REST routing), MCP link/unlink tool tests
+  (permission default-deny both ways, broadcast), FE-PLANNER-RESMODAL-081 (client unlink-not-delete).
 
 ### F12 — POI marker reposition — `FORK_ONLY`
 
