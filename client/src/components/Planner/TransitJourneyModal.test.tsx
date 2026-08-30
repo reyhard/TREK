@@ -33,6 +33,7 @@ function makeProps(overrides = {}) {
     onSave: vi.fn().mockResolvedValue({}),
     onDelete: vi.fn().mockResolvedValue({}),
     onChangeRoute: vi.fn(),
+    onUpdateEndpoints: vi.fn().mockResolvedValue({}),
     canEdit: true,
     ...overrides,
   }
@@ -197,6 +198,48 @@ describe('TransitJourneyModal', () => {
     // No notes on the new entry → the write tab is active again.
     expect(screen.getByPlaceholderText(/notes/i)).toBeInTheDocument()
   })
+
+  it('FE-PLANNER-TRANSITJOURNEY-015: the endpoint editor opens from the footer and edits only the changed origin', async () => {
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn().mockResolvedValue({})
+    render(<TransitJourneyModal {...makeProps({ onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+
+    // The editor replaces the itinerary body.
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+    expect(screen.queryByText('U2')).not.toBeInTheDocument()
+
+    const originLat = screen.getByLabelText('Origin — Latitude')
+    const originLng = screen.getByLabelText('Origin — Longitude')
+    await user.clear(originLat)
+    await user.type(originLat, '52.521')
+    await user.clear(originLng)
+    await user.type(originLng, '13.401')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    await waitFor(() =>
+      expect(onUpdateEndpoints).toHaveBeenCalledWith({
+        from: { name: 'Fernsehturm', lat: 52.521, lng: 13.401 },
+      })
+    )
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-016: cancelling the endpoint editor returns to the itinerary without saving', async () => {
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn()
+    render(<TransitJourneyModal {...makeProps({ onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Cancel$/ }))
+    expect(screen.queryByText(/Map route endpoints/)).not.toBeInTheDocument()
+    expect(screen.getByText('U2')).toBeInTheDocument()
+    expect(onUpdateEndpoints).not.toHaveBeenCalled()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-017: the endpoint editor is hidden without edit rights', () => {
+    render(<TransitJourneyModal {...makeProps({ canEdit: false })} />)
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
+  })
 })
 
 describe('TransitJourneyModal (mobile viewport)', () => {
@@ -252,5 +295,23 @@ describe('TransitJourneyModal (mobile viewport)', () => {
     // Delete collapses to an icon-only button on a phone.
     const deleteBtn = screen.getByRole('button', { name: 'Delete' })
     expect(deleteBtn.textContent?.trim()).toBe('')
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-018: the endpoint editor opens and edits a pin on mobile too', async () => {
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn().mockResolvedValue({})
+    render(<TransitJourneyModal {...makeProps({ onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+
+    const destLat = screen.getByLabelText('Destination — Latitude')
+    await user.clear(destLat)
+    await user.type(destLat, '52.499')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    await waitFor(() =>
+      expect(onUpdateEndpoints).toHaveBeenCalledWith({
+        to: { name: 'Zoo', lat: 52.499, lng: 13.33 },
+      })
+    )
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { ArrowRight, ArrowRightLeft, Bold, Clock, Code, Footprints, Heading2, Italic, Link2, List, ListChecks, MoveRight, Pencil, RefreshCw, Strikethrough, TramFront, Trash2 } from 'lucide-react'
+import { ArrowRight, ArrowRightLeft, Bold, Clock, Code, Footprints, Heading2, Italic, Link2, List, ListChecks, MapPin, MoveRight, Pencil, RefreshCw, Strikethrough, TramFront, Trash2 } from 'lucide-react'
 import Modal from '../shared/Modal'
 import ConfirmDialog from '../shared/ConfirmDialog'
 import { useTranslation } from '../../i18n'
@@ -10,6 +10,7 @@ import { useSettingsStore } from '../../store/settingsStore'
 import { splitReservationDateTime, formatTime } from '../../utils/formatters'
 import { TransitTitle, TransitMetaBadges, TransitWalkDivider, fmtTransitDuration } from './transitDisplay'
 import type { Reservation } from '../../types'
+import TransitRouteEndpointEditor, { type TransitRouteEndpointEditInput } from './TransitRouteEndpointEditor'
 
 /**
  * The journey view for an automated public-transit entry (#1065): a roomy modal
@@ -38,10 +39,12 @@ interface TransitJourneyModalProps {
   onSave: (fields: { title: string; notes: string | null }) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onChangeRoute: () => void
+  /** Submit edited origin/destination pins; the parent builds the full endpoints[] and calls the canonical reservation update. */
+  onUpdateEndpoints?: (input: TransitRouteEndpointEditInput) => Promise<unknown>
   canEdit: boolean
 }
 
-export default function TransitJourneyModal({ reservation, onClose, onSave, onDelete, onChangeRoute, canEdit }: TransitJourneyModalProps) {
+export default function TransitJourneyModal({ reservation, onClose, onSave, onDelete, onChangeRoute, onUpdateEndpoints, canEdit }: TransitJourneyModalProps) {
   const { t, locale } = useTranslation()
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   const timeFormat = useSettingsStore(st => st.settings.time_format) || '24h'
@@ -56,6 +59,7 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
   const [notesTab, setNotesTab] = useState<'write' | 'preview'>(() => (res.notes ? 'preview' : 'write'))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editingEndpoints, setEditingEndpoints] = useState(false)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
   const notesRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -127,6 +131,10 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
   const { time: endTime } = splitReservationDateTime(res.reservation_end_time)
   const dateStr = date ? new Date(date + 'T00:00:00Z').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''
 
+  const endpoints = res.endpoints || []
+  const fromEndpoint = endpoints.find(e => e.role === 'from')
+  const toEndpoint = endpoints.find(e => e.role === 'to')
+
   const statTiles = transit ? [
     { Icon: Clock, value: transit.duration > 0 ? fmtTransitDuration(transit.duration, t) : '—', label: t('transit.durationLabel') },
     { Icon: ArrowRightLeft, value: String(transit.transfers ?? 0), label: t('transit.transfersLabel') },
@@ -151,6 +159,15 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
             </button>
           )}
           <div style={{ flex: 1 }} />
+          {canEdit && onUpdateEndpoints && fromEndpoint && toEndpoint && (
+            <button type="button" onClick={() => setEditingEndpoints(true)} className="text-content-muted" style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
+              border: '1px solid var(--border-primary)', background: 'none',
+              fontSize: 'calc(12px * var(--fs-scale-body, 1))', cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <MapPin size={13} /> {t('transit.editEndpoints')}
+            </button>
+          )}
           {canEdit && (
             <button type="button" onClick={onChangeRoute} className="text-content-muted" style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
@@ -160,7 +177,7 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
               <RefreshCw size={13} /> {t('transit.changeRoute')}
             </button>
           )}
-          {canEdit ? (
+          {!editingEndpoints && (canEdit ? (
             <button type="button" onClick={save} disabled={saving || !title.trim() || !dirty} className="bg-[var(--text-primary)] text-[var(--bg-primary)]" style={{
               padding: '8px 20px', borderRadius: 10, border: 'none',
               fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
@@ -172,11 +189,23 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
             <button type="button" onClick={onClose} className="bg-accent text-accent-text" style={{ padding: '8px 20px', borderRadius: 10, border: 'none', fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               {t('common.close')}
             </button>
-          )}
+          ))}
         </div>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'var(--font-system)' }}>
+        {editingEndpoints && fromEndpoint && toEndpoint ? (
+          <TransitRouteEndpointEditor
+            from={fromEndpoint}
+            to={toEndpoint}
+            onSave={async (input) => {
+              if (onUpdateEndpoints) await onUpdateEndpoints(input)
+              setEditingEndpoints(false)
+            }}
+            onCancel={() => setEditingEndpoints(false)}
+          />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         {/* header: icon + inline-renamable title + date/time */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ width: isMobile ? 40 : 48, height: isMobile ? 40 : 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 13, background: '#7c3aed18' }}>
@@ -388,7 +417,9 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
                 : <span className="text-content-faint" style={{ fontSize: 'calc(12.5px * var(--fs-scale-body, 1))' }}>{t('reservations.notesPlaceholder')}</span>}
             </div>
           )}
-        </div>
+          </div>
+          </div>
+        )}
       </div>
 
       <ConfirmDialog
