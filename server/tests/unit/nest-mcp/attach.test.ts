@@ -302,3 +302,94 @@ describe('McpAttachOptions.onInvoke', () => {
     expect((result as { isError?: boolean }).isError).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Dynamic tools — a per-session source of host-contributed tools (e.g.
+// plugin-published tools). The source is consulted once at attach, and every
+// dynamic tool carries its own access marker that attach() re-checks.
+// ---------------------------------------------------------------------------
+
+describe('dynamic tools (McpDynamicToolSource)', () => {
+  let harness: AttachHarness;
+
+  afterEach(async () => {
+    await harness?.cleanup();
+  });
+
+  // An ungated decorated tool so the server advertises the tools capability
+  // even when every dynamic tool is filtered (an SDK server with zero tools
+  // rejects tools/list).
+  @McpController()
+  class DummyUngated {
+    @Tool({ name: 'dummy_tool' })
+    async dummy() {
+      return { content: [{ type: 'text', text: 'dummy' }] };
+    }
+  }
+
+  // The plugins/use gate is the same declarative policy production uses.
+  const pluginPolicy: McpAccessPolicy = ({ group, mode }, ctx) => {
+    if (group === 'plugins' && mode === 'use') {
+      return (ctx as TestCtx).scopes === null || (ctx as TestCtx).scopes?.includes('plugins:use') === true;
+    }
+    return true;
+  };
+
+  it('DYN-001: attaches a gated dynamic tool and dispatches the call with ctx', async () => {
+    const registry = createTestRegistry([], { accessPolicy: pluginPolicy });
+    const calls: Array<{ userId: number | undefined }> = [];
+    harness = await createAttachHarness(registry, { userId: 7, canRead: true, scopes: ['plugins:use'] }, {
+      dynamicTools: () => [{
+        options: {
+          name: 'plugin_flight_status',
+          description: 'Live flight status.',
+          inputSchema: { code: z.string() },
+          access: { group: 'plugins', mode: 'use' },
+        },
+        handler: (args: unknown, ctx: McpContext) => {
+          calls.push({ userId: ctx.userId });
+          return { content: [{ type: 'text', text: `status for ${(args as { code?: string }).code}` }] };
+        },
+      }],
+    });
+
+    const tools = await harness.client.listTools();
+    expect(tools.tools.map((t) => t.name)).toContain('plugin_flight_status');
+
+    const result = await harness.client.callTool({ name: 'plugin_flight_status', arguments: { code: 'ZRH' } });
+    expect(result).toMatchObject({ content: [{ type: 'text', text: 'status for ZRH' }] });
+    expect(calls).toEqual([{ userId: 7 }]);
+  });
+
+  it('DYN-002: a dynamic tool whose access gate fails is not attached (default-deny)', async () => {
+    const registry = createTestRegistry([new DummyUngated()], { accessPolicy: pluginPolicy });
+    // Scoped session WITHOUT plugins:use — the plugins/use gate denies it.
+    harness = await createAttachHarness(registry, { userId: 7, canRead: true, scopes: ['trips:read'] }, {
+      dynamicTools: () => [{
+        options: {
+          name: 'plugin_flight_status',
+          description: 'Live flight status.',
+          inputSchema: {},
+          access: { group: 'plugins', mode: 'use' },
+        },
+        handler: () => ({ content: [{ type: 'text', text: 'never called' }] }),
+      }],
+    });
+
+    const tools = await harness.client.listTools();
+    expect(tools.tools.map((t) => t.name)).not.toContain('plugin_flight_status');
+  });
+
+  it('DYN-003: a dynamic tool with no access marker is skipped (trust boundary)', async () => {
+    const registry = createTestRegistry([new DummyUngated()], { accessPolicy: pluginPolicy });
+    harness = await createAttachHarness(registry, { userId: 7, scopes: ['plugins:use'] }, {
+      dynamicTools: () => [{
+        options: { name: 'ungated_plugin_tool', description: 'No marker.', inputSchema: {} },
+        handler: () => ({ content: [{ type: 'text', text: 'x' }] }),
+      }] as never[],
+    });
+
+    const tools = await harness.client.listTools();
+    expect(tools.tools.map((t) => t.name)).not.toContain('ungated_plugin_tool');
+  });
+});

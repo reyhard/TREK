@@ -9,6 +9,7 @@ export interface TestCtx {
   canRead?: boolean;
   canWrite?: boolean;
   allow?: boolean;
+  scopes?: string[] | null;
 }
 
 export const asCtx = (ctx: TestCtx): McpContext => ctx as McpContext;

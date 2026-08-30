@@ -4,6 +4,8 @@ import type {
   McpAccessValidator,
   McpAttachOptions,
   McpContext,
+  McpDynamicTool,
+  McpDynamicToolSource,
   McpEntry,
   McpRegistryListing,
   PromptOptions,
@@ -27,6 +29,12 @@ export interface McpRegistryOptions {
 }
 
 type AnyHandler = (this: unknown, ...handlerArgs: unknown[]) => unknown;
+
+/** A dynamic tool's handler is bound to this when no owner is supplied. */
+const NO_OWNER = {};
+
+/** Dynamic tools aren't class methods; a stable sentinel keeps entry.bookkeeping simple. */
+const DYNAMIC_METHOD_NAME = '__dynamicTool';
 
 /**
  * Structural view of the SDK registration surface. The SDK's real signatures
@@ -122,6 +130,54 @@ export class McpRegistry {
           break;
       }
     }
+    if (opts?.dynamicTools) this.attachDynamicTools(registrar, ctx, opts, opts.dynamicTools);
+  }
+
+  /**
+   * Attach the session's dynamic tools (e.g. plugin-published tools) onto the
+   * same server. Each tool carries its own `access` marker, and `allowed()` is
+   * re-run here — this is a trust boundary: an absent marker would put the
+   * tool on every session ungated, so a dynamic tool without one is skipped.
+   */
+  private attachDynamicTools(
+    registrar: LooseRegistrar,
+    ctx: McpContext,
+    opts: McpAttachOptions,
+    source: McpDynamicToolSource,
+  ): void {
+    let tools: readonly McpDynamicTool[];
+    try {
+      tools = source(ctx) ?? [];
+    } catch (err) {
+      console.warn(`[nest-mcp] dynamic tool source failed, no dynamic tools this session: ${String((err as Error | undefined)?.message ?? err)}`);
+      return;
+    }
+    const reserved = this.reservedNames();
+    const claimed = new Set<string>();
+    for (const tool of tools) {
+      const name = tool?.options?.name;
+      try {
+        if (typeof tool?.handler !== 'function') throw new Error('handler is not a function');
+        if (typeof name !== 'string' || !name) throw new Error('name is missing');
+        // The type says required, but this is a trust boundary: an absent
+        // marker takes allowed()'s "always registered" branch.
+        if (tool.options.access === undefined) throw new Error('access is required for a dynamic tool');
+        if (reserved.has(name)) throw new Error('name is reserved by a registered entry');
+        if (claimed.has(name)) throw new Error('duplicate name in this source');
+        claimed.add(name);
+        const owner = tool.owner ?? NO_OWNER;
+        const entry: McpEntry = { kind: 'tool', methodName: DYNAMIC_METHOD_NAME, options: tool.options };
+        if (!this.allowed(entry, ctx, owner)) continue;
+        this.attachTool(registrar, tool.options, owner, tool.handler as AnyHandler, ctx, opts);
+      } catch (err) {
+        console.warn(`[nest-mcp] skipped dynamic tool "${String(name)}": ${String((err as Error | undefined)?.message ?? err)}`);
+      }
+    }
+  }
+
+  /** Reserved names across this registry, so a dynamic source can never shadow a decorated entry. */
+  private reservedNames(): Set<string> {
+    return new Set(this.bound.map((b) => b.entry.options.name));
   }
 
   /**

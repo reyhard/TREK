@@ -153,7 +153,40 @@ export interface McpAttachOptions {
    * failure handling.
    */
   onInvoke?: (info: { kind: McpEntryKind; name: string }) => void;
+  /**
+   * A per-session source of HOST-contributed tools (e.g. plugin-published
+   * tools). Consulted once per `attach()`, inside the initialize request, so
+   * it must be synchronous. Each tool must carry its own `access` marker —
+   * `allowed()` treats an absent marker as "always registered", so omitting
+   * it would put the tool on every session ungated.
+   */
+  dynamicTools?: McpDynamicToolSource;
 }
+
+/**
+ * One host-contributed tool, supplied per session by an `McpDynamicToolSource`.
+ *
+ * `access` is required here, unlike on a decorated entry: `allowed()` reads an
+ * absent marker as "always registered", so omitting it would put the tool on
+ * every session ungated. `attach()` re-checks it at runtime — this is a trust
+ * boundary, and the type alone is not the enforcement.
+ */
+export interface McpDynamicTool {
+  options: ToolOptions & { access: McpAccess };
+  handler: (args: unknown, ctx: McpContext) => unknown;
+  /** Bound as `this` on `handler`, and handed to `when(ctx, self)`. */
+  owner?: object;
+}
+
+/**
+ * Consulted once per `attach()`, with that session's ctx.
+ *
+ * Synchronous by design: `attach()` runs inside the `initialize` request, so an
+ * awaited source would put a third party's round trip in front of every session
+ * creation. A source that needs to ask something slow what tools exist should
+ * answer from state it already holds.
+ */
+export type McpDynamicToolSource = (ctx: McpContext) => readonly McpDynamicTool[];
 
 export type McpEntry =
   | { kind: 'tool'; methodName: string; options: ToolOptions }
