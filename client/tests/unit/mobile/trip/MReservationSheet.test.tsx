@@ -4,7 +4,7 @@ import { useAddonStore } from '../../../../src/store/addonStore'
 import { useTripStore } from '../../../../src/store/tripStore'
 import type { Accommodation, Day, Place, Reservation, TripMember } from '../../../../src/types'
 import { buildPlanner } from '../../../helpers/mobileTrip'
-import { resetAllStores } from '../../../helpers/store'
+import { resetAllStores, seedStore } from '../../../helpers/store'
 import { fireEvent, render, screen, waitFor } from '../../../helpers/render'
 
 // FE-MOB-RESSH-001 to FE-MOB-RESSH-051
@@ -166,6 +166,7 @@ describe('MReservationSheet', () => {
     expect(screen.getByRole('dialog', { name: 'reservations.newTitle' })).toBeInTheDocument()
     expect(titleField()).toHaveValue('')
     expect(screen.getByRole('button', { name: 'reservations.type.other' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^Create expense$/i })).toBeDisabled()
     expect(submitBtn()).toHaveTextContent('common.add')
     expect(submitBtn()).toBeDisabled()
   })
@@ -336,7 +337,7 @@ describe('MReservationSheet', () => {
     type(dates()[0], '2026-05-02')
     type(times()[0], '19:30')
     type(dates()[1], '2026-05-01')
-    fireEvent.click(screen.getByRole('button', { name: 'reservations.createExpense' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Create expense$/i }))
 
     await waitFor(() => expect(planner.toast.error).toHaveBeenCalledWith('reservations.validation.endBeforeStart'))
     expect(planner.handleSaveReservation).not.toHaveBeenCalled()
@@ -601,7 +602,7 @@ describe('MReservationSheet', () => {
     const { planner, onOpenExpense } = setup()
     fireEvent.click(screen.getByRole('button', { name: 'reservations.type.restaurant' }))
     type(titleField(), 'Dinner')
-    fireEvent.click(screen.getByRole('button', { name: 'reservations.createExpense' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Create expense$/i }))
 
     await waitFor(() => expect(onOpenExpense).toHaveBeenCalled())
     expect(planner.handleSaveReservation).toHaveBeenCalledTimes(1)
@@ -631,6 +632,22 @@ describe('MReservationSheet', () => {
     fireEvent.click(submitBtn())
     await waitFor(() => expect(planner.toast.error).toHaveBeenCalledWith('server said no'))
     expect(submitBtn()).toBeEnabled()
+  })
+
+  it('FE-MOB-RESSH-052: an existing linked cost can be unlinked without deleting it', async () => {
+    const item = { id: 701, reservation_id: 55, name: 'Dinner cost', total_price: 42, currency: 'EUR', category: 'food', members: [], payers: [] }
+    const planner = makePlanner({ editingReservation: DINNER, budgetItems: [item] })
+    seedStore(useTripStore, {
+      budgetItems: [item],
+      updateBudgetItem: planner.tripActions.updateBudgetItem,
+    })
+    setup(planner)
+
+    expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Remove expense$/i }))
+
+    await waitFor(() => expect(planner.tripActions.updateBudgetItem).toHaveBeenCalledWith(5, 701, { reservation_id: null }))
+    expect(planner.tripActions.deleteBudgetItem).not.toHaveBeenCalled()
   })
 
   it('FE-MOB-RESSH-043: a non-Error rejection falls back to the generic message', async () => {

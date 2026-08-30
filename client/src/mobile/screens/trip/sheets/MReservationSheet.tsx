@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, FileText, Hotel, Link2, ParkingSquare, Plus, Ticket, Users, Utensils } from 'lucide-react'
+import { Check, FileText, Hotel, Link2, ParkingSquare, Ticket, Users, Utensils } from 'lucide-react'
 import MSheet from '../../../components/MSheet'
 import { useAddonStore } from '../../../../store/addonStore'
 import { useTranslation } from '../../../../i18n'
@@ -13,8 +13,9 @@ import { Eyebrow, FIELD_AREA_CLS, FIELD_CLS, FormSheetFooter, FormSheetHeader } 
 import PlFileAttach from './PlFileAttach'
 import GuestBadge from '../../../../components/shared/GuestBadge'
 import { SPLIT_COLORS } from '../../../../components/Budget/BudgetPanel.constants'
+import { BookingCostsSection } from '../../../../components/Planner/BookingCostsSection'
 import { useTripStore } from '../../../../store/tripStore'
-import type { TripMember } from '../../../../types'
+import type { BudgetItem, TripMember } from '../../../../types'
 import type { BookingExpenseRequest } from '../../../../components/Planner/BookingCostsSection.types'
 import type { TripPlanner } from '../MTripShell'
 
@@ -72,7 +73,7 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
   const [travelerIds, setTravelerIds] = useState<Set<number>>(new Set())
   const [isSaving, setIsSaving] = useState(false)
   // Ref (not state) so handleSubmit reads the intent set by the same click.
-  const expenseIntentRef = useRef(false)
+  const expenseIntentRef = useRef<true | BudgetItem | false>(false)
   // Open-time snapshot so the sheet content survives the exit animation.
   const [snap, setSnap] = useState<{ res: typeof editingReservation; assignmentId: number | null }>(
     { res: null, assignmentId: null },
@@ -272,13 +273,28 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
         }
       }
       if (withExpense && saved?.id) {
-        onOpenExpense({ prefill: { reservationId: saved.id, name: form.title, category: typeToCostCategory(form.type) } })
+        if (withExpense === true) {
+          onOpenExpense({ prefill: { reservationId: saved.id, name: form.title, category: typeToCostCategory(form.type) } })
+        } else {
+          onOpenExpense({ editItem: withExpense })
+        }
       }
       if (importReviewActive && saved) advanceImportReview()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t('common.unknownError'))
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleCreateExpense = () => { expenseIntentRef.current = true; void handleSubmit() }
+  const handleEditExpense = (item: BudgetItem) => { expenseIntentRef.current = item; void handleSubmit() }
+  const handleRemoveExpense = async (item: BudgetItem) => {
+    // Unlink the existing cost from this reservation — never delete it.
+    try {
+      await tripActions.updateBudgetItem(tripId, item.id, { reservation_id: null })
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
     }
   }
 
@@ -569,19 +585,13 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
 
         {/* COSTS */}
         {isBudgetEnabled && (
-          <>
-            <Eyebrow className="mb-[6px] mt-3 uppercase">{t('reservations.costsLabel')}</Eyebrow>
-            <button
-              type="button"
-              onClick={() => { expenseIntentRef.current = true; handleSubmit() }}
-              disabled={!form.title.trim() || isSaving}
-              className="flex w-full items-center justify-center gap-[6px] rounded-[13px] border border-[color:var(--m-rowbr)] bg-[color:var(--m-ic)] py-[11px] text-[0.78125rem] font-semibold text-m-ink disabled:opacity-40"
-            >
-              <Plus size={13} strokeWidth={2.2} />
-              {t('reservations.createExpense')}
-            </button>
-            <div className="mt-[5px] font-geist text-[0.625rem] text-m-faint">{t('reservations.createExpenseHint')}</div>
-          </>
+          <BookingCostsSection
+            reservationId={res?.id ?? null}
+            onCreate={handleCreateExpense}
+            onEdit={handleEditExpense}
+            onRemove={handleRemoveExpense}
+            createDisabled={!form.title.trim() || isSaving}
+          />
         )}
       </div>
 

@@ -11,12 +11,13 @@ import CustomTimePicker from '../../../../components/shared/CustomTimePicker'
 import AirportSelect, { type Airport } from '../../../../components/Planner/AirportSelect'
 import LocationSelect, { type LocationPoint } from '../../../../components/Planner/LocationSelect'
 import TransitSearchPanel from '../../../../components/Planner/TransitSearchPanel'
+import { BookingCostsSection } from '../../../../components/Planner/BookingCostsSection'
 import { Eyebrow, FIELD_AREA_CLS, FIELD_CLS, FormSheetFooter, FormSheetHeader } from './PlSheetChrome'
 import PlFileAttach from './PlFileAttach'
 import GuestBadge from '../../../../components/shared/GuestBadge'
 import { SPLIT_COLORS } from '../../../../components/Budget/BudgetPanel.constants'
 import { useTripStore } from '../../../../store/tripStore'
-import type { Day, Place, Reservation, ReservationEndpoint, TripMember } from '../../../../types'
+import type { BudgetItem, Day, Place, Reservation, ReservationEndpoint, TripMember } from '../../../../types'
 import type { BookingReviewDraft } from '../../../../components/Planner/parsedItemToDraft'
 import type { BookingExpenseRequest } from '../../../../components/Planner/BookingCostsSection.types'
 import type { TripPlanner } from '../MTripShell'
@@ -161,7 +162,7 @@ export default function MTransportFormSheet({ planner, onOpenExpense }: MTranspo
   const [isSaving, setIsSaving] = useState(false)
   // Ref (not state) so handleSubmit reads the intent set by the same click — a
   // state value would be stale in that render's closure and never open the editor.
-  const expenseIntentRef = useRef(false)
+  const expenseIntentRef = useRef<true | BudgetItem | false>(false)
   const [deleteArmed, setDeleteArmed] = useState(false)
   // Open-time snapshot so the sheet content survives the exit animation.
   const [snap, setSnap] = useState<{ res: Reservation | null; prefill: BookingReviewDraft | null }>({ res: null, prefill: null })
@@ -559,12 +560,27 @@ export default function MTransportFormSheet({ planner, onOpenExpense }: MTranspo
         }
       }
       if (withExpense && saved?.id) {
-        onOpenExpense({ prefill: { reservationId: saved.id, name: form.title, category: typeToCostCategory(form.type) } })
+        if (withExpense === true) {
+          onOpenExpense({ prefill: { reservationId: saved.id, name: form.title, category: typeToCostCategory(form.type) } })
+        } else {
+          onOpenExpense({ editItem: withExpense })
+        }
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t('common.unknownError'))
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleCreateExpense = () => { expenseIntentRef.current = true; void handleSubmit() }
+  const handleEditExpense = (item: BudgetItem) => { expenseIntentRef.current = item; void handleSubmit() }
+  const handleRemoveExpense = async (item: BudgetItem) => {
+    // Unlink the existing cost from this reservation — never delete it.
+    try {
+      await tripActions.updateBudgetItem(tripId, item.id, { reservation_id: null })
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
     }
   }
 
@@ -995,19 +1011,13 @@ export default function MTransportFormSheet({ planner, onOpenExpense }: MTranspo
 
             {/* COSTS */}
             {isBudgetEnabled && (
-              <>
-                <Eyebrow className="mb-[6px] mt-3 uppercase">{t('reservations.costsLabel')}</Eyebrow>
-                <button
-                  type="button"
-                  onClick={() => { expenseIntentRef.current = true; handleSubmit() }}
-                  disabled={!form.title.trim() || isSaving}
-                  className="flex w-full items-center justify-center gap-[6px] rounded-[13px] border border-[color:var(--m-rowbr)] bg-[color:var(--m-ic)] py-[11px] text-[0.78125rem] font-semibold text-m-ink disabled:opacity-40"
-                >
-                  <Plus size={13} strokeWidth={2.2} />
-                  {t('reservations.createExpense')}
-                </button>
-                <div className="mt-[5px] font-geist text-[0.625rem] text-m-faint">{t('reservations.createExpenseHint')}</div>
-              </>
+              <BookingCostsSection
+                reservationId={res?.id ?? null}
+                onCreate={handleCreateExpense}
+                onEdit={handleEditExpense}
+                onRemove={handleRemoveExpense}
+                createDisabled={!form.title.trim() || isSaving}
+              />
             )}
           </>
         )}

@@ -16,7 +16,7 @@ import type { BudgetItem } from '../../types'
  * Exactly one of reservationId / placeId is set — they are the two sides of the
  * same link, and the block behaves identically on both.
  */
-export function BookingCostsSection({ reservationId, placeId = null, hintKey = 'reservations.createExpenseHint', pendingExpense, onCreate, onEdit, onRemove }: {
+export function BookingCostsSection({ reservationId, placeId = null, hintKey = 'reservations.createExpenseHint', pendingExpense, onCreate, onEdit, onRemove, createDisabled = false }: {
   reservationId: number | null
   /** Set instead of reservationId when the block sits in the place form (#1298). */
   placeId?: number | null
@@ -27,6 +27,7 @@ export function BookingCostsSection({ reservationId, placeId = null, hintKey = '
   onCreate: () => void
   onEdit: (item: BudgetItem) => void
   onRemove: (item: BudgetItem) => void
+  createDisabled?: boolean
 }) {
   const { t, locale } = useTranslation()
   const budgetItems = useTripStore(s => s.budgetItems)
@@ -83,8 +84,8 @@ export function BookingCostsSection({ reservationId, placeId = null, hintKey = '
   return (
     <div>
       <label className={labelCls}>{t('reservations.costsLabel')}</label>
-      <button type="button" onClick={onCreate}
-        className="bg-surface-secondary border border-edge text-content"
+      <button type="button" onClick={onCreate} disabled={createDisabled}
+        className="bg-surface-secondary border border-edge text-content disabled:opacity-40"
         style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 13px', borderRadius: 10, fontSize: 'calc(13.5px * var(--fs-scale-body, 1))', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
         <Plus size={15} /> {t('reservations.createExpense')}
       </button>

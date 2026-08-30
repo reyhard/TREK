@@ -6,7 +6,7 @@ import { useTripStore } from '../../../../src/store/tripStore'
 import type { Day, Reservation, TripMember } from '../../../../src/types'
 import { buildPlanner } from '../../../helpers/mobileTrip'
 import { resetAllStores, seedStore } from '../../../helpers/store'
-import { act, fireEvent, render, screen } from '../../../helpers/render'
+import { act, fireEvent, render, screen, waitFor } from '../../../helpers/render'
 
 // FE-MOB-TRFRM-001 to FE-MOB-TRFRM-048
 //
@@ -160,6 +160,7 @@ describe('MTransportFormSheet', () => {
   it('FE-MOB-TRFRM-002: opens in create mode with a disabled save and the manual/automated switch', () => {
     renderSheet(makePlanner())
     expect(screen.getByRole('dialog', { name: 'transport.modalTitle.create' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Create expense$/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'common.add' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'transport.modeManual' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'transport.modeAutomated' })).toBeInTheDocument()
@@ -893,7 +894,7 @@ describe('MTransportFormSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'reservations.type.ferry' }))
     typeTitle('Ferry ticket')
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'reservations.createExpense' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Create expense$/i }))
     })
     expect(handleSaveTransport).toHaveBeenCalledTimes(1)
     expect(onOpenExpense).toHaveBeenCalledWith({
@@ -907,6 +908,25 @@ describe('MTransportFormSheet', () => {
     typeTitle('No costs please')
     await submit()
     expect(onOpenExpense).not.toHaveBeenCalled()
+  })
+
+  it('FE-MOB-TRFRM-049: an existing linked cost can be unlinked without deleting it', async () => {
+    const editingTransport = {
+      id: 50, trip_id: 1, type: 'bus', title: 'Bus', status: 'pending', endpoints: [], metadata: null,
+    } as unknown as Reservation
+    const item = { id: 702, reservation_id: 50, name: 'Bus fare', total_price: 18, currency: 'EUR', category: 'transport', members: [], payers: [] }
+    const planner = makePlanner({ editingTransport })
+    seedStore(useTripStore, {
+      budgetItems: [item],
+      updateBudgetItem: planner.tripActions.updateBudgetItem,
+    })
+    renderSheet(planner)
+
+    expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Remove expense$/i }))
+
+    await waitFor(() => expect(planner.tripActions.updateBudgetItem).toHaveBeenCalledWith(1, 702, { reservation_id: null }))
+    expect(planner.tripActions.deleteBudgetItem).not.toHaveBeenCalled()
   })
 
   it('FE-MOB-TRFRM-038: the automated tab asks for a day before it searches', () => {
