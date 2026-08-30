@@ -74,11 +74,16 @@ const glBounds = vi.hoisted(() => {
 interface FakeMarker {
   element: HTMLElement
   lngLat: number[] | null
+  draggableOpt: boolean
   setLngLat: (ll: number[]) => FakeMarker
   getLngLat: () => { lng: number; lat: number }
   addTo: (map: unknown) => FakeMarker
   remove: () => void
   getElement: () => HTMLElement
+  on: (event: string, handler: (e?: unknown) => void) => FakeMarker
+  off: (event: string, handler: (e?: unknown) => void) => FakeMarker
+  fire: (event: string, payload?: unknown) => void
+  dragHandlers: Map<string, (e?: unknown) => void>
 }
 
 interface FakePopup {
@@ -95,16 +100,27 @@ const glMarkers = vi.hoisted(() => {
   return {
     get created() { return created },
     clear: () => { created.length = 0 },
-    make: (opts?: { element?: HTMLElement }): FakeMarker => {
+    make: (opts?: { element?: HTMLElement; draggable?: boolean }): FakeMarker => {
       const element = opts?.element ?? document.createElement('div')
       const marker: FakeMarker = {
         element,
         lngLat: null,
+        draggableOpt: opts?.draggable ?? false,
+        dragHandlers: new Map(),
         setLngLat: vi.fn((ll: number[]) => { marker.lngLat = ll; return marker }),
         getLngLat: vi.fn(() => ({ lng: Number(marker.lngLat?.[0] ?? 0), lat: Number(marker.lngLat?.[1] ?? 0) })),
         addTo: vi.fn((_map: unknown) => marker),
         remove: vi.fn(),
         getElement: vi.fn(() => element),
+        on: vi.fn((event: string, handler: (e?: unknown) => void) => { marker.dragHandlers.set(event, handler); return marker }),
+        off: vi.fn((event: string, handler: (e?: unknown) => void) => { marker.dragHandlers.delete(event); return marker }),
+        fire: (event: string, payload?: unknown) => {
+          // A GL dragend reports its new position through the marker's own lngLat,
+          // which the mock already tracks via setLngLat — but the handler receives
+          // it on the event, so tests pass the position in the payload.
+          const handler = marker.dragHandlers.get(event)
+          if (handler) handler(payload ?? {})
+        },
       }
       created.push(marker)
       return marker
@@ -130,7 +146,7 @@ vi.mock('mapbox-gl', () => ({
     Map: vi.fn(function () {
       return glMap
     }),
-    Marker: vi.fn(function (opts?: { element?: HTMLElement }) {
+    Marker: vi.fn(function (opts?: { element?: HTMLElement; draggable?: boolean }) {
       return glMarkers.make(opts)
     }),
     LngLatBounds: vi.fn(function () {
@@ -149,7 +165,7 @@ vi.mock('maplibre-gl', () => ({
     Map: vi.fn(function () {
       return glMap
     }),
-    Marker: vi.fn(function (opts?: { element?: HTMLElement }) {
+    Marker: vi.fn(function (opts?: { element?: HTMLElement; draggable?: boolean }) {
       return glMarkers.make(opts)
     }),
     LngLatBounds: vi.fn(function () {
@@ -1814,5 +1830,60 @@ describe('MapViewGL', () => {
 
     expect(glMap.off).toHaveBeenCalledWith('moveend', expect.any(Function))
     expect(glMap.off).toHaveBeenCalledWith('zoomend', expect.any(Function))
+  })
+})
+
+describe('MapViewGL POI reposition', () => {
+  // The map's overlay work only runs once the style reports 'load'.
+  function loadOnAttach() {
+    glMap.on.mockImplementation((event: string, handlerOrLayer: unknown) => {
+      if (event === 'load' && typeof handlerOrLayer === 'function') (handlerOrLayer as () => void)()
+      return glMap
+    })
+  }
+  const twoPlaces = [
+    buildMapPlace({ id: 1, lat: 48.85, lng: 2.29 }),
+    buildMapPlace({ id: 2, lat: 48.86, lng: 2.3 }),
+  ]
+
+  it('FE-COMP-MAPVIEWGL-040: the repositioning marker is draggable; siblings are not', async () => {
+    loadOnAttach()
+    render(<MapViewGL places={twoPlaces} selectedPlaceId={2} repositionPlaceId={2} canRepositionPlaces />)
+    await act(async () => {})
+    // Two markers: one clustered place marker + the repositioning one.
+    const byId = new Map<number, FakeMarker>()
+    glMarkers.created.forEach((m) => {
+      const el = m.element
+      const id = Number(el.getAttribute('data-place-id') ?? 0)
+      byId.set(id, m)
+    })
+    // The mock doesn't set data-place-id; instead match by draggableOpt: exactly
+    // the selected+repositioning marker must be draggable.
+    const draggableCount = glMarkers.created.filter(m => m.draggableOpt).length
+    expect(draggableCount).toBe(1)
+    const nonDraggable = glMarkers.created.filter(m => !m.draggableOpt)
+    expect(nonDraggable.length).toBeGreaterThan(0)
+  })
+
+  it('FE-COMP-MAPVIEWGL-041: dragging fires dragstart then dragend with the new position', async () => {
+    const onStart = vi.fn()
+    const onEnd = vi.fn()
+    loadOnAttach()
+    render(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces onPlaceRepositionStart={onStart} onPlaceRepositionEnd={onEnd} />)
+    await act(async () => {})
+    const dragMarker = glMarkers.created.find(m => m.draggableOpt)!
+    expect(dragMarker).toBeDefined()
+    dragMarker.setLngLat([2.4, 48.9])
+    act(() => { dragMarker.fire('dragstart') })
+    act(() => { dragMarker.fire('dragend') })
+    expect(onStart).toHaveBeenCalledWith(1)
+    expect(onEnd).toHaveBeenCalledWith(1, { lat: 48.9, lng: 2.4 })
+  })
+
+  it('FE-COMP-MAPVIEWGL-042: without canRepositionPlaces no marker is draggable', async () => {
+    loadOnAttach()
+    render(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces={false} />)
+    await act(async () => {})
+    expect(glMarkers.created.every(m => !m.draggableOpt)).toBe(true)
   })
 })

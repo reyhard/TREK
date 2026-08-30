@@ -91,6 +91,13 @@ const NO_DAYS: Day[] = []
 interface Props {
   places: Place[]
   dayPlaces?: Place[]
+  // POI reposition mode (fork F12): the selected place's marker becomes
+  // draggable and reports its new pin; the parent persists through the
+  // canonical place update and rolls back on failure.
+  repositionPlaceId?: number | null
+  canRepositionPlaces?: boolean
+  onPlaceRepositionStart?: (placeId: number) => void
+  onPlaceRepositionEnd?: (placeId: number, coordinates: { lat: number; lng: number }) => void
   // Enables the plugin map contributions (markers + layers). Absent on surfaces
   // without a trip (CollectionMap), which naturally excludes them — same rule as
   // the Leaflet MapPluginMarkers.
@@ -372,6 +379,10 @@ export function MapViewGL({
   glProvider = 'mapbox-gl',
   gl,
   onMapReady,
+  repositionPlaceId = null,
+  canRepositionPlaces = false,
+  onPlaceRepositionStart,
+  onPlaceRepositionEnd,
 }: Props) {
   const rawMapboxStyle = useSettingsStore(s => s.settings.mapbox_style || MAPBOX_DEFAULT_STYLE)
   const rawMaplibreStyle = useSettingsStore(s => s.settings.maplibre_style || '')
@@ -443,11 +454,17 @@ export function MapViewGL({
   onClickRefs.current.marker = onMarkerClick
   onClickRefs.current.map = onMapClick
   onClickRefs.current.context = onMapContextMenu
+  const onRepositionRefs = useRef({ start: onPlaceRepositionStart, end: onPlaceRepositionEnd })
+  onRepositionRefs.current.start = onPlaceRepositionStart
+  onRepositionRefs.current.end = onPlaceRepositionEnd
   const hoverDisabledRef = useRef(hoverDisabled)
   hoverDisabledRef.current = hoverDisabled
   // Same gate as the Leaflet renderer: HTML5 drag is a pointer feature, and the
   // day plan the marker would be dropped on is not on screen on a phone anyway.
   const markersDraggableRef = useRef(typeof window !== 'undefined' && navigator.maxTouchPoints === 0)
+  // Timestamps of when a place's reposition drag ended; clicks within a window
+  // are suppressed so a drag does not also toggle selection (#F12).
+  const suppressMarkerClickUntilRef = useRef(new Map<number, number>())
   const routeCoords = useMemo<[number, number][]>(() => (route || []).flat().filter(isValidCoordinate), [route])
   const routeFitKey = useMemo(
     () => routeCoords.map(([lat, lng]) => `${lat.toFixed(6)},${lng.toFixed(6)}`).join('|'),
@@ -1043,13 +1060,21 @@ export function MapViewGL({
         // A custom image wins over the auto-fetched thumb; otherwise fall back to it.
         const photoUrl = isCustomPlaceImage(place.image_url) ? place.image_url! : ((pck && photoUrls[pck]) || place.image_url || null)
         const selected = place.id === selectedPlaceId
+        const repositioning = canRepositionPlaces && selected && place.id === repositionPlaceId
         const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected)
+        // Reposition mode: the marker is already in the DOM at its pinned
+        // position from the drag start; do not rebuild it under the cursor.
+        const existing = markersRef.current.get(place.id)
+        if (existing && repositioning && (existing as unknown as { __trekRepositioning?: boolean }).__trekRepositioning) return
         // Drag onto a day in the plan (#891). Markers are rebuilt from scratch
         // on every reconcile, so the listeners go with the element and need no
-        // teardown of their own.
-        if (markersDraggableRef.current) makeMarkerDraggable(el, place.id)
+        // teardown of their own. The repositioning marker skips this (it uses
+        // the GL marker's own dragging instead).
+        if (markersDraggableRef.current && !repositioning) makeMarkerDraggable(el, place.id)
         el.addEventListener('click', (ev) => {
           ev.stopPropagation()
+          // Skip the click that immediately follows a reposition drag end.
+          if (Date.now() < (suppressMarkerClickUntilRef.current.get(place.id) ?? 0)) return
           // Clear the card right away — the flyTo that follows moves the marker
           // out from under the cursor and mouseleave never fires (#1404).
           hoverIdRef.current = null
@@ -1075,17 +1100,33 @@ export function MapViewGL({
         })
         // Recreate marker each time rather than patching internal state —
         // mapbox-gl's internal _element bookkeeping breaks under DOM swaps.
-        const existing = markersRef.current.get(place.id)
         if (existing) existing.remove()
         // Default (viewport-aligned) anchors keep the marker parallel to the
         // screen so its pixel centre lines up with the route line at any
         // pitch. Tried `pitchAlignment: 'map'` to snap markers onto terrain,
         // but it rotates the element by the pitch angle and visually offsets
         // the anchor by ~100px at 45° tilt, which caused the observed drift.
-        const m = new gl.Marker({ element: el, anchor: 'center' })
+        const m = new gl.Marker({ element: el, anchor: 'center', draggable: repositioning })
           .setLngLat([place.lng, place.lat])
           .addTo(map)
+        ;(m as unknown as { __trekRepositioning?: boolean }).__trekRepositioning = repositioning
         markersRef.current.set(place.id, m)
+        if (repositioning) {
+          const handleDragStart = () => {
+            popupRef.current?.remove()
+            hoverIdRef.current = null
+            setHoverPlace(null)
+            setHoverPos(null)
+            onRepositionRefs.current.start?.(place.id)
+          }
+          const handleDragEnd = () => {
+            suppressMarkerClickUntilRef.current.set(place.id, Date.now() + 350)
+            const { lat, lng } = m.getLngLat()
+            onRepositionRefs.current.end?.(place.id, { lat, lng })
+          }
+          m.on('dragstart', handleDragStart)
+          m.on('dragend', handleDragEnd)
+        }
       })
     }
 
