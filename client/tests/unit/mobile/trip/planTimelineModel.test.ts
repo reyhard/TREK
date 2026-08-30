@@ -10,6 +10,7 @@ import { buildAssignment, buildDayNote, buildPlace, buildReservation } from '../
 import type {
   Accommodation, Assignment, Day, DayNote, Reservation, RouteSegment, TranslationFn,
 } from '../../../../src/types'
+import type { ResolvedMovementPart } from '../../../../src/utils/resolveDayMovementPlan'
 
 // FE-MOB-PTLM-001 to FE-MOB-PTLM-044
 
@@ -308,6 +309,47 @@ describe('planTimelineModel — buildPlanRows', () => {
     expect(conn && conn.seg).toBe(connector)
     expect(conn && conn.assignmentId).toBe(14)
     expect(conn && conn.modeDirection).toBe('incoming')
+  })
+
+  it('FE-MOB-PTLM-046: matches the approach connector to a canonical track start', () => {
+    const previous = assignment(12, 0, place(102, 'Village', 48.1, 16.1))
+    const trackPlace = {
+      ...place(103, 'Trail', 48.25, 16.25),
+      route_geometry: JSON.stringify([[48.3, 16.3], [48.35, 16.35]]),
+    } as ReturnType<typeof place>
+    const track = assignment(13, 1, trackPlace)
+    const approach = seg([48.1, 16.1], [48.3, 16.3])
+    const movementParts: ResolvedMovementPart[] = [
+      {
+        kind: 'routed',
+        key: 'routed:assignment-12:48.1,16.1>48.3,16.3',
+        from: { lat: 48.1, lng: 16.1, source: 'place', assignmentId: 12, placeId: 102 },
+        to: { lat: 48.3, lng: 16.3, source: 'track-start', assignmentId: 13, placeId: 103 },
+        placement: { kind: 'after-assignment', assignmentId: 12 },
+        profile: 'walking', geometry: [approach.from, approach.to],
+        distance: approach.distance, duration: approach.duration, routeSegment: approach,
+      },
+      {
+        kind: 'track',
+        key: 'track:assignment-13:48.3,16.3>48.35,16.35',
+        assignmentId: 13,
+        placeId: 103,
+        from: { lat: 48.3, lng: 16.3, source: 'track-start', assignmentId: 13, placeId: 103 },
+        to: { lat: 48.35, lng: 16.35, source: 'track-end', assignmentId: 13, placeId: 103 },
+        coordinates: [[48.3, 16.3], [48.35, 16.35]],
+        geometry: [[48.3, 16.3], [48.35, 16.35]],
+        start: [48.3, 16.3], end: [48.35, 16.35], distance: 5000,
+        mode: 'walking', duration: 3600, durationSource: 'estimated',
+      },
+    ]
+
+    const rows = buildPlanRows({
+      merged: [placeItem(previous), placeItem(track)],
+      reservations: [], routeSegments: [], movementParts, dayId: 2,
+    })
+
+    expect(rows.map(row => row.kind)).toEqual(['place', 'conn', 'place'])
+    expect(rows[1]).toMatchObject({ kind: 'conn', seg: approach, assignmentId: 12, modeDirection: 'outgoing' })
   })
 })
 

@@ -123,6 +123,8 @@ interface DayPlanSidebarProps {
   isMobile?: boolean
 }
 
+type RouteLegModeTarget = { assignmentId: number; direction: 'incoming' }
+
 /**
  * Day-plan state + behaviour: expand/collapse, inline title edit, route legs +
  * optimisation, day notes, and the drag-and-drop reorder/move machinery across
@@ -203,6 +205,9 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // Hotel bookend legs keyed by day id. Desktop keys only the selected day; mobile
   // keys every day whose Route toggle is on, so each shows its own bookends (#1374).
   const [hotelLegs, setHotelLegs] = useState<Record<number, { top?: { seg: RouteSegment; name: string; targetId?: number }; bottom?: { seg: RouteSegment; name: string; targetId?: number } }>>({})
+  // Post-track legs are stored under the track assignment for rendering, but their
+  // mode is owned by the destination place's incoming override.
+  const [routeLegModeTargets, setRouteLegModeTargets] = useState<Record<number, Record<number, RouteLegModeTarget>>>({})
   const [routeMetricStatus, setRouteMetricStatus] = useState<Record<number, 'loading' | 'complete' | 'partial'>>({})
   // Mobile only: days the user tapped "Route" on. Their leg distances show inline in
   // the expanded day, so seeing distances doesn't require selecting the day (which
@@ -599,6 +604,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     legsAbortRef.current = controller
     ;(async () => {
       const legsByDay: Record<number, Record<number, RouteSegment>> = {}
+      const modeTargetsByDay: Record<number, Record<number, RouteLegModeTarget>> = {}
       const hotelByDay: Record<number, { top?: { seg: RouteSegment; name: string; targetId?: number }; bottom?: { seg: RouteSegment; name: string; targetId?: number } }> = {}
       const expectedByDay: Record<number, number> = {}
 
@@ -627,7 +633,9 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
         expectedByDay[dayId] = runs.reduce((count, run) => count + Math.max(0, run.length - 1), 0) + (wantTop ? 1 : 0) + (wantBottom ? 1 : 0)
         const dfMode = dayDefaultMode(dayId)
         const dayLegs: Record<number, RouteSegment> = {}
+        const dayModeTargets: Record<number, RouteLegModeTarget> = {}
         legsByDay[dayId] = dayLegs
+        modeTargetsByDay[dayId] = dayModeTargets
         for (const run of runs) {
           // One routing call per LEG, each with its own resolved mode, so a day can
           // mix walking/driving/plugin legs. RouteCalculator's cache is keyed per
@@ -639,7 +647,10 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
             const mode = resolveLegMode(from, to, dfMode)
             tasks.push(async () => {
               const seg = await legBetween({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }, dayId, mode)
-              if (seg) dayLegs[from.id] = seg
+              if (seg) {
+                dayLegs[from.id] = seg
+                if (!from.isPlace && to.isPlace) dayModeTargets[from.id] = { assignmentId: to.id, direction: 'incoming' }
+              }
             })
           }
         }
@@ -678,6 +689,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
         if (!hotelByDay[dayId].top && !hotelByDay[dayId].bottom) delete hotelByDay[dayId]
       }
       setRouteLegs(legsByDay)
+      setRouteLegModeTargets(modeTargetsByDay)
       setHotelLegs(hotelByDay)
       setRouteMetricStatus(Object.fromEntries(routeDayIds.map(dayId => {
         const expected = expectedByDay[dayId] ?? 0
@@ -1135,6 +1147,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     setRouteLegs,
     hotelLegs,
     setHotelLegs,
+    routeLegModeTargets,
     routeMetricStatus,
     legsAbortRef,
     draggingId,
@@ -1310,6 +1323,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     setRouteLegs,
     hotelLegs,
     setHotelLegs,
+    routeLegModeTargets,
     routeMetricStatus,
     legsAbortRef,
     draggingId,
@@ -2296,7 +2310,15 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                           </div>
                           {daySchedule.byAssignment[day.id]?.[assignment.id]?.map(si => <PluginDayScheduleRow key={`${si.pluginId}:${si.id}`} item={si} />)}
                           {routeLegs[day.id]?.[assignment.id] && (canEditDays ? (
-                            <div role="button" tabIndex={0} title={t('dayplan.transportMode.change')} onClick={e => openLegModeMenu(e, assignment.id, day.id, routeLegs[day.id]![assignment.id])} onKeyDown={e => openLegMenuByKey(e, m => openLegModeMenu(m, assignment.id, day.id, routeLegs[day.id]![assignment.id]))} style={{ cursor: 'pointer' }}>
+                            <div role="button" tabIndex={0} title={t('dayplan.transportMode.change')} onClick={e => {
+                              const target = routeLegModeTargets[day.id]?.[assignment.id]
+                              if (target) openIncomingLegModeMenu(e, target.assignmentId, day.id, routeLegs[day.id]![assignment.id])
+                              else openLegModeMenu(e, assignment.id, day.id, routeLegs[day.id]![assignment.id])
+                            }} onKeyDown={e => openLegMenuByKey(e, m => {
+                              const target = routeLegModeTargets[day.id]?.[assignment.id]
+                              if (target) openIncomingLegModeMenu(m, target.assignmentId, day.id, routeLegs[day.id]![assignment.id])
+                              else openLegModeMenu(m, assignment.id, day.id, routeLegs[day.id]![assignment.id])
+                            })} style={{ cursor: 'pointer' }}>
                               <RouteConnector seg={routeLegs[day.id]![assignment.id]} profile={routeProfile} />
                             </div>
                           ) : (

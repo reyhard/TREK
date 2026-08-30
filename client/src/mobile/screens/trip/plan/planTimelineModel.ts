@@ -103,6 +103,9 @@ export function buildPlanRows(opts: {
     )
     return idx >= 0 ? movementPool.splice(idx, 1)[0] : null
   }
+  const trackPartFor = (assignmentId: number) => movementParts?.find(
+    (part): part is Extract<ResolvedMovementPart, { kind: 'track' }> => part.kind === 'track' && part.assignmentId === assignmentId,
+  )
 
   const base: PlanRow[] = []
   for (const item of merged) {
@@ -131,10 +134,22 @@ export function buildPlanRows(opts: {
     }
   }
 
-  const coordOf = (row: PlanRow): [number, number] | null =>
-    row.kind === 'place' && row.assignment.place?.lat != null && row.assignment.place?.lng != null
+  const fromCoordOf = (row: PlanRow): [number, number] | null => {
+    if (row.kind !== 'place') return null
+    const track = trackPartFor(row.assignment.id)
+    if (track) return [track.to.lat, track.to.lng]
+    return row.assignment.place?.lat != null && row.assignment.place?.lng != null
       ? [row.assignment.place.lat, row.assignment.place.lng]
       : null
+  }
+  const toCoordOf = (row: PlanRow): [number, number] | null => {
+    if (row.kind !== 'place') return null
+    const track = trackPartFor(row.assignment.id)
+    if (track) return [track.from.lat, track.from.lng]
+    return row.assignment.place?.lat != null && row.assignment.place?.lng != null
+      ? [row.assignment.place.lat, row.assignment.place.lng]
+      : null
+  }
 
   const modeTarget = (part: Extract<ResolvedMovementPart, { kind: 'routed' }>) => {
     const incoming = part.from.source !== 'place' && part.to.assignmentId != null
@@ -148,7 +163,7 @@ export function buildPlanRows(opts: {
   for (let i = 0; i < base.length; i++) {
     const row = base[i]
     out.push(row)
-    const from = coordOf(row)
+    const from = fromCoordOf(row)
     if (!from) continue
     // Next located stop: a following place connects (possibly across notes);
     // any transport/transit in between means that hop is the ride, not a walk.
@@ -158,7 +173,7 @@ export function buildPlanRows(opts: {
     for (let j = i + 1; j < base.length; j++) {
       const next = base[j]
       if (next.kind === 'transport' || next.kind === 'transit') break
-      const to = coordOf(next)
+      const to = toCoordOf(next)
       if (to) {
         if (row.kind === 'place') {
           const movement = takeMovementPart(row.assignment.id, to)

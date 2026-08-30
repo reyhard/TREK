@@ -3712,6 +3712,40 @@ describe('DayPlanSidebar', () => {
     expect(vi.mocked(assignmentsApi.updateTransport)).toHaveBeenLastCalledWith(1, 11, null)
   })
 
+  it('FE-PLANNER-DAYPLAN-210: a post-track connector edits the destination incoming mode', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    const setAssignments = vi.fn()
+    stubTripActions({ setAssignments })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const trackPlace = buildPlace({
+      id: 1, name: 'Trail', lat: 48.25, lng: 16.25,
+      route_geometry: JSON.stringify([[48.3, 16.3], [48.35, 16.35]]),
+    })
+    const destinationPlace = buildPlace({ id: 2, name: 'Lake', lat: 48.4, lng: 16.4 })
+    const assignments = {
+      '10': [
+        buildAssignment({ id: 11, day_id: 10, order_index: 0, place: trackPlace }),
+        buildAssignment({ id: 12, day_id: 10, order_index: 1, place: destinationPlace }),
+      ],
+    }
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [trackPlace, destinationPlace], assignments, selectedDayId: 10, routeShown: true,
+    })} />)
+
+    await user.click(await screen.findByTitle('Change travel mode'))
+    await user.click(contextMenu().getByRole('button', { name: 'Walking' }))
+
+    expect(vi.mocked(assignmentsApi.updateTransport)).toHaveBeenCalledWith(1, 12, 'walking', 'incoming')
+    expect(vi.mocked(assignmentsApi.updateTransport)).not.toHaveBeenCalledWith(1, 11, 'walking')
+    expect(setAssignments).toHaveBeenCalledWith({
+      '10': [
+        expect.objectContaining({ id: 11 }),
+        expect.objectContaining({ id: 12, incoming_leg_transport_mode: 'walking' }),
+      ],
+    })
+  })
+
   it('FE-PLANNER-DAYPLAN-171b: a stop-to-stop connector offers public transport pre-filled from the leg', async () => {
     const user = userEvent.setup()
     const onPlanTransitLeg = vi.fn()
