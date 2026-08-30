@@ -85,6 +85,7 @@ export default function MTripSheets({ planner, shell }: MTripSheetsProps) {
         <TransitJourneyModal
           reservation={planner.reservations.find(r => r.id === planner.transitJourney!.id) ?? planner.transitJourney}
           canEdit={planner.can('day_edit', trip)}
+          canEditEndpoints={planner.can('reservation_edit', trip)}
           onClose={() => planner.setTransitJourney(null)}
           onUpdateEndpoints={async (input: TransitRouteEndpointEditInput) => {
             const journey = planner.transitJourney!

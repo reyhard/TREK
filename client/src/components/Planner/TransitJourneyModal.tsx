@@ -41,10 +41,13 @@ interface TransitJourneyModalProps {
   onChangeRoute: () => void
   /** Submit edited origin/destination pins; the parent builds the full endpoints[] and calls the canonical reservation update. */
   onUpdateEndpoints?: (input: TransitRouteEndpointEditInput) => Promise<unknown>
+  /** day_edit gate for title/notes/delete/change-route (the modal's own edit affordances). */
   canEdit: boolean
+  /** reservation_edit gate for the endpoint editor — the canonical permission the update endpoint requires. */
+  canEditEndpoints: boolean
 }
 
-export default function TransitJourneyModal({ reservation, onClose, onSave, onDelete, onChangeRoute, onUpdateEndpoints, canEdit }: TransitJourneyModalProps) {
+export default function TransitJourneyModal({ reservation, onClose, onSave, onDelete, onChangeRoute, onUpdateEndpoints, canEdit, canEditEndpoints }: TransitJourneyModalProps) {
   const { t, locale } = useTranslation()
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   const timeFormat = useSettingsStore(st => st.settings.time_format) || '24h'
@@ -159,7 +162,7 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
             </button>
           )}
           <div style={{ flex: 1 }} />
-          {canEdit && onUpdateEndpoints && fromEndpoint && toEndpoint && (
+          {canEditEndpoints && onUpdateEndpoints && fromEndpoint && toEndpoint && (
             <button type="button" onClick={() => setEditingEndpoints(true)} className="text-content-muted" style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
               border: '1px solid var(--border-primary)', background: 'none',
@@ -194,7 +197,7 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'var(--font-system)' }}>
-        {editingEndpoints && fromEndpoint && toEndpoint ? (
+        {canEditEndpoints && editingEndpoints && fromEndpoint && toEndpoint ? (
           <TransitRouteEndpointEditor
             from={fromEndpoint}
             to={toEndpoint}

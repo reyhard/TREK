@@ -839,6 +839,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
         <TransitJourneyModal
           reservation={reservations.find(r => r.id === transitJourney.id) ?? transitJourney}
           canEdit={can('day_edit', trip)}
+          canEditEndpoints={can('reservation_edit', trip)}
           onClose={() => setTransitJourney(null)}
           onUpdateEndpoints={async (input: TransitRouteEndpointEditInput) => {
             // PRESERVE policy: only the from/to pins move; every other endpoint

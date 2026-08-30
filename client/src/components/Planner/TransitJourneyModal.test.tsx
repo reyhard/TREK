@@ -35,6 +35,7 @@ function makeProps(overrides = {}) {
     onChangeRoute: vi.fn(),
     onUpdateEndpoints: vi.fn().mockResolvedValue({}),
     canEdit: true,
+    canEditEndpoints: true,
     ...overrides,
   }
 }
@@ -127,10 +128,11 @@ describe('TransitJourneyModal', () => {
   })
 
   it('FE-PLANNER-TRANSITJOURNEY-005: read-only without edit rights — no delete/save/change-route', () => {
-    render(<TransitJourneyModal {...makeProps({ canEdit: false })} />)
+    render(<TransitJourneyModal {...makeProps({ canEdit: false, canEditEndpoints: false })} />)
     expect(screen.queryByRole('button', { name: /^Delete$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Change route/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Close/ })).toBeInTheDocument()
   })
 
@@ -237,8 +239,33 @@ describe('TransitJourneyModal', () => {
   })
 
   it('FE-PLANNER-TRANSITJOURNEY-017: the endpoint editor is hidden without edit rights', () => {
-    render(<TransitJourneyModal {...makeProps({ canEdit: false })} />)
+    render(<TransitJourneyModal {...makeProps({ canEdit: false, canEditEndpoints: false })} />)
     expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-019: the endpoint editor is gated by reservation_edit (canEditEndpoints), independent of day_edit (canEdit)', () => {
+    // Divergent case A: day_edit present but reservation_edit absent → NO editor UI.
+    render(<TransitJourneyModal {...makeProps({ canEdit: true, canEditEndpoints: false })} />)
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-020: the endpoint editor shows with reservation_edit even when day_edit differs', async () => {
+    // Divergent case B: reservation_edit present but day_edit absent → editor UI is available.
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn().mockResolvedValue({})
+    render(<TransitJourneyModal {...makeProps({ canEdit: false, canEditEndpoints: true, onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+
+    const originLat = screen.getByLabelText('Origin — Latitude')
+    await user.clear(originLat)
+    await user.type(originLat, '52.521')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    await waitFor(() =>
+      expect(onUpdateEndpoints).toHaveBeenCalledWith({
+        from: { name: 'Fernsehturm', lat: 52.521, lng: 13.4 },
+      })
+    )
   })
 })
 
