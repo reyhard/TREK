@@ -74,6 +74,10 @@ export default function MMapArea({ planner, shell }: MMapAreaProps) {
         onPoiClick={marker => planner.openAddPlaceFromPoi(marker, planner.selectedDayId)}
         onViewportChange={poi.onViewportChange}
         onMapReady={setGlMap}
+        repositionPlaceId={planner.repositionPlaceId}
+        canRepositionPlaces={planner.can('place_edit', planner.trip)}
+        onPlaceRepositionStart={() => {}}
+        onPlaceRepositionEnd={(placeId, coordinates) => planner.handlePlaceRepositionEnd(placeId, coordinates)}
       />
 
       {/* Floating map chrome — only while the map view is front-most. The POI bar

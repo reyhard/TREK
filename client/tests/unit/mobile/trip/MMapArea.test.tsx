@@ -114,3 +114,23 @@ describe('MMapArea', () => {
     expect(shell.openSheet).toHaveBeenCalledWith('transport', { reservationId: 7 })
   })
 })
+
+describe('MMapArea POI reposition wiring', () => {
+  it('FE-MOB-MAPAREA-020: hands the map the reposition props and callbacks', () => {
+    const planner = buildPlanner({
+      repositionPlaceId: 7,
+      can: vi.fn(() => true),
+    })
+    renderArea({}, { repositionPlaceId: 7 })
+    expect(mocks.props.repositionPlaceId).toBe(7)
+    expect(mocks.props.canRepositionPlaces).toBe(true)
+    expect(mocks.props.onPlaceRepositionEnd).toBeTypeOf('function')
+    expect(mocks.props.onPlaceRepositionStart).toBeTypeOf('function')
+  })
+
+  it('FE-MOB-MAPAREA-021: a drag end flows through the planner handler', () => {
+    const { planner } = renderArea()
+    ;(mocks.props.onPlaceRepositionEnd as (id: number, c: { lat: number; lng: number }) => void)(7, { lat: 48.1, lng: 16.2 })
+    expect(planner.handlePlaceRepositionEnd).toHaveBeenCalledWith(7, { lat: 48.1, lng: 16.2 })
+  })
+})

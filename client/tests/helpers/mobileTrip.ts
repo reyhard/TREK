@@ -71,6 +71,14 @@ export function buildPlanner(overrides: Partial<TripPlanner> = {}): TripPlanner 
     can: vi.fn(() => true),
     canUploadFiles: true,
 
+    repositionPlaceId: null,
+    repositionPending: null,
+    isRepositioningPlace: vi.fn(() => false),
+    startPlaceReposition: vi.fn(),
+    cancelPlaceReposition: vi.fn(),
+    savePlaceReposition: vi.fn().mockResolvedValue(undefined),
+    handlePlaceRepositionEnd: vi.fn().mockResolvedValue(undefined),
+
     pushUndo: vi.fn(),
     undo: vi.fn(),
     canUndo: false,

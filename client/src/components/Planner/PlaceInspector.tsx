@@ -158,7 +158,10 @@ interface PlaceInspectorProps {
   canReposition?: boolean
   isRepositioning?: boolean
   isRepositionSaving?: boolean
+  /** True once a drag has recorded pending coordinates (Save becomes available). */
+  hasPendingReposition?: boolean
   onStartReposition?: () => void
+  onSaveReposition?: () => void
   onCancelReposition?: () => void
   onAssignToDay?: (placeId: number, dayId?: number) => void
   onRemoveAssignment?: (dayId: number, assignmentId: number) => void
@@ -184,7 +187,7 @@ export default function PlaceInspector({
   place, categories, mode = 'trip', days = [], selectedDayId = null, selectedAssignmentId = null,
   assignments = {}, reservations = [], onEditTransport, onEditReservation,
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
-  canReposition, isRepositioning, isRepositionSaving, onStartReposition, onCancelReposition,
+  canReposition, isRepositioning, isRepositionSaving, hasPendingReposition, onStartReposition, onSaveReposition, onCancelReposition,
   files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace, onUploadImage, onRate,
   leftWidth = 0, rightWidth = 0,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
@@ -551,6 +554,10 @@ export default function PlaceInspector({
           {mode === 'trip' && canReposition && !isRepositioning && (
             <ActionButton onClick={onStartReposition} variant="ghost" icon={<MapPin size={13} />}
               label={<span className="hidden sm:inline">{t('inspector.reposition')}</span>} />
+          )}
+          {mode === 'trip' && isRepositioning && hasPendingReposition && onSaveReposition && (
+            <ActionButton onClick={onSaveReposition} variant="primary" icon={<MapPin size={13} />}
+              label={<span className="hidden sm:inline">{t('inspector.savePosition')}</span>} />
           )}
           {mode === 'trip' && isRepositioning && onCancelReposition && (
             <ActionButton onClick={onCancelReposition} variant="ghost" icon={<X size={13} />}

@@ -31,6 +31,7 @@ const inspector: TranslationStrings = {
   'inspector.reposition': 'Reposition on map',
   'inspector.repositionInstructions': 'Drag the marker to its new location. Press Escape to cancel.',
   'inspector.repositionSaving': 'Saving the new marker position…',
+  'inspector.savePosition': 'Save new position',
   'inspector.cancelReposition': 'Cancel repositioning',
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',

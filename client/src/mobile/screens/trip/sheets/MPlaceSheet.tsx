@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import {
-  Bookmark, Camera, ChevronRight, ExternalLink, Loader2, Map as MapIcon, Navigation, Paperclip,
+  Bookmark, Camera, ChevronRight, ExternalLink, Loader2, Map as MapIcon, MapPin, Navigation, Paperclip,
   Pencil, Phone, Plus, Route, Trash2, Upload, X,
 } from 'lucide-react'
 import MSheet from '../../../components/MSheet'
@@ -593,6 +593,31 @@ export default function MPlaceSheet({ planner, shell }: MTripSheetsProps) {
                   label={t('inspector.website')}
                 >
                   <ExternalLink size={15} strokeWidth={2} />
+                </ActionCircle>
+              )}
+              {canEditPlaces && !planner.isRepositioningPlace(place.id) && (
+                <ActionCircle
+                  onClick={() => planner.startPlaceReposition(place)}
+                  label={t('inspector.reposition')}
+                >
+                  <MapPin size={15} strokeWidth={2} />
+                </ActionCircle>
+              )}
+              {canEditPlaces && planner.isRepositioningPlace(place.id) && planner.repositionPending != null && (
+                <ActionCircle
+                  onClick={() => { void planner.savePlaceReposition() }}
+                  label={t('inspector.savePosition')}
+                  primary
+                >
+                  <MapPin size={15} strokeWidth={2} />
+                </ActionCircle>
+              )}
+              {canEditPlaces && planner.isRepositioningPlace(place.id) && (
+                <ActionCircle
+                  onClick={planner.cancelPlaceReposition}
+                  label={t('inspector.cancelReposition')}
+                >
+                  <X size={15} strokeWidth={2} />
                 </ActionCircle>
               )}
               {canEditPlaces && (

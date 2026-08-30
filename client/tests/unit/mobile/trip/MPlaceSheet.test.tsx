@@ -105,6 +105,13 @@ function makePlanner(overrides: Record<string, unknown> = {}) {
       ratePlace: vi.fn().mockResolvedValue(undefined),
     },
     can: vi.fn(() => true),
+    repositionPlaceId: null,
+    repositionPending: null,
+    isRepositioningPlace: vi.fn(() => false),
+    startPlaceReposition: vi.fn(),
+    cancelPlaceReposition: vi.fn(),
+    savePlaceReposition: vi.fn().mockResolvedValue(undefined),
+    handlePlaceRepositionEnd: vi.fn().mockResolvedValue(undefined),
     reservations: [] as unknown[],
     TRANSPORT_TYPES: new Set(['flight', 'train', 'bus', 'car', 'taxi', 'bicycle', 'cruise', 'ferry', 'transit', 'transport_other']),
     setEditingTransport: vi.fn(),
@@ -510,5 +517,56 @@ describe('MPlaceSheet', () => {
     renderSheet(bookingPlanner({ id: 9, assignment_id: 999, title: 'Someone elses ferry', status: 'pending', type: 'ferry' }))
 
     expect(screen.queryByText('Someone elses ferry')).not.toBeInTheDocument()
+  })
+})
+
+describe('MPlaceSheet POI reposition', () => {
+  it('FE-MOB-PLSH-100: an editor sees the reposition control and entering it calls startPlaceReposition', () => {
+    const planner = makePlanner({ isRepositioningPlace: vi.fn(() => false) })
+    renderSheet(planner)
+    const btn = screen.getByRole('button', { name: /Reposition on map/ })
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(planner.startPlaceReposition).toHaveBeenCalledWith(PLACE)
+  })
+
+  it('FE-MOB-PLSH-101: while repositioning with pending coordinates the sheet shows Save + Cancel', () => {
+    const planner = makePlanner({
+      repositionPlaceId: PLACE.id,
+      repositionPending: { lat: 48.1, lng: 16.2 },
+      isRepositioningPlace: vi.fn(() => true),
+    })
+    renderSheet(planner)
+    expect(screen.getByRole('button', { name: /Save new position/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Cancel repositioning/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reposition on map/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-MOB-PLSH-102: Save persists the pending position via savePlaceReposition', () => {
+    const planner = makePlanner({
+      repositionPlaceId: PLACE.id,
+      repositionPending: { lat: 48.1, lng: 16.2 },
+      isRepositioningPlace: vi.fn(() => true),
+    })
+    renderSheet(planner)
+    fireEvent.click(screen.getByRole('button', { name: /Save new position/ }))
+    expect(planner.savePlaceReposition).toHaveBeenCalled()
+  })
+
+  it('FE-MOB-PLSH-103: Cancel discards the pending position', () => {
+    const planner = makePlanner({
+      repositionPlaceId: PLACE.id,
+      repositionPending: { lat: 48.1, lng: 16.2 },
+      isRepositioningPlace: vi.fn(() => true),
+    })
+    renderSheet(planner)
+    fireEvent.click(screen.getByRole('button', { name: /Cancel repositioning/ }))
+    expect(planner.cancelPlaceReposition).toHaveBeenCalled()
+  })
+
+  it('FE-MOB-PLSH-104: a viewer without place_edit sees no reposition controls', () => {
+    const planner = makePlanner({ can: vi.fn(() => false) })
+    renderSheet(planner)
+    expect(screen.queryByRole('button', { name: /Reposition on map/ })).not.toBeInTheDocument()
   })
 })

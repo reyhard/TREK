@@ -1442,3 +1442,19 @@ describe('PlaceInspector POI reposition', () => {
     }
   })
 })
+
+describe('PlaceInspector POI reposition save', () => {
+  it('FE-PLANNER-INSPECTOR-106: a Save button appears once a drag recorded pending coordinates and persists through onSaveReposition', async () => {
+    const onSaveReposition = vi.fn()
+    render(<PlaceInspector {...defaultProps} canReposition isRepositioning hasPendingReposition onStartReposition={vi.fn()} onSaveReposition={onSaveReposition} onCancelReposition={vi.fn()} />)
+    const saveBtn = screen.getByRole('button', { name: /Save new position/ })
+    expect(saveBtn).toBeInTheDocument()
+    fireEvent.click(saveBtn)
+    expect(onSaveReposition).toHaveBeenCalled()
+  })
+
+  it('FE-PLANNER-INSPECTOR-107: no Save button before a drag (no pending coordinates)', () => {
+    render(<PlaceInspector {...defaultProps} canReposition isRepositioning hasPendingReposition={false} onStartReposition={vi.fn()} onSaveReposition={vi.fn()} onCancelReposition={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Save new position/ })).not.toBeInTheDocument()
+  })
+})

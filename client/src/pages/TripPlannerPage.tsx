@@ -248,7 +248,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
-    repositionPlaceId, isRepositioningPlace, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
+    repositionPlaceId, repositionPending, isRepositioningPlace, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd, savePlaceReposition,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,
@@ -637,7 +637,9 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                 canReposition={can('place_edit', trip)}
                 isRepositioning={isRepositioningPlace(selectedPlace.id)}
                 isRepositionSaving={false}
+                hasPendingReposition={repositionPending != null}
                 onStartReposition={() => startPlaceReposition(selectedPlace)}
+                onSaveReposition={savePlaceReposition}
                 onCancelReposition={cancelPlaceReposition}
                 onAssignToDay={handleAssignToDay}
                 onRemoveAssignment={handleRemoveAssignment}
@@ -684,7 +686,9 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                     canReposition={can('place_edit', trip)}
                     isRepositioning={isRepositioningPlace(selectedPlace.id)}
                     isRepositionSaving={false}
+                    hasPendingReposition={repositionPending != null}
                     onStartReposition={() => startPlaceReposition(selectedPlace)}
+                    onSaveReposition={savePlaceReposition}
                     onCancelReposition={cancelPlaceReposition}
                     onAssignToDay={handleAssignToDay}
                     onRemoveAssignment={handleRemoveAssignment}
