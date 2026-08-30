@@ -123,6 +123,66 @@ export class BudgetMcp {
     return ok({ item });
   }
 
+  /**
+   * Both the link and unlink tools touch a reservation's budget link, so they
+   * demand the SAME two independently-configurable trip permissions the REST
+   * update path checks: budget_edit (the cost side) AND reservation_edit (the
+   * reservation side). Default-deny: a holder of only one sees no link surface.
+   */
+  private canLinkBudgetItem(tripId: number, userId: number): boolean {
+    return this.guards.hasTripPermission('budget_edit', tripId, userId)
+      && this.guards.hasTripPermission('reservation_edit', tripId, userId);
+  }
+
+  @Tool({
+    name: 'link_budget_item_to_reservation',
+    description: 'Link an existing budget item to an existing reservation in the same trip. Multiple different budget items may link to one reservation. If the item is already linked to another reservation, unlink it first. Requires both budget_edit and reservation_edit permissions.',
+    inputSchema: {
+      tripId: z.number().int().positive(),
+      itemId: z.number().int().positive().describe('Existing budget item ID'),
+      reservationId: z.number().int().positive().describe('Existing reservation ID'),
+    },
+    annotations: TOOL_ANNOTATIONS_WRITE,
+    when: budgetAddonOn,
+    access: { group: 'budget', mode: 'write' },
+  })
+  async linkBudgetItemToReservation({ tripId, itemId, reservationId }: { tripId: number; itemId: number; reservationId: number }, ctx: McpContext) {
+    if (this.isDemoUser(ctx.userId)) return demoDenied();
+    if (!this.budget.verifyTripAccess(tripId, ctx.userId)) return noAccess();
+    if (!this.canLinkBudgetItem(tripId, ctx.userId)) return permissionDenied();
+
+    const result = this.budget.linkExistingBudgetItemToReservation(tripId, itemId, reservationId);
+    if (result.ok === false) {
+      if (result.error === 'budget_item_not_found') return errorResult('Budget item not found.');
+      if (result.error === 'reservation_not_found') return errorResult('Reservation not found.');
+      return errorResult(`Budget item is already linked to reservation ${result.linkedReservationId}. Unlink it before linking it to another reservation.`);
+    }
+    if (result.changed) this.guards.safeBroadcast(tripId, 'budget:updated', { item: result.item });
+    return ok({ item: result.item, changed: result.changed });
+  }
+
+  @Tool({
+    name: 'unlink_budget_item_from_reservation',
+    description: 'Remove the reservation link from an existing budget item without deleting the cost or reservation. Requires both budget_edit and reservation_edit permissions.',
+    inputSchema: {
+      tripId: z.number().int().positive(),
+      itemId: z.number().int().positive().describe('Budget item whose reservation link will be cleared'),
+    },
+    annotations: TOOL_ANNOTATIONS_WRITE,
+    when: budgetAddonOn,
+    access: { group: 'budget', mode: 'write' },
+  })
+  async unlinkBudgetItemFromReservation({ tripId, itemId }: { tripId: number; itemId: number }, ctx: McpContext) {
+    if (this.isDemoUser(ctx.userId)) return demoDenied();
+    if (!this.budget.verifyTripAccess(tripId, ctx.userId)) return noAccess();
+    if (!this.canLinkBudgetItem(tripId, ctx.userId)) return permissionDenied();
+
+    const result = this.budget.unlinkBudgetItemFromReservation(tripId, itemId);
+    if (!result.ok) return errorResult('Budget item not found.');
+    if (result.changed) this.guards.safeBroadcast(tripId, 'budget:updated', { item: result.item });
+    return ok({ item: result.item, changed: result.changed });
+  }
+
   @Tool({
     name: 'delete_budget_item',
     description: 'Delete a budget item from a trip.',
