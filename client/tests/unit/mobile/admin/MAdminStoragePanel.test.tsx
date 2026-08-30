@@ -2,7 +2,8 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { MASKED_SETTING_VALUE, type StorageAdminState, type StorageCategory, type StorageConfig } from '@trek/shared';
 import { server } from '../../../helpers/msw/server';
-import { fireEvent, render, screen, waitFor, within } from '../../../helpers/render';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '../../../helpers/render';
+import { useStorageAdmin } from '../../../../src/components/Admin/storage/useStorageAdmin';
 import { ToastContainer } from '../../../../src/components/shared/Toast';
 import MAdminStoragePanel from '../../../../src/mobile/screens/admin/MAdminStoragePanel';
 
@@ -271,7 +272,7 @@ describe('MAdminStoragePanel', () => {
     await screen.findByText('Storage configuration saved');
     // files is default-sourced (uploads-local) in baseState() — stripping restores "no override".
     expect((putBody as StorageConfig).categories.files).toBeUndefined();
-    expect(migrationBody).toEqual({ category: 'files', to: 'off-box' });
+    await waitFor(() => expect(migrationBody).toEqual({ category: 'files', to: 'off-box' }));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
@@ -385,6 +386,177 @@ describe('MAdminStoragePanel', () => {
     firstDone = true;
     await waitFor(() => expect(postCount).toBe(2), { timeout: 2000 });
     expect(migrationPosts[1]!.category).toBe('journey');
+  });
+
+  it('FE-MOB-MSTOR-015a: migration refresh is applied when started immediately after a save', async () => {
+    const initialState = baseState();
+    const savedState = baseState({
+      categories: { ...initialState.categories, files: { backend: 'off-box', source: 'settings' } },
+    });
+    const runningState = {
+      ...savedState,
+      migrations: [
+        {
+          category: 'files',
+          from: 'uploads-local',
+          to: 'off-box',
+          status: 'running',
+          done: 1,
+          total: 3,
+          copied: 1,
+          skipped: 0,
+          failed: 0,
+          startedAt: 1,
+        },
+      ],
+    } as StorageAdminState;
+    let migrationStarted = false;
+    server.use(
+      http.get('/api/admin/storage', () => HttpResponse.json(migrationStarted ? runningState : initialState)),
+      http.put('/api/admin/storage', () => HttpResponse.json(savedState)),
+      http.post('/api/admin/storage/migrations', () => {
+        migrationStarted = true;
+        return HttpResponse.json({ started: true });
+      }),
+    );
+
+    const { result } = renderHook(() => useStorageAdmin('error', 'conflict'));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+
+    let saved: Promise<boolean>;
+    act(() => {
+      saved = result.current.save();
+    });
+    await saved!;
+    await act(async () => {
+      await result.current.startMigration('files', 'off-box');
+    });
+
+    await waitFor(() => expect(result.current.state?.migrations[0]?.status).toBe('running'));
+  });
+
+  it('FE-MOB-MSTOR-015b: a failed migration stays queued for retry after state refresh', async () => {
+    let migrationPosts = 0;
+    await renderPanel();
+    server.use(
+      http.put('/api/admin/storage', () => HttpResponse.json(baseState({
+        categories: { ...baseState().categories, files: { backend: 'off-box', source: 'settings' } },
+      }))),
+      http.post('/api/admin/storage/migrations', () => {
+        migrationPosts += 1;
+        return migrationPosts === 1
+          ? HttpResponse.json({ error: 'storage busy' }, { status: 409 })
+          : HttpResponse.json({ started: true });
+      }),
+      http.post('/api/admin/storage/stats/refresh', () => HttpResponse.json({
+        categories: {},
+        backends: {},
+        legacyPhotos: { objects: 0, bytes: 0 },
+        computedAt: 1,
+      })),
+    );
+    fireEvent.click(within(screen.getByTestId('m-storage-category-files')).getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: 'off-box' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('alertdialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Move existing objects' }));
+
+    await waitFor(() => expect(migrationPosts).toBe(1));
+    expect(screen.getByText('storage busy')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Compute now' }));
+    await waitFor(() => expect(migrationPosts).toBe(2));
+  });
+
+  it('FE-MOB-MSTOR-015c: a failed confirmation refresh retries state without reposting the migration', async () => {
+    let confirmationGets = 0;
+    let migrationPosts = 0;
+    let migrationPosted = false;
+    await renderPanel();
+    const savedState = baseState({
+      categories: { ...baseState().categories, files: { backend: 'off-box', source: 'settings' } },
+    });
+    const runningState = {
+      ...savedState,
+      migrations: [
+        {
+          category: 'files',
+          from: 'uploads-local',
+          to: 'off-box',
+          status: 'running',
+          done: 1,
+          total: 3,
+          copied: 1,
+          skipped: 0,
+          failed: 0,
+          startedAt: 1,
+        },
+      ],
+    } as StorageAdminState;
+    const doneState = {
+      ...runningState,
+      migrations: [{ ...runningState.migrations[0]!, status: 'done', done: 3, copied: 3, finishedAt: 2 }],
+    } as StorageAdminState;
+    server.use(
+      http.put('/api/admin/storage', () => HttpResponse.json(savedState)),
+      http.post('/api/admin/storage/migrations', () => {
+        migrationPosts += 1;
+        migrationPosted = true;
+        return HttpResponse.json({ started: true });
+      }),
+      http.get('/api/admin/storage', () => {
+        if (!migrationPosted) return HttpResponse.json(baseState());
+        confirmationGets += 1;
+        if (confirmationGets === 1) return HttpResponse.json({ error: 'temporary read failure' }, { status: 503 });
+        return HttpResponse.json(confirmationGets === 2 ? runningState : doneState);
+      }),
+    );
+    fireEvent.click(within(screen.getByTestId('m-storage-category-files')).getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: 'off-box' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('alertdialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Move existing objects' }));
+
+    await waitFor(() => expect(migrationPosts).toBe(1));
+    await screen.findByText(/Moving Trip documents/);
+    expect(confirmationGets).toBeGreaterThanOrEqual(2);
+    await screen.findByText(/Move finished/);
+    expect(migrationPosts).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const settledGets = confirmationGets;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(confirmationGets).toBe(settledGets);
+  });
+
+  it('FE-MOB-MSTOR-015d: a delayed migration error does not spin retries after confirmation polling changes state', async () => {
+    let migrationPosts = 0;
+    let migrationPosted = false;
+    await renderPanel();
+    const savedState = baseState({
+      categories: { ...baseState().categories, files: { backend: 'off-box', source: 'settings' } },
+    });
+    server.use(
+      http.put('/api/admin/storage', () => HttpResponse.json(savedState)),
+      http.post('/api/admin/storage/migrations', async () => {
+        migrationPosts += 1;
+        migrationPosted = true;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return HttpResponse.json({ error: 'storage busy' }, { status: 409 });
+      }),
+      http.get('/api/admin/storage', () => HttpResponse.json(baseState({
+        categories: savedState.categories,
+      }))),
+    );
+    fireEvent.click(within(screen.getByTestId('m-storage-category-files')).getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: 'off-box' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('alertdialog');
+    fireEvent.click(screen.getByRole('button', { name: 'Move existing objects' }));
+
+    await waitFor(() => expect(migrationPosts).toBe(1));
+    await screen.findByText('storage busy');
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    expect(migrationPosts).toBe(1);
+    expect(migrationPosted).toBe(true);
   });
 
   it('FE-MOB-MSTOR-016: a done migration row shows the reclaimable line; a running one shows progress + cancel wired to DELETE', async () => {

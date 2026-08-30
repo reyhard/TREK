@@ -30,7 +30,9 @@ export async function dismissSystemNotices(page: Page, appearTimeoutMs = 3_000):
       if (!(await next.isEnabled().catch(() => false))) break
       await next.click()
     }
-    const dismiss = dialog.getByRole('button', { name: 'Dismiss', exact: true })
+    // Release notices use the localized common.close label on their X button;
+    // older generic notices use the explicit Dismiss label.
+    const dismiss = dialog.getByRole('button', { name: /^(Dismiss|Close)$/i })
     const ok = dialog.getByRole('button', { name: 'OK', exact: true })
     if (await dismiss.isVisible().catch(() => false)) await dismiss.click()
     else if (await ok.isVisible().catch(() => false)) await ok.click()

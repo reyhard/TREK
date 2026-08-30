@@ -5,7 +5,7 @@ import { test, expect } from './shot'
  * this project otherwise inherits, so these render as a logged-out visitor sees
  * them — which is the entire point of the login and registration pages.
  */
-test.use({ storageState: undefined })
+test.use({ storageState: { cookies: [], origins: [] } })
 
 test('login page', async ({ page, shot }) => {
   await page.goto('/login')

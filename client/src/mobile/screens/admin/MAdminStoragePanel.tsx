@@ -10,6 +10,7 @@ import {
   type StorageCategory,
   type StorageConfig,
   type StorageMigrationStatus,
+  type StorageAdminState,
 } from '@trek/shared'
 import { useTranslation } from '../../../i18n'
 import { useToast } from '../../../components/shared/Toast'
@@ -35,7 +36,7 @@ import {
   type FoldedBackendRow,
   type MigrationCandidate,
 } from '../../../components/Admin/storage/storageModel'
-import { useStorageAdmin } from '../../../components/Admin/storage/useStorageAdmin'
+import { BACKFILL_POLL_MS, useStorageAdmin } from '../../../components/Admin/storage/useStorageAdmin'
 import MToggle from '../../components/MToggle'
 import MSetPickerSheet from '../settings/MSetPickerSheet'
 import MConfirmSheet from '../settings/MConfirmSheet'
@@ -245,6 +246,9 @@ export default function MAdminStoragePanel(): React.ReactElement {
   const { t, locale } = useTranslation()
   const toast = useToast()
   const admin = useStorageAdmin(t('common.error'), t('storage.saveConflict'))
+  const refreshState = admin.refreshState
+  const latestAdminState = useRef<StorageAdminState | null>(null)
+  latestAdminState.current = admin.state
   const [editing, setEditing] = useState<{
     initial: StorageBackend | null
     originalName: string | null
@@ -260,14 +264,13 @@ export default function MAdminStoragePanel(): React.ReactElement {
   // first time `admin.state` changes afterward — never touched otherwise, so
   // unrelated state changes (the backfill poll included) are no-ops here.
   const pendingPromptCheck = useRef<Map<string, number> | null>(null)
-  // Synchronous single-flight lock for the queue effect below: `admin.state`
-  // only reflects a just-started migration once startMigration's awaited
-  // refreshState() resolves, so `setMigrationQueue(rest)` re-firing the
-  // effect synchronously (still against the pre-POST `admin.state`) would
-  // otherwise dequeue and POST the next candidate before the server has
-  // confirmed the first — a ref (not state) so the guard is visible on that
-  // very next synchronous re-render, not just after a state-driven one.
-  const migrationStartInFlight = useRef(false)
+  // Single-flight lock for the queue effect below. `startMigration` resolves
+  // after its GET schedules a React state update, not after that update has
+  // committed, so the lock stays held until admin.state contains this job.
+  const migrationStartInFlight = useRef<MigrationCandidate | null>(null)
+  // Keep a failed candidate queued, but wait for a fresh state object before
+  // retrying so a permanent error cannot spin the POST in a tight loop.
+  const migrationRetryBlockedOn = useRef<StorageAdminState | null>(null)
 
   useEffect(() => {
     if (!pendingPromptCheck.current || !admin.state) return
@@ -289,18 +292,63 @@ export default function MAdminStoragePanel(): React.ReactElement {
   // rule spans backfills and migrations alike, so starting while one runs
   // would 409, and the queued candidate would be lost (no retry).
   useEffect(() => {
-    if (migrationQueue.length === 0 || !admin.state) return
-    if (migrationStartInFlight.current) return
+    if (!admin.state) return
+    if (migrationRetryBlockedOn.current) {
+      if (migrationRetryBlockedOn.current === admin.state) return
+      migrationRetryBlockedOn.current = null
+    }
+    const started = migrationStartInFlight.current
+    if (started) {
+      const observed = admin.state.migrations.find(
+        (migration) =>
+          migration.category === started.category &&
+          migration.from === started.from &&
+          migration.to === started.toWire,
+      )
+      if (!observed) return
+      migrationStartInFlight.current = null
+      if (observed.status === 'running') return
+    }
+    if (migrationQueue.length === 0) return
     if (admin.state.migrations.some((m) => m.status === 'running')) return
     if (admin.state.backfills.some((b) => b.status === 'running')) return
     const [next, ...rest] = migrationQueue
-    migrationStartInFlight.current = true
+    migrationStartInFlight.current = next!
     setMigrationQueue(rest)
     void admin.startMigration(next!.category, next!.toWire).then((error) => {
-      migrationStartInFlight.current = false
-      if (error) toast.error(error)
+      if (error) {
+        if (migrationStartInFlight.current === next) {
+          migrationStartInFlight.current = null
+          migrationRetryBlockedOn.current = latestAdminState.current
+          setMigrationQueue((current) => [next!, ...current])
+        }
+        toast.error(error)
+      }
     })
   }, [migrationQueue, admin.state])
+
+  // A successful POST may be followed by a transient confirmation-GET
+  // failure. Keep asking for state while the lock is held so the queue can
+  // observe the accepted migration without issuing a duplicate POST.
+  useEffect(() => {
+    if (!migrationStartInFlight.current) return
+    let cancelled = false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const poll = () => {
+      if (cancelled || !migrationStartInFlight.current) return
+      timeout = setTimeout(async () => {
+        timeout = undefined
+        if (cancelled || !migrationStartInFlight.current) return
+        await refreshState().catch(() => {})
+        poll()
+      }, BACKFILL_POLL_MS)
+    }
+    poll()
+    return () => {
+      cancelled = true
+      if (timeout) clearTimeout(timeout)
+    }
+  }, [migrationQueue, admin.state, refreshState])
 
   if (admin.loading) {
     return (

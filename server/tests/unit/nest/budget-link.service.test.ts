@@ -93,7 +93,7 @@ describe('BudgetService linkExistingBudgetItemToReservation', () => {
     const result = budget.linkExistingBudgetItemToReservation(trip.id, item.id, reservation.id);
 
     expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error(result.error);
+    if (result.ok === false) throw new Error(result.error);
     expect(result.changed).toBe(true);
     expect(result.item.id).toBe(item.id);
     expect(result.item.reservation_id).toBe(reservation.id);
@@ -142,7 +142,7 @@ describe('BudgetService linkExistingBudgetItemToReservation', () => {
 
     const result = budget.linkExistingBudgetItemToReservation(trip.id, item.id, second.id);
     expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure');
+    if (result.ok === true) throw new Error('expected failure');
     expect(result.error).toBe('already_linked');
     expect(result.linkedReservationId).toBe(first.id);
     expect((testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id).toBe(first.id);
@@ -235,7 +235,7 @@ describe('BudgetService unlinkBudgetItemFromReservation', () => {
     const result = budget.unlinkBudgetItemFromReservation(trip.id, item.id);
 
     expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error(result.error);
+    if (result.ok === false) throw new Error(result.error);
     expect(result.changed).toBe(true);
     const after = budget.getBudgetItem(item.id, trip.id)!;
     expect(after.id).toBe(before.id);

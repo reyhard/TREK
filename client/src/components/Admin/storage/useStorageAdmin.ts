@@ -158,6 +158,7 @@ export function useStorageAdmin(genericError: string, conflictError: string): St
       // loaded/refreshed at, never re-read from `state` here (that would
       // defeat the whole check — see setDraft's re-attach comment above).
       const body: StorageConfigPut = { ...(overrideDraft ?? draft), version: draft.version }
+      savingRef.current = true
       setSaving(true)
       setSaveError(null)
       setSaveConflict(false)
@@ -180,6 +181,7 @@ export function useStorageAdmin(genericError: string, conflictError: string): St
         }
         return false
       } finally {
+        savingRef.current = false
         setSaving(false)
       }
     },

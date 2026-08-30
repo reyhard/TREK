@@ -1,6 +1,4 @@
-import { test, clearNotices } from './shot'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
+import { test, clearNotices, loadSeed } from './shot'
 
 /**
  * Top-level navigable surfaces. One capture per route; anything that needs a
@@ -10,10 +8,6 @@ import path from 'node:path'
  * Names are the target filenames in wiki/assets/ — see docs/screenshot-map.md
  * for which wiki page consumes which file.
  */
-
-const seed = JSON.parse(
-  readFileSync(path.join(process.cwd(), 'e2e', '.tmp', 'seed.json'), 'utf8'),
-) as { tripId: number; collectionId?: number; journeyId?: number }
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/dashboard')
@@ -27,6 +21,7 @@ test('dashboard', async ({ page, shot }) => {
 })
 
 test('trip planner', async ({ page, shot }) => {
+  const seed = loadSeed()
   await page.goto(`/trips/${seed.tripId}`)
   await shot.page_('TripPlanner')
 })
@@ -62,6 +57,7 @@ test('in-app help', async ({ page, shot }) => {
 })
 
 test('files', async ({ page, shot }) => {
+  const seed = loadSeed()
   await page.goto(`/trips/${seed.tripId}/files`)
   await shot.page_('Files')
 })

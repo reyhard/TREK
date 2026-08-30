@@ -9,7 +9,7 @@ const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
 const trip = { id: 5, user_id: 1 };
 
 /** A PermissionsService stub; tests override checkPermission to simulate RBAC. */
-function makePerms(checkPermission = (() => true)): PermissionsService {
+function makePerms(checkPermission: PermissionsService['checkPermission'] = () => true): PermissionsService {
   return { checkPermission } as unknown as PermissionsService;
 }
 
@@ -269,11 +269,11 @@ describe('BudgetController (parity with the legacy /api/trips/:tripId/budget rou
 
   it('DELETE /:id 404 when missing, success otherwise', () => {
     const missing = makeService({ remove: vi.fn().mockReturnValue(false) } as Partial<BudgetService>);
-    expect(thrown(() => new BudgetController(missing).remove(user, '5', '9'))).toEqual({
+    expect(thrown(() => new BudgetController(missing, makePerms()).remove(user, '5', '9'))).toEqual({
       status: 404, body: { error: 'Budget item not found' },
     });
     const ok = makeService({ remove: vi.fn().mockReturnValue(true), broadcast: vi.fn() } as Partial<BudgetService>);
-    expect(new BudgetController(ok).remove(user, '5', '9')).toEqual({ success: true });
+    expect(new BudgetController(ok, makePerms()).remove(user, '5', '9')).toEqual({ success: true });
   });
 
   it('PUT /reorder/items + /reorder/categories broadcast budget:reordered', () => {
