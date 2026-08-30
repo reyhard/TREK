@@ -26,6 +26,9 @@ import type { ComponentType, ReactNode } from 'react'
 import GoogleMapsIcon from '../../../../components/shared/GoogleMapsIcon'
 import { isRtlLanguage } from '../../../../i18n'
 import { useMPlanDaySwipe } from './useMPlanDaySwipe'
+import DayMovementTotalRow from '../../../../components/Planner/DayMovementTotalRow'
+import { normalizeMovementMode, type MovementMode } from '../../../../utils/movementStats'
+import type { RouteMetricStatus } from '../../../../hooks/useRouteCalculation'
 
 /**
  * Plan-tab timeline of the mobile trip screen: the UP-NEXT card in go mode,
@@ -44,11 +47,14 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
   // Per-segment travel mode (#1281): tap a connector → pick the leg's mode.
   const legMenu = useContextMenu()
   const modeIcon = (key: string) => (key === 'walking' ? Footprints : key.startsWith('plugin:') ? Zap : Car)
-  const openLegMenu = (e: MouseEvent, assignmentId: number) => {
+  const openLegMenu = (e: MouseEvent, assignmentId: number, direction: 'outgoing' | 'incoming' = 'outgoing') => {
+    const setMode = (mode: string | null) => direction === 'incoming'
+      ? tl.setLegMode(assignmentId, mode, direction)
+      : tl.setLegMode(assignmentId, mode)
     legMenu.open(e, [
-      ...tl.routeModeOptions.map(o => ({ label: o.label, icon: modeIcon(o.key), onClick: () => tl.setLegMode(assignmentId, o.key) })),
+      ...tl.routeModeOptions.map(o => ({ label: o.label, icon: modeIcon(o.key), onClick: () => setMode(o.key) })),
       { divider: true },
-      { label: t('dayplan.transportMode.useDefault'), icon: RotateCcw, onClick: () => tl.setLegMode(assignmentId, null) },
+      { label: t('dayplan.transportMode.useDefault'), icon: RotateCcw, onClick: () => setMode(null) },
     ])
   }
   // Plugin time contributions in the day plan (dayScheduleProvider hook) —
@@ -126,6 +132,39 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
   }
 
   const chrome = { editing, t, language: tl.language, timeFormat: tl.timeFormat }
+  const movementModes: MovementMode[] = ['walking', 'driving', 'cycling']
+  const movementStatus: RouteMetricStatus = tl.movementStatus ?? 'idle'
+  const movementTotals = tl.movementTotals
+  const movementMode = normalizeMovementMode(day?.default_transport_mode ?? planner.routeProfile)
+  const movementRows = movementTotals
+    ? (movementStatus === 'loading'
+      ? [<DayMovementTotalRow
+          key="loading"
+          status="loading"
+          mode={movementMode}
+          total={movementTotals[movementMode]}
+          distanceUnit={tl.distanceUnit ?? 'metric'}
+          calculatingLabel={t('dayplan.calculating')}
+          totalLabel={t('dayplan.movement.total', { mode: t(`dayplan.movement.${movementMode}`) })}
+          incompleteLabel={t('dayplan.movement.incomplete')}
+          testId={`day-movement-total-${movementMode}`}
+        />]
+      : movementModes
+        .filter(mode => movementTotals[mode].contributionCount > 0)
+        .map(mode => (
+          <DayMovementTotalRow
+            key={mode}
+            status={movementStatus}
+            mode={mode}
+            total={movementTotals[mode]}
+            distanceUnit={tl.distanceUnit ?? 'metric'}
+            calculatingLabel={t('dayplan.calculating')}
+            totalLabel={t('dayplan.movement.total', { mode: t(`dayplan.movement.${mode}`) })}
+            incompleteLabel={t('dayplan.movement.incomplete')}
+            testId={`day-movement-total-${mode}`}
+          />
+        )))
+    : []
 
   return (
     <div ref={panelRef} className="absolute inset-0" {...daySwipe.handlers}>
@@ -227,7 +266,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
                 />
               )
             case 'conn':
-              return <ConnRow key={row.key} seg={row.seg} onTap={editing && row.assignmentId != null ? e => openLegMenu(e, row.assignmentId!) : undefined} />
+              return <ConnRow key={row.key} seg={row.seg} onTap={editing && row.assignmentId != null ? e => openLegMenu(e, row.assignmentId!, row.modeDirection) : undefined} />
           }
         })}
 
@@ -235,6 +274,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
         {tl.hotelLegs.bottom && (
           <HotelConnRow seg={tl.hotelLegs.bottom.seg} name={tl.hotelLegs.bottom.name} placement="bottom" />
         )}
+        {movementRows}
 
         {tl.rows.length === 0 && !editing && (
           <div className="flex min-h-full flex-1 flex-col items-center justify-center py-8 text-center">

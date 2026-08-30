@@ -18,7 +18,12 @@ import { act, renderHook, waitFor } from '../../../helpers/render'
 // the timeline sees exactly the legs a test wants to match against.
 const routeCalc = vi.hoisted(() => ({ segments: [] as unknown[] }))
 vi.mock('../../../../src/hooks/useRouteCalculation', () => ({
-  useRouteCalculation: () => ({ routeSegments: routeCalc.segments }),
+  useRouteCalculation: () => ({
+    routeSegments: routeCalc.segments,
+    movementParts: [],
+    routeEligibility: { hasRoutedConnectors: routeCalc.segments.length > 0, hasTracks: false, hasTransit: false },
+    routeMetricStatus: routeCalc.segments.length > 0 ? 'complete' : 'idle',
+  }),
 }))
 
 const DAYS = [
@@ -651,5 +656,62 @@ describe('useMPlanTimeline', () => {
     const { result } = await renderTimeline(planner)
     await act(async () => { result.current.setLegMode(11, 'driving') })
     await waitFor(() => expect(planner.toast.error).toHaveBeenCalledWith('common.unknownError'))
+  })
+
+  it('FE-MOB-PLTL-046: persists a track-end connector mode on the destination incoming field', async () => {
+    const track = buildAssignment({
+      id: 31, day_id: 2, order_index: 0, place_id: 301,
+      place: buildPlace({
+        id: 301, name: 'Trail', lat: 48.3, lng: 16.3,
+        route_geometry: JSON.stringify([[48.3, 16.3], [48.35, 16.35]]),
+      }),
+    })
+    const next = buildAssignment({
+      id: 32, day_id: 2, order_index: 1, place_id: 302,
+      place: buildPlace({ id: 302, name: 'Lake', lat: 48.4, lng: 16.4 }),
+    })
+    seedStore(useTripStore, { assignments: { '2': [track, next] } })
+    const { result } = await renderTimeline(makePlanner({
+      assignments: { '2': [track, next] },
+      places: [track.place!, next.place!],
+    }))
+
+    await act(async () => { result.current.setLegMode(32, 'cycling', 'incoming') })
+
+    const saved = useTripStore.getState().assignments['2']
+    expect(saved.find(a => a.id === 31)?.leg_transport_mode).toBeUndefined()
+    expect(saved.find(a => a.id === 32)?.incoming_leg_transport_mode).toBe('cycling')
+    expect(assignmentsApi.updateTransport).toHaveBeenCalledWith(1, 32, 'cycling', 'incoming')
+  })
+
+  it('FE-MOB-PLTL-047: calculates mobile totals from canonical route, track and transit contributions', async () => {
+    const track = buildAssignment({
+      id: 41, day_id: 2, order_index: 0, place_id: 401,
+      place: buildPlace({
+        id: 401, name: 'Track', lat: 48.3, lng: 16.3,
+        route_geometry: JSON.stringify([[48.3, 16.3], [48.35, 16.35]]),
+        place_time: '10:00', end_time: '11:00', transport_mode: 'walking',
+      }),
+    })
+    const next = buildAssignment({
+      id: 42, day_id: 2, order_index: 1, place_id: 402,
+      place: buildPlace({ id: 402, name: 'Next', lat: 48.4, lng: 16.4 }),
+    })
+    const transit = buildReservation({
+      id: 43, type: 'transit', day_id: 2,
+      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } }),
+    })
+    routeCalc.segments = [seg([48.35, 16.35], [48.4, 16.4])]
+    seedStore(useTripStore, { assignments: { '2': [track, next] } })
+    const { result } = await renderTimeline(makePlanner({
+      assignments: { '2': [track, next] },
+      places: [track.place!, next.place!],
+      reservations: [transit],
+    }))
+
+    expect(result.current.movementTotals.walking.durationSeconds).toBe(3600 + 600)
+    expect(result.current.movementTotals.walking.distanceMeters).toBeGreaterThan(800)
+    expect(result.current.movementTotals.walking.contributionCount).toBe(2)
+    expect(result.current.movementTotals.driving.distanceMeters).toBe(1200)
   })
 })

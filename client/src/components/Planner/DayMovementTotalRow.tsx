@@ -13,6 +13,7 @@ interface DayMovementTotalRowProps {
   calculatingLabel: string;
   totalLabel: string;
   incompleteLabel: string;
+  testId?: string;
 }
 
 export function formatMovementDuration(seconds: number): string {
@@ -42,6 +43,7 @@ export default function DayMovementTotalRow({
   calculatingLabel,
   totalLabel,
   incompleteLabel,
+  testId = 'day-movement-total',
 }: DayMovementTotalRowProps) {
   if (status === 'idle') return null;
   const Icon = MODE_ICONS[mode];
@@ -76,7 +78,7 @@ export default function DayMovementTotalRow({
 
   return (
     <div
-      data-testid="day-movement-total"
+      data-testid={testId}
       aria-label={totalLabel}
       title={incomplete ? incompleteLabel : undefined}
       className="bg-surface-hover text-content-secondary"

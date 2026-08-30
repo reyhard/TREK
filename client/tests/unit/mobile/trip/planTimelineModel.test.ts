@@ -256,6 +256,59 @@ describe('planTimelineModel — buildPlanRows', () => {
     // Only the first Museum → Park hop finds the single matching leg.
     expect(rows.filter(r => r.kind === 'conn')).toHaveLength(1)
   })
+
+  it('FE-MOB-PTLM-045: matches the connector after an imported track by its track-end identity', () => {
+    const track = assignment(13, 0, {
+      ...place(103, 'Trail', 48.3, 16.3),
+      route_geometry: JSON.stringify([[48.3, 16.3], [48.35, 16.35]]),
+    } as ReturnType<typeof place>)
+    const next = assignment(14, 1, place(104, 'Lake', 48.4, 16.4))
+    const connector = seg([48.35, 16.35], [48.4, 16.4], { mode: 'walking' })
+    const movementParts = [
+      {
+        kind: 'track' as const,
+        key: 'track:assignment-13:48.3,16.3>48.35,16.35',
+        assignmentId: 13,
+        placeId: 103,
+        from: { lat: 48.3, lng: 16.3, source: 'track-start' as const, assignmentId: 13, placeId: 103 },
+        to: { lat: 48.35, lng: 16.35, source: 'track-end' as const, assignmentId: 13, placeId: 103 },
+        coordinates: [[48.3, 16.3], [48.35, 16.35]] as [number, number][],
+        geometry: [[48.3, 16.3], [48.35, 16.35]] as [number, number][],
+        start: [48.3, 16.3] as [number, number],
+        end: [48.35, 16.35] as [number, number],
+        distance: 5000,
+        mode: 'walking' as const,
+        duration: 3600,
+        durationSource: 'estimated' as const,
+      },
+      {
+        kind: 'routed' as const,
+        key: 'routed:assignment-13:48.35,16.35>48.4,16.4',
+        from: { lat: 48.35, lng: 16.35, source: 'track-end' as const, assignmentId: 13, placeId: 103 },
+        to: { lat: 48.4, lng: 16.4, source: 'place' as const, assignmentId: 14, placeId: 104 },
+        placement: { kind: 'after-assignment' as const, assignmentId: 13 },
+        profile: 'walking' as const,
+        geometry: [connector.from, connector.to],
+        distance: connector.distance,
+        duration: connector.duration,
+        routeSegment: connector,
+      },
+    ]
+
+    const rows = buildPlanRows({
+      merged: [placeItem(track), placeItem(next)],
+      reservations: [],
+      routeSegments: [],
+      movementParts,
+      dayId: 2,
+    })
+
+    const conn = rows.find(row => row.kind === 'conn')
+    expect(conn?.kind).toBe('conn')
+    expect(conn && conn.seg).toBe(connector)
+    expect(conn && conn.assignmentId).toBe(14)
+    expect(conn && conn.modeDirection).toBe('incoming')
+  })
 })
 
 describe('planTimelineModel — hotel chips and legs', () => {

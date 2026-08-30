@@ -5,6 +5,7 @@ import { getDayBookendHotels, isDayInAccommodationRange } from '../../../../util
 import type { MergedItem } from '../../../../utils/dayMerge'
 import type { TransitLegDisplay } from '../../../../components/Planner/transitDisplay'
 import type { Accommodation, Assignment, Day, DayNote, Reservation, RouteSegment, TranslationFn } from '../../../../types'
+import type { ResolvedMovementPart } from '../../../../utils/resolveDayMovementPlan'
 
 /**
  * Pure derivations for the mobile plan timeline: merged-item → row mapping,
@@ -28,7 +29,7 @@ export type PlanRow =
   | { key: string; kind: 'transport'; item: MergedItem; res: TransportEntry }
   | { key: string; kind: 'transit'; item: MergedItem; res: TransportEntry; transit: TransitMeta }
   | { key: string; kind: 'note'; item: MergedItem; note: DayNote }
-  | { key: string; kind: 'conn'; seg: RouteSegment; assignmentId?: number }
+  | { key: string; kind: 'conn'; seg: RouteSegment; assignmentId?: number; modeDirection?: 'outgoing' | 'incoming' }
 
 export function parseReservationMeta(res: Reservation): Record<string, unknown> {
   let meta: unknown = res.metadata
@@ -82,13 +83,25 @@ export function buildPlanRows(opts: {
   merged: MergedItem[]
   reservations: Reservation[]
   routeSegments: RouteSegment[]
+  movementParts?: ResolvedMovementPart[]
   dayId: number
 }): PlanRow[] {
-  const { merged, reservations, routeSegments, dayId } = opts
+  const { merged, reservations, routeSegments, movementParts, dayId } = opts
   const pool = [...routeSegments]
+  const movementPool = (movementParts ?? []).filter(
+    (part): part is Extract<ResolvedMovementPart, { kind: 'routed' }> => part.kind === 'routed' && part.routeSegment != null,
+  )
   const takeSegment = (from: [number, number], to: [number, number]): RouteSegment | null => {
     const idx = pool.findIndex(s => sameCoord(s.from, from) && sameCoord(s.to, to))
     return idx >= 0 ? pool.splice(idx, 1)[0] : null
+  }
+  const takeMovementPart = (assignmentId: number, to: [number, number]) => {
+    const idx = movementPool.findIndex(part =>
+      part.placement.kind === 'after-assignment'
+      && part.placement.assignmentId === assignmentId
+      && sameCoord([part.to.lat, part.to.lng], to),
+    )
+    return idx >= 0 ? movementPool.splice(idx, 1)[0] : null
   }
 
   const base: PlanRow[] = []
@@ -123,6 +136,14 @@ export function buildPlanRows(opts: {
       ? [row.assignment.place.lat, row.assignment.place.lng]
       : null
 
+  const modeTarget = (part: Extract<ResolvedMovementPart, { kind: 'routed' }>) => {
+    const incoming = part.from.source !== 'place' && part.to.assignmentId != null
+    return {
+      assignmentId: incoming ? part.to.assignmentId : part.from.assignmentId,
+      modeDirection: incoming ? 'incoming' as const : 'outgoing' as const,
+    }
+  }
+
   const out: PlanRow[] = []
   for (let i = 0; i < base.length; i++) {
     const row = base[i]
@@ -132,15 +153,37 @@ export function buildPlanRows(opts: {
     // Next located stop: a following place connects (possibly across notes);
     // any transport/transit in between means that hop is the ride, not a walk.
     let seg: RouteSegment | null = null
+    let modeDirection: 'outgoing' | 'incoming' = 'outgoing'
+    let modeAssignmentId: number | undefined
     for (let j = i + 1; j < base.length; j++) {
       const next = base[j]
       if (next.kind === 'transport' || next.kind === 'transit') break
       const to = coordOf(next)
-      if (to) { seg = takeSegment(from, to); break }
+      if (to) {
+        if (row.kind === 'place') {
+          const movement = takeMovementPart(row.assignment.id, to)
+          if (movement) {
+            seg = movement.routeSegment
+            const target = modeTarget(movement)
+            modeAssignmentId = target.assignmentId
+            modeDirection = target.modeDirection
+          }
+        }
+        seg ??= takeSegment(from, to)
+        break
+      }
     }
     // The leg's mode is stored on its ORIGIN place assignment (#1281), so carry
     // that id for the tap-to-change menu.
-    if (seg) out.push({ key: `conn-${row.key}`, kind: 'conn', seg, assignmentId: row.kind === 'place' ? row.assignment.id : undefined })
+    if (seg) {
+      out.push({
+        key: `conn-${row.key}`,
+        kind: 'conn',
+        seg,
+        assignmentId: modeAssignmentId ?? (row.kind === 'place' ? row.assignment.id : undefined),
+        modeDirection,
+      })
+    }
   }
   return out
 }

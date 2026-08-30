@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTripStore } from '../../../../store/tripStore'
-import { useRouteCalculation } from '../../../../hooks/useRouteCalculation'
+import { useRouteCalculation, type RouteMetricStatus } from '../../../../hooks/useRouteCalculation'
 import { assignmentsApi, reservationsApi, weatherApi } from '../../../../api/client'
 import { usePluginStore } from '../../../../store/pluginStore'
 import { getDayBookendHotels } from '../../../../utils/dayOrder'
 import { getDisplayTimeForDay, getMergedItems, getTransportForDay } from '../../../../utils/dayMerge'
+import { calculateDayMovementTotals, normalizeMovementMode, type MovementMode } from '../../../../utils/movementStats'
 import { dayCoMapsUrl, dayGoogleMapsUrl, optimizeDayOrder } from '../lib/dayRoute'
 import {
   buildPlanRows, breaksChronology, findUpNext, hotelChipsForDay, hotelLegsForDay, itemHasTime,
@@ -12,7 +13,7 @@ import {
 } from './planTimelineModel'
 import type { TripPlanner } from '../MTripShell'
 import type { WeatherResult } from '@trek/shared'
-import type { Assignment, Place } from '../../../../types'
+import type { Assignment, DistanceUnit, Place } from '../../../../types'
 import type { MergedItem } from '../../../../utils/dayMerge'
 
 /**
@@ -26,7 +27,7 @@ import type { MergedItem } from '../../../../utils/dayMerge'
 export function useMPlanTimeline(planner: TripPlanner) {
   const {
     tripId, days, assignments, reservations, tripAccommodations, selectedDayId,
-    t, language, settings, toast, tripActions, pushUndo, updateRouteForDay, routeProfile,
+    places, t, language, settings, toast, tripActions, pushUndo, updateRouteForDay, routeProfile,
   } = planner
 
   const dayNotes = useTripStore(s => s.dayNotes)
@@ -58,7 +59,12 @@ export function useMPlanTimeline(planner: TripPlanner) {
   // only computes segments while the manual "show route" toggle is on (map), so
   // we run a dedicated, always-enabled calculation just for the connectors and
   // use only its segments — the polyline it produces is ignored here.
-  const { routeSegments: connSegments } = useRouteCalculation(
+  const {
+    routeSegments: connSegments,
+    movementParts,
+    routeEligibility,
+    routeMetricStatus,
+  } = useRouteCalculation(
     { assignments } as unknown as Parameters<typeof useRouteCalculation>[0],
     selectedDayId,
     true,
@@ -68,8 +74,8 @@ export function useMPlanTimeline(planner: TripPlanner) {
 
   const rows = useMemo<PlanRow[]>(() => {
     if (!day) return []
-    return buildPlanRows({ merged, reservations, routeSegments: connSegments, dayId: day.id })
-  }, [day, merged, reservations, connSegments])
+    return buildPlanRows({ merged, reservations, routeSegments: connSegments, movementParts, dayId: day.id })
+  }, [day, merged, reservations, connSegments, movementParts])
 
   // Accommodation bookend legs (hotel → first stop, last stop → hotel). The
   // segments already sit in connSegments; hotelLegsForDay picks the two out.
@@ -77,6 +83,45 @@ export function useMPlanTimeline(planner: TripPlanner) {
     () => (day ? hotelLegsForDay(day, days, tripAccommodations, connSegments) : { top: null, bottom: null }),
     [day, days, tripAccommodations, connSegments],
   )
+
+  const movementTotals = useMemo(() => {
+    if (!day) return {
+      walking: { mode: 'walking' as const, durationSeconds: 0, distanceMeters: 0, durationComplete: true, distanceComplete: true, contributionCount: 0 },
+      driving: { mode: 'driving' as const, durationSeconds: 0, distanceMeters: 0, durationComplete: true, distanceComplete: true, contributionCount: 0 },
+      cycling: { mode: 'cycling' as const, durationSeconds: 0, distanceMeters: 0, durationComplete: true, distanceComplete: true, contributionCount: 0 },
+    }
+    const hotelSegments = new Set([
+      hotelLegs.top?.seg,
+      hotelLegs.bottom?.seg,
+    ])
+    const connectorLegs = Object.fromEntries(
+      connSegments.filter(segment => !hotelSegments.has(segment)).map((segment, index) => [index, segment]),
+    )
+    const routeExpected = routeEligibility?.hasRoutedConnectors ?? connSegments.length > 0
+    const status: RouteMetricStatus = routeMetricStatus ?? (routeExpected ? 'complete' : 'idle')
+    return calculateDayMovementTotals({
+      dayId: day.id,
+      activeProfile: normalizeMovementMode(day.default_transport_mode ?? routeProfile),
+      routeLegs: connectorLegs,
+      hotelLegs: {
+        top: hotelLegs.top?.seg,
+        bottom: hotelLegs.bottom?.seg,
+      },
+      assignments: dayAssignments,
+      places,
+      reservations,
+      routeMetricsComplete: status === 'complete' || !routeExpected,
+      routeMetricsExpected: routeExpected,
+    })
+  }, [day, dayAssignments, connSegments, hotelLegs, places, reservations, routeEligibility, routeMetricStatus, routeProfile])
+
+  const movementStatus: RouteMetricStatus = routeMetricStatus === 'loading'
+    ? 'loading'
+    : routeMetricStatus === 'partial'
+      ? 'partial'
+      : 'complete'
+  const distanceUnit = (settings.distance_unit ?? 'metric') as DistanceUnit
+  const movementModes: MovementMode[] = ['walking', 'driving', 'cycling']
 
   const hotelChips = useMemo(
     () => (day ? hotelChipsForDay(day, days, tripAccommodations) : []),
@@ -356,13 +401,17 @@ export function useMPlanTimeline(planner: TripPlanner) {
 
   // Set the mode of the leg leaving a stop — optimistic, then persisted; null clears
   // the override back to the day default. Sticky against the whole-day picker.
-  const setLegMode = useCallback((assignmentId: number, mode: string | null) => {
+  const setLegMode = useCallback((assignmentId: number, mode: string | null, direction: 'outgoing' | 'incoming' = 'outgoing') => {
     if (!day) return
     const key = String(day.id)
+    const field = direction === 'incoming' ? 'incoming_leg_transport_mode' : 'leg_transport_mode'
     useTripStore.setState(state => ({
-      assignments: { ...state.assignments, [key]: (state.assignments[key] || []).map(a => (a.id === assignmentId ? { ...a, leg_transport_mode: mode } : a)) },
+      assignments: { ...state.assignments, [key]: (state.assignments[key] || []).map(a => (a.id === assignmentId ? { ...a, [field]: mode } : a)) },
     }))
-    assignmentsApi.updateTransport(tripId, assignmentId, mode).catch((err: unknown) => {
+    const save = direction === 'incoming'
+      ? assignmentsApi.updateTransport(tripId, assignmentId, mode, direction)
+      : assignmentsApi.updateTransport(tripId, assignmentId, mode)
+    save.catch((err: unknown) => {
       toast.error(err instanceof Error ? err.message : t('common.unknownError'))
       tripActions.refreshDays(tripId)
     })
@@ -370,6 +419,7 @@ export function useMPlanTimeline(planner: TripPlanner) {
 
   return {
     day, rows, hotelLegs, merged, hotelChips, weather, weatherTemp, upNext,
+    movementTotals, movementStatus, distanceUnit, movementModes,
     language, timeFormat: settings.time_format,
     openTransitKeys, toggleTransit,
     moveRow, removeAssignment, editAssignment, editTransport, openTransitJourney,

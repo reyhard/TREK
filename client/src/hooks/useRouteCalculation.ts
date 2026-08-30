@@ -18,6 +18,7 @@ const EMPTY_ELIGIBILITY = {
 }
 
 type RouteEligibility = Pick<DayMovementPlan, 'hasRoutedConnectors' | 'hasTracks' | 'hasTransit'>
+export type RouteMetricStatus = 'idle' | 'loading' | 'complete' | 'partial'
 
 function straightConnectorPolylines(plan: DayMovementPlan): [number, number][][] {
   const polylines: [number, number][][] = []
@@ -84,6 +85,7 @@ export function useRouteCalculation(
   const [routeVias, setRouteVias] = useState<RouteVia[]>([])
   const [movementParts, setMovementParts] = useState<ResolvedMovementPart[]>([])
   const [routeEligibility, setRouteEligibility] = useState<RouteEligibility>(EMPTY_ELIGIBILITY)
+  const [routeMetricStatus, setRouteMetricStatus] = useState<RouteMetricStatus>('idle')
   const routeAbortRef = useRef<AbortController | null>(null)
   const enabledRef = useRef(enabled)
   enabledRef.current = enabled
@@ -103,6 +105,7 @@ export function useRouteCalculation(
       setRouteVias([])
       setMovementParts([])
       setRouteEligibility(EMPTY_ELIGIBILITY)
+      setRouteMetricStatus('idle')
       return
     }
 
@@ -129,6 +132,7 @@ export function useRouteCalculation(
     })
     setMovementParts(pendingMovementParts(plan, dayDefaultMode))
     setRouteVias([])
+    setRouteMetricStatus(enabledRef.current && plan.hasRoutedConnectors ? 'loading' : 'idle')
 
     // Route drawing is manual. Tracks and transit remain represented in the
     // movement plan even when ordinary connector routing is disabled.
@@ -156,6 +160,13 @@ export function useRouteCalculation(
         ))
         setRouteVias(resolved.routedVias)
         setMovementParts(resolved.parts)
+        setRouteMetricStatus(
+          resolved.parts
+            .filter(part => part.kind === 'routed')
+            .every(part => part.routeSegment != null)
+            ? 'complete'
+            : 'partial',
+        )
       }
     } catch (error: unknown) {
       // An aborted request belongs to an older day or route generation. Other
@@ -163,6 +174,7 @@ export function useRouteCalculation(
       if (!controller.signal.aborted && !isAbortError(error)) {
         setRouteSegments([])
         setRouteVias([])
+        setRouteMetricStatus('partial')
       }
     }
   }, [profile, accommodations, optimizeFromAccommodation])
@@ -218,6 +230,7 @@ export function useRouteCalculation(
       setRouteVias([])
       setMovementParts([])
       setRouteEligibility(EMPTY_ELIGIBILITY)
+      setRouteMetricStatus('idle')
       return
     }
     void updateRouteForDay(selectedDayId)
@@ -237,6 +250,7 @@ export function useRouteCalculation(
     routeVias: enabled ? routeVias : [],
     movementParts,
     routeEligibility,
+    routeMetricStatus,
     routeInfo,
     setRoute,
     setRouteInfo,

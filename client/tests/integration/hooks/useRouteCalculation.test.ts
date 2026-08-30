@@ -301,6 +301,7 @@ describe('useRouteCalculation', () => {
 
     await act(async () => {});
     expect(result.current.routeSegments).toEqual([]);
+    expect(result.current.routeMetricStatus).toBe('partial');
   });
 
   it('FE-HOOK-ROUTE-011: when selectedDayId is null, route and segments are cleared', async () => {

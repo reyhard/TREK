@@ -8,6 +8,7 @@ import type { PlanRow, TransitMeta, TransportEntry } from '../../../../src/mobil
 import type { MergedItem } from '../../../../src/utils/dayMerge'
 import type { Assignment, Day, DayNote, Place, RouteSegment } from '../../../../src/types'
 import MPlanTimeline from '../../../../src/mobile/screens/trip/plan/MPlanTimeline'
+import type { MovementTotal } from '../../../../src/utils/movementStats'
 
 // FE-MOB-PLTL-001 to FE-MOB-PLTL-045
 
@@ -135,6 +136,16 @@ function renderTimeline(
   const shell = buildShell(shellOver)
   return { planner, shell, ...render(<MPlanTimeline planner={planner} shell={shell} />) }
 }
+
+const total = (mode: MovementTotal['mode'], overrides: Partial<MovementTotal> = {}): MovementTotal => ({
+  mode,
+  durationSeconds: 600,
+  distanceMeters: 2100,
+  durationComplete: true,
+  distanceComplete: true,
+  contributionCount: 1,
+  ...overrides,
+})
 
 describe('MPlanTimeline', () => {
   beforeEach(() => {
@@ -351,6 +362,18 @@ describe('MPlanTimeline', () => {
       expect(mocks.tl.setLegMode).toHaveBeenCalledWith(11, null)
     })
 
+    it('FE-MOB-PLTL-049: a track-end connector edits the destination incoming mode', () => {
+      const rows = ROWS.map(row => row.kind === 'conn'
+        ? { ...row, assignmentId: 12, modeDirection: 'incoming' as const }
+        : row)
+      renderTimeline({ rows }, {}, { mode: 'edit' })
+      fireEvent.click(connector())
+
+      fireEvent.click(screen.getByText('Walking'))
+
+      expect(mocks.tl.setLegMode).toHaveBeenCalledWith(12, 'walking', 'incoming')
+    })
+
     it('FE-MOB-PLTL-020: read-only members get no tappable connectors', () => {
       renderTimeline({}, { can: vi.fn(() => false) }, { mode: 'edit' })
 
@@ -362,6 +385,21 @@ describe('MPlanTimeline', () => {
 
       expect(screen.getByText('7 min').closest('button')).toBeNull()
     })
+  })
+
+  it('FE-MOB-PLTL-048: renders daily movement totals in the primary mobile timeline', () => {
+    renderTimeline({
+      movementStatus: 'complete',
+      movementTotals: {
+        walking: total('walking'),
+        driving: total('driving', { distanceMeters: 3200 }),
+        cycling: total('cycling', { durationSeconds: 0, distanceMeters: 0, contributionCount: 0 }),
+      },
+    })
+
+    expect(screen.getByTestId('day-movement-total-walking')).toHaveTextContent('10 min · 2.1 km')
+    expect(screen.getByTestId('day-movement-total-driving')).toHaveTextContent('10 min · 3.2 km')
+    expect(screen.queryByTestId('day-movement-total-cycling')).not.toBeInTheDocument()
   })
 
   describe('plugin day schedule', () => {
