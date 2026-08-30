@@ -137,6 +137,19 @@ beforeEach(() => {
 
 afterAll(() => testDb.close());
 
+/** Map a stored reservation endpoint to the schema-valid transport endpoint shape the
+ *  editor submits: transit stops never carry an IATA code, and the stored row has
+ *  `code: null` which the update schema (z.string().optional()) rejects. */
+function toTransportEndpoint(e: any): Record<string, unknown> {
+  const out: Record<string, unknown> = { role: e.role, sequence: e.sequence, name: e.name };
+  if (e.lat != null) out.lat = e.lat;
+  if (e.lng != null) out.lng = e.lng;
+  if (typeof e.timezone === 'string' && e.timezone) out.timezone = e.timezone;
+  if (typeof e.local_time === 'string' && e.local_time) out.local_time = e.local_time;
+  if (typeof e.local_date === 'string' && e.local_date) out.local_date = e.local_date;
+  return out;
+}
+
 async function withHarness(userId: number, scopes: string[] | null, fn: (harness: McpHarness) => Promise<void>) {
   const harness = await createMcpHarness({ userId, scopes, withResources: false });
   try {
@@ -571,6 +584,147 @@ describe('MCP transit tools', () => {
       expect(updated.reservation.title).toBe('Namba → Umeda (edited)');
       expect(updated.reservation.notes).toBe('edited via generic update_transport');
       expect(updated.reservation.type).toBe('transit');
+    });
+  });
+
+  it('F06-END-001: editing the start endpoint via update_transport endpoints[] updates only the from row', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const created = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const { id } = created.reservation;
+      // The stored endpoints: from (Namba) + to (Umeda).
+      const endpoints = created.reservation.endpoints as Array<{ role: string; name: string; lat: number; lng: number }>;
+      expect(endpoints.map(e => e.role).sort()).toEqual(['from', 'to']);
+      expect(endpoints.find(e => e.role === 'from')!.name).toBe('Namba');
+
+      const editedFrom = { ...toTransportEndpoint(endpoints.find(e => e.role === 'from')), name: 'Namba Station West', lat: 34.665, lng: 135.5 };
+      const updated = parseToolResult(
+        await harness.client.callTool({
+          name: 'update_transport',
+          arguments: { tripId: trip.id, reservationId: id, endpoints: [editedFrom, toTransportEndpoint(endpoints.find(e => e.role === 'to'))] },
+        }),
+      ) as any;
+      expect(updated.reservation.endpoints.find((e: any) => e.role === 'from')).toMatchObject({ name: 'Namba Station West', lat: 34.665, lng: 135.5 });
+      // The to endpoint is untouched.
+      expect(updated.reservation.endpoints.find((e: any) => e.role === 'to')).toMatchObject({ name: 'Umeda' });
+    });
+  });
+
+  it('F06-END-002: editing the end endpoint via update_transport endpoints[] updates only the to row', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const created = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const { id } = created.reservation;
+      const endpoints = created.reservation.endpoints as Array<{ role: string; name: string; lat: number; lng: number }>;
+
+      const editedTo = { ...toTransportEndpoint(endpoints.find(e => e.role === 'to')), name: 'Umeda Sky Building', lat: 34.705, lng: 135.49 };
+      const updated = parseToolResult(
+        await harness.client.callTool({
+          name: 'update_transport',
+          arguments: { tripId: trip.id, reservationId: id, endpoints: [toTransportEndpoint(endpoints.find(e => e.role === 'from')), editedTo] },
+        }),
+      ) as any;
+      expect(updated.reservation.endpoints.find((e: any) => e.role === 'to')).toMatchObject({ name: 'Umeda Sky Building', lat: 34.705, lng: 135.49 });
+      expect(updated.reservation.endpoints.find((e: any) => e.role === 'from')).toMatchObject({ name: 'Namba' });
+    });
+  });
+
+  it('F06-PRESERVE-001: an endpoints-only update preserves metadata.transit, legs, timing and the day position', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const created = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const { id } = created.reservation;
+      const endpoints = created.reservation.endpoints as Array<{ role: string; name: string; lat: number; lng: number }>;
+      const metadataBefore = JSON.parse(created.reservation.metadata);
+
+      const editedFrom = { ...toTransportEndpoint(endpoints.find(e => e.role === 'from')), name: 'Namba Station West', lat: 34.665, lng: 135.5 };
+      const updated = parseToolResult(
+        await harness.client.callTool({
+          name: 'update_transport',
+          arguments: { tripId: trip.id, reservationId: id, endpoints: [editedFrom, toTransportEndpoint(endpoints.find(e => e.role === 'to'))] },
+        }),
+      ) as any;
+      // PRESERVE policy: the provider itinerary/geometry stays untouched.
+      expect(JSON.parse(updated.reservation.metadata)).toEqual(metadataBefore);
+      expect(updated.reservation.metadata).toBe(created.reservation.metadata);
+      // Timing + day placement remain valid.
+      expect(updated.reservation.reservation_time).toBe(created.reservation.reservation_time);
+      expect(updated.reservation.reservation_end_time).toBe(created.reservation.reservation_end_time);
+      expect(updated.reservation.day_id).toBe(created.reservation.day_id);
+    });
+  });
+
+  it('F06-NOSEARCH-001: an endpoint edit performs no provider search (no Transitous call)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    planMock.mockClear();
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const created = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const { id } = created.reservation;
+      const endpoints = created.reservation.endpoints as Array<{ role: string; name: string; lat: number; lng: number }>;
+      const callsAfterCreate = planMock.mock.calls.length;
+
+      const editedFrom = { ...endpoints.find(e => e.role === 'from')!, name: 'Namba Station West', lat: 34.665, lng: 135.5 };
+      await harness.client.callTool({
+        name: 'update_transport',
+        arguments: { tripId: trip.id, reservationId: id, endpoints: [editedFrom, endpoints.find(e => e.role === 'to')!] },
+      });
+      // No provider search during a stored-data edit.
+      expect(planMock.mock.calls.length).toBe(callsAfterCreate);
+    });
+  });
+
+  it('F06-ROLLBACK-001: an invalid endpoint edit rolls back atomically (no partial write)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });
+    const day = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date = ?').get(trip.id, '2026-12-03') as any;
+    await withHarness(user.id, ['reservations:write'], async (harness) => {
+      const created = parseToolResult(
+        await harness.client.callTool({
+          name: 'create_transit_journey',
+          arguments: { tripId: trip.id, dayId: day.id, from, to, itinerary: { ...itinerary, duration: 1, walkSeconds: 1 } },
+        }),
+      ) as any;
+      const { id } = created.reservation;
+      const endpoints = created.reservation.endpoints as Array<{ role: string; name: string; lat: number; lng: number }>;
+
+      // An endpoint with a blank name / non-finite coordinate is invalid.
+      const bad = { ...endpoints.find(e => e.role === 'from')!, name: '   ', lat: Number.NaN, lng: 135.5 };
+      const result = await harness.client.callTool({
+        name: 'update_transport',
+        arguments: { tripId: trip.id, reservationId: id, endpoints: [bad, endpoints.find(e => e.role === 'to')!] },
+      });
+      expect(result.isError).toBe(true);
+      // The stored reservation is untouched (no partial write).
+      const after = testDb.prepare('SELECT name FROM reservation_endpoints WHERE reservation_id = ? AND role = ?').get(id, 'from') as { name: string };
+      expect(after.name).toBe('Namba');
     });
   });
 });
