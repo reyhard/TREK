@@ -193,4 +193,23 @@ describe('calculateDayMovementStats + combineMovementTotals — TDD 5 (mixed day
     })
     expect(total.durationComplete).toBe(false)
   })
+
+  it('uses only transit reservations represented by canonical movement parts', () => {
+    const included = { id: 31, type: 'transit', day_id: 7, metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } } as any
+    const excluded = { id: 32, type: 'transit', day_id: 7, metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } } as any
+    const totals = calculateDayMovementTotals({
+      dayId: 7,
+      activeProfile: 'walking',
+      routeLegs: {},
+      assignments: [],
+      places: [],
+      reservations: [included, excluded],
+      movementParts: [{ kind: 'transit', key: 'transit:reservation-31', reservationId: 31 }],
+      routeMetricsComplete: true,
+      routeMetricsExpected: false,
+    })
+
+    expect(totals.walking.distanceMeters).toBe(800)
+    expect(totals.walking.contributionCount).toBe(1)
+  })
 })

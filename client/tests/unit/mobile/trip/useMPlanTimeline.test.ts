@@ -16,11 +16,11 @@ import { act, renderHook, waitFor } from '../../../helpers/render'
 
 // The connector calculation is its own hook with real OSRM calls — stubbed here so
 // the timeline sees exactly the legs a test wants to match against.
-const routeCalc = vi.hoisted(() => ({ segments: [] as unknown[] }))
+const routeCalc = vi.hoisted(() => ({ segments: [] as unknown[], movementParts: undefined as unknown[] | undefined }))
 vi.mock('../../../../src/hooks/useRouteCalculation', () => ({
   useRouteCalculation: () => ({
     routeSegments: routeCalc.segments,
-    movementParts: [],
+    movementParts: routeCalc.movementParts,
     routeEligibility: { hasRoutedConnectors: routeCalc.segments.length > 0, hasTracks: false, hasTransit: false },
     routeMetricStatus: routeCalc.segments.length > 0 ? 'complete' : 'idle',
   }),
@@ -97,6 +97,7 @@ describe('useMPlanTimeline', () => {
     resetAllStores()
     usePluginStore.setState({ plugins: [] })
     routeCalc.segments = []
+    routeCalc.movementParts = undefined
     vi.spyOn(weatherApi, 'get').mockResolvedValue(FORECAST)
     vi.spyOn(assignmentsApi, 'updateTransport').mockResolvedValue({})
     vi.spyOn(reservationsApi, 'updatePositions').mockResolvedValue({})

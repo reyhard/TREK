@@ -110,10 +110,11 @@ export function useMPlanTimeline(planner: TripPlanner) {
       assignments: dayAssignments,
       places,
       reservations,
+      movementParts,
       routeMetricsComplete: status === 'complete' || !routeExpected,
       routeMetricsExpected: routeExpected,
     })
-  }, [day, dayAssignments, connSegments, hotelLegs, places, reservations, routeEligibility, routeMetricStatus, routeProfile])
+  }, [day, dayAssignments, connSegments, hotelLegs, movementParts, places, reservations, routeEligibility, routeMetricStatus, routeProfile])
 
   const movementStatus: RouteMetricStatus = routeMetricStatus === 'loading'
     ? 'loading'

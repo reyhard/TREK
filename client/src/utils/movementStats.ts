@@ -10,6 +10,7 @@ import type { Assignment, Place, Reservation, RouteSegment } from '../types';
 import { getTrackMovement } from './trackGeometry';
 import { calculatePolylineDistanceMeters } from './geoDistance';
 import { decodePolyline } from '../components/Map/transitGeometry';
+import type { ResolvedMovementPart } from './resolveDayMovementPlan';
 
 export type MovementMode = 'walking' | 'driving' | 'cycling';
 export type MovementSource = 'route' | 'hotel-bookend' | 'transit-walk' | 'track';
@@ -165,10 +166,12 @@ function transitGeometryDistance(leg: TransitMetadataLeg): number | null {
 export function createTransitWalkContributions(
   dayId: number,
   reservations: Reservation[],
+  includedReservationIds?: ReadonlySet<number>,
 ): MovementContribution[] {
   const out: MovementContribution[] = [];
   for (const reservation of reservations) {
     if (reservation.type !== 'transit' || reservation.day_id !== dayId) continue;
+    if (includedReservationIds && !includedReservationIds.has(reservation.id)) continue;
     const rawTransit = parseMetadata(reservation)?.transit;
     if (!isRecord(rawTransit)) continue;
     const transit = rawTransit as TransitMetadata;
@@ -243,6 +246,7 @@ export interface CalculateDayMovementInput {
   assignments: Assignment[];
   places: Place[];
   reservations: Reservation[];
+  movementParts?: ResolvedMovementPart[];
   routeMetricsComplete: boolean;
   routeMetricsExpected: boolean;
 }
@@ -251,13 +255,49 @@ const MOVEMENT_MODES: MovementMode[] = ['walking', 'driving', 'cycling'];
 
 function dayMovementContributions(input: CalculateDayMovementInput): MovementContribution[] {
   const mode: MovementMode = input.activeProfile;
-  const contributions = [
-    ...createRouteContributions(input.dayId, mode, input.routeLegs),
-    ...createHotelBookendContributions(input.dayId, mode, input.hotelLegs),
-    ...createTransitWalkContributions(input.dayId, input.reservations),
-    ...createTrackContributions(input.dayId, input.assignments, input.places),
-  ];
-  if (input.routeMetricsExpected && !input.routeMetricsComplete) {
+  const contributions: MovementContribution[] = input.movementParts
+    ? [
+        ...input.movementParts.flatMap((part): MovementContribution[] => {
+          if (part.kind === 'track') {
+            return [{
+              key: part.key,
+              mode: part.mode,
+              source: 'track' as const,
+              sourceId: part.assignmentId,
+              durationSeconds: part.duration,
+              distanceMeters: part.distance,
+            }];
+          }
+          if (part.kind === 'routed') {
+            return [{
+              key: part.key,
+              mode: normalizeMovementMode(part.profile),
+              source: part.placement.kind === 'hotel-top' || part.placement.kind === 'hotel-bottom'
+                ? 'hotel-bookend' as const
+                : 'route' as const,
+              sourceId: part.key,
+              durationSeconds: part.duration,
+              distanceMeters: part.distance,
+            }];
+          }
+          return [];
+        }),
+        ...createTransitWalkContributions(
+          input.dayId,
+          input.reservations,
+          new Set(input.movementParts
+            .filter((part): part is Extract<ResolvedMovementPart, { kind: 'transit' }> => part.kind === 'transit')
+            .map(part => part.reservationId)),
+        ),
+      ]
+    : [
+        ...createRouteContributions(input.dayId, mode, input.routeLegs),
+        ...createHotelBookendContributions(input.dayId, mode, input.hotelLegs),
+        ...createTransitWalkContributions(input.dayId, input.reservations),
+        ...createTrackContributions(input.dayId, input.assignments, input.places),
+      ];
+  const hasCanonicalRoutedPart = input.movementParts?.some(part => part.kind === 'routed') ?? false;
+  if (input.routeMetricsExpected && !input.routeMetricsComplete && (!input.movementParts || !hasCanonicalRoutedPart)) {
     contributions.push({
       key: `route:${input.dayId}:missing`,
       mode,
