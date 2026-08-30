@@ -332,6 +332,8 @@ const admin: TranslationStrings = {
     'Tage im Tagesplan farblich markieren (z. B. zu welchem Reiseabschnitt ein Tag gehört)',
   'admin.plugins.perm.geolocation:read':
     'Deinen Live-Standort abfragen, solange eine seiner Ansichten offen ist (TREK liest ihn mit der Standortfreigabe dieser Seite, nicht mit einer eigenen des Plugins)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Textabschnitte an den PDF-Export einer Reise anhängen',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Länder auf der Atlas-Weltkarte hervorheben (z. B. Wunschlisten oder Reisehinweise)',

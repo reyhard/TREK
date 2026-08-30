@@ -327,6 +327,8 @@ const admin: TranslationStrings = {
     'Barevně odlišovat dny v denním plánu (například ke které části cesty den patří)',
   'admin.plugins.perm.geolocation:read':
     'Zjišťovat vaši aktuální polohu, dokud je otevřené některé z jeho zobrazení (TREK ji čte pod oprávněním k poloze pro tento web, ne pod vlastním oprávněním doplňku)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Připojovat textové sekce k PDF exportu cesty',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Zvýrazňovat země na mapě světa v Atlasu (např. seznamy přání nebo cestovní upozornění)',

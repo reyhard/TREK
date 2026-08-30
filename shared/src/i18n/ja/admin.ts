@@ -349,6 +349,8 @@ const admin: TranslationStrings = {
   'admin.plugins.perm.hook:day-tint-provider': '日程プランの日付を色分け（例：その日が旅程のどの区間に属するか）',
   'admin.plugins.perm.geolocation:read':
     'このプラグインのビューが開いている間、あなたの現在地を取得（TREK がこのサイトの位置情報の許可を使って読み取ります。プラグイン専用の許可は求められません）',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': '旅行の PDF エクスポートにテキストセクションを追加',
   'admin.plugins.perm.hook:atlas-layer-provider': 'Atlas の世界地図で国をハイライト（例: ウィッシュリストや渡航情報）',
   'admin.plugins.perm.hook:journal-entry-provider': '日記のエントリーに追加の行（リンク、統計）を提供',

@@ -385,6 +385,8 @@ const admin: TranslationStrings = {
     'Χρωματική σήμανση ημερών στο πλάνο της ημέρας (π.χ. σε ποιο σκέλος του ταξιδιού ανήκει μια ημέρα)',
   'admin.plugins.perm.geolocation:read':
     'Αίτημα της τρέχουσας τοποθεσίας σας όσο μία από τις προβολές του είναι ανοιχτή (το TREK τη διαβάζει με την άδεια τοποθεσίας αυτού του ιστότοπου, όχι με δική του άδεια του πρόσθετου)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Προσθήκη ενοτήτων κειμένου στην εξαγωγή PDF του ταξιδιού',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Επισήμανση χωρών στον παγκόσμιο χάρτη του Άτλαντα (π.χ. λίστες επιθυμιών ή ταξιδιωτικές οδηγίες)',

@@ -334,6 +334,8 @@ const admin: TranslationStrings = {
     'Tô màu các ngày trong kế hoạch ngày (ví dụ ngày đó thuộc chặng nào của chuyến đi)',
   'admin.plugins.perm.geolocation:read':
     'Hỏi vị trí trực tiếp của bạn khi một trong các chế độ xem của nó đang mở (TREK đọc vị trí bằng quyền vị trí của trang này, không phải quyền riêng của plugin)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Thêm các phần văn bản vào bản xuất PDF của chuyến đi',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Làm nổi bật các quốc gia trên bản đồ thế giới Atlas (vd. danh sách mong muốn hoặc cảnh báo du lịch)',

@@ -326,6 +326,8 @@ const admin: TranslationStrings = {
     'Colorir os dias no plano do dia (por exemplo, a qual trecho da viagem um dia pertence)',
   'admin.plugins.perm.geolocation:read':
     'Consultar sua localização em tempo real enquanto uma das visualizações dele estiver aberta (o TREK a lê com a permissão de localização deste site, não com uma permissão própria do plugin)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Anexar seções de texto à exportação em PDF da viagem',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Destacar países no mapa-múndi do Atlas (ex. listas de desejos ou avisos de viagem)',

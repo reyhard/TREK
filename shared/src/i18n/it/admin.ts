@@ -334,6 +334,8 @@ const admin: TranslationStrings = {
     'Colorare i giorni nel piano della giornata (ad esempio a quale tratta del viaggio appartiene un giorno)',
   'admin.plugins.perm.geolocation:read':
     'Richiedere la tua posizione in tempo reale mentre una delle sue viste è aperta (TREK la legge con il permesso di posizione di questo sito, non con uno proprio del plugin)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': "Aggiungere sezioni di testo all'esportazione PDF del viaggio",
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Evidenziare paesi sulla mappa del mondo di Atlas (es. liste dei desideri o avvisi di viaggio)',

@@ -331,6 +331,8 @@ const admin: TranslationStrings = {
     'Позначати дні в плані дня кольором (наприклад, до якого етапу подорожі належить день)',
   'admin.plugins.perm.geolocation:read':
     'Запитувати ваше місцезнаходження в реальному часі, поки відкрито одне з його подань (TREK зчитує його з дозволом на геолокацію для цього сайту, а не з окремим дозволом розширення)',
+  'admin.plugins.perm.mcp:tools':
+    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Додавати текстові розділи до PDF-експорту подорожі',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Виділяти країни на карті світу в Атласі (наприклад, списки бажань або попередження для мандрівників)',
