@@ -54,10 +54,10 @@ function isValidCoordinate(coord: [number, number] | null | undefined): coord is
   return !!coord && Number.isFinite(coord[0]) && Number.isFinite(coord[1])
 }
 
-function buildPlaceClusterData(places: Place[]) {
+function buildPlaceClusterData(places: Place[], excludedPlaceId: number | null = null) {
   return {
     type: 'FeatureCollection' as const,
-    features: places.filter(hasValidCoords).map(place => ({
+    features: places.filter(place => place.id !== excludedPlaceId).filter(hasValidCoords).map(place => ({
       type: 'Feature' as const,
       properties: { placeId: place.id },
       geometry: { type: 'Point' as const, coordinates: [place.lng, place.lat] },
@@ -141,12 +141,14 @@ interface Props {
   onMapReady?: (map: any | null) => void
 }
 
-function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean): HTMLDivElement {
+function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean, repositioning = false): HTMLDivElement {
   const size = selected ? 44 : 36
   // See MapView: allow-listed rather than escaped, because this is a CSS context.
   const borderColor = selected ? '#111827' : safeHexColor(place.category_color, 'white')
   const borderWidth = selected ? 3 : 2.5
-  const shadow = selected
+  const shadow = repositioning
+    ? '0 0 0 4px rgba(59,130,246,0.35), 0 6px 18px rgba(0,0,0,0.35)'
+    : selected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
     : '0 2px 8px rgba(0,0,0,0.22)'
   const bgColor = safeHexColor(place.category_color, '#6b7280')
@@ -183,7 +185,8 @@ function createMarkerElement(place: Place & { category_color?: string; category_
   // canvas container. The result looks exactly like "markers drift as the
   // map zooms" because each marker's transform is then applied relative
   // to its stacked slot, not to the map viewport.
-  wrap.style.cssText = `width:${outer}px;height:${outer}px;cursor:pointer;`
+  wrap.style.cssText = `width:${outer}px;height:${outer}px;cursor:${repositioning ? 'grabbing' : 'pointer'};`
+  wrap.dataset.repositioning = String(repositioning)
 
   const hasPhoto = photoUrl && (photoUrl.startsWith('data:') || photoUrl.startsWith('/api/maps/place-photo/') || photoUrl.startsWith('/uploads/'))
   if (hasPhoto) {
@@ -1040,6 +1043,9 @@ export function MapViewGL({
     // mouseleave, which would otherwise leave the popup orphaned on the map.
     popupRef.current?.remove()
     const validPlaces = places.filter(hasValidCoords)
+    const activeRepositionId = canRepositionPlaces && selectedPlaceId === repositionPlaceId
+      ? repositionPlaceId
+      : null
 
     const reconcileMarkers = (visiblePlaces: PlaceWithCoords[]) => {
       const ids = new Set(visiblePlaces.map(p => p.id))
@@ -1060,8 +1066,8 @@ export function MapViewGL({
         // A custom image wins over the auto-fetched thumb; otherwise fall back to it.
         const photoUrl = isCustomPlaceImage(place.image_url) ? place.image_url! : ((pck && photoUrls[pck]) || place.image_url || null)
         const selected = place.id === selectedPlaceId
-        const repositioning = canRepositionPlaces && selected && place.id === repositionPlaceId
-        const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected)
+        const repositioning = place.id === activeRepositionId
+        const el = createMarkerElement(place as Place & { category_color?: string; category_icon?: string }, photoUrl, orderNumbers, selected, repositioning)
         // Reposition mode: the marker is already in the DOM at its pinned
         // position from the drag start; do not rebuild it under the cursor.
         const existing = markersRef.current.get(place.id)
@@ -1138,7 +1144,7 @@ export function MapViewGL({
       return
     }
 
-    source.setData(buildPlaceClusterData(places) as any)
+    source.setData(buildPlaceClusterData(places, activeRepositionId) as any)
     const placesById = new Map<number, PlaceWithCoords>(validPlaces.map(place => [place.id, place]))
     let raf: number | null = null
     const runReconcile = () => {
@@ -1154,6 +1160,12 @@ export function MapViewGL({
         if (!place) continue
         seen.add(id)
         visiblePlaces.push(place)
+      }
+      // The active reposition marker is excluded from the cluster source, so it
+      // is never reported as a cluster feature; render it explicitly instead.
+      if (activeRepositionId != null && !seen.has(activeRepositionId)) {
+        const active = placesById.get(activeRepositionId)
+        if (active) visiblePlaces.push(active)
       }
       reconcileMarkers(visiblePlaces)
     }
@@ -1176,7 +1188,7 @@ export function MapViewGL({
       map.off('zoomend', scheduleReconcile)
       map.off('idle', scheduleReconcile)
     }
-  }, [places, selectedPlaceId, dayOrderMap, photoUrls, mapReady, glProvider])
+  }, [places, selectedPlaceId, repositionPlaceId, canRepositionPlaces, dayOrderMap, photoUrls, mapReady, glProvider, gl])
 
   // Reconcile OSM "explore" POI markers (imperative, kept separate from the
   // planned-place markers so they don't cluster or get confused with them).

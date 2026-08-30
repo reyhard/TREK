@@ -1846,7 +1846,7 @@ describe('MapViewGL POI reposition', () => {
     buildMapPlace({ id: 2, lat: 48.86, lng: 2.3 }),
   ]
 
-  it('FE-COMP-MAPVIEWGL-040: the repositioning marker is draggable; siblings are not', async () => {
+  it('FE-COMP-MAPVIEWGL-050: the repositioning marker is draggable; siblings are not', async () => {
     loadOnAttach()
     render(<MapViewGL places={twoPlaces} selectedPlaceId={2} repositionPlaceId={2} canRepositionPlaces />)
     await act(async () => {})
@@ -1865,7 +1865,7 @@ describe('MapViewGL POI reposition', () => {
     expect(nonDraggable.length).toBeGreaterThan(0)
   })
 
-  it('FE-COMP-MAPVIEWGL-041: dragging fires dragstart then dragend with the new position', async () => {
+  it('FE-COMP-MAPVIEWGL-051: dragging fires dragstart then dragend with the new position', async () => {
     const onStart = vi.fn()
     const onEnd = vi.fn()
     loadOnAttach()
@@ -1880,10 +1880,65 @@ describe('MapViewGL POI reposition', () => {
     expect(onEnd).toHaveBeenCalledWith(1, { lat: 48.9, lng: 2.4 })
   })
 
-  it('FE-COMP-MAPVIEWGL-042: without canRepositionPlaces no marker is draggable', async () => {
+  it('FE-COMP-MAPVIEWGL-052: without canRepositionPlaces no marker is draggable', async () => {
     loadOnAttach()
     render(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces={false} />)
     await act(async () => {})
     expect(glMarkers.created.every(m => !m.draggableOpt)).toBe(true)
+  })
+
+  it('FE-COMP-MAPVIEWGL-060: entering reposition mode AFTER mount makes the active marker draggable', async () => {
+    loadOnAttach()
+    const { rerender } = render(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={null} canRepositionPlaces />)
+    await act(async () => {})
+    expect(glMarkers.created.every(m => !m.draggableOpt)).toBe(true)
+
+    // Enter reposition mode — the reconcile must react and make the marker draggable.
+    rerender(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces />)
+    await act(async () => {})
+    const draggable = glMarkers.created.filter(m => m.draggableOpt)
+    expect(draggable.length).toBe(1)
+  })
+
+  it('FE-COMP-MAPVIEWGL-061: exiting reposition mode AFTER mount makes the marker non-draggable again', async () => {
+    loadOnAttach()
+    const { rerender } = render(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces />)
+    await act(async () => {})
+    expect(glMarkers.created.filter(m => m.draggableOpt).length).toBe(1)
+
+    rerender(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={null} canRepositionPlaces />)
+    await act(async () => {})
+    // Markers are recreated imperatively; the LATEST marker for the place is
+    // the one currently on the map and must no longer be draggable.
+    const lastForPlace1 = [...glMarkers.created].reverse().find(m => m.element.dataset.repositioning === 'false')
+    expect(lastForPlace1).toBeDefined()
+    expect(lastForPlace1!.draggableOpt).toBe(false)
+  })
+
+  it('FE-COMP-MAPVIEWGL-062: a permission change to false exits reposition (marker not draggable)', async () => {
+    loadOnAttach()
+    const { rerender } = render(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces />)
+    await act(async () => {})
+    expect(glMarkers.created.filter(m => m.draggableOpt).length).toBe(1)
+
+    rerender(<MapViewGL places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces={false} />)
+    await act(async () => {})
+    const lastNonRepositioning = [...glMarkers.created].reverse().find(m => m.element.dataset.repositioning === 'false')
+    expect(lastNonRepositioning).toBeDefined()
+    expect(lastNonRepositioning!.draggableOpt).toBe(false)
+  })
+
+  it('FE-COMP-MAPVIEWGL-063: the active reposition marker is excluded from the clustered source data', async () => {
+    loadOnAttach()
+    const clusterSource = { setData: vi.fn((_data: unknown) => {}) }
+    glMap.getSource.mockImplementation((id: string) => (id === 'trip-place-clusters' ? clusterSource : null))
+    glMap.querySourceFeatures.mockReturnValue([])
+    render(<MapViewGL places={twoPlaces} selectedPlaceId={2} repositionPlaceId={2} canRepositionPlaces />)
+    await act(async () => {})
+    const calls = vi.mocked(clusterSource.setData).mock.calls
+    const data = calls[calls.length - 1]?.[0] as { features: Array<{ properties: { placeId: number } }> }
+    const ids = (data?.features ?? []).map(f => f.properties.placeId)
+    expect(ids).not.toContain(2)
+    expect(ids).toContain(1)
   })
 })
