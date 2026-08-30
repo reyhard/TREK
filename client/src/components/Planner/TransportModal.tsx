@@ -183,7 +183,7 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
   const toast = useToast()
   const isBudgetEnabled = useAddonStore(s => s.isEnabled('budget'))
   const budgetItems = useTripStore(s => s.budgetItems)
-  const deleteBudgetItem = useTripStore(s => s.deleteBudgetItem)
+  const updateBudgetItem = useTripStore(s => s.updateBudgetItem)
   const loadFiles = useTripStore(s => s.loadFiles)
   const setReservationTravelers = useTripStore(s => s.setReservationTravelers)
   const { id: tripId } = useParams<{ id: string }>()
@@ -592,7 +592,8 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
   const handleCreateExpense = () => { expenseIntentRef.current = { create: true }; handleSubmit() }
   const handleEditExpense = (item: BudgetItem) => { expenseIntentRef.current = { editItem: item }; handleSubmit() }
   const handleRemoveExpense = async (item: BudgetItem) => {
-    try { await deleteBudgetItem(Number(tripId), item.id) } catch { toast.error(t('common.unknownError')) }
+    // Unlink the existing cost from this reservation — never delete it.
+    try { await updateBudgetItem(Number(tripId), item.id, { reservation_id: null }) } catch { toast.error(t('common.unknownError')) }
   }
 
   // On an import review (not yet saved), preview the parsed price as the cost that will be linked.

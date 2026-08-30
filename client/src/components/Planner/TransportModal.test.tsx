@@ -1010,11 +1010,11 @@ describe('TransportModal', () => {
     expect(onOpenExpense).toHaveBeenCalledWith({ editItem: expect.objectContaining({ id: 3 }) });
   });
 
-  it('FE-PLANNER-TRANSMODAL-047: a failing cost removal reports the error', async () => {
+  it('FE-PLANNER-TRANSMODAL-047: a failing cost removal (unlink) reports the error', async () => {
     const addToast = vi.fn();
     window.__addToast = addToast;
     seedLinkedCost();
-    server.use(http.delete('/api/trips/1/budget/3', () => HttpResponse.json({ error: 'nope' }, { status: 500 })));
+    server.use(http.put('/api/trips/1/budget/3', () => HttpResponse.json({ error: 'nope' }, { status: 500 })));
 
     render(<TransportModal {...defaultProps} reservation={buildReservation({ id: 50, type: 'flight', title: 'LH 400' })} />);
     await userEvent.click(screen.getByRole('button', { name: /Remove expense/i }));

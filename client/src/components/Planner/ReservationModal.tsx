@@ -88,7 +88,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
   const fileInputRef = useRef(null)
 
   const isBudgetEnabled = useAddonStore(s => s.isEnabled('budget'))
-  const deleteBudgetItem = useTripStore(s => s.deleteBudgetItem)
+  const updateBudgetItem = useTripStore(s => s.updateBudgetItem)
   // Set right before submit when the user clicked create/edit expense (see TransportModal).
   const expenseIntentRef = useRef<{ editItem?: BudgetItem; create?: boolean } | null>(null)
 
@@ -338,7 +338,10 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
   const handleCreateExpense = () => { expenseIntentRef.current = { create: true }; handleSubmit() }
   const handleEditExpense = (item: BudgetItem) => { expenseIntentRef.current = { editItem: item }; handleSubmit() }
   const handleRemoveExpense = async (item: BudgetItem) => {
-    try { await deleteBudgetItem(Number(tripId), item.id) } catch { toast.error(t('common.unknownError')) }
+    // Unlink the existing cost from this reservation — never delete it. The
+    // canonical update path clears budget_items.reservation_id and broadcasts
+    // budget:updated; the cost (financials, split, category) survives.
+    try { await updateBudgetItem(Number(tripId), item.id, { reservation_id: null }) } catch { toast.error(t('common.unknownError')) }
   }
 
   // On an import review (not yet saved), preview the parsed price as the cost that will be linked.

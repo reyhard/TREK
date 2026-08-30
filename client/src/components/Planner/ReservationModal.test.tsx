@@ -390,6 +390,34 @@ describe('ReservationModal', () => {
     expect(screen.getByText('Hotel deposit')).toBeInTheDocument();
   });
 
+  it('FE-PLANNER-RESMODAL-081: removing the linked expense UNLINKS the cost (reservation_id: null) instead of deleting it', async () => {
+    const user = userEvent.setup();
+    seedStore(useAddonStore, {
+      addons: [{ id: 'budget', name: 'Budget', type: 'budget', icon: '', enabled: true }],
+      loaded: true,
+    });
+    seedStore(useTripStore, {
+      trip: buildTrip({ id: 1 }),
+      budgetItems: [
+        { id: 7, trip_id: 1, name: 'Hotel deposit', total_price: 120, currency: 'EUR', category: 'accommodation', reservation_id: 9, members: [], payers: [], persons: 1, expense_date: null, paid_by_user_id: null },
+      ],
+    });
+    render(<ReservationModal {...defaultProps} reservation={buildReservation({ id: 9, type: 'hotel', title: 'Hotel Paris' })} />);
+
+    // The linked expense shows its remove (Trash) button — the unlink action.
+    const removeBtn = screen.getByTitle(/remove expense/i);
+    await user.click(removeBtn);
+
+    // The cost survives: the store now holds the same id with the link cleared.
+    await waitFor(() => {
+      const item = useTripStore.getState().budgetItems.find(i => i.id === 7);
+      expect(item).toBeDefined();
+      expect(item?.reservation_id).toBeNull();
+    });
+    // No delete happened — the item still exists under id 7.
+    expect(useTripStore.getState().budgetItems.some(i => i.id === 7)).toBe(true);
+  });
+
   // ── File upload ───────────────────────────────────────────────────────────────
 
   it('FE-PLANNER-RESMODAL-028: pending file added for new reservation on file input change', async () => {
@@ -1261,14 +1289,15 @@ describe('ReservationModal', () => {
     expect(onOpenExpense).toHaveBeenCalledWith({ editItem: expect.objectContaining({ id: 7 }) });
   });
 
-  it('FE-PLANNER-RESMODAL-076: removing the linked cost deletes it, and a failure shows a toast', async () => {
+  it('FE-PLANNER-RESMODAL-076: removing the linked cost UNLINKS it (PUT reservation_id: null) and a failure shows a toast', async () => {
     const addToast = vi.fn();
     window.__addToast = addToast;
     seedLinkedCost();
-    let deleted = false;
+    let unlinked = false;
     server.use(
-      http.delete('/api/trips/1/budget/7', () => {
-        deleted = true;
+      http.put('/api/trips/1/budget/7', async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        unlinked = body.reservation_id === null;
         return HttpResponse.json({ error: 'nope' }, { status: 500 });
       }),
     );
@@ -1277,7 +1306,7 @@ describe('ReservationModal', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: /Remove expense/i }));
-    await waitFor(() => expect(deleted).toBe(true));
+    await waitFor(() => expect(unlinked).toBe(true));
     await waitFor(() => expect(addToast).toHaveBeenCalledWith(expect.any(String), 'error', undefined));
     delete window.__addToast;
   });
