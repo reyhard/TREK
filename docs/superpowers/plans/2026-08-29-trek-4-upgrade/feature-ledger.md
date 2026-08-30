@@ -112,7 +112,7 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F09 | Reservation `url` over MCP | e9a1f3e0 | `UPSTREAMED_CURRENT` | — | Adopt `f1bbd94f`; never add separate `link` field |
 | F10 | Existing Cost → reservation linking | 92aee6e1, 287975b6, b3b68d0a, f8d6f8f7, 41159e73, ae1758ac, 13fbe370 | `PORTED` (Task 05) | — | Implement atop 4.0 Costs/Reservations — DONE: canonical service methods + REST `reservation_id` update + MCP link/unlink tools + client unlink-not-delete |
 | F11 | Multiple cost links / safe unlink | (with F10; ae1758ac) | `PORTED` (Task 05) | — | Preserve relationship semantics — DONE: multi-link cardinality + deep-preserve unlink |
-| F12 | POI marker reposition | ae7649bd, 019cdf55, 63936e2e, 5d3385bc, 75edfe25 | `FORK_ONLY` | Desktop + mobile (mobile inspector preserved by 63936e2e; draggable-marker restore in 75edfe25) | Port to Leaflet/GL/map state |
+| F12 | POI marker reposition | ae7649bd, 019cdf55, 63936e2e, 5d3385bc, 75edfe25 | `PORTED` (Task 06) | Desktop + mobile (mobile inspector preserved by 63936e2e; draggable-marker restore in 75edfe25) | Port to Leaflet/GL/map state — DONE: hook state machine + canonical updatePlace save + native-draggable markers out of cluster |
 | F13 | Track-aware route bypass + movement totals | c4823a57 … b409eb87 (~27, merge 4ce5c739) | `FORK_ONLY` | — | Port domain onto current routing pipeline |
 | F14 | Transit-distance → movement | 4dcfb114 | `FORK_ONLY` | Consume upstream transit leg data (`leg.distance` in `transit.service.ts`), do not duplicate storage | Consume upstream transit leg data |
 | F15 | Timeline planner (draggable + duration + context/duration MCP + mobile) | 203cdeae … 814ed86a (~42) | `FORK_ONLY` | `duration_minutes` model already upstream — consume it, never re-add; mobile served by upstream `MPlanTimeline` | Reimplement against 4.0 planner |
@@ -400,7 +400,7 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   multi-link cardinality, wrong-trip rejects, REST routing), MCP link/unlink tool tests
   (permission default-deny both ways, broadcast), FE-PLANNER-RESMODAL-081 (client unlink-not-delete).
 
-### F12 — POI marker reposition — `FORK_ONLY`
+### F12 — POI marker reposition — `PORTED` (Task 06)
 
 - **Fork commits:** `ae7649bd` (reposition saved place markers), `019cdf55` (harden rollback),
   `63936e2e` (preserve mobile inspector while saving), `5d3385bc` (reconcile map types — adds
@@ -424,8 +424,20 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   (`client/src/components/Map/MapView.types.ts` reposition mode) absent upstream.
 - **Mobile outcome:** desktop + mobile — `63936e2e` preserved the mobile inspector during save,
   so the feature must keep working on the mobile map.
-- **Migration action:** port to Leaflet/GL/map state (spec §7.2).
-- **Tests:** characterize fork reposition tests; port to 4.0 renderer test harness.
+- **Migration action (DONE at Task 06):** ported onto the 4.0 map/client architecture — NOT a
+  wholesale transplant of the 3.4 renderer code. `useTripPlanner` owns the reposition state
+  machine (start/cancel/save/rollback, Escape, permission re-check) and persists through the
+  canonical `tripActions.updatePlace`. Leaflet MapView + MapViewGL both get
+  `repositionPlaceId`/`canRepositionPlaces`/`onPlaceRepositionStart`/`onPlaceRepositionEnd`
+  and make the active marker natively draggable, pulling it out of the cluster (Leaflet) /
+  not rebuilding it under the cursor (GL); the existing HTML5 day-plan drag is skipped for
+  the repositioning marker so the gestures don't fight. PlaceInspector (desktop + mobile
+  bottom sheet) shows Reposition/Cancel buttons + instructions/saving banner. The shared
+  inspector + shared map render on both desktop and mobile web, so mobile is covered by the
+  same components (tested at mobile width).
+- **Tests (DONE):** FE-TP-HOOK-120..125 (hook state machine), FE-COMP-MAPVIEW-080..083
+  (Leaflet), FE-COMP-MAPVIEWGL-040..042 (GL), FE-PLANNER-INSPECTOR-101..105 (UI incl. mobile
+  width). All RED before, GREEN after.
 
 ### F13 — Track-aware route bypass + movement totals — `FORK_ONLY`
 
