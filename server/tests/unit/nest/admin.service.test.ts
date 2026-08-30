@@ -81,6 +81,8 @@ import { __clearVersionCacheForTests } from '../../../src/nest/admin/admin.helpe
 import { makeNotificationsService, makeNotificationPreferencesService } from '../../helpers/notifications';
 import { EphemeralTokenService } from '../../../src/nest/auth/ephemeral-token.service';
 import { AllowedFileTypesService } from '../../../src/nest/files/allowed-file-types.service';
+import { OauthService } from '../../../src/nest/oauth/oauth.service';
+import { AuditService } from '../../../src/nest/audit/audit.service';
 
 const dbs = new DatabaseService(testDb);
 const realtime = new RealtimeService();
@@ -102,6 +104,18 @@ const svc = new AdminService(
   userCleanup,
   realtime,
 );
+
+// A real OauthService so the admin-update service-path test issues genuine
+// access + refresh tokens and asserts the password update revokes both.
+const oauthSvc = new OauthService(dbs, { isAddonEnabled: () => true } as unknown as AddonsService, new AuditService(dbs));
+function issueOAuthTokens(userId: number): void {
+  testDb.prepare("INSERT OR IGNORE INTO oauth_clients (client_id, client_secret_hash, name) VALUES ('admin-test-client', 'hash', 'Admin Test')").run();
+  oauthSvc.issueTokens('admin-test-client', userId, ['trips:read']);
+}
+function latestOAuthRevokedAt(userId: number): string | null {
+  const row = testDb.prepare('SELECT revoked_at FROM oauth_tokens WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId) as { revoked_at: string | null } | undefined;
+  return row?.revoked_at ?? null;
+}
 
 // Legacy free-function names bound to the service, so the moved cases below read
 // exactly as they did before the fold.
@@ -229,6 +243,24 @@ describe('updateUser', () => {
     const result = updateUser(String(user.id), { username: 'newname', role: 'admin' }) as any;
     expect(result.changed).toContain('username');
     expect(result.changed).toContain('role');
+  });
+
+  it('F18-200: admin updateUser setting a password (real service path) revokes the OAuth access + refresh tokens', () => {
+    const { user } = createUser(testDb);
+    issueOAuthTokens(user.id);
+    expect(latestOAuthRevokedAt(user.id)).toBeNull();
+
+    const result = updateUser(String(user.id), { password: 'NewAdmin123!' }) as any;
+
+    expect(result.user).toBeDefined();
+    // The credential stores (MCP static + OAuth bearer/refresh) are revoked by
+    // the production path — not by hand-written SQL.
+    expect(latestOAuthRevokedAt(user.id)).not.toBeNull();
+    const row = testDb.prepare('SELECT access_token_hash, refresh_token_hash, revoked_at FROM oauth_tokens WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(user.id) as
+      { access_token_hash: string; refresh_token_hash: string; revoked_at: string | null };
+    expect(row.access_token_hash).toBeTruthy();
+    expect(row.refresh_token_hash).toBeTruthy();
+    expect(row.revoked_at).not.toBeNull();
   });
 });
 

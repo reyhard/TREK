@@ -84,6 +84,10 @@ import { MailerService } from '../../../src/nest/notifications/mailer/mailer.ser
 import { EphemeralTokenService } from '../../../src/nest/auth/ephemeral-token.service';
 import { AllowedFileTypesService } from '../../../src/nest/files/allowed-file-types.service';
 import { DEFAULT_ALLOWED_EXTENSIONS } from '../../../src/nest/files/files.constants';
+import { OauthService } from '../../../src/nest/oauth/oauth.service';
+import { AuditService } from '../../../src/nest/audit/audit.service';
+import type { AddonsService } from '../../../src/nest/addons/addons.service';
+import { ADDON_IDS } from '../../../src/addons';
 
 // MailerService is injected since the notifications fold — a stub instead of a
 // module mock. sendPasswordResetEmail is the only thing auth reaches for.
@@ -107,6 +111,21 @@ const svc = new AuthService(
   new EphemeralTokenService(),
   new AllowedFileTypesService(new DatabaseService(testDb)),
 );
+
+// A real OauthService so the service-path tests below issue genuine access +
+// refresh tokens and assert the password paths revoke BOTH via revoked_at.
+const oauthSvc = new OauthService(
+  new DatabaseService(testDb),
+  { isAddonEnabled: () => true } as unknown as AddonsService,
+  new AuditService(new DatabaseService(testDb)),
+);
+function issueOAuthTokens(userId: number): { access_token: string; refresh_token: string } {
+  testDb.prepare("INSERT OR IGNORE INTO oauth_clients (client_id, client_secret_hash, name) VALUES ('auth-test-client', 'hash', 'Auth Test')").run();
+  return oauthSvc.issueTokens('auth-test-client', userId, ['trips:read']);
+}
+function oauthRow(userId: number) {
+  return testDb.prepare('SELECT revoked_at FROM oauth_tokens WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId) as { revoked_at: string | null } | undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -1011,5 +1030,63 @@ describe('generateToken remember claim (#1927)', () => {
     const decoded = jwt.decode(svc.generateToken({ id: user.id })) as { remember?: boolean; iat: number; exp: number };
     expect('remember' in decoded).toBe(false);
     expect(decoded.exp - decoded.iat).toBe(86400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F18 service-path revocation — each password path goes through the REAL
+// production service method and must revoke the user's OAuth access AND
+// refresh tokens (revoked_at), not just bump the JWT password_version.
+// Direct-SQL-only tests are insufficient: these prove the wiring end to end.
+// ---------------------------------------------------------------------------
+
+describe('F18 — password paths revoke OAuth tokens through the service', () => {
+  function setupUserWithOAuth() {
+    const { user, password } = createUser(testDb);
+    const tokens_ = issueOAuthTokens(user.id);
+    // Both the access and the refresh row land in oauth_tokens (issueTokens
+    // writes one row carrying both hashes).
+    const row = testDb.prepare('SELECT access_token_hash, refresh_token_hash, revoked_at FROM oauth_tokens WHERE user_id = ?').get(user.id) as
+      { access_token_hash: string; refresh_token_hash: string; revoked_at: string | null };
+    expect(row.access_token_hash).toBeTruthy();
+    expect(row.refresh_token_hash).toBeTruthy();
+    expect(row.revoked_at).toBeNull();
+    return { user, password, accessToken: tokens_.access_token, refreshToken: tokens_.refresh_token };
+  }
+
+  it('F18-100: changePassword (real service path) revokes the OAuth access + refresh tokens', () => {
+    const { user, password, accessToken, refreshToken } = setupUserWithOAuth();
+
+    // The issued access token resolves BEFORE the change.
+    expect(oauthSvc.getUserByAccessToken(accessToken)).not.toBeNull();
+
+    const result = svc.changePassword(user.id, user.email, { current_password: password, new_password: 'New1234!' });
+
+    expect(result.success).toBe(true);
+    const after = oauthRow(user.id);
+    expect(after?.revoked_at).not.toBeNull();
+    // Both the access and refresh credentials in the SAME row are revoked.
+    const row = testDb.prepare('SELECT access_token_hash, refresh_token_hash, revoked_at FROM oauth_tokens WHERE user_id = ?').get(user.id) as
+      { access_token_hash: string; refresh_token_hash: string; revoked_at: string | null };
+    expect(row.access_token_hash).toBeTruthy();
+    expect(row.refresh_token_hash).toBeTruthy();
+    expect(row.revoked_at).not.toBeNull();
+    // And the issued access token no longer resolves after the change.
+    expect(oauthSvc.getUserByAccessToken(accessToken)).toBeNull();
+    // Refresh tokens are revoked too (the row's revoked_at gates the refresh path).
+    expect(refreshToken).toBeTruthy();
+  });
+
+  it('F18-101: resetPassword (real service path) revokes the OAuth access + refresh tokens', () => {
+    const { user } = createUser(testDb);
+    issueOAuthTokens(user.id);
+    const issued = svc.requestPasswordReset(user.email, '1.2.3.4');
+    expect(issued.tokenForDelivery).toBeTruthy();
+
+    const result = svc.resetPassword({ token: issued.tokenForDelivery!, new_password: 'Fresh123!' });
+
+    expect(result.success).toBe(true);
+    const after = oauthRow(user.id);
+    expect(after?.revoked_at).not.toBeNull();
   });
 });
