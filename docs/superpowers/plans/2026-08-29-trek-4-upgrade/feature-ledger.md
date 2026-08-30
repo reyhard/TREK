@@ -108,7 +108,7 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 | F05 | Transit connector prefill | a97e4552 | `UPSTREAMED_V4` | — | Convert to regression tests |
 | F06 | Edit stored transit over MCP | 97ee89a5, 5a5ab75c, c4209c57 | `UPSTREAMED_CURRENT` | Keep dedicated tool as thin alias **only** if an agent depends on the tool name | Adopt `aa5002b2`; use generic `update_transport` |
 | F07 | Transit endpoint backend replacement | 4ebbb819, 6bff6fb1, c138235b, 822ff9b4 (+UI/`e6309321`) | `UPSTREAMED_CURRENT` | **Stale-geometry policy decided: PRESERVE** — endpoint edits update stop coordinates only; the saved provider itinerary/geometry (`metadata.transit`, `route_geometry`) is retained unchanged until a new Transitous search replaces it (fork `updateTransitRouteEndpoints` and upstream `update_transport` endpoints-only semantics agree). No geometry invalidation | Use generic transport update path; port the preserve-policy as a characterization test |
-| F08 | Map-side transit endpoint editor | 4bc62ec5, 6fbc3d52, 2d734584, 48356079 | `FORK_ONLY` | Desktop + mobile (reachable from mobile sidebar portal); port keeps the F07 PRESERVE policy (editor save updates pins only, never recomputes geometry/legs) | Port UI/domain onto 4.0 map/planner |
+| F08 | Map-side transit endpoint editor | 4bc62ec5, 6fbc3d52, 2d734584, 48356079 | `PORTED` (Task 04) | Desktop + mobile (reachable from mobile sidebar portal); port keeps the F07 PRESERVE policy (editor save updates pins only, never recomputes geometry/legs) | Port UI/domain onto 4.0 map/planner — DONE: editor + modal wiring submit full `endpoints[]` via canonical reservation update |
 | F09 | Reservation `url` over MCP | e9a1f3e0 | `UPSTREAMED_CURRENT` | — | Adopt `f1bbd94f`; never add separate `link` field |
 | F10 | Existing Cost → reservation linking | 92aee6e1, 287975b6, b3b68d0a, f8d6f8f7, 41159e73, ae1758ac, 13fbe370 | `FORK_ONLY` | — | Implement atop 4.0 Costs/Reservations |
 | F11 | Multiple cost links / safe unlink | (with F10; ae1758ac) | `FORK_ONLY` | — | Preserve relationship semantics |
@@ -315,15 +315,16 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   semantics, so the 4.0 port has no new server logic — only a characterization test proving the
   preserve-invariant. This is the explicit policy required by spec §7.3; there is no remaining
   deferral.
-- **Migration action:** use generic transport update path (`update_transport`); port the
-  preserve-policy as a characterization test (endpoints-only update leaves `metadata.transit`
-  and legs unchanged, performs no provider search). The fork REST surface
+- **Migration action (DONE at Task 04):** generic transport update path (`update_transport`);
+  preserve-policy ported as characterization tests (endpoints-only update leaves
+  `metadata.transit` and legs unchanged, performs no provider search). The fork REST surface
   (`transitRouteEndpointsUpdateRequestSchema`) maps onto `update_transport`'s `endpoints[]`.
-- **Tests:** fork `tools-transit.test.ts` endpoint-replacement tests + fork
-  `shared/src/reservation/reservation.schema.test.ts` (schema) → re-target onto
-  `update_transport`; add the preserve-invariant regression test.
+- **Tests (DONE):** F06-END-001/002 (start/end endpoint edit), F06-PRESERVE-001 (metadata +
+  timing + day placement unchanged), F06-NOSEARCH-001 (no provider search), F06-ROLLBACK-001
+  (atomic rollback on invalid edit) — all target the canonical `update_transport`, no new
+  server logic.
 
-### F08 — Map-side transit endpoint editor — `FORK_ONLY`
+### F08 — Map-side transit endpoint editor — `PORTED` (Task 04)
 
 - **Fork commits:** `4bc62ec5` (edit transit map endpoints), `6fbc3d52` (client flow),
   `2d734584` (gate on `reservation_edit`; guard blank coords), `48356079` (lock rendering).
@@ -338,11 +339,21 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
   (identical to v4.0.0); no editor.
 - **Mobile outcome:** desktop + mobile — `TransitJourneyModal` is opened from the desktop
   sidebar *and* the mobile sidebar portal (`onOpenTransit`), so the editor must work on both.
-- **Migration action:** port UI/domain onto 4.0 map/planner; backend via upstream `update_transport`
-  (or the F07 characterization path), keeping the PRESERVE policy: the editor never recomputes
-  geometry/legs and never triggers a provider search.
-- **Tests:** fork `TransitRouteEndpointEditor.test.tsx` (map-only warning, invalid coords,
-  unchanged-value block, cancel-without-save, zero-coord guard, i18n) is characterization.
+- **Migration action (DONE at Task 04):** ported the editor UI onto the 4.0 modal
+  (`TransitRouteEndpointEditor.tsx` + `TransitJourneyModal` footer button), gated on
+  `canEdit`; both desktop (`TripPlannerPage`) and mobile (`MTripSheets`) build the full
+  `endpoints[]` from the stored reservation and submit via the canonical
+  `tripActions.updateReservation` (REST PUT → `reservation:updated` WS broadcast). No
+  parallel geometry/provider model: `metadata.transit` and leg geometry stay untouched
+  (PRESERVE policy), no provider search. The stored `code: null` round-trips through the
+  REST `reservationEndpointsInputSchema` (`z.string().nullable().optional()`); the MCP
+  `update_transport` schema (`z.string().optional()`) needs the client mapper to omit null
+  codes — characterized by the server tests' `toTransportEndpoint` helper.
+- **Tests (DONE):** FE-PLANNER-TRANSITEDITOR-001..006 (map-only warning, changed-origin-only
+  submit, destination-only edit, invalid/unchanged block, cancel, zero-coord guard, i18n),
+  FE-PLANNER-TRANSITJOURNEY-015..018 (open+edit origin, cancel-returns, hidden-without-rights,
+  mobile pin edit). Server: F06-END-001/002, F06-PRESERVE-001, F06-NOSEARCH-001,
+  F06-ROLLBACK-001 characterize the canonical `update_transport` path.
 
 ### F09 — Reservation `url` over MCP — `UPSTREAMED_CURRENT`
 
