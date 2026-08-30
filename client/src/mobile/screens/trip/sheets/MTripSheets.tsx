@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import TransitJourneyModal from '../../../../components/Planner/TransitJourneyModal'
+import type { TransitRouteEndpointEditInput } from '../../../../components/Planner/TransitRouteEndpointEditor'
 import BookingImportModal from '../../../../components/Planner/BookingImportModal'
 import AirTrailImportModal from '../../../../components/Planner/AirTrailImportModal'
 import TripFormModal from '../../../../components/Trips/TripFormModal'
@@ -85,6 +86,18 @@ export default function MTripSheets({ planner, shell }: MTripSheetsProps) {
           reservation={planner.reservations.find(r => r.id === planner.transitJourney!.id) ?? planner.transitJourney}
           canEdit={planner.can('day_edit', trip)}
           onClose={() => planner.setTransitJourney(null)}
+          onUpdateEndpoints={async (input: TransitRouteEndpointEditInput) => {
+            const journey = planner.transitJourney!
+            const current = planner.reservations.find(r => r.id === journey.id) ?? journey
+            const eps = current.endpoints || []
+            const next = eps.map(e => {
+              if (e.role === 'from' && input.from) return { ...e, name: input.from.name, lat: input.from.lat, lng: input.from.lng }
+              if (e.role === 'to' && input.to) return { ...e, name: input.to.name, lat: input.to.lat, lng: input.to.lng }
+              return e
+            })
+            await tripActions.updateReservation(tripId, journey.id, { endpoints: next })
+            planner.setTransitJourney(null)
+          }}
           onSave={async (fields) => {
             await tripActions.updateReservation(tripId, planner.transitJourney!.id, fields)
             planner.setTransitJourney(null)

@@ -18,6 +18,7 @@ import SlidingTabs from '../components/shared/SlidingTabs'
 import TripMembersModal from '../components/Trips/TripMembersModal'
 import { ReservationModal } from '../components/Planner/ReservationModal'
 import TransitJourneyModal from '../components/Planner/TransitJourneyModal'
+import type { TransitRouteEndpointEditInput } from '../components/Planner/TransitRouteEndpointEditor'
 import BookingImportModal from '../components/Planner/BookingImportModal'
 import AirTrailImportModal from '../components/Planner/AirTrailImportModal'
 // MemoriesPanel moved to Journey addon
@@ -839,6 +840,25 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
           reservation={reservations.find(r => r.id === transitJourney.id) ?? transitJourney}
           canEdit={can('day_edit', trip)}
           onClose={() => setTransitJourney(null)}
+          onUpdateEndpoints={async (input: TransitRouteEndpointEditInput) => {
+            // PRESERVE policy: only the from/to pins move; every other endpoint
+            // (intermediate stops), the legs, metadata.transit and geometry are
+            // left untouched because the canonical update receives the full list
+            // with just the edited pins changed. No provider search happens.
+            const current = reservations.find(r => r.id === transitJourney.id) ?? transitJourney
+            const eps = current.endpoints || []
+            const next = eps.map(e => {
+              if (e.role === 'from' && input.from) return { ...e, name: input.from.name, lat: input.from.lat, lng: input.from.lng }
+              if (e.role === 'to' && input.to) return { ...e, name: input.to.name, lat: input.to.lat, lng: input.to.lng }
+              return e
+            })
+            try {
+              await tripActions.updateReservation(tripId, transitJourney.id, { endpoints: next })
+              setTransitJourney(null)
+            } catch (err: unknown) {
+              toast.error(err instanceof Error ? err.message : t('common.unknownError'))
+            }
+          }}
           onSave={async (fields) => { await tripActions.updateReservation(tripId, transitJourney.id, fields); setTransitJourney(null) }}
           onDelete={async () => { await handleDeleteReservation(transitJourney.id); setTransitJourney(null) }}
           onChangeRoute={() => {
