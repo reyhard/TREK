@@ -1403,3 +1403,42 @@ describe('PlaceInspector', () => {
   });
 
 });
+
+describe('PlaceInspector POI reposition', () => {
+  it('FE-PLANNER-INSPECTOR-101: the reposition button starts reposition mode for an editor', async () => {
+    const onStartReposition = vi.fn()
+    render(<PlaceInspector {...defaultProps} canReposition isRepositioning={false} onStartReposition={onStartReposition} onCancelReposition={vi.fn()} />)
+    const btn = screen.getByRole('button', { name: /Reposition on map/ })
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(onStartReposition).toHaveBeenCalled()
+  })
+
+  it('FE-PLANNER-INSPECTOR-102: while repositioning the inspector shows the instructions + cancel, not the start button', () => {
+    render(<PlaceInspector {...defaultProps} canReposition isRepositioning onStartReposition={vi.fn()} onCancelReposition={vi.fn()} />)
+    expect(screen.getByText(/Drag the marker to its new location/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Cancel repositioning/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reposition on map/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-INSPECTOR-103: while saving the banner reports the saving state', () => {
+    render(<PlaceInspector {...defaultProps} canReposition isRepositioning isRepositionSaving onStartReposition={vi.fn()} onCancelReposition={vi.fn()} />)
+    expect(screen.getByText(/Saving the new marker position/)).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-INSPECTOR-104: a viewer without place_edit sees no reposition button', () => {
+    render(<PlaceInspector {...defaultProps} canReposition={false} onStartReposition={vi.fn()} onCancelReposition={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Reposition on map/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-INSPECTOR-105: the reposition button is present on the mobile sheet too (shared inspector)', () => {
+    const desktopWidth = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 420 })
+    try {
+      render(<PlaceInspector {...defaultProps} canReposition isRepositioning={false} onStartReposition={vi.fn()} onCancelReposition={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /Reposition on map/ })).toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: desktopWidth })
+    }
+  })
+})

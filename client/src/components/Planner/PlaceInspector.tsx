@@ -152,6 +152,14 @@ interface PlaceInspectorProps {
   onClose: () => void
   onEdit?: () => void
   onDelete?: () => void
+  /** POI reposition mode (fork F12): the selected place's marker can be dragged
+   *  to a new map position; Save persists through the canonical place update,
+   *  Cancel restores. Only offered to trip editors. */
+  canReposition?: boolean
+  isRepositioning?: boolean
+  isRepositionSaving?: boolean
+  onStartReposition?: () => void
+  onCancelReposition?: () => void
   onAssignToDay?: (placeId: number, dayId?: number) => void
   onRemoveAssignment?: (dayId: number, assignmentId: number) => void
   files?: TripFile[]
@@ -176,6 +184,7 @@ export default function PlaceInspector({
   place, categories, mode = 'trip', days = [], selectedDayId = null, selectedAssignmentId = null,
   assignments = {}, reservations = [], onEditTransport, onEditReservation,
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
+  canReposition, isRepositioning, isRepositionSaving, onStartReposition, onCancelReposition,
   files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace, onUploadImage, onRate,
   leftWidth = 0, rightWidth = 0,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
@@ -473,6 +482,15 @@ export default function PlaceInspector({
 
         </div>
 
+        {/* POI reposition — banner + footer actions */}
+        {isRepositioning && (
+          <div className="border-t border-edge-faint" style={{ padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-hover)' }}>
+            <MapPin size={13} aria-hidden="true" style={{ color: 'var(--text-faint)' }} />
+            <span className="text-content-muted" style={{ fontSize: 'calc(11.5px * var(--fs-scale-body, 1))' }}>
+              {isRepositionSaving ? t('inspector.repositionSaving') : t('inspector.repositionInstructions')}
+            </span>
+          </div>
+        )}
         {/* Footer actions */}
         <div className="border-t border-edge-faint" style={{ padding: '10px 16px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
           {/* Collection mode — copy to trip + per-place status */}
@@ -530,6 +548,14 @@ export default function PlaceInspector({
               label={<span className="hidden sm:inline">{t('inspector.website')}</span>} />
           )}
           <div style={{ flex: 1 }} />
+          {mode === 'trip' && canReposition && !isRepositioning && (
+            <ActionButton onClick={onStartReposition} variant="ghost" icon={<MapPin size={13} />}
+              label={<span className="hidden sm:inline">{t('inspector.reposition')}</span>} />
+          )}
+          {mode === 'trip' && isRepositioning && onCancelReposition && (
+            <ActionButton onClick={onCancelReposition} variant="ghost" icon={<X size={13} />}
+              label={<span className="hidden sm:inline">{t('inspector.cancelReposition')}</span>} />
+          )}
           {mode === 'trip' && onEdit && (
             <ActionButton onClick={onEdit} variant="ghost" icon={<Edit2 size={13} />} label={<span className="hidden sm:inline">{t('common.edit')}</span>} />
           )}

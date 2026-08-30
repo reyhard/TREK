@@ -26,5 +26,13 @@ const inspector: TranslationStrings = {
   'inspector.trackColor': 'Màu đường đi',
   'inspector.trackColorAuto': 'Màu tự động',
   'inspector.trackColorCustom': 'Chọn màu tùy chỉnh',
+
+  'inspector.reposition': 'Reposition on map',
+  'inspector.repositionInstructions': 'Drag the marker to its new location. Press Escape to cancel.',
+  'inspector.repositionSaving': 'Saving the new marker position…',
+  'inspector.cancelReposition': 'Cancel repositioning',
+  'inspector.placeMoved': 'Place moved',
+  'inspector.moveFailed': 'Could not move place',
+  'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

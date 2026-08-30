@@ -248,6 +248,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
+    repositionPlaceId, isRepositioningPlace, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,
@@ -396,6 +397,10 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
               onPoiClick={openAddPlaceFromPoi}
               onViewportChange={poi.onViewportChange}
               onMapReady={setGlMap}
+              repositionPlaceId={repositionPlaceId}
+              canRepositionPlaces={can('place_edit', trip)}
+              onPlaceRepositionStart={() => {}}
+              onPlaceRepositionEnd={(placeId, coordinates) => handlePlaceRepositionEnd(placeId, coordinates)}
             />
 
             {(poiPillEnabled || glMap) && (
@@ -629,6 +634,11 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                 onClose={() => setSelectedPlaceId(null)}
                 onEdit={() => openPlaceEditor(selectedPlace, selectedAssignmentId)}
                 onDelete={() => handleDeletePlace(selectedPlace.id)}
+                canReposition={can('place_edit', trip)}
+                isRepositioning={isRepositioningPlace(selectedPlace.id)}
+                isRepositionSaving={false}
+                onStartReposition={() => startPlaceReposition(selectedPlace)}
+                onCancelReposition={cancelPlaceReposition}
                 onAssignToDay={handleAssignToDay}
                 onRemoveAssignment={handleRemoveAssignment}
                 files={files}
@@ -671,6 +681,11 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                     onClose={() => setSelectedPlaceId(null)}
                     onEdit={() => { openPlaceEditor(selectedPlace, selectedAssignmentId); setSelectedPlaceId(null) }}
                     onDelete={() => { handleDeletePlace(selectedPlace.id); setSelectedPlaceId(null) }}
+                    canReposition={can('place_edit', trip)}
+                    isRepositioning={isRepositioningPlace(selectedPlace.id)}
+                    isRepositionSaving={false}
+                    onStartReposition={() => startPlaceReposition(selectedPlace)}
+                    onCancelReposition={cancelPlaceReposition}
                     onAssignToDay={handleAssignToDay}
                     onRemoveAssignment={handleRemoveAssignment}
                     files={files}
