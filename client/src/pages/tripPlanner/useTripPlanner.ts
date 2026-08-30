@@ -45,22 +45,6 @@ import {
  * Behaviour is identical to the previous in-component logic.
  */
 
-/** Optimistic patch of a place's coordinates in both the places list and its assignments. */
-function patchPlaceCoordinates(placeId: number, coordinates: { lat: number; lng: number }): void {
-  useTripStore.setState(state => ({
-    places: state.places.map(place => place.id === placeId ? { ...place, ...coordinates } : place),
-    assignments: Object.fromEntries(Object.entries(state.assignments).map(([dayId, items]) => {
-      if (!items.some(assignment => assignment.place?.id === placeId)) return [dayId, items]
-      return [
-        dayId,
-        items.map(assignment => assignment.place?.id === placeId
-          ? { ...assignment, place: { ...assignment.place, ...coordinates } }
-          : assignment),
-      ]
-    })),
-  }))
-}
-
 export function useTripPlanner() {
   const { id } = useParams<{ id: string }>()
   // The route param is a string; convert once here so every downstream component
@@ -215,12 +199,14 @@ export function useTripPlanner() {
 
   // ── POI reposition mode ─────────────────────────────────────────────────────
   // Dragging a saved place's marker to a new map position (fork F12). A small
-  // additive mode: entering captures the original coordinates, the drag updates
-  // only the pending store copy until Save, and Save/Cancel/error all roll the
-  // store back to the original coordinates on failure. Saves ride the canonical
-  // tripActions.updatePlace path (no duplicate place-update code).
+  // additive mode: entering captures the original coordinates, a drag end stores
+  // only PENDING coordinates (the store is untouched), and an explicit Save
+  // persists them through the canonical tripActions.updatePlace path. Cancel
+  // discards the pending coordinates and restores the original marker; a failed
+  // save rolls back (the store never changed, so nothing to undo).
   const canEditPlaces = can('place_edit', trip)
   const [repositionPlaceId, setRepositionPlaceId] = useState<number | null>(null)
+  const [repositionPending, setRepositionPending] = useState<{ lat: number; lng: number } | null>(null)
   const repositionOriginalRef = useRef<{ lat: number; lng: number } | null>(null)
 
   const startPlaceReposition = useCallback((place: Place) => {
@@ -233,50 +219,69 @@ export function useTripPlanner() {
     }
     setSelectedPlaceId(place.id)
     setRepositionPlaceId(place.id)
+    setRepositionPending(null)
     repositionOriginalRef.current = coordinates
   }, [canEditPlaces, setSelectedPlaceId, toast, t])
 
   const cancelPlaceReposition = useCallback(() => {
+    // Discard the pending coordinates — the store was never touched, so the
+    // marker/state returns to the original automatically.
     setRepositionPlaceId(null)
+    setRepositionPending(null)
     repositionOriginalRef.current = null
   }, [])
 
   const isRepositioningPlace = useCallback((placeId: number) => repositionPlaceId === placeId, [repositionPlaceId])
 
+  /** Drag end: validate + record PENDING coordinates. No persistence here. */
   const handlePlaceRepositionEnd = useCallback(async (placeId: number, coordinates: { lat: number; lng: number }) => {
     if (repositionPlaceId !== placeId) return
     if (!Number.isFinite(coordinates.lat) || !Number.isFinite(coordinates.lng)
       || coordinates.lat < -90 || coordinates.lat > 90 || coordinates.lng < -180 || coordinates.lng > 180) {
       console.warn('Ignored invalid place coordinates')
       setRepositionPlaceId(null)
+      setRepositionPending(null)
       repositionOriginalRef.current = null
       return
     }
     const original = repositionOriginalRef.current
     if (!original) {
       setRepositionPlaceId(null)
+      setRepositionPending(null)
       return
     }
-    // No movement → exit the mode without a write.
+    // No movement → exit the mode without anything pending.
     if (Math.abs(original.lat - coordinates.lat) < 1e-7 && Math.abs(original.lng - coordinates.lng) < 1e-7) {
       setRepositionPlaceId(null)
+      setRepositionPending(null)
       repositionOriginalRef.current = null
       return
     }
-    // Optimistically patch the store, then persist through the canonical path.
-    patchPlaceCoordinates(placeId, coordinates)
+    // Store the pending coordinate only — the marker holds it visually; the
+    // store and the API are untouched until the explicit save.
+    setRepositionPending(coordinates)
+  }, [repositionPlaceId])
+
+  /** Explicit Save: persist the pending coordinates via the canonical updatePlace. */
+  const savePlaceReposition = useCallback(async () => {
+    const pending = repositionPending
+    const placeId = repositionPlaceId
+    if (pending == null || placeId == null) return
     try {
-      await tripActions.updatePlace(tripId, placeId, { lat: coordinates.lat, lng: coordinates.lng })
+      await tripActions.updatePlace(tripId, placeId, { lat: pending.lat, lng: pending.lng })
       setRepositionPlaceId(null)
+      setRepositionPending(null)
       repositionOriginalRef.current = null
       toast.success(t('inspector.placeMoved'))
     } catch {
-      patchPlaceCoordinates(placeId, original)
+      // Roll back: the store was never optimistically changed, so clearing the
+      // pending state + mode returns the marker to the original coordinates.
       setRepositionPlaceId(null)
+      setRepositionPending(null)
       repositionOriginalRef.current = null
       toast.error(t('inspector.moveFailed'))
     }
-  }, [repositionPlaceId, tripId, tripActions, toast, t])
+  }, [repositionPending, repositionPlaceId, tripId, tripActions, toast, t])
 
   // Exit reposition mode when the place disappears or the user loses the right.
   useEffect(() => {
@@ -284,6 +289,7 @@ export function useTripPlanner() {
     const stillEligible = canEditPlaces && places.some(place => place.id === repositionPlaceId)
     if (!stillEligible) {
       setRepositionPlaceId(null)
+      setRepositionPending(null)
       repositionOriginalRef.current = null
     }
   }, [canEditPlaces, places, repositionPlaceId])
@@ -1138,7 +1144,7 @@ export function useTripPlanner() {
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
-    repositionPlaceId, isRepositioningPlace, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd,
+    repositionPlaceId, repositionPending, isRepositioningPlace, startPlaceReposition, cancelPlaceReposition, handlePlaceRepositionEnd, savePlaceReposition,
     showDayDetail, setShowDayDetail, dayDetailCollapsed, setDayDetailCollapsed,
     showPlaceForm, setShowPlaceForm, editingPlace, setEditingPlace,
     prefillCoords, setPrefillCoords, editingAssignmentId, setEditingAssignmentId,
