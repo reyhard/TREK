@@ -478,7 +478,12 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **Tests:** fork `DayTimelinePlanner.test.tsx` characterization for desktop; upstream
   `MPlanTimeline`/`useMPlanDragReorder` tests for mobile.
 
-### F16 — Dynamic `plugin:<id>:read/write` OAuth scopes — `OBSOLETE`
+### F16 — Dynamic `plugin:<id>:read/write` OAuth scopes — `OBSOLETE` (replaced by `plugins:use`)
+
+> **Task 03 review-fix note:** the fork's DYNAMIC grammar is still `OBSOLETE` — never port it.
+> But the canonical replacement (coarse `plugins:use` + grant-enforced `mcp:tools` surface)
+> was adopted at Task 03 review-fix per the current-upstream architecture (see §8 item 3 and
+> `upstream-adoptions.md`). This row classifies the FORK dynamic-scope grammar only.
 
 - **Fork commits:** `3752d481` (reconcile plugin scope grammar, session lifecycle, safe
   registration), `97ee89a5` (shared), `2dad7fe9`/`ea08df9b` (OAuth broker hardening).
@@ -1214,12 +1219,17 @@ No production behavior was changed by this task; the ledger is documentation onl
    optimistic `updatePositions`, and accept the live-reorder latency. Not a classification
    deferral.
 3. ~~Determine whether any deployed client holds legacy `plugin:<id>:*` scopes (F16) and/or calls
-   `/api/plugins/:id/*` with a fork-issued `trekoa_` token (F17)~~ — **RESOLVED in Task 03: no
-   COMPAT_ONLY layer.** v4.0.0 has no plugin MCP tool surface and no inbound `trekoa_` resource
-   proxy; `plugins:use` (upstream) gates a plugin-MCP-tool surface v4.0.0 lacks. The fork's
-   dynamic plugin scopes are absent from the v4.0.0 scope model — default-deny pinned by
-   PLUGIN-SCOPES-001/002/003 (`tests/unit/mcp/scopes.test.ts`). No mapper is added (nothing to
-   map onto; adding `plugins:use` alone would be dead code). F16/F17 stay `OBSOLETE` with no port.
+   `/api/plugins/:id/*` with a fork-issued `trekoa_` token (F17)~~ — **RESOLVED in Task 03
+   review-fix: the canonical `plugins:use` + `mcp:tools` surface is adopted; no `trekoa_`
+   compat layer.** Task 03 review required adopting the canonical current-upstream coarse
+   `plugins:use` scope AND the grant-enforced `mcp:tools` plugin-tool surface (shape of
+   `092223c2`/`937e3292`). Implemented: `plugins:use` scope (commit `b0d95380`, opt-in only,
+   out of DCR default), `mcp:tools` permission + `mcpToolProvider` hook + manifest
+   `capabilities.mcpTools` + nest-mcp `dynamicTools` + `PluginMcpToolsService` (commit
+   `64a78124`). Default-deny preserved: a session without `plugins:use` (or a plugin without
+   the `mcp:tools` grant) sees no plugin tools. Dynamic `plugin:<id>:read|write` stays
+   rejected (PLUGIN-SCOPES-001/002/003). The fork's inbound `trekoa_` resource proxy (F17)
+   is still not ported (no upstream equivalent).
 4. ~~F23 static-token wording~~ — **RESOLVED in Task 00: accept upstream, do not re-apply
    `380b890c`** (see F23). Task 03 may validate the wording in place but the no-removal decision
    is final.
