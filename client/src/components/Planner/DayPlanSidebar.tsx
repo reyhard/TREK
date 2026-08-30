@@ -48,10 +48,13 @@ import { DayPlanSidebarToolbar } from './DayPlanSidebarToolbar'
 import { DayPlanSidebarNoteModal } from './DayPlanSidebarNoteModal'
 import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal'
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal'
+import DayMovementTotalRow from './DayMovementTotalRow'
 import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transitDisplay'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getNavigationTargets, openNavigationTarget } from './placeNavigation'
+import { getTrackMovement } from '../../utils/trackGeometry'
+import { calculateDayMovementTotals, normalizeMovementMode, type MovementMode } from '../../utils/movementStats'
 
 interface DayPlanSidebarProps {
   tripId: number
@@ -200,6 +203,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // Hotel bookend legs keyed by day id. Desktop keys only the selected day; mobile
   // keys every day whose Route toggle is on, so each shows its own bookends (#1374).
   const [hotelLegs, setHotelLegs] = useState<Record<number, { top?: { seg: RouteSegment; name: string; targetId?: number }; bottom?: { seg: RouteSegment; name: string; targetId?: number } }>>({})
+  const [routeMetricStatus, setRouteMetricStatus] = useState<Record<number, 'loading' | 'complete' | 'partial'>>({})
   // Mobile only: days the user tapped "Route" on. Their leg distances show inline in
   // the expanded day, so seeing distances doesn't require selecting the day (which
   // closes the mobile sheet) — #1374.
@@ -500,7 +504,8 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // selected day on desktop, each Route-toggled day on mobile (#1374).
   useEffect(() => {
     if (legsAbortRef.current) legsAbortRef.current.abort()
-    if (routeDayIds.length === 0) { setRouteLegs({}); setHotelLegs({}); return }
+    if (routeDayIds.length === 0) { setRouteLegs({}); setHotelLegs({}); setRouteMetricStatus({}); return }
+    setRouteMetricStatus(Object.fromEntries(routeDayIds.map(dayId => [dayId, 'loading'])))
 
     const hotelName = (a: Accommodation) => (a as any).place_name || (a as any).reservation_title || ''
 
@@ -519,9 +524,18 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       // flight, not a drive — and surface it as a bogus connector distance (#1394).
       let curHasPlace = false
       for (const it of merged) {
-        if (it.type === 'place' && it.data.place?.lat && it.data.place?.lng) {
-          cur.push({ id: it.data.id, lat: it.data.place.lat, lng: it.data.place.lng, isPlace: true, leg_transport_mode: it.data.leg_transport_mode ?? null, incoming_leg_transport_mode: it.data.incoming_leg_transport_mode ?? null })
+        if (it.type === 'place') {
+          const place = places.find(candidate => candidate.id === it.data.place?.id) ?? it.data.place
+          if (place?.lat == null || place?.lng == null) continue
+          const movement = getTrackMovement(place)
+          const start = movement?.start ?? [place.lat, place.lng] as [number, number]
+          cur.push({ id: it.data.id, lat: start[0], lng: start[1], isPlace: true, leg_transport_mode: it.data.leg_transport_mode ?? null, incoming_leg_transport_mode: it.data.incoming_leg_transport_mode ?? null })
           curHasPlace = true
+          if (movement) {
+            if (cur.length >= 2) runs.push(cur)
+            cur = [{ id: it.data.id, lat: movement.end[0], lng: movement.end[1], isPlace: false }]
+            curHasPlace = false
+          }
         } else if (it.type === 'transport') {
           const r = it.data
           const { from, to } = getTransportRouteEndpoints(r, dayId)
@@ -561,8 +575,13 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       // check-in / after check-out means you weren't at the hotel then (#1465).
       const wayPts: { lat: number; lng: number; isPlace: boolean; time: string | null; leg_transport_mode?: string | null; incoming_leg_transport_mode?: string | null; id?: number }[] = []
       for (const it of merged) {
-        if (it.type === 'place' && it.data.place?.lat && it.data.place?.lng) {
-          wayPts.push({ lat: it.data.place.lat, lng: it.data.place.lng, isPlace: true, time: it.data.place?.place_time ?? null, leg_transport_mode: it.data.leg_transport_mode ?? null, incoming_leg_transport_mode: it.data.incoming_leg_transport_mode ?? null, id: it.data.id })
+        if (it.type === 'place') {
+          const place = places.find(candidate => candidate.id === it.data.place?.id) ?? it.data.place
+          if (place?.lat == null || place?.lng == null) continue
+          const movement = getTrackMovement(place)
+          const start = movement?.start ?? [place.lat, place.lng] as [number, number]
+          wayPts.push({ lat: start[0], lng: start[1], isPlace: true, time: place.place_time ?? null, leg_transport_mode: it.data.leg_transport_mode ?? null, incoming_leg_transport_mode: it.data.incoming_leg_transport_mode ?? null, id: it.data.id })
+          if (movement) wayPts.push({ lat: movement.end[0], lng: movement.end[1], isPlace: false, time: null, id: it.data.id })
         } else if (it.type === 'transport') {
           const { from, to } = getTransportRouteEndpoints(it.data, dayId)
           if (from) wayPts.push({ lat: from.lat, lng: from.lng, isPlace: false, time: null })
@@ -581,6 +600,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     ;(async () => {
       const legsByDay: Record<number, Record<number, RouteSegment>> = {}
       const hotelByDay: Record<number, { top?: { seg: RouteSegment; name: string; targetId?: number }; bottom?: { seg: RouteSegment; name: string; targetId?: number } }> = {}
+      const expectedByDay: Record<number, number> = {}
 
       // One cached OSRM/plugin call per waypoint pair; shares RouteCalculator's cache.
       // tripId/dayId ride along for plugin route profiles (the server access-checks them).
@@ -604,6 +624,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
 
       for (const dayId of routeDayIds) {
         const { runs, startHotel, endHotel, firstWay, lastWay, wantTop, wantBottom } = planDay(dayId)
+        expectedByDay[dayId] = runs.reduce((count, run) => count + Math.max(0, run.length - 1), 0) + (wantTop ? 1 : 0) + (wantBottom ? 1 : 0)
         const dfMode = dayDefaultMode(dayId)
         const dayLegs: Record<number, RouteSegment> = {}
         legsByDay[dayId] = dayLegs
@@ -658,11 +679,18 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       }
       setRouteLegs(legsByDay)
       setHotelLegs(hotelByDay)
+      setRouteMetricStatus(Object.fromEntries(routeDayIds.map(dayId => {
+        const expected = expectedByDay[dayId] ?? 0
+        const actual = Object.keys(legsByDay[dayId] ?? {}).length
+          + (hotelByDay[dayId]?.top ? 1 : 0)
+          + (hotelByDay[dayId]?.bottom ? 1 : 0)
+        return [dayId, actual >= expected ? 'complete' : 'partial']
+      })))
     })()
     // routeDayIds is memoized from the same inputs as routeDayKey below, so keying the
     // effect on the string is equivalent while staying stable across unrelated renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeDayKey, routeProfile, mergedItemsMap, accommodations, days, optimizeFromAccommodation, distanceUnit])
+  }, [routeDayKey, routeProfile, mergedItemsMap, places, accommodations, days, optimizeFromAccommodation, distanceUnit])
 
   const openAddNote = (dayId, e) => {
     e?.stopPropagation()
@@ -1107,6 +1135,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     setRouteLegs,
     hotelLegs,
     setHotelLegs,
+    routeMetricStatus,
     legsAbortRef,
     draggingId,
     setDraggingId,
@@ -1138,6 +1167,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     currency,
     costBase,
     fxRates,
+    distanceUnit,
     getDragData,
     prevDayCount,
     toggleDay,
@@ -1280,6 +1310,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     setRouteLegs,
     hotelLegs,
     setHotelLegs,
+    routeMetricStatus,
     legsAbortRef,
     draggingId,
     setDraggingId,
@@ -1311,6 +1342,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     currency,
     costBase,
     fxRates,
+    distanceUnit,
     getDragData,
     prevDayCount,
     toggleDay,
@@ -1549,7 +1581,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
             transferEvening?.place_lat != null && transferEvening?.place_lng != null &&
             (transferMorning.place_lat !== transferEvening.place_lat || transferMorning.place_lng !== transferEvening.place_lng)
           )
-          const routeToolsRoutable = da.length >= 2 || (loc != null && hasRouteBookend) || hasHotelTransfer
+          const hasImportedTrack = da.some(a => !!getTrackMovement(places.find(place => place.id === a.place?.id) ?? a.place))
+          const routeToolsRoutable = da.length >= 2 || hasImportedTrack || (loc != null && hasRouteBookend) || hasHotelTransfer
           /**
            * The day's located stops in planned order, bookended by the accommodation
            * the same way the drawn map route is (routeBookends is null when "optimize
@@ -1576,6 +1609,30 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
           // own expandedRouteDayIds entry); desktop uses the global Route toggle on
           // the selected day (#1374).
           const routeActive = showRouteToolsWhenExpanded ? expandedRouteDayIds.has(day.id) : (routeShown && isSelected)
+          const movementStatus = routeActive ? (routeMetricStatus[day.id] ?? 'loading') : 'idle'
+          const movementMode = normalizeMovementMode(day.default_transport_mode ?? routeProfile)
+          const movementTotals = calculateDayMovementTotals({
+            dayId: day.id,
+            activeProfile: movementMode,
+            routeLegs: routeLegs[day.id] ?? {},
+            hotelLegs: {
+              top: hotelLegs[day.id]?.top?.seg,
+              bottom: hotelLegs[day.id]?.bottom?.seg,
+            },
+            assignments: da,
+            places,
+            reservations,
+            routeMetricsComplete: movementStatus === 'complete',
+            routeMetricsExpected: movementStatus === 'partial',
+          })
+          const movementModes: MovementMode[] = ['walking', 'driving', 'cycling']
+          const movementRows = routeActive
+            ? movementStatus === 'loading'
+              ? [<DayMovementTotalRow key="loading" status="loading" mode={movementMode} total={movementTotals[movementMode]} distanceUnit={distanceUnit} calculatingLabel={t('dayplan.calculating')} totalLabel={t('dayplan.movement.total', { mode: t(`dayplan.movement.${movementMode}`) })} incompleteLabel={t('dayplan.movement.incomplete')} />]
+              : movementModes.filter(mode => movementTotals[mode].contributionCount > 0).map(mode => (
+                <DayMovementTotalRow key={mode} status={movementStatus} mode={mode} total={movementTotals[mode]} distanceUnit={distanceUnit} calculatingLabel={t('dayplan.calculating')} totalLabel={t('dayplan.movement.total', { mode: t(`dayplan.movement.${mode}`) })} incompleteLabel={t('dayplan.movement.incomplete')} />
+              ))
+            : []
           const isDragTarget = dragOverDayId === day.id
           const merged = mergedItemsMap[day.id] || []
           const dayNoteUi = noteUi[day.id]
@@ -2794,6 +2851,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                           </span>
                         </div>
                       ) : null}
+                      {movementRows}
                     </div>
                   )}
 

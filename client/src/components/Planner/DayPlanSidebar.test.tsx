@@ -876,6 +876,24 @@ describe('DayPlanSidebar', () => {
     openSpy.mockRestore()
   })
 
+  it('FE-PLANNER-DAYPLAN-039b: shows resolved daily movement totals when the route is active', async () => {
+    const place1 = buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 })
+    const place2 = buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignments = {
+      '10': [
+        buildAssignment({ id: 1, day_id: 10, order_index: 0, place: place1 }),
+        buildAssignment({ id: 2, day_id: 10, order_index: 1, place: place2 }),
+      ],
+    }
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place1, place2], assignments, selectedDayId: 10, routeShown: true,
+    })} />)
+
+    await waitFor(() => expect(screen.getByTestId('day-movement-total')).toHaveTextContent('10 min · 2 km'))
+  })
+
   // ── Context menu — Edit calls onEditPlace ────────────────────────────────
 
   it('FE-PLANNER-DAYPLAN-040: context menu Edit calls onEditPlace', async () => {

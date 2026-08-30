@@ -117,6 +117,37 @@ describe('useRouteCalculation', () => {
     expect(result.current.routeSegments).toEqual(MOCK_SEGMENTS.map(s => ({ ...s, mode: 'driving' })));
   });
 
+  it('FE-HOOK-ROUTE-024: exposes the ordered movement plan without routing across an imported track', async () => {
+    const before = buildPlace({ lat: 48.8, lng: 2.2 });
+    const track = buildPlace({
+      lat: 48.81,
+      lng: 2.21,
+      route_geometry: JSON.stringify([[48.81, 2.21], [48.82, 2.22]]),
+    });
+    const after = buildPlace({ lat: 48.83, lng: 2.23 });
+    const assignments = [
+      buildAssignment({ day_id: 5, order_index: 0, place: before }),
+      buildAssignment({ day_id: 5, order_index: 1, place: track }),
+      buildAssignment({ day_id: 5, order_index: 2, place: after }),
+    ];
+    const store = buildMockStore({ '5': assignments });
+    useTripStore.setState({ places: [before, track, after] } as any);
+
+    const { result } = renderHook(() => useRouteCalculation(store as TripStoreState, 5));
+    await act(async () => {});
+
+    const current = result.current as typeof result.current & {
+      movementParts: Array<{ kind: string }>;
+      routeEligibility: { hasTracks: boolean };
+    };
+    expect(current.movementParts.map(part => part.kind)).toEqual(['routed', 'track', 'routed']);
+    expect(current.routeEligibility.hasTracks).toBe(true);
+    expect((calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.map(call => call[0])).toEqual([
+      [{ lat: before.lat, lng: before.lng }, { lat: track.lat, lng: track.lng }],
+      [{ lat: 48.82, lng: 2.22 }, { lat: after.lat, lng: after.lng }],
+    ]);
+  });
+
   it('FE-HOOK-ROUTE-023: consecutive legs of one mode go out as a single multi-waypoint request', async () => {
     // Three places routed in the day default and a fourth reached on foot: two
     // requests, not three, and the connectors stay one per pair in order.
@@ -587,4 +618,106 @@ describe('useRouteCalculation', () => {
     expect(result.current.route).toBeNull();
     expect(result.current.routeSegments).toEqual([]);
   });
+});
+
+describe('useRouteCalculation — track-aware routing (Task 07 TDD 1/6)', () => {
+  beforeEach(() => {
+    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockImplementation(
+      (waypoints: { lat: number; lng: number }[]) => Promise.resolve({
+        coordinates: [] as [number, number][],
+        distance: 0,
+        duration: 0,
+        legs: waypoints.slice(0, -1).map((w, i) => ({
+          ...MOCK_SEGMENTS[0],
+          from: [w.lat, w.lng] as [number, number],
+          to: [waypoints[i + 1].lat, waypoints[i + 1].lng] as [number, number],
+        })),
+      }),
+    );
+  });
+
+  it('FE-HOOK-ROUTE-040: an imported track splits the run — approach routes to track START, departure routes from track END, nothing spans the track', async () => {
+    const a = { lat: 48.0, lng: 2.0 }
+    const trackStart = { lat: 48.1, lng: 2.1 }
+    const trackEnd = { lat: 48.3, lng: 2.3 }
+    const b = { lat: 48.4, lng: 2.4 }
+    const trackPlace = buildPlace({ ...trackStart, route_geometry: JSON.stringify([[trackStart.lat, trackStart.lng], [trackEnd.lat, trackEnd.lng]]), transport_mode: 'walking' })
+    const assignments = [
+      { ...buildAssignment({ day_id: 7, order_index: 0, place: buildPlace(a) }) },
+      { ...buildAssignment({ day_id: 7, order_index: 1, place: trackPlace }) },
+      { ...buildAssignment({ day_id: 7, order_index: 2, place: buildPlace(b) }) },
+    ];
+    const store = buildMockStore({ '7': assignments as never });
+
+    const { result } = renderHook(() => useRouteCalculation(store as TripStoreState, 7));
+    await act(async () => {});
+
+    // The router is asked for the approach (A→trackStart) and the departure
+    // (trackEnd→B) — never a leg that spans the track (trackStart→B or A→B).
+    const calls = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const flat = calls.flatMap(c => c[0] as { lat: number; lng: number }[]);
+    const hasTrackStart = flat.some(p => p.lat === trackStart.lat && p.lng === trackStart.lng)
+    const hasTrackEnd = flat.some(p => p.lat === trackEnd.lat && p.lng === trackEnd.lng)
+    // Approach endpoint (trackStart) is present, departure origin (trackEnd) is present.
+    expect(hasTrackStart).toBe(true)
+    expect(hasTrackEnd).toBe(true)
+    // No single routed request spans start→B (that would route over the track).
+    const spansTrack = calls.some((c) => {
+      const pts = c[0] as { lat: number; lng: number }[]
+      return pts.length >= 2 && pts[0]?.lat === trackStart.lat && pts[pts.length - 1]?.lat === b.lat
+    })
+    expect(spansTrack).toBe(false)
+  })
+
+  it('FE-HOOK-ROUTE-042: uses the full place geometry when the assignment projection is trimmed', async () => {
+    const a = buildPlace({ lat: 48.0, lng: 2.0 })
+    const embeddedTrack = buildPlace({ lat: 48.1, lng: 2.1, route_geometry: null })
+    const fullTrack = { ...embeddedTrack, route_geometry: JSON.stringify([[48.2, 2.2], [48.3, 2.3]]) }
+    const b = buildPlace({ lat: 48.4, lng: 2.4 })
+    const assignments = [
+      buildAssignment({ day_id: 7, order_index: 0, place: a }),
+      buildAssignment({ day_id: 7, order_index: 1, place: embeddedTrack }),
+      buildAssignment({ day_id: 7, order_index: 2, place: b }),
+    ]
+    const store = { assignments: { '7': assignments } } as unknown as TripStoreState
+    useTripStore.setState({ assignments: store.assignments, places: [a, fullTrack, b], reservations: [], days: [{ id: 7 }] } as any)
+
+    renderHook(() => useRouteCalculation(store, 7))
+    await act(async () => {})
+
+    const calls = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.some(([waypoints]) =>
+      JSON.stringify(waypoints) === JSON.stringify([{ lat: 48.0, lng: 2.0 }, { lat: 48.2, lng: 2.2 }])
+    )).toBe(true)
+    expect(calls.some(([waypoints]) =>
+      JSON.stringify(waypoints) === JSON.stringify([{ lat: 48.3, lng: 2.3 }, { lat: 48.4, lng: 2.4 }])
+    )).toBe(true)
+  })
+
+  it('FE-HOOK-ROUTE-041: changing the day default mode re-routes the connectors (TDD 6 lifecycle)', async () => {
+    const pts = [
+      { lat: 48.86, lng: 2.35 }, { lat: 48.87, lng: 2.36 },
+    ];
+    const assignments = pts.map((pt, i) => ({
+      ...buildAssignment({ day_id: 5, order_index: i, place: buildPlace(pt) }),
+    }));
+    const store = buildMockStore({ '5': assignments as never });
+    useTripStore.setState({ days: [{ id: 5, default_transport_mode: 'walking' }] } as any);
+
+    const { result, rerender } = renderHook(() => useRouteCalculation(store as TripStoreState, 5));
+    await act(async () => {});
+
+    // Switch the day default → the route must recompute with the new mode.
+    useTripStore.setState({ days: [{ id: 5, default_transport_mode: 'driving' }] } as any);
+    const callsBefore = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length;
+    rerender();
+    await act(async () => {});
+    const callsAfter = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(callsAfter).toBeGreaterThan(callsBefore);
+    const calls = (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls
+    const lastProfile = calls[calls.length - 1]?.[1]?.profile
+    expect(lastProfile).toBe('driving')
+    expect(result.current).toBeDefined()
+  })
 });
