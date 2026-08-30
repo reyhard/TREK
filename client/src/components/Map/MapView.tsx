@@ -473,32 +473,61 @@ interface MemoMarkerProps {
   onHoverOut: () => void
   /** Off in read-only trips and on the phone, where HTML5 drag does not exist. */
   draggable: boolean
+  /** Reposition mode: the marker becomes Leaflet-draggable and reports its new pin. */
+  isRepositioning?: boolean
+  onRepositionStart?: (placeId: number) => void
+  onRepositionEnd?: (placeId: number, coordinates: { lat: number; lng: number }) => void
 }
 
 const MemoMarker = memo(function MemoMarker({
   place, isSelected, orderNumbers, photoUrl, onClickPlace, onHover, onHoverOut, draggable,
+  isRepositioning = false, onRepositionStart, onRepositionEnd,
 }: MemoMarkerProps) {
   const icon = createPlaceIcon({ ...place, image_url: photoUrl }, orderNumbers, isSelected)
   const cleanupRef = useRef<(() => void) | null>(null)
+  // Suppress the click that Leaflet fires right after a drag ends, so a
+  // reposition drag does not also toggle the place selection.
+  const suppressClickUntilRef = useRef(0)
+  // While repositioning, hold the pinned position locally so the marker does
+  // not snap back to the store's coordinate mid-drag (the store patches only on
+  // drag end).
+  const stablePositionRef = useRef<[number, number]>([place.lat, place.lng])
+  if (!isRepositioning) stablePositionRef.current = [place.lat, place.lng]
   return (
     <Marker
-      position={[place.lat, place.lng]}
+      position={isRepositioning ? stablePositionRef.current : [place.lat, place.lng]}
       icon={icon}
+      draggable={isRepositioning}
+      zIndexOffset={isRepositioning ? 2000 : isSelected ? 1000 : 0}
       eventHandlers={{
         // The element only exists once Leaflet has put the marker on the map,
         // and it is rebuilt whenever the icon changes (selection, day number),
         // so the wiring is redone on every add rather than once on mount.
         add: (e: any) => {
           cleanupRef.current?.()
-          cleanupRef.current = draggable ? makeMarkerDraggable(e.target.getElement() as HTMLElement, place.id) : null
+          // Reposition mode uses Leaflet's native dragging (isRepositioning →
+          // draggable prop above); the day-plan HTML5 drag is OFF for that
+          // marker so the two drag gestures never fight over the same element.
+          cleanupRef.current = !isRepositioning && draggable ? makeMarkerDraggable(e.target.getElement() as HTMLElement, place.id) : null
         },
         remove: () => { cleanupRef.current?.(); cleanupRef.current = null },
-        click: () => onClickPlace(place.id),
+        click: () => {
+          if (Date.now() < suppressClickUntilRef.current) return
+          onClickPlace(place.id)
+        },
         mouseover: (e: any) => onHover(place, e.originalEvent.clientX, e.originalEvent.clientY),
         mousemove: (e: any) => onHover(place, e.originalEvent.clientX, e.originalEvent.clientY),
         mouseout: onHoverOut,
+        dragstart: () => {
+          onHoverOut()
+          onRepositionStart?.(place.id)
+        },
+        dragend: (event: any) => {
+          suppressClickUntilRef.current = Date.now() + 350
+          const { lat, lng } = event.target.getLatLng()
+          onRepositionEnd?.(place.id, { lat, lng })
+        },
       }}
-      zIndexOffset={isSelected ? 1000 : 0}
     />
   )
 })
@@ -536,6 +565,10 @@ export const MapView = memo(function MapView({
   onViewportChange,
   tripId,
   routeVias = [],
+  repositionPlaceId = null,
+  canRepositionPlaces = false,
+  onPlaceRepositionStart,
+  onPlaceRepositionEnd,
 }: any) {
   const poiMarkers = useMemo(() => (pois as Poi[]).map((poi: Poi) => (
     <Marker
@@ -713,6 +746,7 @@ export const MapView = memo(function MapView({
 
   const markers = useMemo(() => places.map((place) => {
     const isSelected = place.id === selectedPlaceId
+    const isRepositioning = canRepositionPlaces && isSelected && place.id === repositionPlaceId
     const pck = photoCacheKey(place)
     // A custom uploaded image wins over the auto-fetched thumb; otherwise fall back.
     const photoUrl = isCustomPlaceImage(place.image_url) ? place.image_url! : ((pck && photoUrls[pck]) || place.image_url || null)
@@ -728,9 +762,27 @@ export const MapView = memo(function MapView({
         onHover={handleMarkerHover}
         onHoverOut={handleMarkerHoverOut}
         draggable={markersDraggable}
+        isRepositioning={isRepositioning}
+        onRepositionStart={onPlaceRepositionStart}
+        onRepositionEnd={onPlaceRepositionEnd}
       />
     )
-  }), [places, selectedPlaceId, dayOrderMap, photoUrls, handleMarkerClick, handleMarkerHover, handleMarkerHoverOut, markersDraggable])
+  }), [places, selectedPlaceId, repositionPlaceId, canRepositionPlaces, dayOrderMap, photoUrls, handleMarkerClick, handleMarkerHover, handleMarkerHoverOut, markersDraggable, onPlaceRepositionStart, onPlaceRepositionEnd])
+
+  // The marker being repositioned is pulled out of the cluster so it is fully
+  // draggable at its own z-index (a clustered marker cannot be dragged on top
+  // of its siblings' DOM stack).
+  const activeRepositionPlaceId = canRepositionPlaces && selectedPlaceId === repositionPlaceId
+    ? repositionPlaceId
+    : null
+  const clusteredMarkers = useMemo(
+    () => markers.filter(marker => marker.props.place.id !== activeRepositionPlaceId),
+    [markers, activeRepositionPlaceId],
+  )
+  const repositionMarker = useMemo(
+    () => activeRepositionPlaceId != null ? markers.find(marker => marker.props.place.id === activeRepositionPlaceId) : null,
+    [markers, activeRepositionPlaceId],
+  )
 
   // Parsing track geometry is the expensive part (tracks run to tens of thousands
   // of points), so it hangs off `places` alone — a selection change must not
@@ -861,8 +913,11 @@ export const MapView = memo(function MapView({
         animate={false}
         iconCreateFunction={clusterIconCreateFunction}
       >
-        {markers}
+        {clusteredMarkers}
       </MarkerClusterGroup>
+
+      {/* The marker being repositioned rides above the cluster, not inside it. */}
+      {repositionMarker}
 
       {/* Apple-Maps style: darker-blue casing under a bright-blue core, rounded. */}
       {route && route.length > 0 && route.flatMap((seg, i) => seg.length > 1 ? [

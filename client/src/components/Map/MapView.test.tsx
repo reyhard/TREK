@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '../../../tests/helpers/render'
-import { act, fireEvent, waitFor } from '@testing-library/react'
+import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resetAllStores } from '../../../tests/helpers/store'
 import { buildPlace, buildReservation } from '../../../tests/helpers/factories'
@@ -53,12 +53,13 @@ vi.mock('react-leaflet', () => ({
     <div data-testid="map-container" data-center={JSON.stringify(center)} data-zoom={zoom}>{children}</div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
-  Marker: ({ children, eventHandlers, position, icon, zIndexOffset }: any) => (
+  Marker: ({ children, eventHandlers, position, icon, zIndexOffset, draggable = false }: any) => (
     <div
       data-testid="marker"
       data-lat={position[0]}
       data-lng={position[1]}
       data-zindex={zIndexOffset}
+      data-draggable={String(draggable)}
       // The divIcon mock hands its options straight back, so the generated
       // marker HTML is assertable without a real Leaflet.
       data-icon-html={icon?.html ?? ''}
@@ -77,6 +78,17 @@ vi.mock('react-leaflet', () => ({
       <button
         data-testid="marker-out-trigger"
         onClick={(e: any) => { e.stopPropagation(); eventHandlers?.mouseout?.() }}
+      />
+      <button
+        data-testid="marker-drag-start"
+        onClick={(e: any) => { e.stopPropagation(); eventHandlers?.dragstart?.() }}
+      />
+      <button
+        data-testid="marker-drag-end"
+        onClick={(e: any) => {
+          e.stopPropagation()
+          eventHandlers?.dragend?.({ target: { getLatLng: () => ({ lat: 48.9, lng: 2.4 }) } })
+        }}
       />
       {children}
     </div>
@@ -1080,5 +1092,61 @@ describe('MapView — untrusted values in the marker HTML', () => {
   it('FE-COMP-MAPVIEW-075: an ordinary hex colour is passed through untouched', () => {
     render(<MapView places={[buildMapPlace({ lat: 48, lng: 2, category_color: '#00ff00' })]} />)
     expect(iconHtml()).toContain('#00ff00')
+  })
+})
+
+describe('MapView POI reposition', () => {
+  const twoPlaces = [
+    buildMapPlace({ id: 1, lat: 48.85, lng: 2.29 }),
+    buildMapPlace({ id: 2, lat: 48.86, lng: 2.3 }),
+  ]
+
+  it('FE-COMP-MAPVIEW-080: only the active reposition marker is draggable; others stay clustered', () => {
+    render(<MapView places={twoPlaces} selectedPlaceId={2} repositionPlaceId={2} canRepositionPlaces />)
+    const markers = screen.getAllByTestId('marker')
+    // The repositioning marker (place 2) is rendered OUTSIDE the cluster.
+    const active = markers.find(m => m.dataset.lat === '48.86')
+    const clusteredActive = document.querySelector('[data-testid="cluster-group"] [data-testid="marker"][data-lat="48.86"]')
+    expect(clusteredActive).toBeNull()
+    expect(active).toHaveAttribute('data-draggable', 'true')
+    // The sibling stays inside the cluster and is not draggable.
+    const siblingInCluster = document.querySelector('[data-testid="cluster-group"] [data-testid="marker"][data-lat="48.85"]')
+    expect(siblingInCluster).not.toBeNull()
+    expect(siblingInCluster).toHaveAttribute('data-draggable', 'false')
+  })
+
+  it('FE-COMP-MAPVIEW-081: dragging the reposition marker fires start then end with new coordinates', () => {
+    const onStart = vi.fn()
+    const onEnd = vi.fn()
+    render(
+      <MapView
+        places={twoPlaces}
+        selectedPlaceId={1}
+        repositionPlaceId={1}
+        canRepositionPlaces
+        onPlaceRepositionStart={onStart}
+        onPlaceRepositionEnd={onEnd}
+      />,
+    )
+    const active = screen.getAllByTestId('marker').find(m => m.dataset.lat === '48.85')!
+    const { getByTestId } = within(active as HTMLElement)
+    fireEvent.click(getByTestId('marker-drag-start'))
+    fireEvent.click(getByTestId('marker-drag-end'))
+    expect(onStart).toHaveBeenCalledWith(1)
+    expect(onEnd).toHaveBeenCalledWith(1, { lat: 48.9, lng: 2.4 })
+  })
+
+  it('FE-COMP-MAPVIEW-082: without canRepositionPlaces the marker is not draggable', () => {
+    render(<MapView places={twoPlaces} selectedPlaceId={1} repositionPlaceId={1} canRepositionPlaces={false} />)
+    const active = screen.getAllByTestId('marker').find(m => m.dataset.lat === '48.85')!
+    expect(active).toHaveAttribute('data-draggable', 'false')
+  })
+
+  it('FE-COMP-MAPVIEW-083: normal marker click still selects a place when not repositioning that marker', () => {
+    const onMarkerClick = vi.fn()
+    render(<MapView places={twoPlaces} onMarkerClick={onMarkerClick} />)
+    const first = screen.getAllByTestId('marker')[0]!
+    fireEvent.click(first)
+    expect(onMarkerClick).toHaveBeenCalled()
   })
 })
