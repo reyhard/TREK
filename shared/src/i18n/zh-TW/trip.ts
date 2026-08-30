@@ -77,6 +77,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': '自動',
   'transit.sectionTitle': '自動大眾運輸',
   'transit.changeRoute': '變更路線',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': '大眾運輸行程',
   'transit.pickDay': '請選擇要查詢班次的日期。',
   'transit.noItinerary': '此項目尚未儲存行程——請使用「變更路線」查詢。',
@@ -84,5 +85,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': '轉乘次數',
   'transit.walkLabel': '步行',
   'transit.searchHint': '搜尋實際交通連線，並直接加入當天行程 — 資料由 Transitous 提供。',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

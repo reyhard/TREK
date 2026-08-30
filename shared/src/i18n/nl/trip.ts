@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Automatisch',
   'transit.sectionTitle': 'Automatisch openbaar vervoer',
   'transit.changeRoute': 'Route wijzigen',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Reis met openbaar vervoer',
   'transit.pickDay': 'Kies een dag om verbindingen voor te zoeken.',
   'transit.noItinerary': 'Deze invoer heeft geen opgeslagen reisplan — gebruik "Route wijzigen" om er een te zoeken.',
@@ -85,5 +86,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Overstappen',
   'transit.walkLabel': 'Lopen',
   'transit.searchHint': 'Zoek echte verbindingen en voeg ze direct toe aan de dag — gegevens via Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

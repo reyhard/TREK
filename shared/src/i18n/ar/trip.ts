@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'تلقائي',
   'transit.sectionTitle': 'النقل العام التلقائي',
   'transit.changeRoute': 'تغيير المسار',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'رحلة بالنقل العام',
   'transit.pickDay': 'اختر يومًا للبحث عن الرحلات المتاحة.',
   'transit.noItinerary': 'لا يحتوي هذا الإدخال على خط سير محفوظ — استخدم "تغيير المسار" للبحث عن أحدها.',
@@ -85,5 +86,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'التحويلات',
   'transit.walkLabel': 'المشي',
   'transit.searchHint': 'ابحث عن رحلات فعلية وأضفها مباشرة إلى اليوم — البيانات عبر Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

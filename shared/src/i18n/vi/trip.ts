@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Tự động',
   'transit.sectionTitle': 'Giao thông công cộng tự động',
   'transit.changeRoute': 'Đổi tuyến',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Hành trình giao thông công cộng',
   'transit.pickDay': 'Chọn một ngày để tìm chuyến kết nối.',
   'transit.noItinerary': 'Mục này chưa có lộ trình được lưu — dùng “Đổi tuyến” để tìm một lộ trình.',
@@ -85,5 +86,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Chuyển tuyến',
   'transit.walkLabel': 'Đi bộ',
   'transit.searchHint': 'Tìm các kết nối thực tế và thêm thẳng vào ngày — dữ liệu qua Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': '自動',
   'transit.sectionTitle': '公共交通機関の自動検索',
   'transit.changeRoute': '経路を変更',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': '公共交通機関の経路',
   'transit.pickDay': '接続を検索する日を選択してください。',
   'transit.noItinerary': 'この項目には保存された行程がありません。「経路を変更」から検索してください。',
@@ -85,5 +86,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': '乗り換え',
   'transit.walkLabel': '徒歩',
   'transit.searchHint': '実際の経路を検索して、そのまま日程に追加できます — データは Transitous 提供。',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

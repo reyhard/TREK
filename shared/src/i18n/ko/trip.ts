@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': '자동',
   'transit.sectionTitle': '자동 대중교통',
   'transit.changeRoute': '경로 변경',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': '대중교통 경로',
   'transit.pickDay': '연결편을 검색할 날짜를 선택하세요.',
   'transit.noItinerary': '이 항목에는 저장된 경로가 없습니다. "경로 변경"을 사용하여 검색하세요.',
@@ -85,5 +86,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': '환승',
   'transit.walkLabel': '도보',
   'transit.searchHint': '실제 연결편을 검색하고 바로 일정에 추가하세요 — 데이터 제공: Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

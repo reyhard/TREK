@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Automaticky',
   'transit.sectionTitle': 'Automatické spojení MHD',
   'transit.changeRoute': 'Změnit trasu',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Cesta veřejnou dopravou',
   'transit.pickDay': 'Vyberte den, pro který chcete vyhledat spojení.',
   'transit.noItinerary': 'Tato položka nemá uložené spojení – vyhledejte ho pomocí tlačítka „Změnit trasu“.',
@@ -85,5 +86,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Přestupy',
   'transit.walkLabel': 'Chůze',
   'transit.searchHint': 'Vyhledejte reálná spojení a přidejte je rovnou do dne — data přes Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

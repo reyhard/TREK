@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Otomatis',
   'transit.sectionTitle': 'Transportasi umum otomatis',
   'transit.changeRoute': 'Ubah rute',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Perjalanan transportasi umum',
   'transit.pickDay': 'Pilih hari untuk mencari koneksi.',
   'transit.noItinerary':
@@ -86,5 +87,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Transit',
   'transit.walkLabel': 'Jalan kaki',
   'transit.searchHint': 'Cari koneksi nyata dan tambahkan langsung ke hari itu — data melalui Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

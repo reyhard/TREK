@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Automatique',
   'transit.sectionTitle': 'Transports en commun automatisés',
   'transit.changeRoute': "Modifier l'itinéraire",
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Trajet en transports en commun',
   'transit.pickDay': 'Choisissez un jour pour rechercher des connexions.',
   'transit.noItinerary':
@@ -86,5 +87,15 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Correspondances',
   'transit.walkLabel': 'Marche',
   'transit.searchHint': 'Recherchez de vraies liaisons et ajoutez-les directement au jour — données via Transitous.',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
 };
 export default trip;

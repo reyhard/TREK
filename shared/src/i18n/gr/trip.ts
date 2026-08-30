@@ -78,6 +78,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Αυτόματα',
   'transit.sectionTitle': 'Αυτόματες δημόσιες συγκοινωνίες',
   'transit.changeRoute': 'Αλλαγή διαδρομής',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Διαδρομή με δημόσιες συγκοινωνίες',
   'transit.pickDay': 'Επιλέξτε μια ημέρα για αναζήτηση συνδέσεων.',
   'transit.noItinerary':
@@ -85,6 +86,16 @@ const trip: TranslationStrings = {
   'transit.durationLabel': 'Διάρκεια',
   'transit.transfersLabel': 'Μετεπιβιβάσεις',
   'transit.walkLabel': 'Περπάτημα',
+  'transit.endpointEditorTitle': 'Map route endpoints',
+  'transit.endpointMapOnlyHint': 'This editor changes only the origin and destination pins. The saved provider itinerary, stops, timing and geometry stay as the search produced them.',
+  'transit.endpointOrigin': 'Origin',
+  'transit.endpointDestination': 'Destination',
+  'transit.endpointName': 'Place or station label',
+  'transit.endpointLatitude': 'Latitude',
+  'transit.endpointLongitude': 'Longitude',
+  'transit.endpointInvalidName': 'Enter a label between 1 and 300 characters.',
+  'transit.endpointInvalidLatitude': 'Latitude must be a number from -90 to 90.',
+  'transit.endpointInvalidLongitude': 'Longitude must be a number from -180 to 180.',
   'transit.searchHint':
     'Αναζητήστε πραγματικές συνδέσεις και προσθέστε τις απευθείας στην ημέρα — δεδομένα μέσω Transitous.',
 };
