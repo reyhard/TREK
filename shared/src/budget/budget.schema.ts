@@ -181,6 +181,11 @@ export const budgetUpdateItemRequestSchema = z.object({
   note: z.string().nullable().optional(),
   ticket_json: z.string().nullable().optional(),
   expense_date: z.string().nullable().optional(),
+  // Link/unlink this expense to a reservation. Setting a number links an EXISTING
+  // cost (canonical linkExistingBudgetItemToReservation); null clears the link
+  // (canonical unlinkBudgetItemFromReservation) — the cost is never recreated or
+  // deleted. Absent = leave the current link untouched.
+  reservation_id: z.number().nullable().optional(),
 });
 export type BudgetUpdateItemRequest = z.infer<typeof budgetUpdateItemRequestSchema>;
 

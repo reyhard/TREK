@@ -9,6 +9,16 @@ import { ExchangeRatesService } from './exchange-rates.service';
 
 type Trip = TripAccess;
 
+/** Result of linking an existing cost to a reservation (canonical link method). */
+export type LinkBudgetItemResult =
+  | { ok: true; item: BudgetItem; changed: boolean }
+  | { ok: false; error: 'budget_item_not_found' | 'reservation_not_found' | 'already_linked'; linkedReservationId?: number };
+
+/** Result of unlinking a cost from a reservation (canonical unlink method). */
+export type UnlinkBudgetItemResult =
+  | { ok: true; item: BudgetItem; changed: boolean }
+  | { ok: false; error: 'budget_item_not_found' };
+
 type SettlementRow = {
   id: number; trip_id: string; from_user_id: number; to_user_id: number;
   amount: number; currency: string | null; exchange_rate: number | null;
@@ -430,6 +440,74 @@ export class BudgetService {
     return this.createBudgetItem(tripId, { ...data, reservation_id: reservationId });
   }
 
+  /**
+   * Link an EXISTING cost to an existing reservation in the same trip without
+   * recreating the expense. Canonical domain method shared by the REST update
+   * path and the MCP tools: trip-scoped on both sides, transactional, and it
+   * only ever sets budget_items.reservation_id — every other cost field is
+   * preserved. Multiple costs may link to one reservation.
+   */
+  linkExistingBudgetItemToReservation(
+    tripId: string | number,
+    itemId: string | number,
+    reservationId: string | number,
+  ): LinkBudgetItemResult {
+    return this.db.transaction((): LinkBudgetItemResult => {
+      const item = this.db.get<{ id: number; reservation_id: number | null }>(
+        'SELECT id, reservation_id FROM budget_items WHERE id = ? AND trip_id = ?',
+        itemId, tripId,
+      );
+      if (!item) return { ok: false, error: 'budget_item_not_found' };
+
+      const reservation = this.db.get<{ id: number }>(
+        'SELECT id FROM reservations WHERE id = ? AND trip_id = ?',
+        reservationId, tripId,
+      );
+      if (!reservation) return { ok: false, error: 'reservation_not_found' };
+
+      if (item.reservation_id != null) {
+        if (Number(item.reservation_id) === Number(reservationId)) {
+          return { ok: true, item: this.getBudgetItem(itemId, tripId)!, changed: false };
+        }
+        return { ok: false, error: 'already_linked', linkedReservationId: Number(item.reservation_id) };
+      }
+
+      this.db.run(
+        'UPDATE budget_items SET reservation_id = ? WHERE id = ? AND trip_id = ? AND reservation_id IS NULL',
+        reservationId, itemId, tripId,
+      );
+      return { ok: true, item: this.getBudgetItem(itemId, tripId)!, changed: true };
+    });
+  }
+
+  /**
+   * Remove the reservation link from an existing cost — relation only, the cost
+   * (and reservation) survive. Canonical domain method shared by REST + MCP.
+   * Only reservation_id is cleared; financial/split/metadata state deep-preserved.
+   */
+  unlinkBudgetItemFromReservation(
+    tripId: string | number,
+    itemId: string | number,
+  ): UnlinkBudgetItemResult {
+    return this.db.transaction((): UnlinkBudgetItemResult => {
+      const item = this.db.get<{ id: number; reservation_id: number | null }>(
+        'SELECT id, reservation_id FROM budget_items WHERE id = ? AND trip_id = ?',
+        itemId, tripId,
+      );
+      if (!item) return { ok: false, error: 'budget_item_not_found' };
+
+      if (item.reservation_id == null) {
+        return { ok: true, item: this.getBudgetItem(itemId, tripId)!, changed: false };
+      }
+
+      this.db.run(
+        'UPDATE budget_items SET reservation_id = NULL WHERE id = ? AND trip_id = ?',
+        itemId, tripId,
+      );
+      return { ok: true, item: this.getBudgetItem(itemId, tripId)!, changed: true };
+    });
+  }
+
   updateBudgetItem(
     id: string | number,
     tripId: string | number,
@@ -440,11 +518,25 @@ export class BudgetService {
       members?: { user_id: number; amount?: number | null }[];
       persons?: number | null; days?: number | null; note?: string | null; sort_order?: number; expense_date?: string | null;
       ticket_json?: string | null;
+      reservation_id?: number | null;
     },
   ) {
     return this.db.transaction(() => {
       const item = this.db.get('SELECT * FROM budget_items WHERE id = ? AND trip_id = ?', id, tripId);
       if (!item) return null;
+
+      // reservation_id routes through the canonical link/unlink domain methods —
+      // linking an existing cost or clearing the link must never recreate or
+      // delete the expense, and a wrong-trip id must fail closed (throw → the
+      // enclosing transaction rolls back, no partial write).
+      if (data.reservation_id !== undefined) {
+        const linkResult = data.reservation_id === null
+          ? this.unlinkBudgetItemFromReservation(tripId, id)
+          : this.linkExistingBudgetItemToReservation(tripId, id, data.reservation_id);
+        if (linkResult.ok === false) {
+          throw new Error(linkResult.error);
+        }
+      }
 
       // An old client sending a receipt in `note` still lands in ticket_json, and
       // its note is left untouched rather than clobbered with the receipt blob.
