@@ -338,4 +338,3 @@ describe('filling Google gaps from the free sources', () => {
     expect(out.hours?.weekdayDescriptions).toEqual(['Monday: 09:00-17:00']);
   });
 })
-

@@ -348,7 +348,7 @@ export function StudioCanvas({
               Positioned in percentages of the selection box, so they follow it
               at any zoom and turn with it once it is turned — the box itself
               carries the rotation, and everything inside it comes along.
-              
+
               Outside the box rather than on it, because a handle on the corner
               is a handle you cannot tell from the one that resizes — and this
               is the gesture where grabbing the wrong one is most annoying to
@@ -409,7 +409,7 @@ export function StudioCanvas({
               )}
               {/*
                 Turn it, a step at a time.
-                
+
                 Fifteen degrees per press, and a press with shift is one degree
                 for the times it has to line up with something. Steps rather
                 than a handle you drag: a photograph on a page is almost always

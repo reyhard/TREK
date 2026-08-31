@@ -36,7 +36,7 @@ export class UnifiedMemoriesService {
   private _providers(): Array<{id: string; enabled: boolean}> {
     const rows = this.db.prepare('SELECT id, enabled FROM photo_providers').all() as Array<{id: string; enabled: number}>;
     return rows.map(r => ({ id: r.id, enabled: r.enabled === 1 }));
-  } 
+  }
 
   private _validProvider(provider: string): ServiceResult<string> {
     const providers = this._providers();
@@ -91,7 +91,7 @@ export class UnifiedMemoriesService {
       return fail('Trip not found or access denied', 404);
     }
 
-  
+
       const enabledProviders = this._providers().filter(p => p.enabled).map(p => p.id);
 
       if (enabledProviders.length === 0) {
@@ -327,7 +327,7 @@ export class UnifiedMemoriesService {
 
       const tripInfo = this.db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
 
-    
+
       this.notifications.send({ event: 'photos_shared', actorId: actorUserId, scope: 'trip', targetId: Number(tripId), params: { trip: tripInfo?.title || 'Untitled', actor: actorRow?.email || 'Unknown', count: String(added), tripId: String(tripId) } }).catch(() => {});
       return success(undefined);
     } catch {

@@ -719,7 +719,7 @@ function BadgeProps({ el, set, t }: Props<BookBadgeElement>) {
 
     {/*
       The icon, for the marks that have one.
-      
+
       Three combinations rather than two switches: a mark with neither its
       picture nor its words is an empty box, and offering it as a state people
       can reach means offering them a way to lose an element on the page.

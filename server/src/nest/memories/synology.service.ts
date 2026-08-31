@@ -700,7 +700,7 @@ export class SynologyService {
           return;
       }
 
-    
+
       //size: 'sm' 240px| 'm' 320px| 'xl' 1280px| 'preview' ?
       // Use Thumbnail API for both thumbnail and original — avoids serving raw HEIC files
       // (original uses xl size to get a full-resolution JPEG-compatible render).

@@ -25,7 +25,6 @@ const { testDb, dbMock } = vi.hoisted(() => {
   };
   return { testDb: db, dbMock: mock };
 });
-
 vi.mock('../../../src/db/database', () => dbMock);
 vi.mock('../../../src/nest/audit/audit-log.logger', () => ({
   LOG_LEVEL: 'error',
@@ -212,4 +211,3 @@ describe('writeAudit', () => {
     expect(logInfo).toHaveBeenLastCalledWith('a@b.c logged in ip=1.1.1.1');
   });
 });
-

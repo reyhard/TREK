@@ -1191,7 +1191,7 @@ Verified present in `upstream/main` (and **not** ancestors of `v4.0.0`):
 - **F35/F36/F37 evidence (re-review 3, map/route-visibility family `9c11cfa6`→`c4f834f9`→
   `5d3385bc`→`75edfe25`):** all four are in `v3.4.1..fork` and NOT ancestors of `v4.0.0`/
   `upstream/main` (`git merge-base --is-ancestor <c> v4.0.0` and `<c> upstream/main` both NO for
-  all four). 
+  all four).
   - F35: fork `useRouteCalculation.ts` blob `a6677776…` (`enabledRef` lines 77–78, `!enabledRef.current`
     guard line 117, return gating `route: enabled ? route : null` / `routeSegments: enabled ?
     routeSegments : []` lines 200–201, no `distanceUnit` subscription) vs v4.0.0 blob `f66df234…`

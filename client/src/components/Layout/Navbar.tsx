@@ -140,7 +140,7 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare }:
       </div>
 
       {/* Centred liquid-glass tab menu (design handoff).
-          
+
           In the flow, between two equally weighted flex columns, rather than
           absolutely positioned on the centre of the bar. Out of the flow it had
           no relationship to its neighbours at all: its width grows with every
@@ -149,7 +149,7 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare }:
           the user menu on the other (#1983). The only adaptation was a fixed
           1024px breakpoint that drops the labels, which was tuned for two or
           three addons and cannot know about plugins.
-          
+
           Now the three columns share the bar, so overlap is not something that
           can happen: the pill takes the width it needs and the columns beside
           it give way. min-w-0 lets it shrink past its content and scroll rather

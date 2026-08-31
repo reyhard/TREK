@@ -581,4 +581,3 @@ export async function restoreFromZip(storage: StorageService, zipPath: string): 
 export function deleteBackup(storage: StorageService, filename: string): Promise<void> {
   return storage.delete('backups', filename);
 }
-
