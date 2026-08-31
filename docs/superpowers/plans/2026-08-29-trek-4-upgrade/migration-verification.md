@@ -252,3 +252,63 @@ $ tsc --noEmit        # exit 0, no errors
 Task 01 is a base/adoption task: it changes no fork migrations and no schema. The
 schema-176 bridge (above) remains Task 02's. The migration array-length table at the top of
 this file is unchanged by Task 01 and remains authoritative.
+
+## Task 09 final verification update (2026-08-31)
+
+The final Task 09 verification was run in the isolated `trek-4-upgrade` worktree. The admin
+invite-list race was fixed in `client/src/pages/admin/useAdmin.ts`: a stale initial invite load
+can no longer overwrite a successful create/delete mutation. The delayed-load regression is
+covered by `FE-ADMHOOK-029a` in `client/src/pages/admin/useAdmin.test.tsx`.
+
+The complete resource-safe client run passed:
+
+```
+$ npm test -- --maxWorkers=1 --fileParallelism=false --reporter=dot
+Test Files  627 passed (627)
+     Tests  12899 passed | 38 skipped (12937)
+Duration 2701.09s
+```
+
+The two admin suites passed independently as 120/120 tests. Client typecheck passed, and the
+changed admin files passed ESLint with 0 errors and 7 existing warnings. `git diff --check`
+also passed. Vitest deprecation notices and existing same-origin MSW unhandled-request warnings
+remain in the output.
+
+Plugin SDK gates were run from `plugin-sdk/`:
+
+```
+$ npm ci
+added 136 packages, and audited 137 packages in 2s
+53 packages are looking for funding
+  run `npm fund` for details
+found 0 vulnerabilities
+
+$ npm run typecheck
+> trek-plugin-sdk@1.6.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+$ npm test
+> trek-plugin-sdk@1.6.0 test
+> vitest run
+Test Files  17 passed | 1 skipped (18)
+     Tests  294 passed | 8 skipped (302)
+Duration 5.66s
+```
+
+The pinned Playwright WebKit dependency attempt was blocked by host permissions:
+
+```
+$ npx playwright install --with-deps webkit
+Installing dependencies...
+Switching to root user to install dependencies...
+sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+sudo: a password is required
+Failed to install browsers
+Error: Installation process exited with code: 1
+```
+
+No production database or runtime data was accessed. Safe backup archives were discovered but
+were not independently established as a current pre-upgrade snapshot and were not used. The
+real-data clone migration/startup and tested rollback drill remain unrun. Local main merge is
+not safe yet because the production clone/rollback gates and host-blocked WebKit gate remain
+open, despite the local regression and SDK gates passing.

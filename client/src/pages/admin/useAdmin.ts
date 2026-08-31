@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import apiClient, { adminApi, authApi } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
@@ -128,6 +128,7 @@ export function useAdmin() {
   const [inviteTrips, setInviteTrips] = useState<{ id: number; title: string }[]>([])
   const [showCreateInvite, setShowCreateInvite] = useState<boolean>(false)
   const [inviteForm, setInviteForm] = useState<{ max_uses: number; expires_in_days: number | ''; trip_id: number | '' }>({ max_uses: 1, expires_in_days: 7, trip_id: '' })
+  const inviteListVersion = useRef(0)
 
   // File types
   const [allowedFileTypes, setAllowedFileTypes] = useState<string>('jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv')
@@ -184,6 +185,7 @@ export function useAdmin() {
 
   const loadData = async () => {
     setIsLoading(true)
+    const inviteListVersionAtLoad = inviteListVersion.current
     try {
       const [usersData, statsData, invitesData, inviteTripsData] = await Promise.all([
         adminApi.users(),
@@ -193,7 +195,9 @@ export function useAdmin() {
       ])
       setUsers(usersData.users)
       setStats(statsData)
-      setInvites(invitesData.invites || [])
+      if (inviteListVersion.current === inviteListVersionAtLoad) {
+        setInvites(invitesData.invites || [])
+      }
       setInviteTrips(inviteTripsData.trips || [])
     } catch (err: unknown) {
       toast.error(t('admin.toast.loadError'))
@@ -345,6 +349,7 @@ export function useAdmin() {
         expires_in_days: inviteForm.expires_in_days || undefined,
         trip_id: inviteForm.trip_id === '' ? null : inviteForm.trip_id,
       })
+      inviteListVersion.current += 1
       setInvites(prev => [data.invite, ...prev])
       setShowCreateInvite(false)
       setInviteForm({ max_uses: 1, expires_in_days: 7, trip_id: '' })
@@ -359,6 +364,7 @@ export function useAdmin() {
   const handleDeleteInvite = async (id: number) => {
     try {
       await adminApi.deleteInvite(id)
+      inviteListVersion.current += 1
       setInvites(prev => prev.filter(i => i.id !== id))
       toast.success(t('admin.invite.deleted'))
     } catch {

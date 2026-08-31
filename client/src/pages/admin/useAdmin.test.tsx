@@ -1,5 +1,5 @@
 // FE-ADMHOOK-001 to FE-ADMHOOK-049
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
@@ -468,6 +468,30 @@ describe('useAdmin', () => {
 
     expect(toastCalls).toContainEqual({ type: 'error', message: 'taken' });
     expect(result.current.users).toHaveLength(2);
+  });
+
+  it('FE-ADMHOOK-029a: preserves an invite created while initial data is loading', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => undefined) },
+      writable: true,
+      configurable: true,
+    });
+    server.use(
+      http.get('/api/admin/invites', async () => {
+        await delay(50);
+        return HttpResponse.json({ invites: [] });
+      })
+    );
+
+    const view = renderHook(() => useAdmin(), { wrapper });
+    await act(async () => {
+      await view.result.current.handleCreateInvite();
+    });
+    await waitFor(() => expect(view.result.current.isLoading).toBe(false));
+
+    expect(view.result.current.invites).toEqual(
+      expect.arrayContaining([expect.objectContaining({ token: 'test-invite-token' })])
+    );
   });
 
   it('FE-ADMHOOK-029: handleCreateInvite prepends the invite and copies the link', async () => {
