@@ -506,17 +506,22 @@ export const STATE_APPLIERS: Partial<Record<TrekWsTripEventName, StateApplier>> 
       ? { ...r, travelers: payload.travelers as Reservation['travelers'] } : r),
   }),
   'reservation:positions': (payload, state) => {
-    const positions = payload.positions as { id: number; day_plan_position: number }[]
+    const positions = payload.positions as { id: number; day_plan_position?: number }[] | undefined
     if (!Array.isArray(positions)) return {}
     // The REST route broadcasts `day_id`; the MCP tool emits `dayId`. Accept
     // both so a day-scoped reorder from either source lands in day_positions
     // instead of the global slot.
     const dayId = (payload.day_id ?? payload.dayId) as string | number | undefined
-    const positionById = new Map(positions.map(position => [position.id, position.day_plan_position]))
+    const itemById = new Map(positions.map(position => [position.id, position]))
     return {
       reservations: state.reservations.map(reservation => {
-        const position = positionById.get(reservation.id)
-        if (position === undefined) return reservation
+        const item = itemById.get(reservation.id)
+        if (!item) return reservation
+        // An omitted day_plan_position is a clear, not a no-op — mirror the
+        // service: the global branch binds NULL, the day-scoped branch binds 0
+        // (reservation_day_positions.position is NOT NULL). `??` also folds an
+        // explicit null into the same clear, matching the legacy route.
+        const position = item.day_plan_position ?? (dayId != null ? 0 : null)
         if (dayId != null) {
           return {
             ...reservation,

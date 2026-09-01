@@ -189,6 +189,42 @@ describe('remoteEventHandler > reservations', () => {
     });
     expect(useTripStore.getState().reservations[0].day_positions).toEqual({ '5': 1.0, '6': 2.0, '7': 3.5 });
   });
+
+  // The wire contract lets an item omit day_plan_position entirely — the legacy
+  // route then binds NULL (clears) for the global slot and 0 for a day slot.
+  // The reducer must not treat an omitted value as a no-op.
+  it('FE-WSEVT-RESERV-016: reservation:positions without a day scope and omitted day_plan_position clears the global position', () => {
+    const reservation = buildReservation({ id: 10, title: 'Hotel', day_plan_position: 2, day_positions: null });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10 }],
+    });
+    const { reservations } = useTripStore.getState();
+    expect(reservations[0].day_plan_position).toBeNull();
+    expect(reservations[0].day_positions).toEqual(null);
+  });
+
+  it('FE-WSEVT-RESERV-017: reservation:positions with day_id and omitted day_plan_position zeroes the day position', () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_plan_position: 2,
+      day_positions: { '5': 1.5 },
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10 }],
+      day_id: 5,
+    });
+    const { reservations } = useTripStore.getState();
+    expect(reservations[0].day_plan_position).toBe(2);
+    expect(reservations[0].day_positions).toEqual({ '5': 0 });
+  });
 });
 
 describe('remoteEventHandler > reservations > offline persistence', () => {
@@ -237,6 +273,19 @@ describe('remoteEventHandler > reservations > offline persistence', () => {
     await vi.waitFor(async () => {
       const cached = await offlineDb.reservations.get(10);
       expect(cached?.day_positions).toEqual({ '5': 1.5 });
+    });
+  });
+
+  it('FE-WSEVT-RESERV-018: reservation:positions global clear persists the cleared position to IndexedDB for offline reload', async () => {
+    const reservation = buildReservation({ id: 10, title: 'Hotel', day_plan_position: 2, day_positions: null });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10 }],
+    });
+    await vi.waitFor(async () => {
+      const cached = await offlineDb.reservations.get(10);
+      expect(cached?.day_plan_position).toBeNull();
     });
   });
 });
