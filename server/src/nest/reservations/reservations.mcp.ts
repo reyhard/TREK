@@ -1,6 +1,7 @@
 import {
   McpController, Tool, ResourceTemplate, type McpContext,
-  TOOL_ANNOTATIONS_WRITE, TOOL_ANNOTATIONS_DELETE, TOOL_ANNOTATIONS_NON_IDEMPOTENT,
+  TOOL_ANNOTATIONS_READONLY, TOOL_ANNOTATIONS_WRITE, TOOL_ANNOTATIONS_DELETE,
+  TOOL_ANNOTATIONS_NON_IDEMPOTENT,
   demoDenied, errorResult, ok,
 } from '../../nest-mcp';
 import { McpToolGuardsService } from '../mcp-shared/mcp-tool-guards.service';
@@ -15,20 +16,24 @@ import type { EndpointInput } from './reservations.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { transportLegsInputSchema, reservationUrlSchema, type TransportLegInput } from '@trek/shared';
 
-// What counts as a transport booking, for the update_transport gate. A stored
-// `transit` reservation (created via create_transit_journey) stays editable
-// through the generic transport tools like any other.
-const TRANSPORT_TYPES = ['flight', 'train', 'car', 'cruise', 'transit'] as const;
-// What a caller may ASK for, which is the transport form's own picker in the
-// picker's order. `transit` is deliberately absent: a transit booking carries a
-// provider itinerary in metadata.transit, and create_transit_journey is what
-// writes one — a hand-made `transit` row would be a shape the transit UI does
-// not expect. Same split current upstream makes (aa5002b2).
-const CREATABLE_TRANSPORT_TYPES = ['flight', 'train', 'car', 'cruise'] as const;
-/** Only these two carry per-segment detail; a car or cruise has no legs. */
+// What counts as a transport booking, for the update_transport gate. Every value
+// ReservationsPanel renders with a transport icon, so a stored `transit` row is
+// editable through the transport tools like any other.
+const TRANSPORT_TYPES = ['flight', 'train', 'bus', 'car', 'taxi', 'bicycle', 'cruise', 'ferry', 'transit', 'transport_other'] as const;
+// What a caller may ASK for, which is the transport form's own picker
+// (client/src/components/Planner/TransportModal.tsx), in its order. The tools
+// below used to accept four of these nine, so a bus or a ferry could be planned
+// in the UI and not through an assistant.
+//
+// `transit` is deliberately absent: the picker does not offer it either. A transit
+// booking carries a provider itinerary in metadata.transit, and create_transit_journey
+// is what writes one. A hand-made `transit` row would be a shape the transit UI
+// does not expect.
+const CREATABLE_TRANSPORT_TYPES = ['flight', 'train', 'bus', 'car', 'taxi', 'bicycle', 'cruise', 'ferry', 'transport_other'] as const;
+/** Only these two carry per-segment detail: the transport form writes metadata.legs for a flight or a train and for nothing else. */
 const LEG_TRANSPORT_TYPES = ['flight', 'train'] as const;
-
-type CreatableTransportType = typeof CREATABLE_TRANSPORT_TYPES[number];
+/** Everything the picker offers that is not a transport: create_reservation's half. */
+const BOOKING_TYPES = ['hotel', 'restaurant', 'event', 'tour', 'activity', 'parking', 'other'] as const;
 
 /**
  * The booking link. Same refinement the REST contract applies
@@ -37,7 +42,10 @@ type CreatableTransportType = typeof CREATABLE_TRANSPORT_TYPES[number];
  * as an href.
  */
 const urlField = reservationUrlSchema.max(2000).optional()
-  .describe('Link to the booking — the airline/hotel confirmation page, the ticket. Shown as a link on the booking.');
+  .describe('Link to the booking: the airline/hotel confirmation page, the ticket. Shown as a link on the booking.');
+
+type TransportType = typeof CREATABLE_TRANSPORT_TYPES[number];
+type BookingType = typeof BOOKING_TYPES[number];
 
 const endpointObjectSchema = z.object({
   role: z.enum(['from', 'to', 'stop']).describe('Endpoint role: "from" (origin), "to" (destination), or "stop" (intermediate)'),
@@ -320,13 +328,13 @@ export class ReservationsMcp {
 
   @Tool({
     name: 'create_reservation',
-    description: 'Recommend a reservation for a trip. Created as pending — the user must confirm it. For flights, trains, cars, and cruises, use create_transport instead. Linking: hotel → use place_id + start_day_id + end_day_id (all three required to create the accommodation link); restaurant/event/tour/activity/parking/other → use assignment_id. Set price to record the cost; it will appear on the booking and in the Budget tab.',
+    description: 'Recommend a reservation for a trip. Created as pending, so the user must confirm it. For anything travelled ON (flight, train, bus, car, taxi, bicycle, cruise, ferry, transport_other) use create_transport instead. Linking: hotel → use place_id + start_day_id + end_day_id (all three required to create the accommodation link); restaurant/event/tour/activity/parking/other → use assignment_id. Set price to record the cost; it will appear on the booking and in the Budget tab.',
     inputSchema: {
       tripId: z.number().int().positive(),
       title: z.string().min(1).max(200),
-      type: z.enum(['hotel', 'restaurant', 'event', 'tour', 'activity', 'parking', 'other']).describe('Reservation type: "hotel", "restaurant", "event", "tour", "activity", "parking", or "other"'),
+      type: z.enum(BOOKING_TYPES).describe('Reservation type: "hotel", "restaurant", "event", "tour", "activity", "parking", or "other"'),
       reservation_time: z.string().optional().describe('ISO 8601 datetime or time string'),
-      reservation_end_time: z.string().optional().describe('When it ends — a dinner from 19:00 to 21:30, a tour that runs all afternoon. Ignored for hotels, whose span is the check-in/check-out days.'),
+      reservation_end_time: z.string().optional().describe('When it ends: a dinner from 19:00 to 21:30, a tour that runs all afternoon. Ignored for hotels, whose span is the check-in/check-out days.'),
       url: urlField,
       location: z.string().max(500).optional(),
       confirmation_number: z.string().max(100).optional(),
@@ -346,7 +354,7 @@ export class ReservationsMcp {
   })
   async createReservation(
     { tripId, title, type, reservation_time, reservation_end_time, url, location, confirmation_number, notes, day_id, place_id, start_day_id, end_day_id, check_in, check_out, assignment_id, price, budget_category }: {
-      tripId: number; title: string; type: 'hotel' | 'restaurant' | 'event' | 'tour' | 'activity' | 'parking' | 'other';
+      tripId: number; title: string; type: BookingType;
       reservation_time?: string; reservation_end_time?: string; url?: string; location?: string; confirmation_number?: string; notes?: string;
       day_id?: number; place_id?: number; start_day_id?: number; end_day_id?: number;
       check_in?: string; check_out?: string; assignment_id?: number; price?: number; budget_category?: string;
@@ -401,12 +409,12 @@ export class ReservationsMcp {
 
   @Tool({
     name: 'update_reservation',
-    description: 'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. For flights, trains, cars, and cruises, use update_transport instead. Linking: hotel → use place_id to link to an accommodation place; restaurant/event/tour/activity/parking/other → use assignment_id to link to a day assignment.',
+    description: 'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. For anything travelled ON (flight, train, bus, car, taxi, bicycle, cruise, ferry, transport_other) use update_transport instead. Linking: hotel → use place_id to link to an accommodation place; restaurant/event/tour/activity/parking/other → use assignment_id to link to a day assignment.',
     inputSchema: {
       tripId: z.number().int().positive(),
       reservationId: z.number().int().positive(),
       title: z.string().min(1).max(200).optional(),
-      type: z.enum(['hotel', 'restaurant', 'event', 'tour', 'activity', 'parking', 'other']).optional().describe('Reservation type: "hotel", "restaurant", "event", "tour", "activity", "parking", or "other"'),
+      type: z.enum(BOOKING_TYPES).optional().describe('Reservation type: "hotel", "restaurant", "event", "tour", "activity", "parking", or "other"'),
       reservation_time: z.string().optional().describe('ISO 8601 datetime or time string'),
       reservation_end_time: z.string().optional().describe('When it ends. Ignored for hotels, whose span is the check-in/check-out days.'),
       url: urlField,
@@ -423,7 +431,7 @@ export class ReservationsMcp {
   async updateReservation(
     { tripId, reservationId, title, type, reservation_time, reservation_end_time, url, location, confirmation_number, notes, status, place_id, assignment_id }: {
       tripId: number; reservationId: number; title?: string;
-      type?: 'hotel' | 'restaurant' | 'event' | 'tour' | 'activity' | 'parking' | 'other';
+      type?: BookingType;
       reservation_time?: string; reservation_end_time?: string; url?: string; location?: string; confirmation_number?: string; notes?: string;
       status?: 'pending' | 'confirmed' | 'cancelled'; place_id?: number | null; assignment_id?: number | null;
     },
@@ -470,6 +478,41 @@ export class ReservationsMcp {
     }
     this.guards.safeBroadcast(tripId, 'reservation:deleted', { reservationId });
     return ok({ success: true });
+  }
+
+  @Tool({
+    name: 'set_reservation_travelers',
+    description: 'Set who is travelling on a booking, replacing the current list. Pass the user IDs of trip members or guests from list_trip_members; an empty array clears the list. Somebody who is not on the trip is ignored rather than added: use add_trip_member for a person with a TREK account, or create_trip_guest for one without.',
+    inputSchema: {
+      tripId: z.number().int().positive(),
+      reservationId: z.number().int().positive(),
+      user_ids: z.array(z.number().int().positive()).describe('User IDs of the travellers, from list_trip_members. Replaces the whole list; [] clears it.'),
+    },
+    annotations: TOOL_ANNOTATIONS_WRITE,
+    access: { group: 'reservations', mode: 'write' },
+  })
+  async setReservationTravelers(
+    { tripId, reservationId, user_ids }: { tripId: number; reservationId: number; user_ids: number[] },
+    ctx: McpContext,
+  ) {
+    if (this.auth.isDemoUser(ctx.userId)) return demoDenied();
+    if (!this.reservations.verifyTripAccess(tripId, ctx.userId)) return noAccess();
+    if (!this.guards.hasTripPermission('reservation_edit', tripId, ctx.userId)) return permissionDenied();
+
+    // The service filters the ids against the trip roster on its own, so an
+    // off-trip id cannot be attached; a missing booking is the only failure.
+    const result = this.reservations.setTravelers(String(reservationId), String(tripId), user_ids);
+    if (!result) return errorResult('Reservation not found.');
+
+    this.guards.safeBroadcast(tripId, 'reservation:travelers-updated', { reservationId, travelers: result.travelers });
+    // Report what the roster filter dropped. Silently succeeding with a shorter
+    // list reads as "done" to a caller that guessed an id for a name it could
+    // not resolve, which is exactly what an importer does.
+    const attached = new Set(result.travelers.map(t => t.user_id));
+    const ignored = [...new Set(user_ids)].filter(uid => !attached.has(uid));
+    return ok(ignored.length > 0
+      ? { travelers: result.travelers, ignored_user_ids: ignored, note: 'Ignored ids are not on this trip. Add them with add_trip_member or create_trip_guest first.' }
+      : { travelers: result.travelers });
   }
 
   @Tool({
@@ -554,6 +597,29 @@ export class ReservationsMcp {
     return ok({ reservation, accommodation_id: reservation?.accommodation_id ?? null });
   }
 
+  // -------------------------------------------------------------------------
+  // Cross-trip reads
+  //
+  // Every other entry here is trip-scoped and checks verifyTripAccess against
+  // the tripId it was handed. This one has no tripId: the visible_trips CTE in
+  // listUpcoming is the access check, exactly as for GET /api/reservations/upcoming,
+  // so a booking on a trip the caller neither owns nor is a member of is never
+  // in the result set to begin with.
+  // -------------------------------------------------------------------------
+
+  @Tool({
+    name: 'list_upcoming_reservations',
+    description: 'The next bookings across ALL of the user\'s trips, soonest first: "what is coming up?", "when is my next flight?". Prefer this over get_trip_summary when no particular trip is in question, or when the trip is unknown. Hotel stays appear as their check-in and check-out moments (the stay itself covers a range and is not a point in time), which no per-trip reservation list reports. Cancelled bookings and archived trips are left out.',
+    inputSchema: {
+      limit: z.number().int().min(1).max(50).optional().describe('How many entries to return, soonest first (default 6, the dashboard widget\'s size)'),
+    },
+    annotations: TOOL_ANNOTATIONS_READONLY,
+    access: { group: 'reservations', mode: 'read' },
+  })
+  async listUpcomingReservations({ limit }: { limit?: number }, ctx: McpContext) {
+    return ok({ reservations: this.reservations.listUpcoming(ctx.userId, limit) });
+  }
+
   @ResourceTemplate({
     name: 'trip-reservations',
     uriTemplate: 'trek://trips/{tripId}/reservations',
@@ -595,7 +661,7 @@ export class ReservationsMcp {
 
   @Tool({
     name: 'create_transport',
-    description: 'Create a transport booking (flight, train, car, or cruise) for a trip. Use endpoints[] to record origin/destination and intermediate stops — for flights, set code to the IATA airport code (use search_airports first). For a booking WITH STOPOVERS also pass legs[] (one entry per segment, one fewer than endpoints[]), otherwise every segment inherits the stop time as both its arrival and its departure. The top-level confirmation_number is the booking reference; when a single segment was booked under its own reference, put that one on the leg instead. Created as pending — confirm with update_transport. Set price to record the cost; it will appear on the booking and in the Budget tab.',
+    description: 'Create a transport booking for a trip: flight, train, bus, car, taxi, bicycle, cruise, ferry or transport_other. For scheduled public transit use create_transit_journey, which attaches the provider itinerary. Use endpoints[] to record origin/destination and intermediate stops; for flights, set code to the IATA airport code (use search_airports first). For a booking WITH STOPOVERS also pass legs[] (one entry per segment, one fewer than endpoints[]), otherwise every segment inherits the stop time as both its arrival and its departure. The top-level confirmation_number is the booking reference; when a single segment was booked under its own reference, put that one on the leg instead. Created as pending, so confirm it with update_transport. Set price to record the cost; it will appear on the booking and in the Budget tab.',
     inputSchema: {
       tripId: z.number().int().positive(),
       type: z.enum(CREATABLE_TRANSPORT_TYPES),
@@ -620,7 +686,7 @@ export class ReservationsMcp {
   })
   async createTransport(
     { tripId, type, title, status, start_day_id, end_day_id, reservation_time, reservation_end_time, confirmation_number, url, notes, metadata, endpoints, legs, needs_review, price, budget_category }: {
-      tripId: number; type: CreatableTransportType; title: string;
+      tripId: number; type: TransportType; title: string;
       status?: 'pending' | 'confirmed' | 'cancelled'; start_day_id?: number; end_day_id?: number;
       reservation_time?: string; reservation_end_time?: string; confirmation_number?: string; url?: string; notes?: string;
       metadata?: Record<string, string>; endpoints?: TransportEndpoint[]; legs?: TransportLegInput[]; needs_review?: boolean;
@@ -729,7 +795,7 @@ export class ReservationsMcp {
   })
   async updateTransport(
     { tripId, reservationId, type, title, status, start_day_id, end_day_id, reservation_time, reservation_end_time, confirmation_number, url, notes, metadata, endpoints, legs, needs_review }: {
-      tripId: number; reservationId: number; type?: CreatableTransportType; title?: string;
+      tripId: number; reservationId: number; type?: TransportType; title?: string;
       status?: 'pending' | 'confirmed' | 'cancelled'; start_day_id?: number; end_day_id?: number;
       reservation_time?: string; reservation_end_time?: string; confirmation_number?: string; url?: string; notes?: string;
       metadata?: Record<string, string>; endpoints?: TransportEndpoint[]; legs?: TransportLegInput[]; needs_review?: boolean;

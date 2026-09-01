@@ -141,6 +141,8 @@ export function buildPlanner(overrides: Partial<TripPlanner> = {}): TripPlanner 
     setEditingReservation: vi.fn(),
     showBookingImport: false,
     setShowBookingImport: vi.fn(),
+    bookingImportKind: 'bookings' as const,
+    setBookingImportKind: vi.fn(),
     bookingImportAvailable: true,
     airTrailAvailable: false,
     showAirTrailImport: false,

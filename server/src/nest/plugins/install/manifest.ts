@@ -1,6 +1,14 @@
 import semver from 'semver';
 import { isKnownPermission, PLUGIN_API_VERSION } from '../protocol/envelope';
 import { isValidTrekRange, minTrekOf } from './host-compat';
+import {
+  MCP_TOOLS_MAX,
+  McpToolSchemaError,
+  TOOL_NAME_RE,
+  buildToolInputSchema,
+  normaliseToolSchema,
+  sanitiseToolText,
+} from '../mcp-tool-schema';
 import type { NotifEventType } from '../../notifications/notification-events';
 
 /**
@@ -71,12 +79,16 @@ export interface RouteProfileCapability {
 }
 
 /** One MCP tool the plugin advertises on TREK's MCP server. Requires `mcp:tools`.
- * Plugin-local name; advertised as `plugin_<pluginId>_<name>`. */
+ *  Declared here, in the signed manifest, and not only reported at load: the child
+ *  composes its `loaded` payload AFTER onLoad runs, so a signed, sha256-pinned
+ *  artifact could otherwise emit different tool text on every restart with no
+ *  version bump and no re-consent. The host advertises the intersection of the two. */
 export interface McpToolCapability {
+  /** Plugin-local; advertised as `plugin_<pluginId>_<name>`. */
   name: string;
   title?: string;
   description: string;
-  /** JSON Schema for the arguments, advertised verbatim. */
+  /** JSON Schema for the arguments, advertised verbatim after normalisation. */
   inputSchema?: Record<string, unknown>;
   annotations?: Record<string, unknown>;
 }
@@ -202,20 +214,20 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
     .find((h) => !HOST_RE.test(h));
   if (badOutbound !== undefined) throw new ManifestError(`invalid http:outbound host "${badOutbound}"`);
 
+  const capabilities = parseCapabilities(m.capabilities);
+  // Declared tools without the grant that runs them would sit in the admin's
+  // consent screen looking live and never appear on the MCP server. Same shape
+  // as the SDK's notificationChannel and routeProfiles cross-checks.
+  if (capabilities.mcpTools?.length && !permissions.includes('mcp:tools')) {
+    throw new ManifestError('capabilities.mcpTools requires the "mcp:tools" permission');
+  }
+
   const egress = arr(m.egress).map(String);
   if (m.operatorEgress !== undefined && typeof m.operatorEgress !== 'boolean') {
     throw new ManifestError('operatorEgress must be a boolean');
   }
   if (m.operatorEgress === true && !permissions.some((p) => p === 'http:outbound' || p.startsWith('http:outbound:'))) {
     throw new ManifestError('operatorEgress requires an http:outbound permission');
-  }
-  // MCP tools are a grant-gated capability: advertising them requires the
-  // mcp:tools permission, exactly like notificationChannel requires its hook.
-  const capsObj = m.capabilities && typeof m.capabilities === 'object' && !Array.isArray(m.capabilities)
-    ? m.capabilities as Record<string, unknown>
-    : null;
-  if (capsObj && Array.isArray(capsObj.mcpTools) && !permissions.includes('mcp:tools')) {
-    throw new ManifestError('capabilities.mcpTools requires the "mcp:tools" permission');
   }
   // An empty egress[] is only legal for an operatorEgress plugin: its hosts are
   // admin-supplied post-install, so the manifest has nothing to declare. It is NOT
@@ -273,7 +285,7 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
     operatorEgress: m.operatorEgress === true,
     settings: parseSettings(m.settings),
     actions: parseActions(m.actions),
-    capabilities: parseCapabilities(m.capabilities),
+    capabilities,
     requiredAddons: parseRequiredAddons(m.requiredAddons),
     pluginDependencies: parsePluginDependencies(m.pluginDependencies, id),
   };
@@ -394,12 +406,13 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
     }
     if (profiles.length) out.routeProfiles = profiles;
   }
+  if (c.mcpTools !== undefined) {
+    out.mcpTools = parseMcpToolCapabilities(c.mcpTools);
+  }
   const provides = parseCapabilityNames(c.provides, 'provides');
   if (provides.length) out.provides = provides;
   const emits = parseCapabilityNames(c.emits, 'emits');
   if (emits.length) out.emits = emits;
-  const mcpTools = parseMcpToolCapabilities(c.mcpTools);
-  if (mcpTools.length) out.mcpTools = mcpTools;
   return out;
 }
 
@@ -438,6 +451,56 @@ void _channelEventDriftGuard;
 const REPLACEABLE_TABS = ['transports', 'buchungen', 'listen', 'finanzplan', 'dateien', 'collab'];
 
 /** Validate a `provides`/`emits` array: de-duplicated, well-formed names. */
+/**
+ * Validate and bound `capabilities.mcpTools`.
+ *
+ * Rejects rather than drops, unlike most capability parsing: a bad tool schema
+ * is an admin-visible install failure here, instead of a tool that silently
+ * never appears once the plugin is running. The caps and the text/schema
+ * sanitising live in mcp-tool-schema.ts so the install path and the advertise
+ * path cannot disagree about them.
+ */
+export function parseMcpToolCapabilities(raw: unknown): McpToolCapability[] {
+  if (!Array.isArray(raw)) throw new ManifestError('capabilities.mcpTools must be an array');
+  if (raw.length > MCP_TOOLS_MAX) {
+    throw new ManifestError(`capabilities.mcpTools: at most ${MCP_TOOLS_MAX} tools`);
+  }
+  const tools: McpToolCapability[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) {
+      throw new ManifestError('capabilities.mcpTools entries must be objects');
+    }
+    const t = v as Record<string, unknown>;
+    const name = typeof t.name === 'string' ? t.name : '';
+    if (!TOOL_NAME_RE.test(name)) {
+      throw new ManifestError('capabilities.mcpTools: name must be lowercase [a-z0-9_], max 48 chars');
+    }
+    if (tools.some((x) => x.name === name)) {
+      throw new ManifestError(`capabilities.mcpTools: duplicate name "${name}"`);
+    }
+    try {
+      const text = sanitiseToolText(t.title, t.description);
+      const inputSchema = normaliseToolSchema(t.inputSchema);
+      // Build the validator here purely so an unenforceable keyword fails the
+      // INSTALL, loudly, rather than at advertise time where the per-plugin
+      // catch would turn it into a tool that silently never appears.
+      buildToolInputSchema(inputSchema);
+      tools.push({
+        name,
+        ...text,
+        ...(inputSchema ? { inputSchema } : {}),
+        ...(t.annotations !== undefined ? { annotations: t.annotations as Record<string, unknown> } : {}),
+      });
+    } catch (e) {
+      if (e instanceof McpToolSchemaError) {
+        throw new ManifestError(`capabilities.mcpTools "${name}": ${e.message}`);
+      }
+      throw e;
+    }
+  }
+  return tools;
+}
+
 function parseCapabilityNames(raw: unknown, field: string): string[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new ManifestError(`capabilities.${field} must be an array of names`);
@@ -445,33 +508,6 @@ function parseCapabilityNames(raw: unknown, field: string): string[] {
   for (const v of raw) {
     if (typeof v !== 'string' || !CAPABILITY_NAME_RE.test(v)) throw new ManifestError(`invalid capabilities.${field} entry "${String(v)}"`);
     if (!out.includes(v)) out.push(v);
-  }
-  return out;
-}
-
-/** Validate `capabilities.mcpTools`: well-formed names, bounded, de-duplicated. */
-function parseMcpToolCapabilities(raw: unknown): McpToolCapability[] {
-  if (raw === undefined) return [];
-  if (!Array.isArray(raw)) throw new ManifestError('capabilities.mcpTools must be an array');
-  if (raw.length > 8) throw new ManifestError('capabilities.mcpTools: at most 8 tools');
-  const out: McpToolCapability[] = [];
-  for (const v of raw) {
-    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ManifestError('capabilities.mcpTools entries must be objects');
-    const t = v as Record<string, unknown>;
-    if (typeof t.name !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(t.name)) {
-      throw new ManifestError(`capabilities.mcpTools: invalid tool name "${String(t.name)}"`);
-    }
-    if (out.some((x) => x.name === t.name)) throw new ManifestError(`capabilities.mcpTools: duplicate tool name "${t.name}"`);
-    if (typeof t.description !== 'string' || !t.description.trim()) {
-      throw new ManifestError(`capabilities.mcpTools: tool "${t.name}" requires a description`);
-    }
-    out.push({
-      name: t.name,
-      ...(typeof t.title === 'string' && t.title.trim() ? { title: t.title.trim().slice(0, 80) } : {}),
-      description: t.description.trim().slice(0, 1024),
-      ...(t.inputSchema && typeof t.inputSchema === 'object' && !Array.isArray(t.inputSchema) ? { inputSchema: t.inputSchema as Record<string, unknown> } : {}),
-      ...(t.annotations && typeof t.annotations === 'object' && !Array.isArray(t.annotations) ? { annotations: t.annotations as Record<string, unknown> } : {}),
-    });
   }
   return out;
 }

@@ -138,6 +138,16 @@ describe('PluginHooks contracts', () => {
     expect(invokeHook).toHaveBeenCalledWith('p', 'notificationChannel', 'test', [{ token: 'x' }], undefined, 8000);
   });
 
+  it('PLUGHOOK-010 an MCP tool call binds the requesting user and takes the long budget', async () => {
+    // The acting user is the whole reason this goes through a hook rather than a
+    // bespoke invoke: it is bound host-side from the supervisor's invocation map,
+    // so a tool called by user A reaches A's data whatever the model put in args.
+    const { hooks: h, invokeHook } = hooks();
+    const call = { name: 'echo', args: { value: 'x' } };
+    await h.callMcpTool('p', call, 7);
+    expect(invokeHook).toHaveBeenCalledWith('p', 'mcpToolProvider', 'callTool', [call], 7, 15_000);
+  });
+
   it('PLUGHOOK-009 the class is listed in its module providers', () => {
     // A decorated class no module registers is invisible to discovery, which would
     // now fail boot on "no host-side consumer" rather than fail quietly. Cheapest

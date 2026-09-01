@@ -257,7 +257,7 @@ export const PERMISSION_FAMILIES: PermissionFamily[] = [
       { value: 'ai:invoke', hint: 'Call the instance\'s configured AI model' },
       { value: 'oauth:client', hint: 'Obtain OAuth access tokens for the user' },
       { value: 'geolocation:read', hint: 'Ask the host for the browser\'s live position in your frames (browser prompt still applies)' },
-      { value: 'mcp:tools', hint: 'Publish tools on TREK\'s MCP server so an AI assistant can call them as the requesting user' },
+      { value: 'mcp:tools', hint: 'Publish MCP tools an assistant can call, running as the requesting user' },
     ],
   },
 ];

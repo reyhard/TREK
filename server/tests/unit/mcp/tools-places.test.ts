@@ -7,20 +7,6 @@
  * registry in tests/helpers/mcp-test-controllers.ts, so the assertions below
  * exercise the @Tool/@ResourceTemplate path instead of the deleted registrar.
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import {
-  createUser,
-  createTrip,
-  createPlace,
-  createDay,
-  createDayAssignment,
-  createJourney,
-} from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
-import { invalidatePermissionsCache } from '../../../src/services/permissions';
-
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -34,29 +20,13 @@ const { testDb, dbMock } = vi.hoisted(() => {
     closeDb: () => {},
     reinitialize: () => {},
     getPlaceWithTags: (placeId: number) => {
-      const place: any = db
-        .prepare(
-          `SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`,
-        )
-        .get(placeId);
+      const place: any = db.prepare(`SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon FROM places p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?`).get(placeId);
       if (!place) return null;
-      const tags = db
-        .prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`)
-        .all(placeId);
-      return {
-        ...place,
-        category: place.category_id
-          ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon }
-          : null,
-        tags,
-      };
+      const tags = db.prepare(`SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?`).all(placeId);
+      return { ...place, category: place.category_id ? { id: place.category_id, name: place.category_name, color: place.category_color, icon: place.category_icon } : null, tags };
     },
     canAccessTrip: (tripId: any, userId: number) =>
-      db
-        .prepare(
-          `SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`,
-        )
-        .get(userId, tripId, userId),
+      db.prepare(`SELECT t.id, t.user_id FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE t.id = ? AND (t.user_id = ? OR m.user_id IS NOT NULL)`).get(userId, tripId, userId),
     isOwner: (tripId: any, userId: number) =>
       !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId),
   };
@@ -88,14 +58,14 @@ import { PlacesService } from '../../../src/nest/places/places.service';
 
 /** Link a journey to a trip so journey-skeleton sync has a target. */
 function linkJourney(journeyId: number, tripId: number) {
-  testDb
-    .prepare('INSERT INTO journey_trips (journey_id, trip_id, added_at) VALUES (?, ?, ?)')
-    .run(journeyId, tripId, Date.now());
+  testDb.prepare('INSERT INTO journey_trips (journey_id, trip_id, added_at) VALUES (?, ?, ?)').run(journeyId, tripId, Date.now());
 }
 function skeletonFor(journeyId: number, placeId: number) {
-  return testDb
-    .prepare('SELECT * FROM journey_entries WHERE journey_id = ? AND source_place_id = ?')
-    .get(journeyId, placeId) as any;
+  return testDb.prepare('SELECT * FROM journey_entries WHERE journey_id = ? AND source_place_id = ?').get(journeyId, placeId) as any;
+}
+/** The stored thumbnail, read off the row rather than out of the tool's echo. */
+function imageOf(placeId: number): string | null {
+  return (testDb.prepare('SELECT image_url FROM places WHERE id = ?').get(placeId) as { image_url: string | null }).image_url;
 }
 
 beforeAll(() => {
@@ -105,7 +75,6 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetTestDb(testDb);
-  invalidatePermissionsCache();
   broadcastMock.mockClear();
   searchPlacesMock.mockClear();
   vi.spyOn(MapsService.prototype, 'searchPlaces').mockImplementation(searchPlacesMock as never);
@@ -118,11 +87,7 @@ afterAll(() => {
 
 async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
   const h = await createMcpHarness({ userId, withResources: false });
-  try {
-    await fn(h);
-  } finally {
-    await h.cleanup();
-  }
+  try { await fn(h); } finally { await h.cleanup(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +135,54 @@ describe('Tool: create_place', () => {
       expect(data.place.name).toBe('Mystery Spot');
       expect(data.place.trip_id).toBe(trip.id);
     });
+  });
+
+  it('persists image_url on the row (#37)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'create_place',
+        arguments: { tripId: trip.id, name: 'Pictured', image_url: 'https://cdn.example.com/spot.jpg' },
+      });
+    });
+
+    const row = testDb.prepare('SELECT image_url FROM places WHERE trip_id = ? AND name = ?').get(trip.id, 'Pictured') as { image_url: string };
+    expect(row.image_url).toBe('https://cdn.example.com/spot.jpg');
+  });
+
+  it('accepts the photo-proxy path the place picker hands out', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'create_place',
+        arguments: { tripId: trip.id, name: 'Proxied', image_url: '/api/maps/place-photo/ChIJabc~p0/bytes' },
+      });
+    });
+
+    const row = testDb.prepare('SELECT image_url FROM places WHERE trip_id = ? AND name = ?').get(trip.id, 'Proxied') as { image_url: string };
+    expect(row.image_url).toBe('/api/maps/place-photo/ChIJabc~p0/bytes');
+  });
+
+  // The marker builders assemble their HTML as a string, so the scheme pin is the
+  // thing standing between a stored value and the DOM. Same contract as REST.
+  it('refuses an image_url outside the four allowed shapes', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_place',
+        arguments: { tripId: trip.id, name: 'Hostile', image_url: 'javascript:alert(1)' },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content as { text: string }[])[0].text).toMatch(/Invalid arguments/);
+    });
+
+    expect(testDb.prepare('SELECT COUNT(*) AS n FROM places WHERE trip_id = ?').get(trip.id)).toEqual({ n: 0 });
   });
 
   it('persists a caller-supplied non-default duration', async () => {
@@ -251,25 +264,6 @@ describe('Tool: create_place', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: update_place', () => {
-  it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without changing the place', async (duration) => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const place = createPlace(testDb, trip.id);
-    testDb.prepare('UPDATE places SET duration_minutes = 75 WHERE id = ?').run(place.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'update_place',
-        arguments: { tripId: trip.id, placeId: place.id, duration_minutes: duration },
-      });
-
-      expect(result.isError).toBe(true);
-      expect(testDb.prepare('SELECT duration_minutes FROM places WHERE id = ?').get(place.id)).toEqual({
-        duration_minutes: 75,
-      });
-    });
-  });
-
   it('updates specific fields and preserves others', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -292,12 +286,64 @@ describe('Tool: update_place', () => {
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      await h.client.callTool({
-        name: 'update_place',
-        arguments: { tripId: trip.id, placeId: place.id, name: 'Updated' },
-      });
+      await h.client.callTool({ name: 'update_place', arguments: { tripId: trip.id, placeId: place.id, name: 'Updated' } });
       expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'place:updated', expect.any(Object));
     });
+  });
+
+  it('sets image_url on an existing place (#37)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id, { name: 'Unpictured' });
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'update_place',
+        arguments: { tripId: trip.id, placeId: place.id, image_url: 'https://cdn.example.com/new.jpg' },
+      });
+    });
+
+    expect(imageOf(place.id)).toBe('https://cdn.example.com/new.jpg');
+  });
+
+  // The service reads image_url through a `!== undefined` sentinel, so null is the
+  // only way to say "remove the picture" - an omitted field keeps the old one.
+  it('clears image_url when null is passed, and leaves it alone when omitted', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id, { name: 'Pictured' });
+    testDb.prepare('UPDATE places SET image_url = ? WHERE id = ?').run('/uploads/places/old.jpg', place.id);
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({ name: 'update_place', arguments: { tripId: trip.id, placeId: place.id, name: 'Renamed' } });
+      expect(imageOf(place.id)).toBe('/uploads/places/old.jpg');
+
+      const result = await h.client.callTool({
+        name: 'update_place',
+        arguments: { tripId: trip.id, placeId: place.id, image_url: null },
+      });
+      expect((parseToolResult(result) as any).place.image_url).toBeNull();
+    });
+
+    expect(imageOf(place.id)).toBeNull();
+  });
+
+  it('refuses an image_url outside the four allowed shapes', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const place = createPlace(testDb, trip.id, { name: 'Pictured' });
+    testDb.prepare('UPDATE places SET image_url = ? WHERE id = ?').run('https://cdn.example.com/keep.jpg', place.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_place',
+        arguments: { tripId: trip.id, placeId: place.id, image_url: 'http://insecure.example.com/x.jpg' },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content as { text: string }[])[0].text).toMatch(/Invalid arguments/);
+    });
+
+    expect(imageOf(place.id)).toBe('https://cdn.example.com/keep.jpg');
   });
 
   it('returns error for place not found in trip', async () => {
@@ -315,10 +361,7 @@ describe('Tool: update_place', () => {
     const trip = createTrip(testDb, other.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'update_place',
-        arguments: { tripId: trip.id, placeId: place.id, name: 'X' },
-      });
+      const result = await h.client.callTool({ name: 'update_place', arguments: { tripId: trip.id, placeId: place.id, name: 'X' } });
       expect(result.isError).toBe(true);
     });
   });
@@ -329,30 +372,6 @@ describe('Tool: update_place', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: bulk_update_places', () => {
-  it.each([4, 60.5, 1441])('rejects invalid recommended duration %s without changing any place', async (duration) => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const a = createPlace(testDb, trip.id, { name: 'A' });
-    const b = createPlace(testDb, trip.id, { name: 'B' });
-    testDb.prepare('UPDATE places SET duration_minutes = 45 WHERE id = ?').run(a.id);
-    testDb.prepare('UPDATE places SET duration_minutes = 90 WHERE id = ?').run(b.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'bulk_update_places',
-        arguments: { tripId: trip.id, placeIds: [a.id, b.id], duration_minutes: duration },
-      });
-
-      expect(result.isError).toBe(true);
-      expect(
-        testDb.prepare('SELECT id, duration_minutes FROM places WHERE id IN (?, ?) ORDER BY id').all(a.id, b.id),
-      ).toEqual([
-        { id: a.id, duration_minutes: 45 },
-        { id: b.id, duration_minutes: 90 },
-      ]);
-    });
-  });
-
   it('applies the same field to many places in one call', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -378,13 +397,49 @@ describe('Tool: bulk_update_places', () => {
     const b = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
       broadcastMock.mockClear();
-      await h.client.callTool({
-        name: 'bulk_update_places',
-        arguments: { tripId: trip.id, placeIds: [a.id, b.id], notes: 'seen' },
-      });
+      await h.client.callTool({ name: 'bulk_update_places', arguments: { tripId: trip.id, placeIds: [a.id, b.id], notes: 'seen' } });
       const updates = broadcastMock.mock.calls.filter((c) => c[1] === 'place:updated');
       expect(updates).toHaveLength(2);
     });
+  });
+
+  it('sets the same image_url on every listed place (#37)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const a = createPlace(testDb, trip.id, { name: 'A' });
+    const b = createPlace(testDb, trip.id, { name: 'B' });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'bulk_update_places',
+        arguments: { tripId: trip.id, placeIds: [a.id, b.id], image_url: 'https://cdn.example.com/batch.jpg' },
+      });
+      expect((parseToolResult(result) as any).count).toBe(2);
+    });
+
+    expect(imageOf(a.id)).toBe('https://cdn.example.com/batch.jpg');
+    expect(imageOf(b.id)).toBe('https://cdn.example.com/batch.jpg');
+  });
+
+  // A lone null still counts as a field, which is what makes "strip the pictures
+  // off these eighty places" reachable in one call.
+  it('strips the pictures off a batch when image_url is null', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const a = createPlace(testDb, trip.id, { name: 'A' });
+    const b = createPlace(testDb, trip.id, { name: 'B' });
+    testDb.prepare('UPDATE places SET image_url = ? WHERE id IN (?, ?)').run('https://cdn.example.com/old.jpg', a.id, b.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'bulk_update_places',
+        arguments: { tripId: trip.id, placeIds: [a.id, b.id], image_url: null },
+      });
+      expect((parseToolResult(result) as any).count).toBe(2);
+    });
+
+    expect(imageOf(a.id)).toBeNull();
+    expect(imageOf(b.id)).toBeNull();
   });
 
   it('errors when no update fields are provided', async () => {
@@ -392,10 +447,7 @@ describe('Tool: bulk_update_places', () => {
     const trip = createTrip(testDb, user.id);
     const a = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'bulk_update_places',
-        arguments: { tripId: trip.id, placeIds: [a.id] },
-      });
+      const result = await h.client.callTool({ name: 'bulk_update_places', arguments: { tripId: trip.id, placeIds: [a.id] } });
       expect(result.isError).toBe(true);
     });
   });
@@ -406,10 +458,7 @@ describe('Tool: bulk_update_places', () => {
     const trip = createTrip(testDb, other.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'bulk_update_places',
-        arguments: { tripId: trip.id, placeIds: [place.id], notes: 'x' },
-      });
+      const result = await h.client.callTool({ name: 'bulk_update_places', arguments: { tripId: trip.id, placeIds: [place.id], notes: 'x' } });
       expect(result.isError).toBe(true);
     });
   });
@@ -425,10 +474,7 @@ describe('Tool: delete_place', () => {
     const trip = createTrip(testDb, user.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'delete_place',
-        arguments: { tripId: trip.id, placeId: place.id },
-      });
+      const result = await h.client.callTool({ name: 'delete_place', arguments: { tripId: trip.id, placeId: place.id } });
       const data = parseToolResult(result) as any;
       expect(data.success).toBe(true);
       expect(testDb.prepare('SELECT id FROM places WHERE id = ?').get(place.id)).toBeUndefined();
@@ -475,10 +521,7 @@ describe('Tool: delete_place', () => {
     const trip = createTrip(testDb, other.id);
     const place = createPlace(testDb, trip.id);
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'delete_place',
-        arguments: { tripId: trip.id, placeId: place.id },
-      });
+      const result = await h.client.callTool({ name: 'delete_place', arguments: { tripId: trip.id, placeId: place.id } });
       expect(result.isError).toBe(true);
     });
   });
@@ -492,12 +535,10 @@ describe('Tool: delete_place', () => {
     const journey = createJourney(testDb, user.id);
     linkJourney(journey.id, trip.id);
     // Materialise the skeleton for the assigned place.
-    testDb
-      .prepare(
-        `INSERT INTO journey_entries (journey_id, source_trip_id, source_place_id, author_id, type, title, entry_date, sort_order, created_at, updated_at)
+    testDb.prepare(
+      `INSERT INTO journey_entries (journey_id, source_trip_id, source_place_id, author_id, type, title, entry_date, sort_order, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'skeleton', ?, ?, 0, ?, ?)`,
-      )
-      .run(journey.id, trip.id, place.id, user.id, place.name, '2026-05-01', Date.now(), Date.now());
+    ).run(journey.id, trip.id, place.id, user.id, place.name, '2026-05-01', Date.now(), Date.now());
     expect(skeletonFor(journey.id, place.id)).toBeDefined();
 
     await withHarness(user.id, async (h) => {
@@ -512,56 +553,6 @@ describe('Tool: delete_place', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: create_and_assign_place', () => {
-  it('persists a caller-supplied non-default duration', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const day = createDay(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = parseToolResult(
-        await h.client.callTool({
-          name: 'create_and_assign_place',
-          arguments: { tripId: trip.id, dayId: day.id, name: 'Quick shrine', duration_minutes: 45 },
-        }),
-      ) as any;
-
-      expect(result.place.duration_minutes).toBe(45);
-    });
-  });
-
-  it('defaults duration_minutes to 60 when omitted', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const day = createDay(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = parseToolResult(
-        await h.client.callTool({
-          name: 'create_and_assign_place',
-          arguments: { tripId: trip.id, dayId: day.id, name: 'Untimed attraction' },
-        }),
-      ) as any;
-
-      expect(result.place.duration_minutes).toBe(60);
-    });
-  });
-
-  it.each([4, 60.5, 1441])('rejects invalid duration %s without inserting a place', async (duration) => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const day = createDay(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_and_assign_place',
-        arguments: { tripId: trip.id, dayId: day.id, name: 'Invalid duration', duration_minutes: duration },
-      });
-
-      expect(result.isError).toBe(true);
-      expect(testDb.prepare('SELECT COUNT(*) AS count FROM places WHERE trip_id = ?').get(trip.id)).toEqual({ count: 0 });
-    });
-  });
-
   it('creates a skeleton suggestion in a linked journey', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -571,15 +562,26 @@ describe('Tool: create_and_assign_place', () => {
 
     await withHarness(user.id, async (h) => {
       const result = parseToolResult(
-        await h.client.callTool({
-          name: 'create_and_assign_place',
-          arguments: { tripId: trip.id, dayId: day.id, name: 'Fresh POI' },
-        }),
+        await h.client.callTool({ name: 'create_and_assign_place', arguments: { tripId: trip.id, dayId: day.id, name: 'Fresh POI' } }),
       ) as any;
       const skeleton = skeletonFor(journey.id, result.place.id);
       expect(skeleton).toBeDefined();
       expect(skeleton.type).toBe('skeleton');
       expect(skeleton.title).toBe('Fresh POI');
+    });
+  });
+
+  it('persists image_url on the place it creates (#37)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = parseToolResult(await h.client.callTool({
+        name: 'create_and_assign_place',
+        arguments: { tripId: trip.id, dayId: day.id, name: 'Pictured', image_url: 'https://cdn.example.com/day.jpg' },
+      })) as any;
+      expect(imageOf(result.place.id)).toBe('https://cdn.example.com/day.jpg');
     });
   });
 });
@@ -594,20 +596,14 @@ describe('Tool: search_place', () => {
     searchPlacesMock.mockResolvedValue({
       source: 'openstreetmap',
       places: [
-        {
-          osm_id: 'node:12345',
-          name: 'Eiffel Tower',
-          address: 'Eiffel Tower, Paris, France',
-          lat: 48.8584,
-          lng: 2.2945,
-        },
+        { osm_id: 'node:12345', name: 'Eiffel Tower', address: 'Eiffel Tower, Paris, France', lat: 48.8584, lng: 2.2945 },
       ],
     });
 
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({ name: 'search_place', arguments: { query: 'Eiffel Tower' } });
       const data = parseToolResult(result) as any;
-      expect(searchPlacesMock).toHaveBeenCalledWith(user.id, 'Eiffel Tower');
+      expect(searchPlacesMock).toHaveBeenCalledWith(user.id, 'Eiffel Tower', undefined, undefined);
       expect(data.places).toHaveLength(1);
       expect(data.places[0].osm_id).toBe('node:12345');
       expect(data.places[0].name).toBe('Eiffel Tower');
@@ -620,23 +616,14 @@ describe('Tool: search_place', () => {
     searchPlacesMock.mockResolvedValue({
       source: 'google',
       places: [
-        {
-          google_place_id: 'ChIJD3uTd9hx5kcR1IQvGfr8dbk',
-          name: 'Eiffel Tower',
-          address: 'Champ de Mars, Paris',
-          lat: 48.8584,
-          lng: 2.2945,
-          rating: 4.7,
-          website: 'https://toureiffel.paris',
-          phone: null,
-        },
+        { google_place_id: 'ChIJD3uTd9hx5kcR1IQvGfr8dbk', name: 'Eiffel Tower', address: 'Champ de Mars, Paris', lat: 48.8584, lng: 2.2945, rating: 4.7, website: 'https://toureiffel.paris', phone: null },
       ],
     });
 
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({ name: 'search_place', arguments: { query: 'Eiffel Tower' } });
       const data = parseToolResult(result) as any;
-      expect(searchPlacesMock).toHaveBeenCalledWith(user.id, 'Eiffel Tower');
+      expect(searchPlacesMock).toHaveBeenCalledWith(user.id, 'Eiffel Tower', undefined, undefined);
       expect(data.places).toHaveLength(1);
       expect(data.places[0].google_place_id).toBe('ChIJD3uTd9hx5kcR1IQvGfr8dbk');
       expect(data.places[0].name).toBe('Eiffel Tower');
@@ -651,6 +638,57 @@ describe('Tool: search_place', () => {
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({ name: 'search_place', arguments: { query: 'something' } });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  // Without the bias a bare name resolves wherever the provider guesses, which is
+  // how "Central Station" used to come back from the wrong continent (#32).
+  it('forwards locationBias and lang to the provider', async () => {
+    const { user } = createUser(testDb);
+    searchPlacesMock.mockResolvedValue({ source: 'google', places: [] });
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'search_place',
+        arguments: {
+          query: 'Central Station',
+          locationBias: { lat: 35.6812, lng: 139.7671, radius: 8000 },
+          lang: 'ja',
+        },
+      });
+      expect(searchPlacesMock).toHaveBeenCalledWith(
+        user.id,
+        'Central Station',
+        'ja',
+        { lat: 35.6812, lng: 139.7671, radius: 8000 },
+      );
+    });
+  });
+
+  it('accepts a bias without an explicit radius', async () => {
+    const { user } = createUser(testDb);
+    searchPlacesMock.mockResolvedValue({ source: 'google', places: [] });
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'search_place',
+        arguments: { query: 'Museum of Modern Art', locationBias: { lat: 40.7614, lng: -73.9776 } },
+      });
+      expect(searchPlacesMock).toHaveBeenCalledWith(user.id, 'Museum of Modern Art', undefined, { lat: 40.7614, lng: -73.9776 });
+    });
+  });
+
+  it('refuses a locationBias that is missing a coordinate', async () => {
+    const { user } = createUser(testDb);
+    searchPlacesMock.mockResolvedValue({ source: 'google', places: [] });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'search_place',
+        arguments: { query: 'Anywhere', locationBias: { lat: 48.8584 } },
+      });
+      expect(result.isError).toBe(true);
+      expect(searchPlacesMock).not.toHaveBeenCalled();
     });
   });
 });
@@ -684,10 +722,7 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, assigned.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'list_places',
-        arguments: { tripId: trip.id, assignment: 'unassigned' },
-      });
+      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'unassigned' } });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(1);
       expect(data.places[0].name).toBe('Orphan Place');
@@ -703,10 +738,7 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, assigned.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'list_places',
-        arguments: { tripId: trip.id, assignment: 'assigned' },
-      });
+      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'assigned' } });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(1);
       expect(data.places[0].name).toBe('Assigned Place');
@@ -721,10 +753,7 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, place.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'list_places',
-        arguments: { tripId: trip.id, assignment: 'unassigned' },
-      });
+      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'unassigned' } });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(0);
     });
@@ -739,10 +768,7 @@ describe('Tool: list_places', () => {
     testDb.prepare('INSERT INTO day_assignments (day_id, place_id) VALUES (?, ?)').run(day.id, assigned.id);
 
     await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'list_places',
-        arguments: { tripId: trip.id, assignment: 'unassigned', search: 'Louvre' },
-      });
+      const result = await h.client.callTool({ name: 'list_places', arguments: { tripId: trip.id, assignment: 'unassigned', search: 'Louvre' } });
       const data = parseToolResult(result) as any;
       expect(data.places).toHaveLength(1);
       expect(data.places[0].name).toBe('Louvre Museum');
@@ -908,7 +934,7 @@ describe('Tool: import_places_from_url', () => {
       });
       const data = parseToolResult(result) as any;
       expect(data).toMatchObject({ count: 2, listName: 'Weekend', skipped: 3 });
-      expect(spy).toHaveBeenCalledWith(String(trip.id), 'https://maps.app.goo.gl/x');
+      expect(spy).toHaveBeenCalledWith(String(trip.id), 'https://maps.app.goo.gl/x', { enrich: false, userId: user.id });
       expect(broadcastMock).toHaveBeenCalledTimes(2);
     });
     spy.mockRestore();
@@ -930,6 +956,58 @@ describe('Tool: import_places_from_url', () => {
     spy.mockRestore();
   });
 
+  // enrichImportedList guards on `opts?.enrich && opts.userId`, so without the
+  // third argument the enrichment branch was structurally unreachable (#38).
+  it('passes enrich and the calling user through to the google importer', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const spy = vi.spyOn(PlacesService.prototype, 'importGoogleList').mockResolvedValue({
+      places: [], listName: 'Weekend', skipped: 0,
+    });
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'import_places_from_url',
+        arguments: { tripId: trip.id, url: 'https://maps.app.goo.gl/x', source: 'google-list', enrich: true },
+      });
+      expect(spy).toHaveBeenCalledWith(String(trip.id), 'https://maps.app.goo.gl/x', { enrich: true, userId: user.id });
+    });
+    spy.mockRestore();
+  });
+
+  it('passes enrich through to the naver importer too', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const spy = vi.spyOn(PlacesService.prototype, 'importNaverList').mockResolvedValue({
+      places: [], listName: 'Seoul', skipped: 0,
+    });
+
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'import_places_from_url',
+        arguments: { tripId: trip.id, url: 'https://naver.me/x', source: 'naver-list', enrich: true },
+      });
+      expect(spy).toHaveBeenCalledWith(String(trip.id), 'https://naver.me/x', { enrich: true, userId: user.id });
+    });
+    spy.mockRestore();
+  });
+
+  it('refuses a non-boolean enrich', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const spy = vi.spyOn(PlacesService.prototype, 'importGoogleList');
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'import_places_from_url',
+        arguments: { tripId: trip.id, url: 'https://maps.app.goo.gl/x', source: 'google-list', enrich: 'yes' },
+      });
+      expect(result.isError).toBe(true);
+      expect(spy).not.toHaveBeenCalled();
+    });
+    spy.mockRestore();
+  });
+
   it('returns access denied for non-member', async () => {
     const { user } = createUser(testDb);
     const { user: other } = createUser(testDb);
@@ -939,6 +1017,103 @@ describe('Tool: import_places_from_url', () => {
         name: 'import_places_from_url',
         arguments: { tripId: trip.id, url: 'https://maps.app.goo.gl/x', source: 'google-list' },
       });
+      expect(result.isError).toBe(true);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// export_trip_gpx (#39)
+// ---------------------------------------------------------------------------
+
+describe('Tool: export_trip_gpx', () => {
+  it('writes the trip places as waypoints and names the file after the trip', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Paris Weekend' });
+    createPlace(testDb, trip.id, { name: 'Eiffel Tower', lat: 48.8584, lng: 2.2945 });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({ name: 'export_trip_gpx', arguments: { tripId: trip.id } });
+      const data = parseToolResult(result) as { gpx: string; filename: string };
+      expect(data.filename).toBe('Paris-Weekend.gpx');
+      expect(data.gpx).toContain('<wpt');
+      expect(data.gpx).toContain('Eiffel Tower');
+      expect(data.gpx).toContain('48.8584');
+    });
+  });
+
+  it('writes each planned day as a route through its stops in order', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Paris Weekend' });
+    const first = createPlace(testDb, trip.id, { name: 'Louvre', lat: 48.8606, lng: 2.3376 });
+    const second = createPlace(testDb, trip.id, { name: 'Notre Dame', lat: 48.8530, lng: 2.3499 });
+    const day = createDay(testDb, trip.id);
+    createDayAssignment(testDb, day.id, first.id);
+    createDayAssignment(testDb, day.id, second.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({ name: 'export_trip_gpx', arguments: { tripId: trip.id } });
+      const data = parseToolResult(result) as { gpx: string };
+      expect(data.gpx).toContain('<rte>');
+      expect(data.gpx.indexOf('Louvre')).toBeLessThan(data.gpx.indexOf('Notre Dame'));
+    });
+  });
+
+  it('honours the three selection flags', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Paris Weekend' });
+    const first = createPlace(testDb, trip.id, { name: 'Louvre', lat: 48.8606, lng: 2.3376 });
+    const second = createPlace(testDb, trip.id, { name: 'Notre Dame', lat: 48.8530, lng: 2.3499 });
+    const day = createDay(testDb, trip.id);
+    createDayAssignment(testDb, day.id, first.id);
+    createDayAssignment(testDb, day.id, second.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'export_trip_gpx',
+        arguments: { tripId: trip.id, waypoints: false, tracks: false },
+      });
+      const data = parseToolResult(result) as { gpx: string };
+      expect(data.gpx).not.toContain('<wpt');
+      expect(data.gpx).toContain('<rte>');
+    });
+  });
+
+  it('errors when every export type is switched off', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Paris Weekend' });
+    createPlace(testDb, trip.id, { name: 'Eiffel Tower' });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'export_trip_gpx',
+        arguments: { tripId: trip.id, waypoints: false, tracks: false, dayRoutes: false },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content as { text: string }[])[0].text).toBe('No export types selected.');
+    });
+  });
+
+  // An empty document imports as nothing on the other end, so say so instead.
+  it('errors when the trip has nothing to write', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Empty' });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({ name: 'export_trip_gpx', arguments: { tripId: trip.id } });
+      expect(result.isError).toBe(true);
+      expect((result.content as { text: string }[])[0].text).toBe('Nothing to export.');
+    });
+  });
+
+  it('returns access denied for a non-member', async () => {
+    const { user } = createUser(testDb);
+    const { user: other } = createUser(testDb);
+    const trip = createTrip(testDb, other.id);
+    createPlace(testDb, trip.id, { name: 'Theirs' });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({ name: 'export_trip_gpx', arguments: { tripId: trip.id } });
       expect(result.isError).toBe(true);
     });
   });

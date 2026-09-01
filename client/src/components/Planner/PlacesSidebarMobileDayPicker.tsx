@@ -44,7 +44,7 @@ export function MobileDayPickerSheet(S: SidebarState) {
             </div>
           )}
         </div>
-        <div style={{ overflowY: 'auto', padding: '8px 12px' }}>
+        <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '8px 12px' }}>
           {/* View details */}
           <button type="button"
             onClick={() => { onPlaceClick(dayPickerPlace.id); setDayPickerPlace(null); setMobileShowDays(false) }}

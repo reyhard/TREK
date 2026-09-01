@@ -20,7 +20,7 @@ import { ForbiddenResource } from './host/rpc-host';
 import { removePluginData } from './host/plugin-data.service';
 import { isKnownPermission } from './protocol/envelope';
 import { discoverPlugins } from './install/discovery';
-import { parseJsonText, parseManifest } from './install/manifest';
+import { parseJsonText, parseManifest, parseMcpToolCapabilities } from './install/manifest';
 import { scanForNativeBinaries } from './install/native-scan';
 import { devLinkEnabled, DEV_LINK_SOURCE } from './dev-link';
 import { pluginCodeDir, pluginDataDir } from './paths';
@@ -29,7 +29,7 @@ import { hostSatisfies, hostVersion } from './install/host-compat';
 import { keyFingerprint } from './signature-status';
 import { AuditService } from '../audit/audit.service';
 import { AddonsService } from '../addons/addons.service';
-import type { PluginDependency, McpToolCapability } from './install/manifest';
+import type { McpToolCapability, PluginDependency } from './install/manifest';
 import type { VersionMismatch, PluginDepRow } from './dependencies';
 import { parseDependencies, disabledRequiredAddons, resolveDependencyState, enableOrder, findDependentsTransitive, DependencyCycleError } from './dependencies';
 
@@ -946,17 +946,20 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   routesOf(id: string): PluginRouteInfo[] {
     return this.supervisor.routesOf(id);
   }
+  /** MCP tool names an active plugin reported implementing at load. */
+  mcpToolsOf(id: string): string[] {
+    return this.supervisor.mcpToolsOf(id);
+  }
+  /** The grants an active plugin holds, for clamping what its tools may claim. */
+  grantsOf(id: string): ReadonlySet<string> {
+    return this.supervisor.grantsOf(id);
+  }
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
     return this.supervisor.invoke(id, method, params, { actingUserId });
   }
   /** Ids of active plugins implementing a provider hook (e.g. 'placeDetailProvider'). */
   providersOf(hook: string): string[] {
     return this.supervisor.providersOf(hook);
-  }
-
-  /** The grant set an ACTIVE plugin holds (what the admin consented to). */
-  grantsOf(id: string): ReadonlySet<string> {
-    return this.supervisor.grantsOf(id);
   }
   /**
    * Ask ONE plugin's provider hook for data (host→plugin). A tighter default
@@ -1144,6 +1147,30 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
   }
 
   /** A plugin's declared `capabilities.provides`/`capabilities.emits` (from the DB). */
+  /**
+   * A plugin's declared `capabilities.mcpTools`, re-validated.
+   *
+   * capabilityList below cannot carry these: it returns string[]. And the blob
+   * is re-parsed rather than JSON.parse'd straight through, because it was
+   * written by whatever version of parseCapabilities was current at install
+   * time and the caps in it are the security control.
+   *
+   * Public, unlike capabilityList, because PluginMcpToolsService reads it.
+   */
+  mcpToolCapabilities(id: string): McpToolCapability[] {
+    const row = this.db.prepare('SELECT capabilities FROM plugins WHERE id = ?').get(id) as { capabilities: string } | undefined;
+    if (!row) return [];
+    try {
+      const c = JSON.parse(row.capabilities || '{}') as Record<string, unknown>;
+      if (c.mcpTools === undefined) return [];
+      return parseMcpToolCapabilities(c.mcpTools);
+    } catch {
+      // A malformed or now-invalid blob means "advertises nothing", never a throw
+      // on the session-creation path.
+      return [];
+    }
+  }
+
   private capabilityList(id: string, field: 'provides' | 'emits'): string[] {
     const row = this.db.prepare('SELECT capabilities FROM plugins WHERE id = ?').get(id) as { capabilities: string } | undefined;
     if (!row) return [];
@@ -1151,25 +1178,6 @@ export class PluginRuntimeService implements OnApplicationBootstrap, OnModuleDes
       const c = JSON.parse(row.capabilities || '{}') as Record<string, unknown>;
       const v = c[field];
       return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * A plugin's declared `capabilities.mcpTools` (from the DB). Each entry is the
-   * signed manifest's declaration — the auditable half of the two-sided gate
-   * (the running build must also report implementing the tool via the
-   * mcpToolProvider hook, enforced by providersOf).
-   */
-  mcpToolCapabilities(id: string): McpToolCapability[] {
-    const row = this.db.prepare('SELECT capabilities FROM plugins WHERE id = ?').get(id) as { capabilities: string } | undefined;
-    if (!row) return [];
-    try {
-      const c = JSON.parse(row.capabilities || '{}') as Record<string, unknown>;
-      const tools = c.mcpTools;
-      if (!Array.isArray(tools)) return [];
-      return tools.filter((t): t is McpToolCapability => !!t && typeof t === 'object' && typeof (t as McpToolCapability).name === 'string');
     } catch {
       return [];
     }
