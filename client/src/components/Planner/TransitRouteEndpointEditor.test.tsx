@@ -43,7 +43,7 @@ it('FE-PLANNER-TRANSITEDITOR-001: shows the map-only warning and submits only th
   const onSave = vi.fn().mockResolvedValue({});
   render(<TransitRouteEndpointEditor from={from} to={to} onSave={onSave} onCancel={vi.fn()} />);
 
-  expect(screen.getByText(/changes only the origin and destination pins/i)).toBeInTheDocument();
+  expect(screen.getByText(/changes map pinning only/i)).toBeInTheDocument();
   const originName = screen.getByLabelText('Origin — Place or station label');
   const originLat = screen.getByLabelText('Origin — Latitude');
   const originLng = screen.getByLabelText('Origin — Longitude');

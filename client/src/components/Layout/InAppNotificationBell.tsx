@@ -9,54 +9,50 @@ import { useAuthStore } from '../../store/authStore'
 import InAppNotificationItem from '../Notifications/InAppNotificationItem.tsx'
 
 export default function InAppNotificationBell(): React.ReactElement {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const { settings } = useSettingsStore();
-  const darkMode = settings.dark_mode;
-  const dark =
-    darkMode === true ||
-    darkMode === 'dark' ||
-    (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { settings } = useSettingsStore()
+  const darkMode = settings.dark_mode
+  const dark = darkMode === true || darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const { notifications, unreadCount, isLoading, fetchNotifications, fetchUnreadCount, markAllRead, deleteAll } =
-    useInAppNotificationStore();
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated)
+  const { notifications, unreadCount, isLoading, fetchNotifications, fetchUnreadCount, markAllRead, deleteAll } = useInAppNotificationStore()
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchUnreadCount();
+      fetchUnreadCount()
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated])
 
   const handleOpen = () => {
     if (!open) {
-      fetchNotifications(true);
+      fetchNotifications(true)
     }
-    setOpen((v) => !v);
-  };
+    setOpen(v => !v)
+  }
 
   const handleShowAll = () => {
-    setOpen(false);
-    navigate('/notifications');
-  };
+    setOpen(false)
+    navigate('/notifications')
+  }
 
-  const displayCount = unreadCount > 99 ? '99+' : unreadCount;
+  const displayCount = unreadCount > 99 ? '99+' : unreadCount
 
   return (
     <div className="relative flex-shrink-0">
       <button type="button"
         onClick={handleOpen}
         title={t('notifications.title')}
-        className="relative rounded-lg p-2 text-content-muted transition-colors"
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        className="relative p-2 rounded-lg transition-colors text-content-muted"
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="w-4 h-4" />
         {unreadCount > 0 && (
           <span
-            className="absolute -right-0.5 -top-0.5 flex items-center justify-center rounded-full font-bold text-white"
+            className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded-full text-white font-bold"
             style={{
               background: '#ef4444',
               fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
@@ -91,18 +87,7 @@ export default function InAppNotificationBell(): React.ReactElement {
           >
             {/* Header */}
             <div
-              className="overflow-hidden rounded-xl border border-edge bg-surface-card shadow-xl"
-              style={{
-                position: 'fixed',
-                top: 'var(--nav-h)',
-                right: 8,
-                width: 360,
-                maxWidth: 'calc(100vw - 16px)',
-                maxHeight: 'min(480px, calc(100vh - var(--nav-h) - 16px))',
-                zIndex: 9999,
-                display: 'flex',
-                flexDirection: 'column',
-              }}
+              className="flex items-center justify-between px-4 py-3 flex-shrink-0 border-b border-edge-secondary"
             >
               <span className="text-sm font-semibold text-content">
                 {t('notifications.title')}
@@ -136,19 +121,25 @@ export default function InAppNotificationBell(): React.ReactElement {
                   </button>
                 )}
               </div>
+            </div>
 
-              {/* Footer */}
-              <button
-                onClick={handleShowAll}
-                className="w-full flex-shrink-0 border-t border-edge-secondary py-2.5 text-xs font-medium text-content transition-colors"
-                style={{
-                  background: 'transparent',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                {t('notifications.showAll')}
-              </button>
+            {/* Notification list */}
+            <div className="overflow-y-auto flex-1">
+              {isLoading && notifications.length === 0 ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="w-5 h-5 border-2 rounded-full animate-spin border-edge border-t-content" />
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 px-4 text-center gap-2">
+                  <Bell className="w-8 h-8 text-content-faint" />
+                  <p className="text-sm font-medium text-content-muted">{t('notifications.empty')}</p>
+                  <p className="text-xs text-content-faint">{t('notifications.emptyDescription')}</p>
+                </div>
+              ) : (
+                notifications.slice(0, 10).map(n => (
+                  <InAppNotificationItem key={n.id} notification={n} onClose={() => setOpen(false)} />
+                ))
+              )}
             </div>
 
             {/* Footer */}
@@ -168,5 +159,5 @@ export default function InAppNotificationBell(): React.ReactElement {
         document.body
       )}
     </div>
-  );
+  )
 }

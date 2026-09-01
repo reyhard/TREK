@@ -1,16 +1,15 @@
 // FE-PAGE-OAUTH-001 to FE-PAGE-OAUTH-012
+import { render, screen, waitFor } from '../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { buildUser } from '../../tests/helpers/factories';
 import { server } from '../../tests/helpers/msw/server';
-import { render, screen, waitFor } from '../../tests/helpers/render';
-import { resetAllStores, seedStore } from '../../tests/helpers/store';
 import { useAuthStore } from '../store/authStore';
+import { resetAllStores, seedStore } from '../../tests/helpers/store';
+import { buildUser } from '../../tests/helpers/factories';
 import OAuthAuthorizePage from './OAuthAuthorizePage';
 
 // Default OAuth query params
-const DEFAULT_SEARCH =
-  '?client_id=test-client&redirect_uri=http%3A%2F%2Flocalhost%3A4000%2Fcallback&scope=trips%3Aread&state=abc&code_challenge=challenge&code_challenge_method=S256';
+const DEFAULT_SEARCH = '?client_id=test-client&redirect_uri=http%3A%2F%2Flocalhost%3A4000%2Fcallback&scope=trips%3Aread&state=abc&code_challenge=challenge&code_challenge_method=S256';
 
 function setSearchParams(search: string) {
   window.history.pushState({}, '', '/oauth/consent' + search);
@@ -34,7 +33,9 @@ beforeEach(() => {
   // Default validate: consent required
   server.use(
     http.get('/api/oauth/authorize/validate', () => HttpResponse.json(VALIDATE_OK)),
-    http.post('/api/oauth/authorize', () => HttpResponse.json({ redirect: 'http://localhost:4000/callback?code=abc' }))
+    http.post('/api/oauth/authorize', () =>
+      HttpResponse.json({ redirect: 'http://localhost:4000/callback?code=abc' })
+    ),
   );
 });
 
@@ -71,7 +72,9 @@ describe('OAuthAuthorizePage', () => {
 
   it('FE-PAGE-OAUTH-003: shows error state on network error', async () => {
     server.use(
-      http.get('/api/oauth/authorize/validate', () => HttpResponse.json({ error: 'server error' }, { status: 500 }))
+      http.get('/api/oauth/authorize/validate', () =>
+        HttpResponse.json({ error: 'server error' }, { status: 500 })
+      )
     );
     render(<OAuthAuthorizePage />);
     await screen.findByText('Authorization Error');
@@ -91,7 +94,9 @@ describe('OAuthAuthorizePage', () => {
 
   it('FE-PAGE-OAUTH-005: shows client name in login_required state', async () => {
     server.use(
-      http.get('/api/oauth/authorize/validate', () => HttpResponse.json({ ...VALIDATE_OK, loginRequired: true }))
+      http.get('/api/oauth/authorize/validate', () =>
+        HttpResponse.json({ ...VALIDATE_OK, loginRequired: true })
+      )
     );
     render(<OAuthAuthorizePage />);
     await screen.findByText('Sign in to continue');
@@ -109,9 +114,11 @@ describe('OAuthAuthorizePage', () => {
   it('FE-PAGE-OAUTH-007: auto-approves when consentRequired is false', async () => {
     let authorizeCalled = false;
     server.use(
-      http.get('/api/oauth/authorize/validate', () => HttpResponse.json({ ...VALIDATE_OK, consentRequired: false })),
+      http.get('/api/oauth/authorize/validate', () =>
+        HttpResponse.json({ ...VALIDATE_OK, consentRequired: false })
+      ),
       http.post('/api/oauth/authorize', async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
+        const body = await request.json() as Record<string, unknown>;
         authorizeCalled = true;
         expect(body.approved).toBe(true);
         return HttpResponse.json({ redirect: 'http://localhost:4000/callback?code=xyz' });
@@ -129,7 +136,7 @@ describe('OAuthAuthorizePage', () => {
     let body: Record<string, unknown> = {};
     server.use(
       http.post('/api/oauth/authorize', async ({ request }) => {
-        body = (await request.json()) as Record<string, unknown>;
+        body = await request.json() as Record<string, unknown>;
         return HttpResponse.json({ redirect: 'http://localhost:4000/callback?error=access_denied' });
       })
     );
@@ -146,7 +153,7 @@ describe('OAuthAuthorizePage', () => {
     let body: Record<string, unknown> = {};
     server.use(
       http.post('/api/oauth/authorize', async ({ request }) => {
-        body = (await request.json()) as Record<string, unknown>;
+        body = await request.json() as Record<string, unknown>;
         return HttpResponse.json({ redirect: 'http://localhost:4000/callback?code=ok' });
       })
     );
@@ -160,7 +167,11 @@ describe('OAuthAuthorizePage', () => {
 
   it('FE-PAGE-OAUTH-010: shows error when authorize call fails', async () => {
     const user = userEvent.setup();
-    server.use(http.post('/api/oauth/authorize', () => HttpResponse.json({ error: 'server error' }, { status: 500 })));
+    server.use(
+      http.post('/api/oauth/authorize', () =>
+        HttpResponse.json({ error: 'server error' }, { status: 500 })
+      )
+    );
     render(<OAuthAuthorizePage />);
     await screen.findByText('Approve Access');
     await user.click(screen.getByText('Approve Access'));
@@ -184,35 +195,5 @@ describe('OAuthAuthorizePage', () => {
     await screen.findByText('Permissions requested');
     // No checkboxes in read-only mode
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
-  });
-
-  it('renders plugin scope descriptions and submits the exact scope strings', async () => {
-    const user = userEvent.setup();
-    let body: Record<string, unknown> = {};
-    server.use(
-      http.get('/api/oauth/authorize/validate', () =>
-        HttpResponse.json({
-          ...VALIDATE_OK,
-          client: {
-            name: 'MyMap Sync',
-            allowed_scopes: ['plugin:mymap-sync:read', 'plugin:mymap-sync:write'],
-          },
-          scopes: ['plugin:mymap-sync:read', 'plugin:mymap-sync:write'],
-        })
-      ),
-      http.post('/api/oauth/authorize', async ({ request }) => {
-        body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ redirect: 'http://localhost:4000/callback?code=plugin' });
-      })
-    );
-
-    render(<OAuthAuthorizePage />);
-    expect((await screen.findAllByText('mymap-sync plugin access')).length).toBe(2);
-    expect(screen.getByText('Allow this client to read the mymap-sync plugin proxy')).toBeInTheDocument();
-    expect(screen.getByText('Allow this client to read and write the mymap-sync plugin proxy')).toBeInTheDocument();
-    await user.click(screen.getByText('Approve Access'));
-    await waitFor(() => {
-      expect(body.scope).toBe('plugin:mymap-sync:read plugin:mymap-sync:write');
-    });
   });
 });

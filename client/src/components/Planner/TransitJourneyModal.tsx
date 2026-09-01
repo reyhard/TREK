@@ -36,7 +36,7 @@ interface TransitJourneyModalProps {
   reservation: Reservation
   onClose: () => void
   /** Partial field update — endpoints + itinerary stay untouched. */
-  onSave: (fields: { title: string; notes: string | null }) => Promise<unknown>
+  onSave: (fields: { title: string; notes: string | null; status?: string; confirmation_number?: string | null }) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onChangeRoute: () => void
   /** Submit edited origin/destination pins; the parent builds the full endpoints[] and calls the canonical reservation update. */
@@ -58,6 +58,9 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
   const [title, setTitle] = useState(res.title || '')
   const [editingTitle, setEditingTitle] = useState(false)
   const [notes, setNotes] = useState(res.notes || '')
+  // Generic fields for backend-driven reservations — always editable regardless of route
+  const [status, setStatus] = useState(res.status || 'pending')
+  const [confirmationNumber, setConfirmationNumber] = useState(res.confirmation_number || '')
   // Existing notes open rendered; the write tab is for editing.
   const [notesTab, setNotesTab] = useState<'write' | 'preview'>(() => (res.notes ? 'preview' : 'write'))
   const [saving, setSaving] = useState(false)
@@ -113,19 +116,21 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
   useEffect(() => {
     setTitle(res.title || '')
     setNotes(res.notes || '')
+    setStatus(res.status || 'pending')
+    setConfirmationNumber(res.confirmation_number || '')
     setEditingTitle(false)
     setNotesTab(res.notes ? 'preview' : 'write')
   }, [res.id])
 
   useEffect(() => { if (editingTitle) titleInputRef.current?.focus() }, [editingTitle])
 
-  const dirty = title !== (res.title || '') || notes !== (res.notes || '')
+  const dirty = title !== (res.title || '') || notes !== (res.notes || '') || status !== (res.status || 'pending') || confirmationNumber !== (res.confirmation_number || '')
 
   const save = async () => {
     if (!title.trim()) return
     setSaving(true)
     try {
-      await onSave({ title: title.trim(), notes: notes.trim() || null })
+      await onSave({ title: title.trim(), notes: notes.trim() || null, status: status || undefined, confirmation_number: confirmationNumber.trim() || null })
       onClose()
     } finally { setSaving(false) }
   }
@@ -372,6 +377,37 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
             </div>
           </>
         )}
+
+        {/* generic status + booking code — always editable */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <label className="text-content-faint" style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: 4 }}>
+              {t('reservations.status')}
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              disabled={!canEdit}
+              className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
+            >
+              <option value="pending">{t('planner.resPending').replace(/\s*·\s*$/, '')}</option>
+              <option value="confirmed">{t('planner.resConfirmed').replace(/\s*·\s*$/, '')}</option>
+            </select>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <label className="text-content-faint" style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: 4 }}>
+              {t('reservations.confirmationCode')}
+            </label>
+            <input
+              type="text"
+              value={confirmationNumber}
+              onChange={(e) => setConfirmationNumber(e.target.value)}
+              disabled={!canEdit}
+              placeholder={t('reservations.confirmationPlaceholder')}
+              className="w-full rounded-[8px] border border-edge bg-surface-input px-[10px] py-[8px] font-[inherit] text-[13px] text-content outline-none"
+            />
+          </div>
+        </div>
 
         {/* notes — full width, markdown */}
         <div>

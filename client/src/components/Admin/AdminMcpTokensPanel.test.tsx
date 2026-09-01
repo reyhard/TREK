@@ -172,12 +172,6 @@ describe('AdminMcpTokensPanel', () => {
 
   it('FE-ADMIN-MCP-010: load failure shows error toast', async () => {
     server.use(http.get('/api/admin/mcp-tokens', () => HttpResponse.json({ error: 'server error' }, { status: 500 })));
-    render(
-      <>
-        <ToastContainer />
-        <AdminMcpTokensPanel />
-      </>
-    );
     render(<><ToastContainer /><AdminMcpTokensPanel /></>);
     expect(await screen.findByText('Failed to load tokens')).toBeInTheDocument();
   });

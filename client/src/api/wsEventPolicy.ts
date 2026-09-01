@@ -92,7 +92,9 @@ export const IGNORED_WS_EVENTS = [
   'budget:settlement-created',
   'budget:settlement-updated',
   'budget:settlement-deleted',
-  'reservation:positions',
+  // reservation:positions is deliberately NOT ignored: the fork's
+  // remoteEventHandler reducer (F26) live-merges day positions and prunes stale
+  // visibility, so the event has a real client handler.
   // Accommodations live in page-local planner state; the client refetches
   // them off trip:updated date changes, never off these events.
   'accommodation:created',

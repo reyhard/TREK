@@ -148,7 +148,7 @@ export default function CollectionHero({
                 onClick={onShare}
                 aria-label={isOwner ? t('collections.share.button') : t('collections.shared')}
                 title={isOwner ? t('collections.share.button') : t('collections.shared')}
-                className={`col-glass-btn${isOwner && shareMemberCount > 0 ? 'has-count' : ''}`}
+                className={`col-glass-btn${isOwner && shareMemberCount > 0 ? ' has-count' : ''}`}
               >
                 {isOwner ? <Share2 size={15} /> : <Users size={15} />}
                 <span className="txt">{isOwner ? t('collections.share.button') : t('collections.shared')}</span>

@@ -28,7 +28,7 @@ function ListRow({
 }): React.ReactElement {
   return (
     <div className="col-row">
-      <button type="button" onClick={() => onSelect(list.id)} className={`col-row-btn${active ? 'on' : ''}`}>
+      <button type="button" onClick={() => onSelect(list.id)} className={`col-row-btn${active ? ' on' : ''}`}>
         <span className="dot" style={{ background: list.color || '#6366f1' }} />
         <span className="nm">{list.name}</span>
         <span className="ct">{list.place_count ?? 0}</span>
@@ -66,7 +66,7 @@ export default function ListsRail(props: ListsRailProps): React.ReactElement {
         <button
           type="button"
           onClick={() => onSelect(ALL_SAVED)}
-          className={`col-row-btn${activeId === ALL_SAVED ? 'on' : ''}`}
+          className={`col-row-btn${activeId === ALL_SAVED ? ' on' : ''}`}
         >
           <span className="ico">
             <Layers size={16} />
