@@ -13,12 +13,6 @@ import type { JourneyService } from '../../../src/nest/journey/journey.service';
 import type { JourneyBookService } from '../../../src/nest/journey/journey-book.service';
 import type { StorageService } from '../../../src/nest/storage/storage.service';
 import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Response } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const user = { id: 1, username: 'u', role: 'user', email: 'u@example.test' } as User;
 
@@ -53,9 +47,7 @@ function ctl(service: JourneyService, books: Partial<JourneyBookService> = {}): 
 }
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -63,9 +55,7 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
   throw new Error('expected throw');
 }
 async function thrownAsync(fn: () => Promise<unknown>): Promise<{ status: number; body: unknown }> {
-  try {
-    await fn();
-  } catch (err) {
+  try { await fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };

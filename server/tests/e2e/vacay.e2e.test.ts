@@ -5,8 +5,8 @@
  * and notification side channels stay mocked. Focuses on auth, status codes
  * (POSTs stay 200), the Zod-pipe 400 envelope and a 403 body.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { VacayModule } from '../../src/nest/vacay/vacay.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { VacayModule } from '../../src/nest/vacay/vacay.module'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -78,8 +78,8 @@ vi.mock('../../src/websocket', () => ({ broadcastToUser: vi.fn() }));
 
 import { DatabaseModule } from '../../src/nest/database/database.module';
 import { RealtimeModule } from '../../src/nest/realtime/realtime.module';
-import { VacayModule } from '../../src/nest/vacay/vacay.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
+
 import { ZodValidationPipe } from '../../src/nest/common/zod-validation.pipe';
 import { broadcastToUser } from '../../src/websocket';
 

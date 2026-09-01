@@ -1,4 +1,4 @@
-import { LlmParseService } from '../../../../src/nest/llm-parse/llm-parse.service';
+import { LlmParseService } from '../../../../src/nest/llm-parse/llm-parse.service'
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -24,7 +24,7 @@ const { routeExtraction, detectFlightNumbers } = vi.hoisted(() => ({
 }));
 vi.mock('../../../../src/nest/llm-parse/router/extraction-router', () => ({ routeExtraction, detectFlightNumbers }));
 
-import { LlmParseService } from '../../../../src/nest/llm-parse/llm-parse.service';
+
 import type { LlmConfigResolver } from '../../../../src/nest/llm-parse/llm-config.resolver';
 import type { RuntimeEnvService } from '../../../../src/nest/app-config/runtime-env.service';
 

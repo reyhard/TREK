@@ -5,9 +5,6 @@
  * fail-safe + server-side normalization — row count cap, label/value length caps,
  * a URL-scheme allowlist (no click-XSS).
  */
-import { JournalEntryRowsController } from '../../../src/nest/plugins/journal-entry-rows.controller';
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { entryJourney, canAccessJourney, isAddonEnabled, pluginsEnabled } = vi.hoisted(() => ({
@@ -67,14 +64,11 @@ describe('JournalEntryRowsController', () => {
     expect((await controller(() => [row()]).c.get('7', req(undefined))).providers).toEqual([]);
     expect((await controller(() => [row()]).c.get('999', req(5))).providers).toEqual([]); // entry not found
     canAccessJourney.mockReturnValue(null as never);
-    expect((await controller(() => [row()]).c.get('7', req(5))).providers).toEqual([]); // no access
+    expect((await controller(() => [row()]).c.get('7', req(5))).providers).toEqual([]);   // no access
   });
 
   it('keeps valid rows, groups them per plugin, passes the entry + acting user to the hook', async () => {
-    const { c, runtime } = controller(() => [
-      row({ url: 'https://ok.example' }),
-      row({ label: 'Steps', value: '9000', url: 'mailto:x@y.z' }),
-    ]);
+    const { c, runtime } = controller(() => [row({ url: 'https://ok.example' }), row({ label: 'Steps', value: '9000', url: 'mailto:x@y.z' })]);
     const res = await c.get('7', req(5));
     expect(res.providers).toEqual([{
       pluginId: 'p1',
@@ -91,15 +85,15 @@ describe('JournalEntryRowsController', () => {
       row({ label: 'L'.repeat(200), value: 'V'.repeat(500), url: 'javascript:alert(1)' }),
       row({ url: '' }),
       row({ url: 'not a url' }),
-      { label: '', value: 'orphan' }, // no label
-      { value: 42 }, // still no label
-      null, // non-object
+      { label: '', value: 'orphan' },        // no label
+      { value: 42 },                         // still no label
+      null,                                  // non-object
     ]);
     const items = (await c.get('7', req(5))).providers[0].items;
     expect(items).toHaveLength(3);
     expect(items[0].label.length).toBe(60);
     expect(items[0].value!.length).toBe(200);
-    expect(items[0].url).toBeUndefined(); // click-XSS scheme dropped
+    expect(items[0].url).toBeUndefined();    // click-XSS scheme dropped
     expect(items[1].url).toBeUndefined();
     expect(items[2].url).toBeUndefined();
     expect(items[2].value).toBe('12 km');
@@ -107,17 +101,14 @@ describe('JournalEntryRowsController', () => {
 
   it('caps at 12 rows per provider, omits empty providers, skips a failing one, tolerates non-arrays', async () => {
     const many = Array.from({ length: 15 }, (_, i) => row({ label: `r${i}` }));
-    const { c } = controller(
-      (id) => {
-        if (id === 'bad') throw new Error('boom');
-        if (id === 'empty') return [{ value: 'no label' }]; // normalizes to nothing
-        if (id === 'garbage') return 'not an array';
-        return many;
-      },
-      ['good', 'bad', 'empty', 'garbage'],
-    );
+    const { c } = controller((id) => {
+      if (id === 'bad') throw new Error('boom');
+      if (id === 'empty') return [{ value: 'no label' }]; // normalizes to nothing
+      if (id === 'garbage') return 'not an array';
+      return many;
+    }, ['good', 'bad', 'empty', 'garbage']);
     const res = await c.get('7', req(5));
-    expect(res.providers).toHaveLength(1); // only 'good' survives
+    expect(res.providers).toHaveLength(1);   // only 'good' survives
     expect(res.providers[0].items).toHaveLength(12);
   });
 });

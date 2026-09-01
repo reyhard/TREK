@@ -7,13 +7,6 @@ import { MapsController } from '../../../src/nest/maps/maps.controller';
 import type { MapsService } from '../../../src/nest/maps/maps.service';
 import type { StorageService } from '../../../src/nest/storage/storage.service';
 import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Response } from 'express';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const { createReadStream } = vi.hoisted(() => ({ createReadStream: vi.fn() }));
-vi.mock('node:fs', () => ({ createReadStream }));
 
 const user = { id: 3 } as User;
 
@@ -85,8 +78,7 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
     it('400 when category is missing', async () => {
       const pois = vi.fn();
       expect(await thrown(() => makeController({ pois }).pois(undefined, '1', '2', '3', '4'))).toEqual({
-        status: 400,
-        body: { error: 'A category is required' },
+        status: 400, body: { error: 'A category is required' },
       });
       expect(pois).not.toHaveBeenCalled();
     });
@@ -94,8 +86,7 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
     it('400 when the bbox has a non-finite value', async () => {
       const pois = vi.fn();
       expect(await thrown(() => makeController({ pois }).pois('cafe', 'x', '2', '3', '4'))).toEqual({
-        status: 400,
-        body: { error: 'A valid bbox (south, west, north, east) is required' },
+        status: 400, body: { error: 'A valid bbox (south, west, north, east) is required' },
       });
       expect(pois).not.toHaveBeenCalled();
     });
@@ -110,8 +101,7 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
     it('maps a service error, defaulting to 500', async () => {
       const pois = vi.fn().mockRejectedValue(new Error('Overpass down'));
       expect(await thrown(() => makeController({ pois }).pois('cafe', '1', '2', '3', '4'))).toEqual({
-        status: 500,
-        body: { error: 'Overpass down' },
+        status: 500, body: { error: 'Overpass down' },
       });
     });
   });
@@ -158,13 +148,8 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
     it('uses the expanded lookup when expand is set', async () => {
       const detailsExpanded = vi.fn().mockResolvedValue({ place: { id: 'p1' } });
       const details = vi.fn();
-      await makeController({ detailsDisabled: () => false, detailsExpanded, details }).details(
-        user,
-        'p1',
-        'full',
-        'de',
-        '1',
-      );
+      await makeController({ detailsDisabled: () => false, detailsExpanded, details })
+        .details(user, 'p1', 'full', 'de', '1');
       expect(detailsExpanded).toHaveBeenCalledWith(3, 'p1', 'de', true);
       expect(details).not.toHaveBeenCalled();
     });
@@ -193,12 +178,9 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
 
     it('maps a service error', async () => {
       const details = vi.fn().mockRejectedValue(withError(404, 'Not found'));
-      expect(await thrown(() => makeController({ detailsDisabled: () => false, details }).details(user, 'p1'))).toEqual(
-        {
-          status: 404,
-          body: { error: 'Not found' },
-        },
-      );
+      expect(await thrown(() => makeController({ detailsDisabled: () => false, details }).details(user, 'p1'))).toEqual({
+        status: 404, body: { error: 'Not found' },
+      });
     });
   });
 
@@ -233,23 +215,17 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
 
     it('logs and maps a 5xx service error', async () => {
       const photo = vi.fn().mockRejectedValue(withError(502, 'Upstream failed'));
-      expect(
-        await thrown(() => makeController({ photosDisabled: () => false, photo }).placePhoto(user, 'p1', '1', '2')),
-      ).toEqual({
-        status: 502,
-        body: { error: 'Upstream failed' },
+      expect(await thrown(() => makeController({ photosDisabled: () => false, photo }).placePhoto(user, 'p1', '1', '2'))).toEqual({
+        status: 502, body: { error: 'Upstream failed' },
       });
       expect(console.error).toHaveBeenCalledWith('Place photo error:', expect.any(Error));
     });
 
     it('defaults a status-less error to 500 and parses NaN coords', async () => {
       const photo = vi.fn().mockRejectedValue(new Error('Error fetching photo'));
-      expect(await thrown(() => makeController({ photosDisabled: () => false, photo }).placePhoto(user, 'p1'))).toEqual(
-        {
-          status: 500,
-          body: { error: 'Error fetching photo' },
-        },
-      );
+      expect(await thrown(() => makeController({ photosDisabled: () => false, photo }).placePhoto(user, 'p1'))).toEqual({
+        status: 500, body: { error: 'Error fetching photo' },
+      });
       const [, , lat, lng] = photo.mock.calls[0];
       expect(Number.isNaN(lat)).toBe(true);
       expect(Number.isNaN(lng)).toBe(true);
@@ -378,8 +354,7 @@ describe('MapsController (parity with the legacy /api/maps route)', () => {
   describe('GET /reverse', () => {
     it('400 when lat/lng missing', async () => {
       expect(await thrown(() => makeController({}).reverse(undefined, '2'))).toEqual({
-        status: 400,
-        body: { error: 'lat and lng required' },
+        status: 400, body: { error: 'lat and lng required' },
       });
     });
 

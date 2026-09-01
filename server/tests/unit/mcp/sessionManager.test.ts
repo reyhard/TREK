@@ -8,15 +8,11 @@ import {
   revokeUserSessions,
   revokeUserSessionsForClient,
   evictOldestSessionForUser,
-  McpSession,
-} from '../../../src/mcp/sessionManager';
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-  evictOldestSessionForUser,
   invalidateMcpSessions,
   McpSession,
 } from '../../../src/mcp/sessionManager';
 
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 function makeSession(overrides: Partial<McpSession> = {}): McpSession {
   return {
     server: { close: vi.fn() } as any,

@@ -1,4 +1,6 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HttpException } from '@nestjs/common';
+
 import { SettingsController } from '../../../src/nest/settings/settings.controller';
 import type { SettingsService } from '../../../src/nest/settings/settings.service';
 import type { User } from '../../../src/types';
@@ -7,18 +9,11 @@ import type { RuntimeEnvService } from '../../../src/nest/app-config/runtime-env
 const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
 
 function svc(o: Partial<SettingsService> = {}): SettingsService {
-  return {
-    getUserSettings: vi.fn(),
-    upsertSetting: vi.fn(),
-    bulkUpsertSettings: vi.fn(),
-    ...o,
-  } as unknown as SettingsService;
+  return { getUserSettings: vi.fn(), upsertSetting: vi.fn(), bulkUpsertSettings: vi.fn(), ...o } as unknown as SettingsService;
 }
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };

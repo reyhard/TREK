@@ -1,6 +1,3 @@
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-import { TripWarningsController } from '../../../src/nest/plugins/trip-warnings.controller';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { canAccessTrip, pluginsEnabled } = vi.hoisted(() => ({
@@ -27,10 +24,7 @@ function controller(over: Partial<PluginHooks> = {}) {
 }
 
 describe('TripWarningsController', () => {
-  beforeEach(() => {
-    pluginsEnabled.mockReturnValue(true);
-    canAccessTrip.mockReturnValue({ id: 1 } as never);
-  });
+  beforeEach(() => { pluginsEnabled.mockReturnValue(true); canAccessTrip.mockReturnValue({ id: 1 } as never); });
 
   it('returns [] when disabled / no user / no access', async () => {
     pluginsEnabled.mockReturnValue(false);
@@ -80,7 +74,7 @@ describe('TripWarningsController', () => {
       ]) as unknown as PluginHooks['tripWarnings'],
     });
     const res = await c.get('1', req(5));
-    expect(res.warnings).toHaveLength(20); // per-provider count cap
+    expect(res.warnings).toHaveLength(20);       // per-provider count cap
     expect(res.warnings[0].message).toHaveLength(300); // message length cap
   });
 });

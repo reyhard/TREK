@@ -9,8 +9,8 @@
  * behaviour of /test + /status, and at least one error envelope per provider
  * router — all asserted byte-identical to the legacy Express routers.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { MemoriesModule } from '../../src/nest/memories/memories.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { MemoriesModule } from '../../src/nest/memories/memories.module'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -63,13 +63,13 @@ const { unified, immich, synology } = vi.hoisted(() => ({
 const { canAccessUserPhoto } = vi.hoisted(() => ({ canAccessUserPhoto: vi.fn() }));
 
 import { DatabaseModule } from '../../src/nest/database/database.module';
-import { MemoriesModule } from '../../src/nest/memories/memories.module';
+
 import { UnifiedMemoriesService } from '../../src/nest/memories/unified-memories.service';
 import { ImmichService } from '../../src/nest/memories/immich.service';
 import { SynologyService } from '../../src/nest/memories/synology.service';
 import { MemoriesAccessService } from '../../src/nest/memories/memories-access.service';
 import { RealtimeModule } from '../../src/nest/realtime/realtime.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
 
 const BASE = '/api/integrations/memories';
 const UNIFIED = `${BASE}/unified`;

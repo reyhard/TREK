@@ -5,9 +5,9 @@
  * carries an empty app_settings table so the kill-switch reads resolve to
  * "enabled".
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { DatabaseModule } from '../../src/nest/database/database.module';
-import { MapsModule } from '../../src/nest/maps/maps.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { DatabaseModule } from '../../src/nest/database/database.module'
+import { MapsModule } from '../../src/nest/maps/maps.module'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -29,10 +29,10 @@ const { db } = vi.hoisted(() => {
 
 vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: () => {} }));
 
-import { MapsModule } from '../../src/nest/maps/maps.module';
+
 import { MapsService } from '../../src/nest/maps/maps.service';
-import { DatabaseModule } from '../../src/nest/database/database.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
+
 import { ZodValidationPipe } from '../../src/nest/common/zod-validation.pipe';
 
 describe('Maps e2e (real auth guard + temp SQLite)', () => {

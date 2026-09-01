@@ -5,11 +5,8 @@
  * (ZodValidationPipe), the masked-sentinel no-op, status codes and the actual
  * persisted rows.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { SettingsModule } from '../../src/nest/settings/settings.module';
-import { seedUser, sessionCookie } from './harness';
-import { Test } from '@nestjs/testing';
-
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
 import { DatabaseModule } from '../../src/nest/database/database.module';
@@ -98,10 +95,7 @@ describe('Settings e2e (real auth guard + temp SQLite)', () => {
   });
 
   it('PUT no-ops on the masked sentinel', async () => {
-    const res = await request(server)
-      .put('/api/settings')
-      .set('Cookie', sessionCookie(1))
-      .send({ key: 'secret', value: '••••••••' });
+    const res = await request(server).put('/api/settings').set('Cookie', sessionCookie(1)).send({ key: 'secret', value: '••••••••' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, key: 'secret', unchanged: true });
     expect(db.prepare("SELECT COUNT(*) AS n FROM settings WHERE user_id = 1 AND key = 'secret'").get()).toEqual({ n: 0 });

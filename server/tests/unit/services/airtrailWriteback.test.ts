@@ -1,11 +1,3 @@
-import { db } from '../../../src/db/database';
-import {
-  getConnectionSettings,
-  isAirtrailWriteEnabled,
-  saveSettings,
-} from '../../../src/services/airtrail/airtrailService';
-import { createUser } from '../../helpers/factories';
-
 import { describe, it, expect, vi } from 'vitest';
 
 // Avoid any real DNS/network from the SSRF guard during saveSettings.

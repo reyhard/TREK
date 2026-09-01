@@ -1,14 +1,6 @@
-import { AdminGuard } from '../../../src/nest/auth/admin.guard';
-import { BackupController } from '../../../src/nest/backup/backup.controller';
-import { BackupService as RealBackupService } from '../../../src/nest/backup/backup.service';
-import type { BackupService } from '../../../src/nest/backup/backup.service';
-import { writeAudit } from '../../../src/services/auditLog';
-import * as backupSvc from '../../../src/services/backupService';
-import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Request, Response } from 'express';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { HttpException } from '@nestjs/common';
+import type { Request, Response } from 'express';
 
 vi.mock('../../../src/nest/audit/client-ip', () => ({ getClientIp: vi.fn(() => '1.2.3.4') }));
 vi.mock('../../../src/nest/audit/audit-log.logger', () => ({ LOG_LEVEL: 'error', logInfo: vi.fn(), logDebug: vi.fn(), logError: vi.fn(), logWarn: vi.fn() }));
@@ -73,9 +65,7 @@ function svc(o: Partial<BackupService> = {}): BackupService {
 }
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -83,9 +73,7 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
   throw new Error('expected throw');
 }
 async function thrownAsync(fn: () => Promise<unknown>): Promise<{ status: number; body: unknown }> {
-  try {
-    await fn();
-  } catch (err) {
+  try { await fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -94,19 +82,14 @@ async function thrownAsync(fn: () => Promise<unknown>): Promise<{ status: number
 }
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => {
-  delete process.env.NODE_ENV;
-});
+afterEach(() => { delete process.env.NODE_ENV; });
 
 describe('AdminGuard (used by BackupController)', () => {
   function ctx(role?: string) {
     return { switchToHttp: () => ({ getRequest: () => ({ user: role ? { role } : undefined }) }) } as never;
   }
   it('403 for a non-admin, passes for an admin', () => {
-    expect(thrown(() => new AdminGuard().canActivate(ctx('user')))).toEqual({
-      status: 403,
-      body: { error: 'Admin access required' },
-    });
+    expect(thrown(() => new AdminGuard().canActivate(ctx('user')))).toEqual({ status: 403, body: { error: 'Admin access required' } });
     expect(new AdminGuard().canActivate(ctx('admin'))).toBe(true);
   });
 });
@@ -166,9 +149,7 @@ describe('BackupController', () => {
     const file = { path: '/tmp/does-not-exist-xyz.zip', originalname: 'up.zip' } as Express.Multer.File;
     const res = await bc(svc({ restoreFromZip: vi.fn().mockResolvedValue({ success: true }) } as Partial<BackupService>)).uploadRestore(user, file, req);
     expect(res).toEqual({ success: true });
-    expect(writeAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'backup.upload_restore', resource: 'up.zip' }),
-    );
+    expect(writeAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'backup.upload_restore', resource: 'up.zip' }));
   });
 
   it('POST /upload-restore maps a failed restore status', async () => {

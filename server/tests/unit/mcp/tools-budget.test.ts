@@ -40,7 +40,7 @@ import { runMigrations } from '../../../src/db/migrations';
 import { resetTestDb } from '../../helpers/test-db';
 import { createUser, createTrip, createBudgetItem, createReservation, createPlace, addTripMember } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
-import { invalidatePermissionsCache, savePermissions } from '../../../src/services/permissions';
+import { invalidatePermissionsCache } from '../../../src/nest/permissions/permissions-cache';
 import { PermissionsService } from '../../../src/nest/permissions/permissions.service';
 import { DatabaseService } from '../../../src/nest/database/database.service';
 

@@ -6,12 +6,12 @@
  * index 175 is the "half vacation days" migration that adds
  * `vacay_entries.fraction`. A legacy fork DB therefore reports schema version
  * 176 but has NO `vacay_entries.fraction` column. Unmodified v4.0.0 starts its
- * loop at i=176, so it silently skips index 175 and ends at schema 198 with
+ * loop at i=176, so it silently skips index 175 and ends at schema 200 with
  * `fraction` missing — every vacay SUM(fraction) query then crashes at runtime.
  *
  * The bridge recognises the exact legacy-fork signature (version 176 +
  * user_password_version present + fraction absent) and rewinds schema_version
- * to 175 so the normal upstream 176–198 sequence runs.
+ * to 175 so the normal upstream 176–200 sequence runs.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
@@ -114,7 +114,7 @@ describe('runMigrations targetVersion support (needed to build faithful intermed
 });
 
 describe('legacy fork schema-176 bridge — RED/GREEN 1 (exact signature)', () => {
-  it('BRIDGE-001: legacy fork 176 migrates to 198 WITH vacay_entries.fraction applied', () => {
+  it('BRIDGE-001: legacy fork 176 migrates to 200 WITH vacay_entries.fraction applied', () => {
     buildLegacyFork176();
     // Sanity: the fixture really is the fork signature.
     expect(schemaVersion()).toBe(176);
@@ -123,7 +123,7 @@ describe('legacy fork schema-176 bridge — RED/GREEN 1 (exact signature)', () =
 
     runMigrations(db);
 
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
     expect(hasColumn('vacay_shares', 'id')).toBe(true);
     // The fork column is left in place (upstream never defined it; dropping it
@@ -142,7 +142,7 @@ describe('legacy fork schema-176 bridge — RED/GREEN 2 (false-positive protecti
 
     runMigrations(db);
 
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
     expect(hasColumn('oauth_tokens', 'user_password_version')).toBe(false);
   });
@@ -158,7 +158,7 @@ describe('legacy fork schema-176 bridge — RED/GREEN 2 (false-positive protecti
 
     runMigrations(db);
 
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
     expect(hasColumn('oauth_tokens', 'user_password_version')).toBe(true);
   });
@@ -176,7 +176,7 @@ describe('legacy fork schema-176 bridge — RED/GREEN 2 (false-positive protecti
 
     runMigrations(db);
 
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('oauth_tokens', 'user_password_version')).toBe(false);
     // No rewind happened: migration index 175 (fraction) was never replayed.
     expect(hasColumn('vacay_entries', 'fraction')).toBe(false);
@@ -185,10 +185,10 @@ describe('legacy fork schema-176 bridge — RED/GREEN 2 (false-positive protecti
   it('BRIDGE-005: rerunning migration after the bridge is idempotent', () => {
     buildLegacyFork176();
     runMigrations(db);
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
 
     runMigrations(db);
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
     expect(hasColumn('vacay_shares', 'id')).toBe(true);
     expect(hasColumn('oauth_tokens', 'user_password_version')).toBe(true);
@@ -196,7 +196,7 @@ describe('legacy fork schema-176 bridge — RED/GREEN 2 (false-positive protecti
 });
 
 describe('legacy fork schema-176 bridge — RED/GREEN 3 (complete fixture matrix)', () => {
-  it('MATRIX-001: upstream 175 migrates to 198 normally (no bridge)', () => {
+  it('MATRIX-001: upstream 175 migrates to 200 normally (no bridge)', () => {
     runMigrations(db, 175);
     expect(schemaVersion()).toBe(175);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(false);
@@ -204,12 +204,12 @@ describe('legacy fork schema-176 bridge — RED/GREEN 3 (complete fixture matrix
 
     runMigrations(db);
 
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
     expect(hasColumn('vacay_shares', 'id')).toBe(true);
   });
 
-  it('MATRIX-002: legacy fork 176 migrates to 198 with data preserved (FK + row counts)', () => {
+  it('MATRIX-002: legacy fork 176 migrates to 200 with data preserved (FK + row counts)', () => {
     // Representative production data BEFORE the bridge.
     const { user } = createUser(db);
     const trip = createTrip(db, user.id);
@@ -249,19 +249,19 @@ describe('legacy fork schema-176 bridge — RED/GREEN 3 (complete fixture matrix
     expect(db.prepare('SELECT id FROM trips WHERE id = ?').get(trip.id)).toEqual({ id: trip.id });
     // Foreign keys intact.
     expect(db.pragma('foreign_key_check')).toEqual([]);
-    // Schema advanced to 198 and the bridge effect present.
-    expect(schemaVersion()).toBe(198);
+    // Schema advanced to 200 and the bridge effect present.
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
   });
 
-  it('MATRIX-003: upstream 195 migrates to 198 normally (no bridge)', () => {
+  it('MATRIX-003: upstream 195 migrates to 200 normally (no bridge)', () => {
     runMigrations(db, 195);
     expect(schemaVersion()).toBe(195);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
 
     runMigrations(db);
 
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
     expect(hasColumn('oauth_tokens', 'user_password_version')).toBe(false);
   });
@@ -273,12 +273,12 @@ describe('legacy fork schema-176 bridge — RED/GREEN 3 (complete fixture matrix
 
     // First startup: bridge + full chain.
     runMigrations(db);
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(hasColumn('vacay_entries', 'fraction')).toBe(true);
 
-    // Second startup on the final schema: nothing to run, version stays 198.
+    // Second startup on the final schema: nothing to run, version stays 200.
     runMigrations(db);
-    expect(schemaVersion()).toBe(198);
+    expect(schemaVersion()).toBe(200);
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 });
@@ -287,7 +287,7 @@ describe('legacy fork schema-176 bridge — review finding 2 (real oauth_tokens 
   it('OAUTH-001: a real oauth_tokens row with user_password_version survives the bridge + migration with its value intact', () => {
     // A genuine fork DB had OAuth tokens issued BEFORE the fork's migration 176,
     // whose user_password_version was backfilled from users.password_version.
-    // That row and its bound version must survive the bridge + upstream 176–198.
+    // That row and its bound version must survive the bridge + upstream 176–200.
     buildLegacyFork176();
 
     const tokenBefore = db
@@ -409,7 +409,7 @@ describe('legacy fork schema-176 bridge — review finding 1 (file-backed produc
     runMigrations(fileDb);
 
     const fileVersion = (fileDb.prepare('SELECT version FROM schema_version').get() as { version: number }).version;
-    expect(fileVersion).toBe(198);
+    expect(fileVersion).toBe(200);
     for (const t of tableCounts) {
       expect(countOf(t), `row count preserved for ${t}`).toBe(before[t]);
     }

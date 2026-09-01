@@ -7,10 +7,8 @@
  * 403, the login redirect, and that /exchange sets the httpOnly trek_session
  * cookie from a valid auth code.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { OidcModule } from '../../src/nest/oidc/oidc.module';
-import { Test } from '@nestjs/testing';
-
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
 import type { MockInstance } from 'vitest';
@@ -79,9 +77,7 @@ describe('OIDC e2e (real cookie service)', () => {
     consumeAuthCode = vi.spyOn(oidc, 'consumeAuthCode').mockReturnValue({ token: 'jwt.value' });
   });
 
-  beforeEach(() => {
-    toggles.oidc_login = true;
-  });
+  beforeEach(() => { toggles.oidc_login = true; });
 
   afterAll(async () => {
     await app.close();

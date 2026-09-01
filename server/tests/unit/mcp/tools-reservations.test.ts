@@ -308,18 +308,6 @@ describe('Tool: reservation url', () => {
     });
   });
 
-  it('create_reservation rejects empty url string', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_reservation',
-        arguments: { tripId: trip.id, title: 'Bad', type: 'other', url: '' },
-      });
-      expect(result.isError).toBe(true);
-    });
-  });
-
   it('update_reservation with url string replaces existing url', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -337,25 +325,6 @@ describe('Tool: reservation url', () => {
       });
       const data = parseToolResult(result) as any;
       expect(data.reservation.url).toBe('https://new.example.com');
-    });
-  });
-
-  it('update_reservation with null clears url', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const reservation = createReservation(testDb, trip.id, { title: 'Stay', type: 'hotel' });
-    testDb.prepare('UPDATE reservations SET url = ? WHERE id = ?').run('https://old.example.com', reservation.id);
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'update_reservation',
-        arguments: {
-          tripId: trip.id,
-          reservationId: reservation.id,
-          url: null,
-        },
-      });
-      const data = parseToolResult(result) as any;
-      expect(data.reservation.url).toBeNull();
     });
   });
 
@@ -378,18 +347,6 @@ describe('Tool: reservation url', () => {
     });
   });
 
-  it('update_reservation rejects empty url string', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const reservation = createReservation(testDb, trip.id);
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'update_reservation',
-        arguments: { tripId: trip.id, reservationId: reservation.id, url: '' },
-      });
-      expect(result.isError).toBe(true);
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------

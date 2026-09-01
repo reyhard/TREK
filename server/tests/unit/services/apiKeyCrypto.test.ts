@@ -1,5 +1,3 @@
-import { encrypt_api_key, decrypt_api_key, maybe_encrypt_api_key } from '../../../src/services/apiKeyCrypto';
-
 import { describe, it, expect, vi } from 'vitest';
 
 // Inline factory to avoid vi.mock hoisting issue (no imported vars allowed)

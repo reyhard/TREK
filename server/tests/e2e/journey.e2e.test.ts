@@ -5,11 +5,8 @@
  * ordering (404 wins over 401), auth, the service-owned 403/404 mapping, status
  * codes and the unguarded public route.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { JourneyModule } from '../../src/nest/journey/journey.module';
-import { seedUser, sessionCookie } from './harness';
-import { Test } from '@nestjs/testing';
-
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
 import { DatabaseModule } from '../../src/nest/database/database.module';

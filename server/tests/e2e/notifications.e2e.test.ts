@@ -6,8 +6,8 @@
  * mocked. Focuses on auth, the inline admin gate on /test-smtp, routing (the
  * /in-app/all ordering trap) and status/body shapes.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { NotificationsModule } from '../../src/nest/notifications/notifications.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { NotificationsModule } from '../../src/nest/notifications/notifications.module'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -67,12 +67,12 @@ const { prefs, mailer, webhook, ntfy } = vi.hoisted(() => ({
 
 import { DatabaseModule } from '../../src/nest/database/database.module';
 import { RealtimeModule } from '../../src/nest/realtime/realtime.module';
-import { NotificationsModule } from '../../src/nest/notifications/notifications.module';
+
 import { MailerService } from '../../src/nest/notifications/mailer/mailer.service';
 import { NotificationPreferencesService } from '../../src/nest/notifications/notification-preferences.service';
 import { NtfyService } from '../../src/nest/notifications/transports/ntfy.service';
 import { WebhookService } from '../../src/nest/notifications/transports/webhook.service';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
 
 function seedNotification(recipientId: number, overrides: { is_read?: number } = {}): number {
   const r = db.prepare(

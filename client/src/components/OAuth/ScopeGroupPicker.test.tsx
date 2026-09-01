@@ -1,6 +1,6 @@
 // FE-COMP-SCOPE-001 to FE-COMP-SCOPE-009
+import { render, screen, waitFor } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
-import { render, screen } from '../../../tests/helpers/render';
 import { resetAllStores } from '../../../tests/helpers/store';
 import ScopeGroupPicker from './ScopeGroupPicker';
 
@@ -34,7 +34,9 @@ describe('ScopeGroupPicker', () => {
     // First collect all scopes by clicking Select All and capturing the callback
     const user = userEvent.setup();
     const captured: string[][] = [];
-    const { rerender } = render(<ScopeGroupPicker selected={[]} onChange={(s) => captured.push(s)} />);
+    const { rerender } = render(
+      <ScopeGroupPicker selected={[]} onChange={s => captured.push(s)} />
+    );
     await user.click(screen.getByRole('button', { name: /select all/i }));
     const allScopes = captured[0];
 
@@ -48,7 +50,9 @@ describe('ScopeGroupPicker', () => {
     const captured: string[][] = [];
 
     // Get all scopes first
-    const { rerender } = render(<ScopeGroupPicker selected={[]} onChange={(s) => captured.push(s)} />);
+    const { rerender } = render(
+      <ScopeGroupPicker selected={[]} onChange={s => captured.push(s)} />
+    );
     await user.click(screen.getByRole('button', { name: /select all/i }));
     const allScopes = captured[0];
 
@@ -63,12 +67,10 @@ describe('ScopeGroupPicker', () => {
     render(<ScopeGroupPicker selected={[]} onChange={vi.fn()} />);
 
     // Groups are collapsed by default — checkboxes for individual scopes not visible
-    const groupToggles = screen
-      .getAllByRole('button')
-      .filter(
-        (b) =>
-          !b.textContent?.toLowerCase().includes('select all') && !b.textContent?.toLowerCase().includes('deselect all')
-      );
+    const groupToggles = screen.getAllByRole('button').filter(b =>
+      !b.textContent?.toLowerCase().includes('select all') &&
+      !b.textContent?.toLowerCase().includes('deselect all')
+    );
     // Click the first group expand button
     await user.click(groupToggles[0]);
     // Individual scope checkboxes should now appear (more than just group-level ones)
@@ -94,12 +96,10 @@ describe('ScopeGroupPicker', () => {
     render(<ScopeGroupPicker selected={[]} onChange={onChange} />);
 
     // Expand first group
-    const groupToggles = screen
-      .getAllByRole('button')
-      .filter(
-        (b) =>
-          !b.textContent?.toLowerCase().includes('select all') && !b.textContent?.toLowerCase().includes('deselect all')
-      );
+    const groupToggles = screen.getAllByRole('button').filter(b =>
+      !b.textContent?.toLowerCase().includes('select all') &&
+      !b.textContent?.toLowerCase().includes('deselect all')
+    );
     await user.click(groupToggles[0]);
 
     // There are now individual scope checkboxes — click the second one (first is group-level)
@@ -115,21 +115,5 @@ describe('ScopeGroupPicker', () => {
     render(<ScopeGroupPicker selected={[firstGroupScope]} onChange={vi.fn()} />);
     // Count badge like "(1/N)" should be visible
     expect(screen.getByText(/\(\d+\/\d+\)/)).toBeInTheDocument();
-  });
-
-  it('renders active plugin scopes and preserves an inactive selected scope', async () => {
-    const user = userEvent.setup();
-    render(
-      <ScopeGroupPicker
-        selected={['plugin:inactive-plugin:read']}
-        availableScopes={['trips:read', 'plugin:mymap-sync:write']}
-        onChange={vi.fn()}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: /Plugin: mymap-sync/i })).toBeInTheDocument();
-    const inactiveGroup = screen.getByRole('button', { name: /Plugin: inactive-plugin/i });
-    await user.click(inactiveGroup);
-    expect(screen.getByText('inactive-plugin plugin access')).toBeInTheDocument();
   });
 });

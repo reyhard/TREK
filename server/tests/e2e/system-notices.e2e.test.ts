@@ -4,8 +4,8 @@
  * service is mocked so the test doesn't depend on the static registry or the
  * dismissal tables; it focuses on routing, auth, status codes and bodies.
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { SystemNoticesModule } from '../../src/nest/system-notices/system-notices.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { SystemNoticesModule } from '../../src/nest/system-notices/system-notices.module'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -32,9 +32,9 @@ vi.mock('../../src/systemNotices/service', () => ({
   dismissNotice: mockDismiss,
 }));
 
-import { SystemNoticesModule } from '../../src/nest/system-notices/system-notices.module';
+
 import { DatabaseModule } from '../../src/nest/database/database.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
 
 const notice = {
   id: 'welcome',

@@ -7,14 +7,7 @@
  *   - disable() tears the child down.
  * The child runs its own process — its crash/throw can never reach this test.
  */
-import { PluginDataDb } from '../../../src/nest/plugins/host/plugin-data.service';
-import { PluginRpcHost, type HostDeps } from '../../../src/nest/plugins/host/rpc-host';
-import {
-  PluginSupervisor,
-  type SupervisorHooks,
-  type SupervisorTuning,
-} from '../../../src/nest/plugins/supervisor/plugin-supervisor';
-
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -45,10 +38,7 @@ function writePlugin(id: string, source: string): void {
   fs.writeFileSync(path.join(dir, 'index.js'), source);
 }
 
-function makeSupervisor(
-  events: Array<{ topic: string; data: unknown }>,
-  tuning: SupervisorTuning = {},
-): PluginSupervisor {
+function makeSupervisor(events: Array<{ topic: string; data: unknown }>, tuning: SupervisorTuning = {}): PluginSupervisor {
   const createRpcHost = (id: string, granted: ReadonlySet<string>): PluginRpcHost => {
     const deps: HostDeps = {
       data: new PluginDataDb(id),
@@ -141,12 +131,7 @@ describe('PluginSupervisor — isolated runtime', () => {
     await sup.activate('provider', new Set(['hook:place-detail-provider', 'events:subscribe']), {});
 
     // host->plugin hook: the child runs getDetails(7, ctx) and returns its result
-    const hookRes = await sup.invoke(
-      'provider',
-      'invoke.hook',
-      { hook: 'placeDetailProvider', fn: 'getDetails', args: [7] },
-      { actingUserId: 5 },
-    );
+    const hookRes = await sup.invoke('provider', 'invoke.hook', { hook: 'placeDetailProvider', fn: 'getDetails', args: [7] }, { actingUserId: 5 });
     expect(hookRes).toEqual([{ label: 'placeId', value: '7' }]);
 
     // host->plugin event: ONLY the matching subscription runs (the 'other:thing' one throws if hit)

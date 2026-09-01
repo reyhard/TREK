@@ -50,9 +50,9 @@ import { buildApp } from '../../src/bootstrap';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import { createUser } from '../helpers/factories';
+import { createMcpToken, createUser } from '../helpers/factories'
 import { generateToken } from '../helpers/auth';
-import { createMcpToken } from '../helpers/factories';
+
 import { closeMcpSessions } from '../../src/mcp/index';
 import { sessions } from '../../src/mcp/sessionManager';
 import { setPluginMcpToolSource } from '../../src/plugin-mcp-tools';

@@ -18,12 +18,15 @@ inspection of `server/src/db/migrations.ts` at each ref:
 | `v3.4.1` (`a0994658`) | 175 | 175 |
 | `fork-pre-4.0-2026-08-29` (`814ed86a`) | 176 | 176 |
 | `v4.0.0` (`a00b84b2`) | **198** | **198** |
+| `v4.1.0` (`c87e6d2f`) | **200** | **200** |
 | `upstream/main` (`33a33e7b`) | **200** | **200** |
 
 > Correction vs the original draft: v4.0.0 schema is **198**, not 195. Upstream owns the
-> migration sequence **176–198** (not 176–195). The runner sets `schema_version` to
-> `migrations.length` after the loop (`console.log('[DB] Migrations complete — schema version
-> ' + migrations.length)`), so the schema version equals the array length.
+> migration sequence **176–198** (not 176–195). **4.1.0 upgrade (2026-09-01): the fork's
+> `trek-4.1.0-upgrade` branch now tracks the v4.1.0 array of **200** migrations; the
+> terminal schema after the bridge is **200**, not 198.** The runner sets `schema_version`
+> to `migrations.length` after the loop (`console.log('[DB] Migrations complete — schema
+> version ' + migrations.length)`), so the schema version equals the array length.
 
 ## The exact distinguishing upstream migration-176 signature (spec §5.2)
 
@@ -47,7 +50,7 @@ The spec §5.2 detection therefore proves, on a database reporting schema versio
 3. **`vacay_entries.fraction` does NOT exist** — the distinguishing effect/signature of upstream
    migration 176 is absent (`PRAGMA table_info('vacay_entries')` has no `fraction` column).
 
-Only when all three hold is the state translated so the normal upstream 176–198 sequence runs.
+Only when all three hold is the state translated so the normal upstream 176–200 sequence runs.
 This predicate is fail-closed: an unrelated schema-176 database without `user_password_version`
 and/or with `vacay_entries.fraction` present is never treated as a fork DB
 (`PRAGMA foreign_key_check` also guards the translation).
@@ -162,6 +165,20 @@ Full server suite after the bridge + review-finding tests: **`460 passed | 1 ski
 close; +12 bridge matrix + 3 review-finding tests). `server` typecheck (`tsc --noEmit`)
 clean. Migration-hygiene destructive-scan still green (the bridge adds only an
 `UPDATE schema_version`, no DDL).
+
+### 4.1.0 upgrade — bridge retest at schema 200 (2026-09-01)
+
+The `trek-4.1.0-upgrade` branch adopted the upstream **v4.1.0** migration array
+(**200** migrations, schema 0→200; v4.0.0 had 198). The bridge logic is unchanged:
+the legacy-fork 176 detection still rewinds to 175 and the normal upstream
+**175→200** sequence then runs. The 15-test matrix
+(`server/tests/unit/db/legacy-fork-176-bridge.test.ts`) was re-run against the
+v4.1.0 array with its terminal-schema expectations updated from 198 → 200:
+**15 passed / 15**, `[DB] Migrations complete — schema version 200`, including
+CLONE-001 (file-backed production clone → 200, every representative row count
+preserved, `foreign_key_check = []`). Migration-176 (`vacay_entries.fraction`) and
+177 (`vacay_shares`) signatures and the three-part fail-closed predicate are
+unchanged by the v4.1.0 array growth.
 
 ### Production-clone verification (Task 02 gate — file-backed, NOT deferred)
 

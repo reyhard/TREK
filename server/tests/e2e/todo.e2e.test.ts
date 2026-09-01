@@ -10,8 +10,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, type MockIns
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
-import request from 'supertest';
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { Test } from '@nestjs/testing';
+import { seedUser, sessionCookie } from './harness';
 
 const { db } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

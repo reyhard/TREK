@@ -3,8 +3,8 @@
  * HTTP route works through the host→child invoke path, using its own isolated
  * db. Proves the full activate → route → deactivate loop.
  */
-import { DependencyCycleError } from '../../../src/nest/plugins/dependencies';
-import { PluginRuntimeService, PluginDependencyError } from '../../../src/nest/plugins/plugin-runtime.service';
+import { DependencyCycleError } from '../../../src/nest/plugins/dependencies'
+import { PluginDependencyError, PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service'
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -50,9 +50,9 @@ import { db as dbConn } from '../../../src/db/database';
 import { DatabaseService } from '../../../src/nest/database/database.service';
 vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
-import { PluginRuntimeService, PluginDependencyError } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import { createPluginRuntime } from '../../helpers/plugin-host';
-import { DependencyCycleError } from '../../../src/nest/plugins/dependencies';
+
 
 let codeRoot: string;
 let dataRoot: string;

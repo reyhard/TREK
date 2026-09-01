@@ -343,8 +343,6 @@ const admin: TranslationStrings = {
     'Olyan eszközök közzététele, amelyeket egy MI-asszisztens futtathat a nevedben (a bővítménynek itt adott jogosultságokkal működik, nem a sajátjával)',
   'admin.plugins.perm.geolocation:read':
     'Az élő tartózkodási helyed lekérdezése, amíg valamelyik nézete nyitva van (a TREK az oldal helymeghatározási engedélyével olvassa ki, nem a bővítmény saját engedélyével)',
-  'admin.plugins.perm.mcp:tools':
-    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Szöveges szakaszok hozzáfűzése az utazás PDF-exportjához',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Országok kiemelése az Atlas világtérképén (pl. kívánságlisták vagy utazási figyelmeztetések)',

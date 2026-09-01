@@ -1,5 +1,3 @@
-import { encryptMfaSecret, decryptMfaSecret } from '../../../src/services/mfaCrypto';
-
 import { describe, it, expect, vi } from 'vitest';
 
 // Inline factory to avoid vi.mock hoisting issue (no imported vars allowed)

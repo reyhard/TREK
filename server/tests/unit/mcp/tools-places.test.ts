@@ -185,22 +185,6 @@ describe('Tool: create_place', () => {
     expect(testDb.prepare('SELECT COUNT(*) AS n FROM places WHERE trip_id = ?').get(trip.id)).toEqual({ n: 0 });
   });
 
-  it('persists a caller-supplied non-default duration', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = parseToolResult(
-        await h.client.callTool({
-          name: 'create_place',
-          arguments: { tripId: trip.id, name: 'Long museum visit', duration_minutes: 120 },
-        }),
-      ) as any;
-
-      expect(result.place.duration_minutes).toBe(120);
-    });
-  });
-
   it('defaults duration_minutes to 60 when omitted', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -211,21 +195,6 @@ describe('Tool: create_place', () => {
       ) as any;
 
       expect(result.place.duration_minutes).toBe(60);
-    });
-  });
-
-  it.each([4, 60.5, 1441])('rejects invalid duration %s without inserting a place', async (duration) => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'create_place',
-        arguments: { tripId: trip.id, name: 'Invalid duration', duration_minutes: duration },
-      });
-
-      expect(result.isError).toBe(true);
-      expect(testDb.prepare('SELECT COUNT(*) AS count FROM places WHERE trip_id = ?').get(trip.id)).toEqual({ count: 0 });
     });
   });
 

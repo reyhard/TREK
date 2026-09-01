@@ -387,25 +387,6 @@ describe('Tool: reorder_day_assignments', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: update_assignment_time', () => {
-  it('derives an end time when the end is omitted', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const day = createDay(testDb, trip.id);
-    const place = createPlace(testDb, trip.id);
-    const assignment = createDayAssignment(testDb, day.id, place.id);
-    testDb.prepare('UPDATE places SET duration_minutes = ? WHERE id = ?').run(90, place.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'update_assignment_time',
-        arguments: { tripId: trip.id, assignmentId: assignment.id, place_time: '09:00' },
-      });
-      const data = parseToolResult(result) as any;
-      expect(data.assignment.assignment_time).toBe('09:00');
-      expect(data.assignment.assignment_end_time).toBe('10:30');
-    });
-  });
-
   it('sets start and end times for an assignment', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);

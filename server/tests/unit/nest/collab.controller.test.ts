@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { HttpException } from '@nestjs/common';
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { HttpException } from '@nestjs/common'
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -10,9 +10,9 @@ import { JwtAuthGuard } from '../../../src/nest/auth/jwt-auth.guard';
 import type { CollabService } from '../../../src/nest/collab/collab.service';
 import type { StorageService } from '../../../src/nest/storage/storage.service';
 import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+
 
 const user = { id: 1, username: 'u', role: 'user', email: 'u@example.test' } as User;
 

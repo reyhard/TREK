@@ -332,8 +332,6 @@ const admin: TranslationStrings = {
     'Zveřejňovat nástroje, které může AI asistent spustit vaším jménem (jedná s oprávněními, která zde pluginu udělíte, ne se svými)',
   'admin.plugins.perm.geolocation:read':
     'Zjišťovat vaši aktuální polohu, dokud je otevřené některé z jeho zobrazení (TREK ji čte pod oprávněním k poloze pro tento web, ne pod vlastním oprávněním doplňku)',
-  'admin.plugins.perm.mcp:tools':
-    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Připojovat textové sekce k PDF exportu cesty',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Zvýrazňovat země na mapě světa v Atlasu (např. seznamy přání nebo cestovní upozornění)',

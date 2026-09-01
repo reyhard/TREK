@@ -5,11 +5,8 @@
  * run against the temp db (the collab/bag-tracking flags are real AddonsService
  * reads since the admin-1 extraction). Asserts the byte-identical body the legacy inline handler produced.
  */
-import { AddonsModule } from '../../src/nest/addons/addons.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { seedUser, sessionCookie } from './harness';
-import { Test } from '@nestjs/testing';
-
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
 import { DatabaseModule } from '../../src/nest/database/database.module';
@@ -23,12 +20,8 @@ const { db } = vi.hoisted(() => {
   tmp.exec('PRAGMA journal_mode = WAL');
   tmp.exec(`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE, role TEXT NOT NULL DEFAULT 'user', password_version INTEGER NOT NULL DEFAULT 0);`);
-  tmp.exec(
-    `CREATE TABLE addons (id TEXT PRIMARY KEY, name TEXT, type TEXT, icon TEXT, enabled INTEGER, sort_order INTEGER);`,
-  );
-  tmp.exec(
-    `CREATE TABLE photo_providers (id TEXT PRIMARY KEY, name TEXT, icon TEXT, enabled INTEGER, sort_order INTEGER);`,
-  );
+  tmp.exec(`CREATE TABLE addons (id TEXT PRIMARY KEY, name TEXT, type TEXT, icon TEXT, enabled INTEGER, sort_order INTEGER);`);
+  tmp.exec(`CREATE TABLE photo_providers (id TEXT PRIMARY KEY, name TEXT, icon TEXT, enabled INTEGER, sort_order INTEGER);`);
   tmp.exec(`CREATE TABLE photo_provider_fields (id INTEGER PRIMARY KEY AUTOINCREMENT, provider_id TEXT, field_key TEXT,
     label TEXT, input_type TEXT, placeholder TEXT, hint TEXT, required INTEGER, secret INTEGER,
     settings_key TEXT, payload_key TEXT, sort_order INTEGER);`);
@@ -37,18 +30,16 @@ const { db } = vi.hoisted(() => {
 });
 
 vi.mock('../../src/db/database', () => ({
-  db,
-  canAccessTrip: vi.fn(),
-  isOwner: vi.fn(),
-  getPlaceWithTags: vi.fn(),
-  closeDb: () => {},
-  reinitialize: () => {},
+  db, canAccessTrip: vi.fn(), isOwner: vi.fn(), getPlaceWithTags: vi.fn(), closeDb: () => {}, reinitialize: () => {},
 }));
 
 const { getPhotoProviderConfig } = vi.hoisted(() => ({
   getPhotoProviderConfig: vi.fn(() => ({ url: 'https://immich.example' })),
 }));
 vi.mock('../../src/nest/memories/memories.helpers', () => ({ getPhotoProviderConfig }));
+
+import { AddonsModule } from '../../src/nest/addons/addons.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
 
 describe('GET /api/addons e2e (real auth guard + temp SQLite)', () => {
   let server: Server;

@@ -38,10 +38,10 @@ vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
 import { createTables } from '../../../src/db/schema';
 import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
+import { resetTestDb, setAddonEnabled } from '../../helpers/test-db'
 import { createUser, createBucketListItem, createVisitedCountry, createTrip, createReservation } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
-import { setAddonEnabled } from '../../helpers/test-db';
+
 import { ADDON_IDS } from '../../../src/addons';
 
 beforeAll(() => {

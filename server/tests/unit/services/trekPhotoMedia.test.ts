@@ -2,15 +2,6 @@
  * trek_photos media_type persistence (#823): a local or provider photo row can
  * be registered as a video and the discriminator round-trips.
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import {
-  getOrCreateLocalTrekPhoto,
-  getOrCreateTrekPhoto,
-  resolveTrekPhoto,
-} from '../../../src/services/memories/photoResolverService';
-import { createUser } from '../../helpers/factories';
-
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -18,14 +9,7 @@ const { testDb, dbMock } = vi.hoisted(() => {
   const db = new Database(':memory:');
   // FKs off: this suite only checks media_type persistence, not owner/user integrity.
   db.exec('PRAGMA foreign_keys = OFF');
-  const mock = {
-    db,
-    closeDb: () => {},
-    reinitialize: () => {},
-    getPlaceWithTags: () => null,
-    canAccessTrip: () => null,
-    isOwner: () => false,
-  };
+  const mock = { db, closeDb: () => {}, reinitialize: () => {}, getPlaceWithTags: () => null, canAccessTrip: () => null, isOwner: () => false };
   return { testDb: db, dbMock: mock };
 });
 
@@ -65,7 +49,7 @@ afterAll(() => {
 
 describe('trek_photos media_type', () => {
   it('migration added media_type (default image) and duration_ms', () => {
-    const cols = (testDb.prepare("PRAGMA table_info('trek_photos')").all() as { name: string }[]).map((c) => c.name);
+    const cols = (testDb.prepare("PRAGMA table_info('trek_photos')").all() as { name: string }[]).map(c => c.name);
     expect(cols).toContain('media_type');
     expect(cols).toContain('duration_ms');
   });

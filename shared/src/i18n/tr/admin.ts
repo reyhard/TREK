@@ -383,8 +383,6 @@ const admin: TranslationStrings = {
     'Bir yapay zekâ asistanının sizin adınıza çalıştırabileceği araçlar yayımlamak (burada eklentiye verdiğiniz yetkilerle çalışır, asistanın kendi yetkileriyle değil)',
   'admin.plugins.perm.geolocation:read':
     'Görünümlerinden biri açıkken canlı konumunu sorar (TREK konumu bu sitenin konum izniyle okur, eklenti için ayrıca izin sorulmaz)',
-  'admin.plugins.perm.mcp:tools':
-    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Seyahat PDF dışa aktarımına metin bölümleri ekler',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Atlas dünya haritasında ülkeleri vurgular (ör. istek listeleri veya seyahat uyarıları)',

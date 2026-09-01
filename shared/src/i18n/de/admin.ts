@@ -337,8 +337,6 @@ const admin: TranslationStrings = {
     'Tools veröffentlichen, die ein KI-Assistent in deinem Namen ausführen kann (es handelt mit den Rechten, die du dem Plugin hier erteilst, nicht mit denen des Assistenten)',
   'admin.plugins.perm.geolocation:read':
     'Deinen Live-Standort abfragen, solange eine seiner Ansichten offen ist (TREK liest ihn mit der Standortfreigabe dieser Seite, nicht mit einer eigenen des Plugins)',
-  'admin.plugins.perm.mcp:tools':
-    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Textabschnitte an den PDF-Export einer Reise anhängen',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Länder auf der Atlas-Weltkarte hervorheben (z. B. Wunschlisten oder Reisehinweise)',

@@ -10,20 +10,20 @@
  * envelope, every test on the thrown object would still pass and the UI would be
  * guessing.
  */
-import { TrekExceptionFilter } from '../../../src/nest/common/trek-exception.filter';
-import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-import { PluginsController } from '../../../src/nest/plugins/plugins.controller';
-import { PluginsService } from '../../../src/nest/plugins/plugins.service';
-import { PluginRegistryService, RegistryError } from '../../../src/nest/plugins/registry/registry.service';
+import { TrekExceptionFilter } from '../../../src/nest/common/trek-exception.filter'
+import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service'
+import { PluginsController } from '../../../src/nest/plugins/plugins.controller'
+import { PluginsService } from '../../../src/nest/plugins/plugins.service'
+import { PluginRegistryService, RegistryError } from '../../../src/nest/plugins/registry/registry.service'
 import { HttpException, type ArgumentsHost } from '@nestjs/common';
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { PluginsController } from '../../../src/nest/plugins/plugins.controller';
-import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-import { PluginRegistryService, RegistryError } from '../../../src/nest/plugins/registry/registry.service';
-import { PluginsService } from '../../../src/nest/plugins/plugins.service';
-import { TrekExceptionFilter } from '../../../src/nest/common/trek-exception.filter';
+
+
+
+
+
 import type { RuntimeEnvService } from '../../../src/nest/app-config/runtime-env.service';
 
 const ADMIN = { id: 1 } as { id: number };

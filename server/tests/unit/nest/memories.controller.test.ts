@@ -1,9 +1,4 @@
-import { ImmichMemoriesController } from '../../../src/nest/memories/immich.controller';
-import type { MemoriesService } from '../../../src/nest/memories/memories.service';
-import { SynologyMemoriesController } from '../../../src/nest/memories/synology.controller';
-import { UnifiedMemoriesController } from '../../../src/nest/memories/unified.controller';
-import type { User } from '../../../src/types';
-
+import { describe, it, expect, vi } from 'vitest';
 import type { Response } from 'express';
 import type { Request } from 'express';
 import { UnifiedMemoriesController } from '../../../src/nest/memories/unified.controller';
@@ -65,9 +60,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     });
 
     it('maps the error envelope to its status + message', () => {
-      const svc = makeService({
-        listTripPhotos: vi.fn().mockReturnValue({ error: { status: 404, message: 'Trip not found' } }),
-      });
+      const svc = makeService({ listTripPhotos: vi.fn().mockReturnValue({ error: { status: 404, message: 'Trip not found' } }) });
       const res = makeRes();
       new UnifiedMemoriesController(svc).listPhotos(user, '5', res);
       expect(res.status).toHaveBeenCalledWith(404);
@@ -107,9 +100,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     });
 
     it('maps the error envelope', async () => {
-      const svc = makeService({
-        addTripPhotos: vi.fn().mockResolvedValue({ error: { status: 403, message: 'No access' } }),
-      });
+      const svc = makeService({ addTripPhotos: vi.fn().mockResolvedValue({ error: { status: 403, message: 'No access' } }) });
       const res = makeRes();
       await new UnifiedMemoriesController(svc).addPhotos(user, '5', {}, 'sock', res);
       expect(res.status).toHaveBeenCalledWith(403);
@@ -128,9 +119,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     });
 
     it('maps the error envelope', async () => {
-      const svc = makeService({
-        setTripPhotoSharing: vi.fn().mockResolvedValue({ error: { status: 404, message: 'Photo not found' } }),
-      });
+      const svc = makeService({ setTripPhotoSharing: vi.fn().mockResolvedValue({ error: { status: 404, message: 'Photo not found' } }) });
       const res = makeRes();
       await new UnifiedMemoriesController(svc).setSharing(user, '5', { photo_id: '9', shared: false }, res);
       expect(res.status).toHaveBeenCalledWith(404);
@@ -149,9 +138,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     });
 
     it('maps the error envelope', () => {
-      const svc = makeService({
-        removeTripPhoto: vi.fn().mockReturnValue({ error: { status: 404, message: 'Photo not found' } }),
-      });
+      const svc = makeService({ removeTripPhoto: vi.fn().mockReturnValue({ error: { status: 404, message: 'Photo not found' } }) });
       const res = makeRes();
       new UnifiedMemoriesController(svc).removePhoto(user, '5', { photo_id: 11 }, res);
       expect(res.status).toHaveBeenCalledWith(404);
@@ -168,9 +155,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     });
 
     it('maps the error envelope', () => {
-      const svc = makeService({
-        listTripAlbumLinks: vi.fn().mockReturnValue({ error: { status: 404, message: 'Trip not found' } }),
-      });
+      const svc = makeService({ listTripAlbumLinks: vi.fn().mockReturnValue({ error: { status: 404, message: 'Trip not found' } }) });
       const res = makeRes();
       new UnifiedMemoriesController(svc).listAlbumLinks(user, '5', res);
       expect(res.status).toHaveBeenCalledWith(404);
@@ -196,19 +181,12 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     it('passes undefined when the passphrase is absent or empty', () => {
       const createTripAlbumLink = vi.fn().mockReturnValue({ data: {} });
       const svc = makeService({ createTripAlbumLink });
-      new UnifiedMemoriesController(svc).createAlbumLink(
-        user,
-        '5',
-        { provider: 'immich', album_id: 'a1', album_name: 'Trip', passphrase: '' },
-        makeRes(),
-      );
+      new UnifiedMemoriesController(svc).createAlbumLink(user, '5', { provider: 'immich', album_id: 'a1', album_name: 'Trip', passphrase: '' }, makeRes());
       expect(createTripAlbumLink).toHaveBeenCalledWith('5', 7, 'immich', 'a1', 'Trip', undefined);
     });
 
     it('maps the error envelope', () => {
-      const svc = makeService({
-        createTripAlbumLink: vi.fn().mockReturnValue({ error: { status: 400, message: 'Invalid provider' } }),
-      });
+      const svc = makeService({ createTripAlbumLink: vi.fn().mockReturnValue({ error: { status: 400, message: 'Invalid provider' } }) });
       const res = makeRes();
       new UnifiedMemoriesController(svc).createAlbumLink(user, '5', {}, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -227,9 +205,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
     });
 
     it('maps the error envelope', () => {
-      const svc = makeService({
-        removeAlbumLink: vi.fn().mockReturnValue({ error: { status: 404, message: 'Link not found' } }),
-      });
+      const svc = makeService({ removeAlbumLink: vi.fn().mockReturnValue({ error: { status: 404, message: 'Link not found' } }) });
       const res = makeRes();
       new UnifiedMemoriesController(svc).removeAlbumLink(user, '5', 'l1', res);
       expect(res.status).toHaveBeenCalledWith(404);
@@ -265,12 +241,7 @@ describe('ImmichMemoriesController (parity with /api/integrations/memories/immic
       const immichSetAutoUpload = vi.fn();
       const svc = makeService({ immichSaveSettings, immichSetAutoUpload });
       const res = makeRes();
-      await new ImmichMemoriesController(svc).putSettings(
-        user,
-        { immich_url: 'x', immich_api_key: 'k', auto_upload: true },
-        req,
-        res,
-      );
+      await new ImmichMemoriesController(svc).putSettings(user, { immich_url: 'x', immich_api_key: 'k', auto_upload: true }, req, res);
       expect(immichSaveSettings).toHaveBeenCalledWith(7, 'x', 'k', '1.2.3.4');
       expect(immichSetAutoUpload).toHaveBeenCalledWith(7, true);
       expect(res.json).toHaveBeenCalledWith({ success: true });
@@ -280,19 +251,12 @@ describe('ImmichMemoriesController (parity with /api/integrations/memories/immic
       const immichSaveSettings = vi.fn().mockResolvedValue({ success: true });
       const immichSetAutoUpload = vi.fn();
       const svc = makeService({ immichSaveSettings, immichSetAutoUpload });
-      await new ImmichMemoriesController(svc).putSettings(
-        user,
-        { auto_upload: 'yes' as unknown as boolean },
-        req,
-        makeRes(),
-      );
+      await new ImmichMemoriesController(svc).putSettings(user, { auto_upload: 'yes' as unknown as boolean }, req, makeRes());
       expect(immichSetAutoUpload).not.toHaveBeenCalled();
     });
 
     it('returns the warning when the save carries one', async () => {
-      const svc = makeService({
-        immichSaveSettings: vi.fn().mockResolvedValue({ success: true, warning: 'Unverified TLS' }),
-      });
+      const svc = makeService({ immichSaveSettings: vi.fn().mockResolvedValue({ success: true, warning: 'Unverified TLS' }) });
       const res = makeRes();
       await new ImmichMemoriesController(svc).putSettings(user, {}, req, res);
       expect(res.json).toHaveBeenCalledWith({ success: true, warning: 'Unverified TLS' });
@@ -310,29 +274,21 @@ describe('ImmichMemoriesController (parity with /api/integrations/memories/immic
     it('short-circuits to a 200 envelope when url is missing', async () => {
       const immichTestConnection = vi.fn();
       const svc = makeService({ immichTestConnection });
-      expect(await new ImmichMemoriesController(svc).test({ immich_api_key: 'k' })).toEqual({
-        connected: false,
-        error: 'URL and API key required',
-      });
+      expect(await new ImmichMemoriesController(svc).test({ immich_api_key: 'k' })).toEqual({ connected: false, error: 'URL and API key required' });
       expect(immichTestConnection).not.toHaveBeenCalled();
     });
 
     it('short-circuits when the api key is missing', async () => {
       const immichTestConnection = vi.fn();
       const svc = makeService({ immichTestConnection });
-      expect(await new ImmichMemoriesController(svc).test({ immich_url: 'u' })).toEqual({
-        connected: false,
-        error: 'URL and API key required',
-      });
+      expect(await new ImmichMemoriesController(svc).test({ immich_url: 'u' })).toEqual({ connected: false, error: 'URL and API key required' });
       expect(immichTestConnection).not.toHaveBeenCalled();
     });
 
     it('delegates when both are present', async () => {
       const immichTestConnection = vi.fn().mockResolvedValue({ connected: true });
       const svc = makeService({ immichTestConnection });
-      expect(await new ImmichMemoriesController(svc).test({ immich_url: 'u', immich_api_key: 'k' })).toEqual({
-        connected: true,
-      });
+      expect(await new ImmichMemoriesController(svc).test({ immich_url: 'u', immich_api_key: 'k' })).toEqual({ connected: true });
       expect(immichTestConnection).toHaveBeenCalledWith('u', 'k');
     });
   });
@@ -346,9 +302,7 @@ describe('ImmichMemoriesController (parity with /api/integrations/memories/immic
     });
 
     it('maps the error with its status', async () => {
-      const svc = makeService({
-        immichBrowseTimeline: vi.fn().mockResolvedValue({ error: 'Not connected', status: 412 }),
-      });
+      const svc = makeService({ immichBrowseTimeline: vi.fn().mockResolvedValue({ error: 'Not connected', status: 412 }) });
       const res = makeRes();
       await new ImmichMemoriesController(svc).browse(user, res);
       expect(res.status).toHaveBeenCalledWith(412);
@@ -538,10 +492,7 @@ describe('ImmichMemoriesController (parity with /api/integrations/memories/immic
   describe('POST /trips/:tripId/album-links/:linkId/sync', () => {
     it('maps the error envelope without broadcasting', async () => {
       const broadcast = vi.fn();
-      const svc = makeService({
-        immichSyncAlbumAssets: vi.fn().mockResolvedValue({ error: 'Link gone', status: 404 }),
-        broadcast,
-      });
+      const svc = makeService({ immichSyncAlbumAssets: vi.fn().mockResolvedValue({ error: 'Link gone', status: 404 }), broadcast });
       const res = makeRes();
       await new ImmichMemoriesController(svc).sync(user, '5', 'l1', 'sock', res);
       expect(res.status).toHaveBeenCalledWith(404);
@@ -573,18 +524,14 @@ describe('ImmichMemoriesController (parity with /api/integrations/memories/immic
 describe('SynologyMemoriesController (parity with /api/integrations/memories/synologyphotos)', () => {
   describe('GET /settings + /status', () => {
     it('settings: returns the data on success', async () => {
-      const svc = makeService({
-        synologyGetSettings: vi.fn().mockResolvedValue({ success: true, data: { synology_url: 'u' } }),
-      });
+      const svc = makeService({ synologyGetSettings: vi.fn().mockResolvedValue({ success: true, data: { synology_url: 'u' } }) });
       const res = makeRes();
       await new SynologyMemoriesController(svc).getSettings(user, res);
       expect(res.json).toHaveBeenCalledWith({ synology_url: 'u' });
     });
 
     it('settings: maps the error envelope', async () => {
-      const svc = makeService({
-        synologyGetSettings: vi.fn().mockResolvedValue({ success: false, error: { status: 500, message: 'DB error' } }),
-      });
+      const svc = makeService({ synologyGetSettings: vi.fn().mockResolvedValue({ success: false, error: { status: 500, message: 'DB error' } }) });
       const res = makeRes();
       await new SynologyMemoriesController(svc).getSettings(user, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -592,9 +539,7 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
     });
 
     it('status: delegates', async () => {
-      const svc = makeService({
-        synologyGetStatus: vi.fn().mockResolvedValue({ success: true, data: { connected: true } }),
-      });
+      const svc = makeService({ synologyGetStatus: vi.fn().mockResolvedValue({ success: true, data: { connected: true } }) });
       const res = makeRes();
       await new SynologyMemoriesController(svc).getStatus(user, res);
       expect(res.json).toHaveBeenCalledWith({ connected: true });
@@ -625,16 +570,9 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
       const synologyUpdateSettings = vi.fn().mockResolvedValue({ success: true, data: {} });
       const svc = makeService({ synologyUpdateSettings });
       const res = makeRes();
-      await new SynologyMemoriesController(svc).putSettings(
-        user,
-        {
-          synology_url: '  http://nas  ',
-          synology_username: ' admin ',
-          synology_password: ' pw ',
-          synology_skip_ssl: 'true',
-        },
-        res,
-      );
+      await new SynologyMemoriesController(
+        svc,
+      ).putSettings(user, { synology_url: '  http://nas  ', synology_username: ' admin ', synology_password: ' pw ', synology_skip_ssl: 'true' }, res);
       expect(synologyUpdateSettings).toHaveBeenCalledWith(7, 'http://nas', 'admin', 'pw', true);
       expect(res.json).toHaveBeenCalledWith({});
     });
@@ -642,11 +580,7 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
     it('treats a literal-true skip-ssl flag as true and other values as false', async () => {
       const synologyUpdateSettings = vi.fn().mockResolvedValue({ success: true, data: {} });
       const svc = makeService({ synologyUpdateSettings });
-      await new SynologyMemoriesController(svc).putSettings(
-        user,
-        { synology_url: 'u', synology_username: 'a', synology_skip_ssl: true },
-        makeRes(),
-      );
+      await new SynologyMemoriesController(svc).putSettings(user, { synology_url: 'u', synology_username: 'a', synology_skip_ssl: true }, makeRes());
       expect(synologyUpdateSettings).toHaveBeenCalledWith(7, 'u', 'a', '', true);
 
       const svc2 = makeService({ synologyUpdateSettings: vi.fn().mockResolvedValue({ success: true, data: {} }) });
@@ -680,17 +614,9 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
       const synologyTestConnection = vi.fn().mockResolvedValue({ success: true, data: { connected: true } });
       const svc = makeService({ synologyTestConnection });
       const res = makeRes();
-      await new SynologyMemoriesController(svc).test(
-        user,
-        {
-          synology_url: 'u',
-          synology_username: 'a',
-          synology_password: 'p',
-          synology_otp: '123',
-          synology_skip_ssl: true,
-        },
-        res,
-      );
+      await new SynologyMemoriesController(
+        svc,
+      ).test(user, { synology_url: 'u', synology_username: 'a', synology_password: 'p', synology_otp: '123', synology_skip_ssl: true }, res);
       expect(synologyTestConnection).toHaveBeenCalledWith(7, 'u', 'a', 'p', '123', true);
       expect(res.json).toHaveBeenCalledWith({ connected: true });
     });
@@ -698,9 +624,7 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
 
   describe('GET /albums + /albums/:albumId/photos', () => {
     it('albums: delegates', async () => {
-      const svc = makeService({
-        synologyListAlbums: vi.fn().mockResolvedValue({ success: true, data: { albums: [] } }),
-      });
+      const svc = makeService({ synologyListAlbums: vi.fn().mockResolvedValue({ success: true, data: { albums: [] } }) });
       const res = makeRes();
       await new SynologyMemoriesController(svc).albums(user, res);
       expect(res.json).toHaveBeenCalledWith({ albums: [] });
@@ -745,11 +669,7 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
     it('forwards from/to and uses size as the limit when size > 0', async () => {
       const synologySearchPhotos = vi.fn().mockResolvedValue({ success: true, data: { assets: [] } });
       const svc = makeService({ synologySearchPhotos });
-      await new SynologyMemoriesController(svc).search(
-        user,
-        { from: '2024-01-01', to: '2024-02-01', size: 30 },
-        makeRes(),
-      );
+      await new SynologyMemoriesController(svc).search(user, { from: '2024-01-01', to: '2024-02-01', size: 30 }, makeRes());
       expect(synologySearchPhotos).toHaveBeenCalledWith(7, '2024-01-01', '2024-02-01', 0, 30);
     });
 
@@ -771,11 +691,7 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
     it('falls back to defaults when numeric fields are non-finite', async () => {
       const synologySearchPhotos = vi.fn().mockResolvedValue({ success: true, data: { assets: [] } });
       const svc = makeService({ synologySearchPhotos });
-      await new SynologyMemoriesController(svc).search(
-        user,
-        { offset: 'x', limit: 'y', page: 'z', size: 'q' },
-        makeRes(),
-      );
+      await new SynologyMemoriesController(svc).search(user, { offset: 'x', limit: 'y', page: 'z', size: 'q' }, makeRes());
       expect(synologySearchPhotos).toHaveBeenCalledWith(7, undefined, undefined, 0, 100);
     });
   });

@@ -5,8 +5,8 @@
  * public token/userinfo guards, the MCP 404/403 gates, and the cookie-only auth
  * on the management endpoints (a Bearer must NOT satisfy them).
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { OauthModule } from '../../src/nest/oauth/oauth.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { OauthModule } from '../../src/nest/oauth/oauth.module'
 import { seedUser, sessionCookie, signSession } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -66,11 +66,11 @@ const { oauthSvc } = vi.hoisted(() => ({
   },
 }));
 
-import { OauthModule } from '../../src/nest/oauth/oauth.module';
+
 import { OauthService } from '../../src/nest/oauth/oauth.service';
 import { AddonsService } from '../../src/nest/addons/addons.service';
 import { DatabaseModule } from '../../src/nest/database/database.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
 
 describe('OAuth e2e (real guards + temp SQLite)', () => {
   let server: Server;

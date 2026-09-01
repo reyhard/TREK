@@ -3,14 +3,6 @@
  * update services. A matching If-Match token (or none) updates as before; a
  * stale token returns the conflict sentinel carrying the server's current row.
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { isUpdateConflict } from '../../../src/services/conflictResult';
-import { createItem, updateItem } from '../../../src/services/packingService';
-import { updatePlace, createPlace } from '../../../src/services/placeService';
-import { createUser, createTrip } from '../../helpers/factories';
-import { resetTestDb } from '../../helpers/test-db';
-
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 const { testDb, dbMock } = vi.hoisted(() => {
@@ -146,7 +138,7 @@ describe('PlacesService.update — optimistic concurrency', () => {
 describe('updateItem (packing) — optimistic concurrency', () => {
   it('migration added updated_at and createItem stamps it', () => {
     const cols = testDb.prepare("PRAGMA table_info('packing_items')").all() as { name: string }[];
-    expect(cols.map((c) => c.name)).toContain('updated_at');
+    expect(cols.map(c => c.name)).toContain('updated_at');
 
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
@@ -166,4 +158,4 @@ describe('updateItem (packing) — optimistic concurrency', () => {
     expect(isUpdateConflict(fresh)).toBe(false);
     expect((fresh as { name: string }).name).toBe('Edited');
   });
-});
+})

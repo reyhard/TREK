@@ -1,10 +1,11 @@
+import { describe, it, expect } from 'vitest';
+import { createLlmClient } from '../../../../src/nest/llm-parse/llm-client.factory';
+import { OpenAiCompatibleClient } from '../../../../src/nest/llm-parse/clients/openai-compatible.client';
 import { AnthropicClient } from '../../../../src/nest/llm-parse/clients/anthropic.client';
 import type { ResolvedLlmConfig } from '../../../../src/nest/llm-parse/llm-config';
 
-import { describe, it, expect } from 'vitest';
-
 const cfg = (provider: string): ResolvedLlmConfig =>
-  ({ provider, model: 'm', baseUrl: 'http://x', multimodal: false }) as unknown as ResolvedLlmConfig;
+  ({ provider, model: 'm', baseUrl: 'http://x', multimodal: false } as unknown as ResolvedLlmConfig);
 
 describe('createLlmClient', () => {
   it('returns the Anthropic client for the anthropic provider', () => {

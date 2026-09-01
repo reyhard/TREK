@@ -3,11 +3,12 @@
  * create_journey returns the full journey (entries/contributors/trips/stats/my_role),
  * and create_journey_entry returns the enriched entry (parsed tags, photos array).
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { createUser } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
+import { runMigrations } from '../../../src/db/migrations'
+import { createTables } from '../../../src/db/schema'
+import { createTrip, createUser } from '../../helpers/factories'
+import { createMcpHarness, parseResourceResult, parseToolResult } from '../../helpers/mcp-harness'
+import type { McpHarness } from '../../helpers/mcp-harness'
+import { resetTestDb, setAddonEnabled } from '../../helpers/test-db'
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -61,13 +62,13 @@ vi.mock('../../../src/nest/atlas/atlas-geo', async (importOriginal) => ({
   },
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { setAddonEnabled } from '../../helpers/test-db';
+
+
+
+
+
 import { ADDON_IDS } from '../../../src/addons';
-import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+
 
 beforeAll(() => {
   createTables(testDb);

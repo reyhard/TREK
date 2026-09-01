@@ -1,9 +1,3 @@
-import { db } from '../../../src/db/database';
-import { getFlight, listFlights, saveFlight } from '../../../src/services/airtrail/airtrailClient';
-import { isAirtrailWriteEnabled, getAirtrailCredentials } from '../../../src/services/airtrail/airtrailService';
-import { pushReservationToAirtrail, runAirtrailSyncForUser } from '../../../src/services/airtrail/airtrailSync';
-import { getReservation, getReservationWithJoins, updateReservation } from '../../../src/services/reservationService';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -150,12 +144,7 @@ describe('pushReservationToAirtrail write gate (#1240)', () => {
     getReservationWithJoins.mockReturnValue({
       external_id: '42',
       reservation_time: '2021-09-01T19:00',
-      metadata: JSON.stringify({
-        legs: [
-          { from: 'BRU', to: 'HEL' },
-          { from: 'HEL', to: 'JFK' },
-        ],
-      }),
+      metadata: JSON.stringify({ legs: [{ from: 'BRU', to: 'HEL' }, { from: 'HEL', to: 'JFK' }] }),
       endpoints: [],
     });
     await svc.link.pushReservationToAirtrail(5, 9);

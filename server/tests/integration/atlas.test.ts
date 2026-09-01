@@ -2,12 +2,12 @@
  * Atlas integration tests.
  * Covers ATLAS-001 to ATLAS-008.
  */
-import { buildApp } from '../../src/bootstrap';
-import { runMigrations } from '../../src/db/migrations';
-import { createTables } from '../../src/db/schema';
-import { authCookie } from '../helpers/auth';
-import { createUser } from '../helpers/factories';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
+import { buildApp } from '../../src/bootstrap'
+import { runMigrations } from '../../src/db/migrations'
+import { createTables } from '../../src/db/schema'
+import { authCookie } from '../helpers/auth'
+import { createTrip, createUser } from '../helpers/factories'
+import { resetRateLimits, resetTestDb } from '../helpers/test-db'
 import type { INestApplication } from '@nestjs/common';
 
 import type { Application } from 'express';
@@ -66,12 +66,12 @@ vi.mock('../../src/config', () => ({
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
-import { buildApp } from '../../src/bootstrap';
-import { createTables } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrations';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import { createUser, createTrip } from '../helpers/factories';
-import { authCookie } from '../helpers/auth';
+
+
+
+
+
+
 import { getRegionGeo } from '../../src/nest/atlas/atlas-geo';
 
 let nestApp: INestApplication;

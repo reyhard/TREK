@@ -1,9 +1,3 @@
-import { db } from '../../../src/db/database';
-import { listFlights } from '../../../src/services/airtrail/airtrailClient';
-import type { AirtrailAirport, AirtrailFlightRaw } from '../../../src/services/airtrail/airtrailClient';
-import { importAirtrailFlights } from '../../../src/services/airtrail/airtrailImport';
-import { createUser, createTrip } from '../../helpers/factories';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -149,7 +143,7 @@ describe('importAirtrailFlights connection joining (#1535)', () => {
     const meta = JSON.parse(r.metadata);
     expect(meta.airtrail_ids).toEqual(['101', '102']);
     expect(meta.legs).toHaveLength(2);
-    expect(endpointsOf(r.id).map((e) => [e.role, e.code])).toEqual([
+    expect(endpointsOf(r.id).map(e => [e.role, e.code])).toEqual([
       ['from', 'BRU'],
       ['stop', 'HEL'],
       ['to', 'JFK'],
@@ -157,9 +151,7 @@ describe('importAirtrailFlights connection joining (#1535)', () => {
 
     // Each leg is filed on its own trip day so the day planner renders the
     // legs where they belong (both flights are on Aug 1 here).
-    const day1 = db.prepare("SELECT id FROM days WHERE trip_id = ? AND date = '2026-08-01'").get(tripId) as {
-      id: number;
-    };
+    const day1 = db.prepare("SELECT id FROM days WHERE trip_id = ? AND date = '2026-08-01'").get(tripId) as { id: number };
     expect(meta.legs[0]).toMatchObject({ dep_day_id: day1.id, arr_day_id: day1.id });
     expect(meta.legs[1]).toMatchObject({ dep_day_id: day1.id, arr_day_id: day1.id });
   });
@@ -175,8 +167,7 @@ describe('importAirtrailFlights connection joining (#1535)', () => {
 
     await importAirtrailFlights(tripId, userId, ['101', '102'], undefined, [['101', '102']]);
     const [r] = tripReservations(tripId);
-    const dayId = (d: string) =>
-      (db.prepare('SELECT id FROM days WHERE trip_id = ? AND date = ?').get(tripId, d) as { id: number }).id;
+    const dayId = (d: string) => (db.prepare('SELECT id FROM days WHERE trip_id = ? AND date = ?').get(tripId, d) as { id: number }).id;
     const legs = JSON.parse(r.metadata).legs;
     expect(legs[0].dep_day_id).toBe(dayId('2026-08-01'));
     expect(legs[1].dep_day_id).toBe(dayId('2026-08-02'));

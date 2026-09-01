@@ -15,17 +15,6 @@ import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runt
 import type { AuditService } from '../../../src/nest/audit/audit.service';
 import type { NotificationsService } from '../../../src/nest/notifications/notifications.service';
 import type { User } from '../../../src/types';
-import { HttpException, NotFoundException } from '@nestjs/common';
-
-import type { Request } from 'express';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-vi.mock('../../../src/services/auditLog', () => ({
-  writeAudit: vi.fn(),
-  getClientIp: vi.fn(() => '1.2.3.4'),
-  logInfo: vi.fn(),
-}));
-vi.mock('../../../src/services/notificationService', () => ({ send: vi.fn().mockResolvedValue(undefined) }));
 
 const user = { id: 1, role: 'admin', email: 'admin@example.test' } as User;
 const req = { headers: {} } as Request;
@@ -64,9 +53,7 @@ const addonsStub = () => ({
 const adminCtl = (s: AdminService, rt?: PluginRuntimeService, addons: AddonsService = addonsStub(), tokens: Partial<TokenService> = {}, invites: Partial<RegistrationInvitesService> = {}, oauth: Partial<OauthService> = {}) =>
   new AdminController(s, addons, rt as unknown as PluginRuntimeService, audit, notifications, tokens as TokenService, invites as RegistrationInvitesService, oauth as OauthService);
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     if (err instanceof NotFoundException) return { status: 404, body: err.getResponse() };
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
@@ -76,9 +63,7 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
 }
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => {
-  delete process.env.NODE_ENV;
-});
+afterEach(() => { delete process.env.NODE_ENV; });
 
 describe('AdminController users', () => {
   it('lists, creates (201 + audit), maps an error', () => {
@@ -218,9 +203,7 @@ describe('AdminController dev test-notification', () => {
     process.env.NODE_ENV = 'development';
     const res = await adminCtl(svc()).devTestNotification(user, {});
     expect(res).toEqual({ success: true });
-    expect(sendNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'trip_reminder', scope: 'user', targetId: user.id }),
-    );
+    expect(sendNotification).toHaveBeenCalledWith(expect.objectContaining({ event: 'trip_reminder', scope: 'user', targetId: user.id }));
   });
 
   it('maps an Error from the notification service to 400', async () => {

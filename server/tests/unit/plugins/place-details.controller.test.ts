@@ -1,6 +1,3 @@
-import { PlaceDetailsController } from '../../../src/nest/plugins/place-details.controller';
-import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { canAccessTrip, placeTrip, pluginsEnabled } = vi.hoisted(() => ({
@@ -31,10 +28,7 @@ function controller(over: Partial<PluginHooks> = {}) {
 }
 
 describe('PlaceDetailsController', () => {
-  beforeEach(() => {
-    pluginsEnabled.mockReturnValue(true);
-    canAccessTrip.mockReturnValue({ id: 1 } as never);
-  });
+  beforeEach(() => { pluginsEnabled.mockReturnValue(true); canAccessTrip.mockReturnValue({ id: 1 } as never); });
 
   it('returns [] when the runtime is disabled (no plugin calls)', async () => {
     pluginsEnabled.mockReturnValue(false);
@@ -73,8 +67,8 @@ describe('PlaceDetailsController', () => {
       placeDetails: vi.fn(async () => [
         { label: 'x'.repeat(200), value: 'y'.repeat(500), url: 'javascript:alert(1)' },
         { label: 'Site', url: 'https://ok.example' },
-        { value: 'no label' }, // dropped
-        'not an object', // dropped
+        { value: 'no label' },   // dropped
+        'not an object',         // dropped
         { label: 'Mail', url: 'mailto:a@b.c' },
       ]) as unknown as PluginHooks['placeDetails'],
     });

@@ -4,11 +4,12 @@
  * resource (moved from resources.test.ts when the legacy registrar was ported).
  * create_day's plain append is covered in tools-days-accommodations.test.ts.
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { createUser, createTrip, createDay } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
+import { runMigrations } from '../../../src/db/migrations'
+import { createTables } from '../../../src/db/schema'
+import { createUser, createTrip, createDay, createPlace, createDayAssignment, createDayAccommodation } from '../../helpers/factories';
+import { createMcpHarness, parseResourceResult, parseToolResult } from '../../helpers/mcp-harness'
+import type { McpHarness } from '../../helpers/mcp-harness'
+import { resetTestDb } from '../../helpers/test-db'
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -45,13 +46,10 @@ vi.mock('../../../src/config', () => ({
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import {
-  createUser, createTrip, createDay, createPlace, createDayAssignment, createDayAccommodation,
-} from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+
+
+
+
 
 beforeAll(() => {
   createTables(testDb);

@@ -7,11 +7,8 @@
  * the same mocked db. Covers auth (401), the admin gate (403), create-201,
  * validation 400, the dev-only 404, and real read/write round trips.
  */
-import { AdminModule } from '../../src/nest/admin/admin.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { seedUser, sessionCookie } from './harness';
-import { Test } from '@nestjs/testing';
-
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import type { Server } from 'http';
 import { DatabaseModule } from '../../src/nest/database/database.module';
@@ -119,9 +116,7 @@ describe('Admin e2e (real auth + admin guard + temp SQLite)', () => {
     server = app.getHttpServer();
   });
 
-  beforeEach(() => {
-    delete process.env.NODE_ENV;
-  });
+  beforeEach(() => { delete process.env.NODE_ENV; });
 
   afterAll(async () => {
     await app.close();

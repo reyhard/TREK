@@ -4,11 +4,12 @@
  * lat/lng/timezone from the airport database (the columns are NOT NULL), and
  * endpoints that can't be resolved produce a clean error instead of a SQL crash.
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { createUser, createTrip } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
+import { runMigrations } from '../../../src/db/migrations'
+import { createTables } from '../../../src/db/schema'
+import { createDay, createTrip, createUser } from '../../helpers/factories'
+import { createMcpHarness, parseToolResult } from '../../helpers/mcp-harness'
+import type { McpHarness } from '../../helpers/mcp-harness'
+import { resetTestDb } from '../../helpers/test-db'
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -45,11 +46,11 @@ vi.mock('../../../src/config', () => ({
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createDay } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
+
+
+
+
+
 
 beforeAll(() => {
   createTables(testDb);

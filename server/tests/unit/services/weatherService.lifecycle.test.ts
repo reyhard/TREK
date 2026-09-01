@@ -13,7 +13,7 @@ describe('weather implementation lifecycle module path', () => {
   });
 
   it('imports the canonical Nest weather implementation without starting a module-level timer', async () => {
-    vi.spyOn(globalThis, 'setInterval').mockImplementation((handler: TimerHandler, ms?: number, ...args: unknown[]) => {
+    vi.spyOn(globalThis, 'setInterval').mockImplementation((handler: Parameters<typeof globalThis.setInterval>[0], ms?: number, ...args: unknown[]) => {
       const timer = origSetInterval(handler, ms, ...args);
       intervals.push(timer);
       return timer;

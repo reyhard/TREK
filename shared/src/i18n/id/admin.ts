@@ -387,8 +387,6 @@ const admin: TranslationStrings = {
     'Menerbitkan alat yang dapat dijalankan asisten AI atas nama Anda (bertindak dengan akses yang Anda berikan ke plugin di sini, bukan milik asisten)',
   'admin.plugins.perm.geolocation:read':
     'Meminta lokasi terkinimu selama salah satu tampilannya terbuka (TREK membacanya dengan izin lokasi situs ini, bukan izin milik plugin sendiri)',
-  'admin.plugins.perm.mcp:tools':
-    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Menambahkan bagian teks ke ekspor PDF perjalanan',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Menyorot negara di peta dunia Atlas (mis. daftar keinginan atau peringatan perjalanan)',

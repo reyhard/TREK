@@ -5,11 +5,12 @@
  * create_collab_note, update_collab_note, delete_collab_note (CollabMcp,
  * DI-discovered via the same registry).
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { createUser, createTrip, createDay, createDayNote, createCollabNote } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
+import { runMigrations } from '../../../src/db/migrations'
+import { createTables } from '../../../src/db/schema'
+import { createCollabNote, createDay, createDayNote, createTrip, createUser } from '../../helpers/factories'
+import { createMcpHarness, parseResourceResult, parseToolResult } from '../../helpers/mcp-harness'
+import type { McpHarness } from '../../helpers/mcp-harness'
+import { resetTestDb } from '../../helpers/test-db'
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -53,11 +54,11 @@ vi.mock('fs', async (importOriginal) => {
   return { ...actual, unlinkSync: unlinkSyncMock };
 });
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createDay, createDayNote, createCollabNote } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+
+
+
+
+
 
 beforeAll(() => {
   createTables(testDb);

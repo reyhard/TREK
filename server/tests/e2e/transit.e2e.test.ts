@@ -4,8 +4,8 @@
  * methods are stubbed via instance spies (no outbound HTTP); this focuses on
  * auth (401), param pass-through and error propagation (#1065).
  */
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
-import { TransitModule } from '../../src/nest/transit/transit.module';
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
+import { TransitModule } from '../../src/nest/transit/transit.module'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -28,11 +28,11 @@ const { db } = vi.hoisted(() => {
 });
 vi.mock('../../src/db/database', () => ({ db, closeDb: () => {}, reinitialize: () => {} }));
 
-import { TransitModule } from '../../src/nest/transit/transit.module';
+
 import { TransitService } from '../../src/nest/transit/transit.service';
 import { DatabaseModule } from '../../src/nest/database/database.module';
 import { RealtimeModule } from '../../src/nest/realtime/realtime.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
 
 describe('Transit proxy e2e (real auth guard + temp SQLite)', () => {
   let server: Server;

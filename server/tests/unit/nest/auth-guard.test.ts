@@ -1,21 +1,6 @@
-import { extractToken, verifyJwtAndLoadUser } from '../../../src/middleware/auth';
-import { AdminGuard } from '../../../src/nest/auth/admin.guard';
-import { CookieAuthGuard } from '../../../src/nest/auth/cookie-auth.guard';
-import { CurrentUser } from '../../../src/nest/auth/current-user.decorator';
-import { JwtAuthGuard } from '../../../src/nest/auth/jwt-auth.guard';
-import { OptionalJwtGuard } from '../../../src/nest/auth/optional-jwt.guard';
-import { PasskeyEnabledGuard } from '../../../src/nest/auth/passkey-enabled.guard';
-import { PasskeyController } from '../../../src/nest/auth/passkey.controller';
-import { RateLimitService } from '../../../src/nest/auth/rate-limit.service';
-import { writeAudit } from '../../../src/services/auditLog';
-import { resolveAuthToggles } from '../../../src/services/authService';
-import { setAuthCookie } from '../../../src/services/cookie';
-import * as passkey from '../../../src/services/passkeyService';
-import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Request } from 'express';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HttpException } from '@nestjs/common';
+import type { Request } from 'express';
 
 vi.mock('../../../src/nest/auth/jwt-verify', () => ({ extractToken: vi.fn(), verifyJwtAndLoadUser: vi.fn() }));
 vi.mock('../../../src/nest/common/cookie', () => ({ setAuthCookie: vi.fn() }));
@@ -60,9 +45,7 @@ function context(req: unknown) {
   return { switchToHttp: () => ({ getRequest: () => req }) } as never;
 }
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -70,9 +53,7 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
   throw new Error('expected throw');
 }
 async function thrownAsync(fn: () => Promise<unknown>): Promise<{ status: number; body: unknown }> {
-  try {
-    await fn();
-  } catch (err) {
+  try { await fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -174,14 +155,8 @@ describe('AdminGuard', () => {
   const guard = new AdminGuard();
 
   it('403s for anonymous and for a non-admin role', () => {
-    expect(thrown(() => guard.canActivate(context({})))).toEqual({
-      status: 403,
-      body: { error: 'Admin access required' },
-    });
-    expect(thrown(() => guard.canActivate(context({ user: { role: 'user' } })))).toEqual({
-      status: 403,
-      body: { error: 'Admin access required' },
-    });
+    expect(thrown(() => guard.canActivate(context({})))).toEqual({ status: 403, body: { error: 'Admin access required' } });
+    expect(thrown(() => guard.canActivate(context({ user: { role: 'user' } })))).toEqual({ status: 403, body: { error: 'Admin access required' } });
   });
 
   it('allows an admin through', () => {
@@ -210,14 +185,9 @@ describe('CurrentUser decorator', () => {
   // Apply the decorator to a throwaway handler so Nest stores the param factory in
   // route metadata, then invoke that factory exactly as the framework would.
   function paramFactory(): (data: unknown, ctx: unknown) => User | undefined {
-    class Target {
-      handler(_u: User) {}
-    }
+    class Target { handler(_u: User) {} }
     (CurrentUser() as ParameterDecorator)(Target.prototype, 'handler', 0);
-    const meta = Reflect.getMetadata('__routeArguments__', Target, 'handler') as Record<
-      string,
-      { factory: (data: unknown, ctx: unknown) => User | undefined }
-    >;
+    const meta = Reflect.getMetadata('__routeArguments__', Target, 'handler') as Record<string, { factory: (data: unknown, ctx: unknown) => User | undefined }>;
     return Object.values(meta)[0].factory;
   }
 
@@ -233,9 +203,7 @@ describe('CurrentUser decorator', () => {
 describe('PasskeyController', () => {
   const req = { ip: '9.9.9.9' } as Request;
   const res = {} as never;
-  function rl(): RateLimitService {
-    return new RateLimitService();
-  }
+  function rl(): RateLimitService { return new RateLimitService(); }
 
   it('register/options maps a service error, else returns the options', async () => {
     passkey.passkeyRegisterOptions.mockResolvedValue({ error: 'Incorrect password', status: 401 });
@@ -269,9 +237,7 @@ describe('PasskeyController', () => {
     passkey.passkeyLoginVerify.mockResolvedValue({ token: 'tk', user, auditUserId: 1 } as never);
     expect(await pc(rl()).loginVerify({}, req, res)).toEqual({ token: 'tk', user });
     expect(setAuthCookie).toHaveBeenCalledWith(res, 'tk', req);
-    expect(writeAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'user.login', details: { method: 'passkey' } }),
-    );
+    expect(writeAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'user.login', details: { method: 'passkey' } }));
   }, 10000);
 
   it('credentials: list, rename (error + success), delete (error + success)', () => {

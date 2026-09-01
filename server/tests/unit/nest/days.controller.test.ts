@@ -8,17 +8,12 @@ import type { DayReorderDto } from '../../../src/nest/days/days.dto';
 import type { DaysService } from '../../../src/nest/days/days.service';
 import type { DayNotesService } from '../../../src/nest/day-notes/day-notes.service';
 import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import { describe, it, expect, vi } from 'vitest';
 
 const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
 const trip = { user_id: 1 };
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -27,20 +22,10 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
 }
 
 function daysSvc(o: Partial<DaysService> = {}): DaysService {
-  return {
-    verifyTripAccess: vi.fn().mockReturnValue(trip),
-    canEdit: vi.fn().mockReturnValue(true),
-    broadcast: vi.fn(),
-    ...o,
-  } as unknown as DaysService;
+  return { verifyTripAccess: vi.fn().mockReturnValue(trip), canEdit: vi.fn().mockReturnValue(true), broadcast: vi.fn(), ...o } as unknown as DaysService;
 }
 function notesSvc(o: Partial<DayNotesService> = {}): DayNotesService {
-  return {
-    verifyTripAccess: vi.fn().mockReturnValue(trip),
-    canEdit: vi.fn().mockReturnValue(true),
-    broadcast: vi.fn(),
-    ...o,
-  } as unknown as DayNotesService;
+  return { verifyTripAccess: vi.fn().mockReturnValue(trip), canEdit: vi.fn().mockReturnValue(true), broadcast: vi.fn(), ...o } as unknown as DayNotesService;
 }
 
 // reorder() keeps the legacy raw-body guard on orderedIds, which DayReorderDto's type
@@ -71,9 +56,7 @@ describe('DaysController (parity with the legacy /api/trips/:tripId/days route)'
 
 
   it('POST / with a position inserts + broadcasts day:reordered', () => {
-    const insert = vi.fn().mockReturnValue({ id: 12 });
-    const create = vi.fn();
-    const broadcast = vi.fn();
+    const insert = vi.fn().mockReturnValue({ id: 12 }); const create = vi.fn(); const broadcast = vi.fn();
     const svc = daysSvc({ insert, create, broadcast } as Partial<DaysService>);
     expect(new DaysController(svc).create(user, '5', { position: 0 }, 'sock')).toEqual({ day: { id: 12 } });
     expect(insert).toHaveBeenCalledWith('5', 0);
@@ -93,28 +76,22 @@ describe('DaysController (parity with the legacy /api/trips/:tripId/days route)'
     });
 
     it('maps a DayReorderError to 400 with its message', () => {
-      const reorder = vi.fn(() => {
-        throw new DayReorderError('orderedIds must be a permutation of the trip day ids.');
-      });
+      const reorder = vi.fn(() => { throw new DayReorderError('orderedIds must be a permutation of the trip day ids.'); });
       const svc = daysSvc({ reorder } as Partial<DaysService>);
       expect(thrown(() => new DaysController(svc).reorder(user, '5', { orderedIds: [9] }))).toEqual({
-        status: 400,
-        body: { error: 'orderedIds must be a permutation of the trip day ids.' },
+        status: 400, body: { error: 'orderedIds must be a permutation of the trip day ids.' },
       });
     });
 
     it('rethrows a non-DayReorderError unchanged', () => {
       const boom = new Error('db is down');
-      const reorder = vi.fn(() => {
-        throw boom;
-      });
+      const reorder = vi.fn(() => { throw boom; });
       const svc = daysSvc({ reorder } as Partial<DaysService>);
       expect(() => new DaysController(svc).reorder(user, '5', { orderedIds: [1, 2] })).toThrow(boom);
     });
 
     it('reorders and broadcasts day:reordered', () => {
-      const reorder = vi.fn();
-      const broadcast = vi.fn();
+      const reorder = vi.fn(); const broadcast = vi.fn();
       const svc = daysSvc({ reorder, broadcast } as Partial<DaysService>);
       expect(new DaysController(svc).reorder(user, '5', { orderedIds: [2, 1] }, 'sock')).toEqual({ success: true });
       expect(reorder).toHaveBeenCalledWith('5', [2, 1]);
@@ -123,31 +100,14 @@ describe('DaysController (parity with the legacy /api/trips/:tripId/days route)'
   });
 
   it('PUT /:id 404 when the day is missing, else updates', () => {
-    expect(
-      thrown(() =>
-        new DaysController(daysSvc({ getDay: vi.fn().mockReturnValue(undefined) } as Partial<DaysService>)).update(
-          user,
-          '5',
-          '9',
-          {},
-        ),
-      ),
-    ).toEqual({ status: 404, body: { error: 'Day not found' } });
+    expect(thrown(() => new DaysController(daysSvc({ getDay: vi.fn().mockReturnValue(undefined) } as Partial<DaysService>)).update(user, '5', '9', {}))).toEqual({ status: 404, body: { error: 'Day not found' } });
     const update = vi.fn().mockReturnValue({ id: 9, title: 'T' });
     const svc = daysSvc({ getDay: vi.fn().mockReturnValue({ id: 9 }), update } as Partial<DaysService>);
     expect(new DaysController(svc).update(user, '5', '9', { title: 'T' })).toEqual({ day: { id: 9, title: 'T' } });
   });
 
   it('DELETE /:id 404 when missing, else success', () => {
-    expect(
-      thrown(() =>
-        new DaysController(daysSvc({ getDay: vi.fn().mockReturnValue(undefined) } as Partial<DaysService>)).remove(
-          user,
-          '5',
-          '9',
-        ),
-      ),
-    ).toEqual({ status: 404, body: { error: 'Day not found' } });
+    expect(thrown(() => new DaysController(daysSvc({ getDay: vi.fn().mockReturnValue(undefined) } as Partial<DaysService>)).remove(user, '5', '9'))).toEqual({ status: 404, body: { error: 'Day not found' } });
     const svc = daysSvc({ getDay: vi.fn().mockReturnValue({ id: 9 }), remove: vi.fn() } as Partial<DaysService>);
     expect(new DaysController(svc).remove(user, '5', '9')).toEqual({ success: true });
   });
@@ -184,35 +144,17 @@ describe('DayNotesController (parity with the legacy /api/.../days/:dayId/notes 
   it('GET / returns notes; PUT/DELETE 404 when the note is missing', () => {
     const svc = notesSvc({ list: vi.fn().mockReturnValue([{ id: 1 }]) } as Partial<DayNotesService>);
     expect(new DayNotesController(svc).list(user, '5', '3')).toEqual({ notes: [{ id: 1 }] });
-    expect(
-      thrown(() =>
-        new DayNotesController(
-          notesSvc({ getNote: vi.fn().mockReturnValue(undefined) } as Partial<DayNotesService>),
-        ).update(user, '5', '3', '9', { text: 'x' }),
-      ),
-    ).toEqual({ status: 404, body: { error: 'Note not found' } });
-    expect(
-      thrown(() =>
-        new DayNotesController(
-          notesSvc({ getNote: vi.fn().mockReturnValue(undefined) } as Partial<DayNotesService>),
-        ).remove(user, '5', '3', '9'),
-      ),
-    ).toEqual({ status: 404, body: { error: 'Note not found' } });
+    expect(thrown(() => new DayNotesController(notesSvc({ getNote: vi.fn().mockReturnValue(undefined) } as Partial<DayNotesService>)).update(user, '5', '3', '9', { text: 'x' }))).toEqual({ status: 404, body: { error: 'Note not found' } });
+    expect(thrown(() => new DayNotesController(notesSvc({ getNote: vi.fn().mockReturnValue(undefined) } as Partial<DayNotesService>)).remove(user, '5', '3', '9'))).toEqual({ status: 404, body: { error: 'Note not found' } });
   });
 
   it('PUT/DELETE update + delete a note with broadcasts', () => {
-    const update = vi.fn().mockReturnValue({ id: 9 });
-    const broadcast = vi.fn();
+    const update = vi.fn().mockReturnValue({ id: 9 }); const broadcast = vi.fn();
     const u = notesSvc({ getNote: vi.fn().mockReturnValue({ id: 9 }), update, broadcast } as Partial<DayNotesService>);
     expect(new DayNotesController(u).update(user, '5', '3', '9', { text: 'x' }, 'sock')).toEqual({ note: { id: 9 } });
     expect(broadcast).toHaveBeenCalledWith('5', 'dayNote:updated', { dayId: 3, note: { id: 9 } }, 'sock');
-    const remove = vi.fn();
-    const b2 = vi.fn();
-    const d = notesSvc({
-      getNote: vi.fn().mockReturnValue({ id: 9 }),
-      remove,
-      broadcast: b2,
-    } as Partial<DayNotesService>);
+    const remove = vi.fn(); const b2 = vi.fn();
+    const d = notesSvc({ getNote: vi.fn().mockReturnValue({ id: 9 }), remove, broadcast: b2 } as Partial<DayNotesService>);
     expect(new DayNotesController(d).remove(user, '5', '3', '9', 'sock')).toEqual({ success: true });
     expect(b2).toHaveBeenCalledWith('5', 'dayNote:deleted', { noteId: 9, dayId: 3 }, 'sock');
   });

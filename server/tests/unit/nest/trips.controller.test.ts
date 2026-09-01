@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { UnsplashService } from '../../../src/nest/unsplash/unsplash.service';
 import { RuntimeEnvService } from '../../../src/nest/app-config/runtime-env.service';
 import { HttpException } from '@nestjs/common';
+import type { Request } from 'express';
 
 vi.mock('../../../src/nest/audit/client-ip', () => ({ getClientIp: vi.fn(() => '1.2.3.4') }));
 vi.mock('../../../src/nest/audit/audit-log.logger', () => ({ LOG_LEVEL: 'error', logInfo: vi.fn(), logDebug: vi.fn(), logError: vi.fn(), logWarn: vi.fn() }));
@@ -58,9 +59,7 @@ type CreateBody = Parameters<TripsController['create']>[1];
 const prePipeCreateBody = (body: unknown) => body as CreateBody;
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -69,9 +68,7 @@ function thrown(fn: () => unknown): { status: number; body: unknown } {
 }
 
 async function thrownAsync(fn: () => Promise<unknown>): Promise<{ status: number; body: unknown }> {
-  try {
-    await fn();
-  } catch (err) {
+  try { await fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -206,13 +203,7 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
     });
 
     it('updates, audits a change and broadcasts', async () => {
-      const update = vi.fn().mockReturnValue({
-        updatedTrip: { id: 9 },
-        changes: { title: { oldValue: 'a', newValue: 'b' } },
-        newTitle: 'b',
-        newReminder: 0,
-        oldReminder: 0,
-      });
+      const update = vi.fn().mockReturnValue({ updatedTrip: { id: 9 }, changes: { title: { oldValue: 'a', newValue: 'b' } }, newTitle: 'b', newReminder: 0, oldReminder: 0 });
       const broadcast = vi.fn();
       const s = svc({ update, broadcast } as Partial<TripsService>);
       expect(await tc(s).update(user, '9', { title: 'b' }, req, 'sock')).toEqual({ trip: { id: 9 } });
@@ -231,13 +222,8 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
 
     it('admin edit logs the owner and reminder changes', async () => {
       const update = vi.fn().mockReturnValue({
-        updatedTrip: { id: 9 },
-        changes: { title: { oldValue: 'a', newValue: 'b' } },
-        newTitle: 'b',
-        ownerEmail: 'owner@x.y',
-        isAdminEdit: true,
-        newReminder: 5,
-        oldReminder: 0,
+        updatedTrip: { id: 9 }, changes: { title: { oldValue: 'a', newValue: 'b' } }, newTitle: 'b',
+        ownerEmail: 'owner@x.y', isAdminEdit: true, newReminder: 5, oldReminder: 0,
       });
       const s = svc({ update } as Partial<TripsService>);
       expect(await tc(s).update(user, '9', { title: 'b' }, req)).toEqual({ trip: { id: 9 } });
@@ -245,11 +231,7 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
 
     it('logs when a reminder is removed', async () => {
       const update = vi.fn().mockReturnValue({
-        updatedTrip: { id: 9 },
-        changes: {},
-        newTitle: 'b',
-        newReminder: 0,
-        oldReminder: 5,
+        updatedTrip: { id: 9 }, changes: {}, newTitle: 'b', newReminder: 0, oldReminder: 5,
       });
       const s = svc({ update } as Partial<TripsService>);
       expect(await tc(s).update(user, '9', { reminder_days: 0 }, req)).toEqual({ trip: { id: 9 } });
@@ -268,9 +250,7 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
     });
 
     it('#1277: internalises an Unsplash cover hot-link into uploads/covers before saving', async () => {
-      const update = vi
-        .fn()
-        .mockReturnValue({ updatedTrip: { id: 9 }, changes: {}, newTitle: 'b', newReminder: 0, oldReminder: 0 });
+      const update = vi.fn().mockReturnValue({ updatedTrip: { id: 9 }, changes: {}, newTitle: 'b', newReminder: 0, oldReminder: 0 });
       const deleteOldCover = vi.fn();
       const s = svc({ update, deleteOldCover, getRaw: vi.fn().mockReturnValue({ cover_image: null }) } as Partial<TripsService>);
       await tc(s).update(user, '9', { cover_image: 'https://images.unsplash.com/photo-123?w=1080' }, req);
@@ -315,8 +295,7 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
     });
 
     it('deletes, audits and broadcasts', () => {
-      const remove = vi.fn().mockReturnValue({ tripId: 9, title: 'T', isAdminDelete: false });
-      const broadcast = vi.fn();
+      const remove = vi.fn().mockReturnValue({ tripId: 9, title: 'T', isAdminDelete: false }); const broadcast = vi.fn();
       const s = svc({ getOwner: vi.fn().mockReturnValue({ user_id: 1 }), remove, broadcast } as Partial<TripsService>);
       expect(tc(s).remove(user, '9', req, 'sock')).toEqual({ success: true });
       expect(broadcast).toHaveBeenCalledWith('9', 'trip:deleted', { id: 9 }, 'sock');
@@ -396,9 +375,7 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
   });
 
   describe('GET /:id/export.ics', () => {
-    function makeRes() {
-      return { setHeader: vi.fn(), send: vi.fn() } as never;
-    }
+    function makeRes() { return { setHeader: vi.fn(), send: vi.fn() } as never; }
     it('404 without access, else sends the calendar with headers', () => {
       expect(thrown(() => tc(svc({ canAccessTrip: vi.fn().mockReturnValue(undefined) })).exportIcs(user, '9', makeRes()))).toEqual({ status: 404, body: { error: 'Trip not found' } });
       const res = { setHeader: vi.fn(), send: vi.fn() };

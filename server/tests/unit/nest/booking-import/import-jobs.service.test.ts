@@ -1,11 +1,11 @@
-import { ImportJobsService } from '../../../../src/nest/booking-import/import-jobs.service';
+import { ImportJobsService } from '../../../../src/nest/booking-import/import-jobs.service'
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { broadcastToUser } = vi.hoisted(() => ({ broadcastToUser: vi.fn() }));
 vi.mock('../../../../src/websocket', () => ({ broadcastToUser }));
 
-import { ImportJobsService } from '../../../../src/nest/booking-import/import-jobs.service';
+
 import { RealtimeService } from '../../../../src/nest/realtime/realtime.service';
 
 type Preview = ReturnType<typeof vi.fn>;

@@ -7,6 +7,7 @@ import { ZodValidationPipe } from '../../../src/nest/common/zod-validation.pipe'
 import { METHOD_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
 
+import type { OpenAPIObject } from '@nestjs/swagger';
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 
@@ -48,13 +49,13 @@ describe('zodToOpenApi', () => {
       'create',
     );
 
-    const document = { paths: { '/api/demo/create': { post: {} } } } as never;
+    const document = { paths: { '/api/demo/create': { post: {} } } } as unknown as OpenAPIObject;
     attachZodBodySchemas(
       { get: () => new Map([['demo', { controllers: new Map([['DemoController', { metatype: DemoController }]]) }]]) } as never,
       document,
     );
 
-    expect(document.paths['/api/demo/create'].post.requestBody.content['application/json'].schema).toMatchObject({
+    expect((document.paths['/api/demo/create'].post.requestBody as { content: Record<string, { schema: unknown }> }).content['application/json'].schema).toMatchObject({
       type: 'object',
       properties: { name: { type: 'string' } },
     });

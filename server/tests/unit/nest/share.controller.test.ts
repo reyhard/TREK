@@ -7,13 +7,6 @@ import { TripShareController, SharedController } from '../../../src/nest/share/s
 import type { ShareService } from '../../../src/nest/share/share.service';
 import type { StorageService } from '../../../src/nest/storage/storage.service';
 import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Response } from 'express';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const { createReadStream } = vi.hoisted(() => ({ createReadStream: vi.fn() }));
-vi.mock('node:fs', () => ({ createReadStream }));
 
 // Only the shared place-photo proxy consumes storage.
 const getStream = vi.fn();
@@ -30,20 +23,12 @@ function svc(o: Partial<ShareService> = {}): ShareService {
 }
 
 function res() {
-  const r = {
-    statusCode: 200,
-    status: vi.fn((c: number) => {
-      r.statusCode = c;
-      return r;
-    }),
-  };
+  const r = { statusCode: 200, status: vi.fn((c: number) => { r.statusCode = c; return r; }) };
   return r as unknown as Response & { statusCode: number };
 }
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -55,35 +40,18 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('TripShareController', () => {
   it('POST 404 without access, 403 without share_manage', () => {
-    expect(
-      thrown(() =>
-        new TripShareController(svc({ verifyTripAccess: vi.fn().mockReturnValue(undefined) })).create(
-          user,
-          '5',
-          {},
-          res(),
-        ),
-      ),
-    ).toEqual({ status: 404, body: { error: 'Trip not found' } });
-    expect(
-      thrown(() =>
-        new TripShareController(svc({ canManage: vi.fn().mockReturnValue(false) })).create(user, '5', {}, res()),
-      ),
-    ).toEqual({ status: 403, body: { error: 'No permission' } });
+    expect(thrown(() => new TripShareController(svc({ verifyTripAccess: vi.fn().mockReturnValue(undefined) })).create(user, '5', {}, res()))).toEqual({ status: 404, body: { error: 'Trip not found' } });
+    expect(thrown(() => new TripShareController(svc({ canManage: vi.fn().mockReturnValue(false) })).create(user, '5', {}, res()))).toEqual({ status: 403, body: { error: 'No permission' } });
   });
 
   it('POST answers 201 on create, 200 on update', () => {
     const createdRes = res();
-    const c1 = new TripShareController(
-      svc({ createOrUpdate: vi.fn().mockReturnValue({ token: 't', created: true }) } as Partial<ShareService>),
-    );
+    const c1 = new TripShareController(svc({ createOrUpdate: vi.fn().mockReturnValue({ token: 't', created: true }) } as Partial<ShareService>));
     expect(c1.create(user, '5', { share_map: true }, createdRes)).toEqual({ token: 't' });
     expect(createdRes.statusCode).toBe(201);
 
     const updatedRes = res();
-    const c2 = new TripShareController(
-      svc({ createOrUpdate: vi.fn().mockReturnValue({ token: 't', created: false }) } as Partial<ShareService>),
-    );
+    const c2 = new TripShareController(svc({ createOrUpdate: vi.fn().mockReturnValue({ token: 't', created: false }) } as Partial<ShareService>));
     expect(c2.create(user, '5', {}, updatedRes)).toEqual({ token: 't' });
     expect(updatedRes.statusCode).toBe(200);
   });
@@ -100,13 +68,9 @@ describe('TripShareController', () => {
   });
 
   it('DELETE 403 without share_manage, else removes', () => {
-    expect(
-      thrown(() => new TripShareController(svc({ canManage: vi.fn().mockReturnValue(false) })).remove(user, '5')),
-    ).toEqual({ status: 403, body: { error: 'No permission' } });
+    expect(thrown(() => new TripShareController(svc({ canManage: vi.fn().mockReturnValue(false) })).remove(user, '5'))).toEqual({ status: 403, body: { error: 'No permission' } });
     const remove = vi.fn();
-    expect(new TripShareController(svc({ remove } as Partial<ShareService>)).remove(user, '5')).toEqual({
-      success: true,
-    });
+    expect(new TripShareController(svc({ remove } as Partial<ShareService>)).remove(user, '5')).toEqual({ success: true });
     expect(remove).toHaveBeenCalledWith('5');
   });
 });

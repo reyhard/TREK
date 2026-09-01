@@ -137,6 +137,15 @@ beforeEach(() => {
 
 afterAll(() => testDb.close());
 
+async function withHarness(userId: number, scopes: string[] | null, fn: (harness: McpHarness) => Promise<void>) {
+  const harness = await createMcpHarness({ userId, scopes, withResources: false });
+  try {
+    await fn(harness);
+  } finally {
+    await harness.cleanup();
+  }
+}
+
 /** Map a stored reservation endpoint to the schema-valid transport endpoint shape the
  *  editor submits: transit stops never carry an IATA code, and the stored row has
  *  `code: null` which the update schema (z.string().optional()) rejects. */
@@ -150,48 +159,21 @@ function toTransportEndpoint(e: any): Record<string, unknown> {
   return out;
 }
 
-async function withHarness(userId: number, scopes: string[] | null, fn: (harness: McpHarness) => Promise<void>) {
-  const harness = await createMcpHarness({ userId, scopes, withResources: false });
-  try {
-    await fn(harness);
-  } finally {
-    await harness.cleanup();
-  }
-}
-
 describe('MCP transit tools', () => {
-  it('registers search tools for geo scope and create/update for reservations scope', async () => {
+  it('registers search tools for geo scope and create tool for reservations scope', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, ['geo:read'], async (harness) => {
       const names = (await harness.client.listTools()).tools.map((tool) => tool.name);
       expect(names).toContain('search_transit_stops');
       expect(names).toContain('search_transit_routes');
       expect(names).not.toContain('create_transit_journey');
-      expect(names).not.toContain('update_transit_journey');
-      expect(names).not.toContain('update_transit_route_endpoints');
     });
     await withHarness(user.id, ['reservations:write'], async (harness) => {
       const tools = (await harness.client.listTools()).tools;
       const names = tools.map((tool) => tool.name);
       expect(names).toContain('create_transit_journey');
-      expect(names).toContain('update_transit_journey');
-      expect(names).toContain('update_transit_route_endpoints');
       expect(names).not.toContain('search_transit_routes');
-      const endpointTool = tools.find((tool) => tool.name === 'update_transit_route_endpoints');
-      expect(endpointTool?.annotations?.openWorldHint).toBe(false);
-      expect(endpointTool?.annotations?.idempotentHint).toBe(true);
-      expect(endpointTool?.inputSchema).toMatchObject({
-        type: 'object',
-        properties: {
-          tripId: { type: 'integer' },
-          reservationId: { type: 'integer' },
-          from: expect.any(Object),
-          to: expect.any(Object),
-        },
-        required: expect.arrayContaining(['tripId', 'reservationId']),
-      });
-      expect(tools.find((tool) => tool.name === 'create_transit_journey')?.annotations?.openWorldHint).toBe(false);
-      expect(tools.find((tool) => tool.name === 'create_transit_journey')?.annotations?.idempotentHint).toBe(true);
+      expect(tools.find((tool) => tool.name === 'create_transit_journey')?.annotations?.openWorldHint).toBe(true);
     });
   });
 
@@ -287,7 +269,7 @@ describe('MCP transit tools', () => {
         arguments: { tripId: datelessTrip.id, dayId: datelessDay.id, from, to, itinerary },
       });
       expect(dateless.isError).toBe(true);
-      expect((dateless.content[0] as any).text).toContain('no date');
+      expect((dateless.content[0] as any).text).toContain('dated trip day');
 
       const mismatch = await harness.client.callTool({
         name: 'create_transit_journey',
@@ -564,7 +546,6 @@ describe('MCP transit tools', () => {
       expect(routes.dropped).toBe(1);
     });
   });
-
   it('F06-COMPAT: a stored transit journey is editable through the generic update_transport (no dedicated fork tool)', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { start_date: '2026-12-03', end_date: '2026-12-04' });

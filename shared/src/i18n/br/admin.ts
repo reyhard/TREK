@@ -331,8 +331,6 @@ const admin: TranslationStrings = {
     'Publicar ferramentas que um assistente de IA pode executar em seu nome (ele age com o acesso que você concede ao plugin aqui, não com o dele)',
   'admin.plugins.perm.geolocation:read':
     'Consultar sua localização em tempo real enquanto uma das visualizações dele estiver aberta (o TREK a lê com a permissão de localização deste site, não com uma permissão própria do plugin)',
-  'admin.plugins.perm.mcp:tools':
-    'Publish tools on TREK\'s MCP server, so an AI assistant can call them as the requesting user',
   'admin.plugins.perm.hook:pdf-section-provider': 'Anexar seções de texto à exportação em PDF da viagem',
   'admin.plugins.perm.hook:atlas-layer-provider':
     'Destacar países no mapa-múndi do Atlas (ex. listas de desejos ou avisos de viagem)',

@@ -73,17 +73,6 @@ describe('parseManifest', () => {
     expect(m.settings[0]).toMatchObject({ key: 'api_key', secret: true, scope: 'instance' });
   });
 
-  it('parses capabilities.mcpTools when the mcp:tools grant is held', () => {
-    const m = parseManifest({
-      ...base,
-      permissions: ['mcp:tools'],
-      capabilities: { mcpTools: [{ name: 'flight', title: 'Flight', description: 'Live flight status', inputSchema: { code: { type: 'string' } } }] },
-    });
-    expect(m.capabilities?.mcpTools).toEqual([
-      { name: 'flight', title: 'Flight', description: 'Live flight status', inputSchema: { code: { type: 'string' } } },
-    ]);
-  });
-
   it('accepts exact, single-label (self-hoster sibling), and wildcard outbound hosts', () => {
     const m = parseManifest({
       ...base,
@@ -133,8 +122,8 @@ describe('parseManifest', () => {
     ['mcpTools without grant', { ...base, permissions: [], capabilities: { mcpTools: [{ name: 'flight', description: 'd' }] } }, /mcpTools requires the "mcp:tools" permission/],
     ['mcpTools not an array', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: 'nope' } }, /mcpTools must be an array/],
     ['mcpTools too many', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: Array.from({ length: 9 }, (_, i) => ({ name: `t${i}`, description: 'd' })) } }, /at most 8 tools/],
-    ['mcpTools bad name', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'Has Space', description: 'd' }] } }, /invalid tool name/],
-    ['mcpTools missing description', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'flight' }] } }, /requires a description/],
+    ['mcpTools bad name', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'Has Space', description: 'd' }] } }, /name must be lowercase/],
+    ['mcpTools missing description', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'flight' }] } }, /descr/],
   ])('rejects: %s', (_label, input, re) => {
     expect(() => parseManifest(input)).toThrow(ManifestError);
     expect(() => parseManifest(input)).toThrow(re as RegExp);

@@ -5,7 +5,7 @@
  * built artifact, native binaries, don't-clobber-a-real-plugin, reload only a link),
  * and a full link -> activate -> reload loop through a real isolated child.
  */
-import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service'
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -33,7 +33,7 @@ import { db as dbConn } from '../../../src/db/database';
 import { DatabaseService } from '../../../src/nest/database/database.service';
 vi.mock('../../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
-import { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
+
 import { createPluginRuntime } from '../../helpers/plugin-host';
 
 let codeRoot: string;

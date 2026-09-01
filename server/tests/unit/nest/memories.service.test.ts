@@ -1,4 +1,4 @@
-import { MemoriesService } from '../../../src/nest/memories/memories.service';
+import { MemoriesService } from '../../../src/nest/memories/memories.service'
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -52,7 +52,7 @@ const helpers = vi.hoisted(() => ({ canAccessUserPhoto: vi.fn(() => true) }));
 const ws = vi.hoisted(() => ({ broadcast: vi.fn() }));
 vi.mock('../../../src/websocket', () => ws);
 
-import { MemoriesService } from '../../../src/nest/memories/memories.service';
+
 import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 import type { UnifiedMemoriesService } from '../../../src/nest/memories/unified-memories.service';
 import type { ImmichService } from '../../../src/nest/memories/immich.service';

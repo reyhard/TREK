@@ -6,11 +6,12 @@
  * resource (moved from resources.test.ts when the legacy registrar was
  * ported to the DI-discovered DaysMcp).
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { createUser, createTrip, createDay, createPlace, createDayAccommodation } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
+import { runMigrations } from '../../../src/db/migrations'
+import { createTables } from '../../../src/db/schema'
+import { createDay, createDayAccommodation, createPlace, createTrip, createUser } from '../../helpers/factories'
+import { createMcpHarness, parseResourceResult, parseToolResult } from '../../helpers/mcp-harness'
+import type { McpHarness } from '../../helpers/mcp-harness'
+import { resetTestDb } from '../../helpers/test-db'
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -58,11 +59,11 @@ vi.mock('../../../src/config', () => ({
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip, createDay, createPlace, createDayAccommodation } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+
+
+
+
+
 
 beforeAll(() => {
   createTables(testDb);

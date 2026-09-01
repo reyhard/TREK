@@ -7,22 +7,12 @@ vi.mock('../../../src/nest/common/demo', () => ({ isDemoEmail: vi.fn(() => false
 
 import { FilesController } from '../../../src/nest/files/files.controller';
 import { FilesDownloadController } from '../../../src/nest/files/files-download.controller';
-import { FilesController } from '../../../src/nest/files/files.controller';
-import type { FilesService } from '../../../src/nest/files/files.service';
 import { PhotosController } from '../../../src/nest/photos/photos.controller';
+import type { FilesService } from '../../../src/nest/files/files.service';
 import type { PhotosService } from '../../../src/nest/photos/photos.service';
 import type { StorageService } from '../../../src/nest/storage/storage.service';
 import { isDemoEmail } from '../../../src/nest/common/demo';
 import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Request, Response } from 'express';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-vi.mock('../../../src/services/demo', () => ({ isDemoEmail: vi.fn(() => false) }));
 
 const user = { id: 1, username: 'u', role: 'user', email: 'u@example.test' } as User;
 
@@ -44,9 +34,7 @@ function fc(svc: FilesService): FilesController {
 }
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {
-  try {
-    fn();
-  } catch (err) {
+  try { fn(); } catch (err) {
     expect(err).toBeInstanceOf(HttpException);
     const e = err as HttpException;
     return { status: e.getStatus(), body: e.getResponse() };
@@ -64,9 +52,7 @@ async function rejected(p: Promise<unknown>): Promise<{ status: number; body: un
 }
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => {
-  delete process.env.DEMO_MODE;
-});
+afterEach(() => { delete process.env.DEMO_MODE; });
 
 /** The trip row TripAccessGuard resolves and hands to every handler via @Trip(). */
 const trip = { id: 5, user_id: 42 } as never;
@@ -298,20 +284,13 @@ describe('FilesDownloadController', () => {
 describe('PhotosController', () => {
   const user2 = { id: 1 } as User;
   function psvc(o: Partial<PhotosService> = {}): PhotosService {
-    return {
-      canAccess: vi.fn().mockReturnValue(true),
-      stream: vi.fn().mockResolvedValue(undefined),
-      info: vi.fn(),
-      ...o,
-    } as unknown as PhotosService;
+    return { canAccess: vi.fn().mockReturnValue(true), stream: vi.fn().mockResolvedValue(undefined), info: vi.fn(), ...o } as unknown as PhotosService;
   }
   const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
 
   it('400 on a non-finite id, 403 without access', async () => {
     await expect(new PhotosController(psvc()).thumbnail(user2, 'abc', res)).rejects.toMatchObject({ status: 400 });
-    await expect(
-      new PhotosController(psvc({ canAccess: vi.fn().mockReturnValue(false) })).original(user2, '5', res),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(new PhotosController(psvc({ canAccess: vi.fn().mockReturnValue(false) })).original(user2, '5', res)).rejects.toMatchObject({ status: 403 });
   });
 
   it('streams thumbnail/original', async () => {
@@ -325,16 +304,10 @@ describe('PhotosController', () => {
 
   it('info writes the data, maps a service error', async () => {
     const okRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
-    await new PhotosController(psvc({ info: vi.fn().mockResolvedValue({ data: { id: '5' } }) })).info(
-      user2,
-      '5',
-      okRes,
-    );
+    await new PhotosController(psvc({ info: vi.fn().mockResolvedValue({ data: { id: '5' } }) })).info(user2, '5', okRes);
     expect(okRes.json).toHaveBeenCalledWith({ id: '5' });
     const errRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
-    await new PhotosController(
-      psvc({ info: vi.fn().mockResolvedValue({ error: { status: 404, message: 'Photo not found' } }) }),
-    ).info(user2, '5', errRes);
+    await new PhotosController(psvc({ info: vi.fn().mockResolvedValue({ error: { status: 404, message: 'Photo not found' } }) })).info(user2, '5', errRes);
     expect(errRes.status).toHaveBeenCalledWith(404);
     expect(errRes.json).toHaveBeenCalledWith({ error: 'Photo not found' });
   });

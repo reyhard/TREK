@@ -4,8 +4,8 @@
  * audit log are mocked; this focuses on auth (401), the admin gate (403 for a
  * non-admin), the rate-limit 429, filename guards and status codes.
  */
-import { BackupModule } from '../../src/nest/backup/backup.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+import { BackupModule } from '../../src/nest/backup/backup.module'
+import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter'
 import { seedUser, sessionCookie } from './harness';
 import { Test } from '@nestjs/testing';
 
@@ -47,9 +47,9 @@ const { backupSvc } = vi.hoisted(() => ({
 }));
 vi.mock('../../src/nest/backup/backup.impl', () => backupSvc);
 
-import { BackupModule } from '../../src/nest/backup/backup.module';
+
 import { DatabaseModule } from '../../src/nest/database/database.module';
-import { TrekExceptionFilter } from '../../src/nest/common/trek-exception.filter';
+
 
 describe('Backup e2e (real auth + admin guard + temp SQLite)', () => {
   let server: Server;

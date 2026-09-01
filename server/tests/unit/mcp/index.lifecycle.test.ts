@@ -13,7 +13,7 @@ describe('mcp/index lifecycle — module-level session sweep timer', () => {
   });
 
   it('imports mcp/index without leaving a blocking timer', async () => {
-    vi.spyOn(globalThis, 'setInterval').mockImplementation((handler: TimerHandler, ms?: number, ...args: unknown[]) => {
+    vi.spyOn(globalThis, 'setInterval').mockImplementation((handler: Parameters<typeof globalThis.setInterval>[0], ms?: number, ...args: unknown[]) => {
       const timer = origSetInterval(handler, ms, ...args);
       intervals.push(timer);
       return timer;

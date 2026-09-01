@@ -1,11 +1,12 @@
 /**
  * Unit tests for MCP addon gating and scope enforcement in tools.
  */
-import { runMigrations } from '../../../src/db/migrations';
-import { createTables } from '../../../src/db/schema';
-import { createBudgetItem, createReservation, createTrip, createUser } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { resetTestDb } from '../../helpers/test-db';
+import { runMigrations } from '../../../src/db/migrations'
+import { createTables } from '../../../src/db/schema'
+import { createBudgetItem, createReservation, createTrip, createUser } from '../../helpers/factories'
+import { createMcpHarness, parseToolResult } from '../../helpers/mcp-harness'
+import type { McpHarness } from '../../helpers/mcp-harness'
+import { resetTestDb, setAddonEnabled } from '../../helpers/test-db'
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -43,12 +44,12 @@ const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createTrip } from '../../helpers/factories';
-import { createMcpHarness, parseToolResult, type McpHarness } from '../../helpers/mcp-harness';
-import { setAddonEnabled } from '../../helpers/test-db';
+
+
+
+
+
+
 import { ADDON_IDS } from '../../../src/addons';
 
 beforeAll(() => {
@@ -387,7 +388,7 @@ describe('Budget/reservation relationship tool scopes', () => {
 
   it('when budget addon disabled, relationship tools are not registered', async () => {
     const { user } = createUser(testDb);
-    isAddonEnabledMock.mockImplementation((id: string) => id !== 'budget');
+    setAddonEnabled(testDb, ADDON_IDS.BUDGET, false);
 
     await withHarness(
       user.id,
