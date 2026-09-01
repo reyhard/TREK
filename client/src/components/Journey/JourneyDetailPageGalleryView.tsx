@@ -1,32 +1,27 @@
-import { Camera, Image, Play, Plus, RefreshCw, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { addonsApi, journeyApi } from '../../api/client';
-import { useTranslation } from '../../i18n';
-import { photoUrl } from '../../pages/journeyDetail/JourneyDetailPage.helpers';
-import type { GalleryPhoto, JourneyEntry, JourneyTrip } from '../../store/journeyStore';
-import { useJourneyStore } from '../../store/journeyStore';
-import { getApiErrorMessage } from '../../types';
-import { normalizeImageFiles } from '../../utils/convertHeic';
-import { isVideoFile } from '../../utils/videoPoster';
-import { useToast } from '../shared/Toast';
-import { ProviderPicker } from './JourneyDetailPageProviderPicker';
+import { useEffect, useState, useRef } from 'react'
+import { RefreshCw, Camera, Image, X, Play } from 'lucide-react'
+import { normalizeImageFiles } from '../../utils/convertHeic'
+import { isVideoFile } from '../../utils/videoPoster'
+import { useJourneyStore } from '../../store/journeyStore'
+import { useTranslation } from '../../i18n'
+import { journeyApi, addonsApi, memoriesApi } from '../../api/client'
+import { useToast } from '../shared/Toast'
+import { getApiErrorMessage } from '../../types'
+import type { JourneyEntry, GalleryPhoto, JourneyTrip } from '../../store/journeyStore'
+import { photoUrl } from '../../pages/journeyDetail/JourneyDetailPage.helpers'
+import { ProviderPicker } from './JourneyDetailPageProviderPicker'
+import { ScrollTrigger } from './JourneyDetailPageScrollTrigger'
+import EmptyState from '../shared/EmptyState'
 
-export function GalleryView({
-  entries,
-  gallery,
-  journeyId,
-  userId,
-  trips,
-  onPhotoClick,
-  onRefresh,
-}: {
-  entries: JourneyEntry[];
-  gallery: GalleryPhoto[];
-  journeyId: number;
-  userId: number;
-  trips: JourneyTrip[];
-  onPhotoClick: (photos: GalleryPhoto[], index: number) => void;
-  onRefresh: () => void;
+export function GalleryView({ entries, gallery, journeyId, userId, trips, onPhotoClick, onRefresh, onRegisterUpload }: {
+  entries: JourneyEntry[]
+  gallery: GalleryPhoto[]
+  journeyId: number
+  userId: number
+  trips: JourneyTrip[]
+  onPhotoClick: (photos: GalleryPhoto[], index: number) => void
+  onRefresh: () => void
+  onRegisterUpload?: (fn: () => void) => void
 }) {
   const { t } = useTranslation();
   const [showPicker, setShowPicker] = useState(false);
@@ -45,19 +40,24 @@ export function GalleryView({
         const connected: { id: string; name: string }[] = [];
         for (const p of enabledProviders) {
           try {
-            const res = await fetch(`/api/integrations/memories/${p.id}/status`, { credentials: 'include' });
-            if (res.ok) {
-              const status = await res.json();
-              if (status.connected) connected.push({ id: p.id, name: p.name });
-            }
-          } catch {}
+            const status = await memoriesApi.status(p.id)
+            if (status.connected) connected.push({ id: p.id, name: p.name })
+          } catch { }
         }
-        setAvailableProviders(connected);
-      } catch {}
-    })();
-  }, []);
+        setAvailableProviders(connected)
+      } catch { }
+    })()
+  }, [])
 
-  const allPhotos = gallery;
+  const allPhotos = gallery
+  // A long trip's gallery is hundreds of tiles, and rendering them all at once is
+  // what makes scrolling it a chore (#1614). The provider picker has grown its own
+  // way in for the same reason; this reuses it rather than inventing a second one.
+  const GALLERY_PAGE = 60
+  const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE)
+  const shownPhotos = allPhotos.slice(0, visibleCount)
+  // Deleting or adding photos must not leave the window stranded past the end.
+  useEffect(() => { setVisibleCount(c => Math.min(Math.max(c, GALLERY_PAGE), Math.max(allPhotos.length, GALLERY_PAGE))) }, [allPhotos.length])
 
   const entriesWithContent = entries.filter((e) => e.type !== 'skeleton' || e.title);
 
@@ -66,7 +66,8 @@ export function GalleryView({
     setShowPicker(true);
   };
 
-  const galleryFileRef = useRef<HTMLInputElement>(null);
+  const galleryFileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { onRegisterUpload?.(() => galleryFileRef.current?.click()) }, [onRegisterUpload])
 
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -133,34 +134,13 @@ export function GalleryView({
       />
 
       {/* Header */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-          <Camera size={10} /> {allPhotos.length} {t('journey.detail.photos')}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.07em]" style={{ background: 'var(--vg-surf2)', color: 'var(--vg-ink3)' }}>
+          <Camera size={11} /> {allPhotos.length} {t('journey.detail.photos')}
         </span>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => galleryFileRef.current?.click()}
-            disabled={galleryUploading}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"
-          >
-            {galleryUploading ? (
-              <>
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white dark:border-zinc-900/30 dark:border-t-zinc-900" />{' '}
-                {galleryProgress
-                  ? t('journey.editor.uploadingProgress', {
-                      done: String(galleryProgress.done),
-                      total: String(galleryProgress.total),
-                    })
-                  : t('journey.editor.uploading')}
-              </>
-            ) : (
-              <>
-                <Plus size={12} /> {t('common.upload')}
-              </>
-            )}
-          </button>
-          {availableProviders.map((p) => (
-            <button
+          {availableProviders.map(p => (
+            <button type="button"
               key={p.id}
               onClick={() => browseProvider(p.id)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
@@ -173,25 +153,23 @@ export function GalleryView({
       </div>
 
       {allPhotos.length === 0 ? (
-        <div className="py-16 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-            <Image size={24} className="text-zinc-400" />
-          </div>
-          <p className="text-[15px] font-medium text-zinc-700 dark:text-zinc-300">{t('journey.detail.noPhotos')}</p>
-          <p className="mt-1 text-[12px] text-zinc-500">{t('journey.detail.noPhotosHint')}</p>
-        </div>
+        <EmptyState scene="journey" title={t('journey.detail.noPhotos')} />
       ) : (
-        <div className="grid grid-cols-2 gap-1.5 pb-24 sm:grid-cols-3 md:grid-cols-4 md:pb-6">
-          {allPhotos.map((photo, i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 pb-24 md:pb-6">
+          {shownPhotos.map((photo, i) => (
             <div
               key={photo.id}
-              className="group relative aspect-square cursor-pointer overflow-hidden rounded-lg"
+              role="button"
+              tabIndex={0}
+              className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group"
               onClick={() => onPhotoClick(allPhotos, i)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPhotoClick(allPhotos, i) } }}
             >
-              {photo.media_type === 'video' && !photo.thumbnail_path ? (
-                // Poster-less video (capture failed / unsupported codec): show a
-                // neutral tile rather than a broken 404 thumbnail (#823).
-                <div className="h-full w-full bg-zinc-200 dark:bg-zinc-800" />
+              {photo.media_type === 'video' &&
+                photo.provider === 'local' &&
+                !photo.thumbnail_path ? (
+                // Poster-less local video: show a neutral tile.
+                <div className="w-full h-full bg-zinc-200 dark:bg-zinc-800" />
               ) : (
                 <img
                   src={photoUrl(photo, 'thumbnail')}
@@ -209,12 +187,9 @@ export function GalleryView({
                 </div>
               )}
               {/* Delete button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeletePhoto(photo.id);
-                }}
-                className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100"
+              <button type="button"
+                onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo.id) }}
+                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 backdrop-blur text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
               >
                 <X size={12} />
               </button>
@@ -238,6 +213,9 @@ export function GalleryView({
             </div>
           ))}
         </div>
+      )}
+      {visibleCount < allPhotos.length && (
+        <ScrollTrigger onVisible={() => setVisibleCount(c => c + GALLERY_PAGE)} loading={false} />
       )}
 
       {/* Provider Photo Picker Modal */}

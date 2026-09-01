@@ -1,19 +1,73 @@
-import { AlertCircle, Check, CheckCheck, Flag, Inbox, Plus, Trash2, User, X } from 'lucide-react';
-import { Fragment, useEffect, useState } from 'react';
-import ReactDOM from 'react-dom';
-import { useTranslation } from '../../i18n';
-import { useCanDo } from '../../store/permissionsStore';
-import { useTripStore } from '../../store/tripStore';
-import type { TodoItem } from '../../types';
-import { avatarSrc } from '../../utils/avatarSrc';
-import { CustomDatePicker } from '../shared/CustomDateTimePicker';
-import CustomSelect from '../shared/CustomSelect';
-import { useToast } from '../shared/Toast';
+import { Fragment, useState, useMemo, useEffect, useRef } from 'react'
+import { avatarSrc } from '../../utils/avatarSrc'
+import { createPortal } from 'react-dom'
+import { useTripStore } from '../../store/tripStore'
+import { useCanDo } from '../../store/permissionsStore'
+import { useToast } from '../shared/Toast'
+import { useTranslation } from '../../i18n'
+import { tripsApi } from '../../api/client'
+import apiClient from '../../api/client'
+import CustomSelect from '../shared/CustomSelect'
+import { CustomDatePicker } from '../shared/CustomDateTimePicker'
+import { formatDate as fmtDate } from '../../utils/formatters'
+import {
+  CheckSquare, Square, Plus, ChevronRight, Flag,
+  X, Check, Calendar, User, FolderPlus, AlertCircle, ListChecks, Inbox, CheckCheck, Trash2,
+} from 'lucide-react'
+import type { TodoItem } from '../../types'
 
-import { PluginCardFooter, usePluginViewContributions } from '../Plugins/PluginContributions';
-import { PRIO_CONFIG, katColor, type FilterType, type Member } from './todoListModel';
-import TodoRow from './TodoRow';
-import { useTodoList } from './useTodoList';
+import { KAT_COLORS, PRIO_CONFIG, katColor, type FilterType, type Member } from './todoListModel'
+import { useTodoList } from './useTodoList'
+import TodoRow from './TodoRow'
+import { usePluginViewContributions, PluginCardFooter } from '../Plugins/PluginContributions'
+import EmptyState from '../shared/EmptyState'
+
+// Sidebar filter row. Declared at module level so React keeps the same component
+// type across renders — inline it and every re-render remounts the buttons,
+// which drops clicks that are already in flight.
+function SidebarItem({ id, icon: Icon, label, count, color, active, compact, onSelect }: {
+  id: string
+  icon: any
+  label: string
+  count: number
+  color?: string
+  active: boolean
+  compact: boolean
+  onSelect: (id: string) => void
+}) {
+  return (
+    <button type="button" onClick={() => onSelect(id)}
+      title={compact ? label : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: compact ? 'center' : 'flex-start',
+        gap: compact ? 0 : 8, width: '100%', padding: compact ? '8px 0' : '7px 12px',
+        border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'calc(13px * var(--fs-scale-body, 1))',
+        background: active ? 'var(--bg-hover)' : 'transparent',
+        color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+        fontWeight: active ? 600 : 400, transition: 'all 0.1s',
+        position: 'relative',
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
+      {color ? (
+        <span style={{ width: compact ? 12 : 10, height: compact ? 12 : 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      ) : (
+        <Icon size={compact ? 18 : 15} style={{ flexShrink: 0, opacity: 0.7 }} />
+      )}
+      {!compact && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
+      {!compact && count > 0 && (
+        <span style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', color: 'var(--text-faint)', background: 'var(--bg-hover)', borderRadius: 10, padding: '1px 7px', minWidth: 20, textAlign: 'center' }}>
+          {count}
+        </span>
+      )}
+      {compact && count > 0 && (
+        <span style={{ position: 'absolute', top: 2, right: 2, fontSize: 'calc(8px * var(--fs-scale-caption, 1))', fontWeight: 700, color: 'var(--bg-primary)', background: 'var(--text-faint)', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {count}
+        </span>
+      )}
+    </button>
+  )
+}
 
 export default function TodoListPanel({
   tripId,
@@ -86,100 +140,7 @@ export default function TodoListPanel({
     reorderTodoItems(tripId, globalIds);
   };
 
-  // Sidebar filter item
-  const SidebarItem = ({
-    id,
-    icon: Icon,
-    label,
-    count,
-    color,
-  }: {
-    id: string;
-    icon: any;
-    label: string;
-    count: number;
-    color?: string;
-  }) => (
-    <button
-      onClick={() => setFilter(id as FilterType)}
-      title={isMobile ? label : undefined}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: isMobile ? 'center' : 'flex-start',
-        gap: isMobile ? 0 : 8,
-        width: '100%',
-        padding: isMobile ? '8px 0' : '7px 12px',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-        fontSize: 'calc(13px * var(--fs-scale-body, 1))',
-        background: filter === id ? 'var(--bg-hover)' : 'transparent',
-        color: filter === id ? 'var(--text-primary)' : 'var(--text-secondary)',
-        fontWeight: filter === id ? 600 : 400,
-        transition: 'all 0.1s',
-        position: 'relative',
-      }}
-      onMouseEnter={(e) => {
-        if (filter !== id) e.currentTarget.style.background = 'var(--bg-hover)';
-      }}
-      onMouseLeave={(e) => {
-        if (filter !== id) e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {color ? (
-        <span
-          style={{
-            width: isMobile ? 12 : 10,
-            height: isMobile ? 12 : 10,
-            borderRadius: '50%',
-            background: color,
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <Icon size={isMobile ? 18 : 15} style={{ flexShrink: 0, opacity: 0.7 }} />
-      )}
-      {!isMobile && <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>}
-      {!isMobile && count > 0 && (
-        <span
-          style={{
-            fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-            color: 'var(--text-faint)',
-            background: 'var(--bg-hover)',
-            borderRadius: 10,
-            padding: '1px 7px',
-            minWidth: 20,
-            textAlign: 'center',
-          }}
-        >
-          {count}
-        </span>
-      )}
-      {isMobile && count > 0 && (
-        <span
-          style={{
-            position: 'absolute',
-            top: 2,
-            right: 2,
-            fontSize: 'calc(8px * var(--fs-scale-caption, 1))',
-            fontWeight: 700,
-            color: 'var(--bg-primary)',
-            background: 'var(--text-faint)',
-            borderRadius: '50%',
-            width: 14,
-            height: 14,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {count}
-        </span>
-      )}
-    </button>
-  );
+  const selectFilter = (id: string) => setFilter(id as FilterType)
 
   // Filter title
   const filterTitle = (() => {
@@ -257,47 +218,19 @@ export default function TodoListPanel({
         )}
 
         {/* Smart filters */}
-        {!isMobile && (
-          <div
-            style={{
-              fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-              fontWeight: 600,
-              color: 'var(--text-faint)',
-              padding: '8px 12px 4px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            {t('todo.sidebar.tasks')}
-          </div>
-        )}
-        <SidebarItem
-          id="all"
-          icon={Inbox}
-          label={t('todo.filter.all')}
-          count={items.filter((i) => !i.checked).length}
-        />
-        <SidebarItem id="my" icon={User} label={t('todo.filter.my')} count={myCount} />
-        <SidebarItem id="overdue" icon={AlertCircle} label={t('todo.filter.overdue')} count={overdueCount} />
-        <SidebarItem id="done" icon={CheckCheck} label={t('todo.filter.done')} count={doneCount} />
+        {!isMobile && <div style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600, color: 'var(--text-faint)', padding: '8px 12px 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {t('todo.sidebar.tasks')}
+        </div>}
+        <SidebarItem id="all" icon={Inbox} label={t('todo.filter.all')} count={items.filter(i => !i.checked).length} active={filter === 'all'} compact={isMobile} onSelect={selectFilter} />
+        <SidebarItem id="my" icon={User} label={t('todo.filter.my')} count={myCount} active={filter === 'my'} compact={isMobile} onSelect={selectFilter} />
+        <SidebarItem id="overdue" icon={AlertCircle} label={t('todo.filter.overdue')} count={overdueCount} active={filter === 'overdue'} compact={isMobile} onSelect={selectFilter} />
+        <SidebarItem id="done" icon={CheckCheck} label={t('todo.filter.done')} count={doneCount} active={filter === 'done'} compact={isMobile} onSelect={selectFilter} />
 
         {/* Sort by */}
-        {!isMobile && (
-          <div
-            style={{
-              fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-              fontWeight: 600,
-              color: 'var(--text-faint)',
-              padding: '16px 12px 4px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            {t('todo.sidebar.sortBy')}
-          </div>
-        )}
-        <button
-          onClick={() => setSortByPrio((v) => !v)}
+        {!isMobile && <div style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600, color: 'var(--text-faint)', padding: '16px 12px 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {t('todo.sidebar.sortBy')}
+        </div>}
+        <button type="button" onClick={() => setSortByPrio(v => !v)}
           title={isMobile ? t('todo.priority') : undefined}
           style={{
             display: 'flex',
@@ -343,15 +276,8 @@ export default function TodoListPanel({
           </div>
         )}
         {isMobile && <div style={{ height: 1, background: 'var(--border-faint)', margin: '8px 4px' }} />}
-        {categories.map((cat) => (
-          <SidebarItem
-            key={cat}
-            id={cat}
-            icon={null}
-            label={cat}
-            count={catCount(cat)}
-            color={katColor(cat, categories)}
-          />
+        {categories.map(cat => (
+          <SidebarItem key={cat} id={cat} icon={null} label={cat} count={catCount(cat)} color={katColor(cat, categories)} active={filter === cat} compact={isMobile} onSelect={selectFilter} />
         ))}
 
         {canEdit &&
@@ -369,28 +295,11 @@ export default function TodoListPanel({
                   }
                 }}
                 placeholder={t('todo.newCategory')}
-                style={{
-                  flex: 1,
-                  fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                  padding: '4px 6px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: 5,
-                  background: 'var(--bg-hover)',
-                  color: 'var(--text-primary)',
-                  fontFamily: 'inherit',
-                  minWidth: 0,
-                }}
-              />
-              <button
-                onClick={addCategory}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', padding: 2 }}
-              >
-                <Check size={13} />
-              </button>
+                style={{ flex: 1, fontSize: 'calc(12px * var(--fs-scale-body, 1))', padding: '4px 6px', border: '1px solid var(--border-primary)', borderRadius: 5, background: 'var(--bg-hover)', color: 'var(--text-primary)', fontFamily: 'inherit', minWidth: 0 }} />
+              <button type="button" onClick={addCategory} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', padding: 2 }}><Check size={13} /></button>
             </div>
           ) : (
-            <button
-              onClick={() => setAddingCategory(true)}
+            <button type="button" onClick={() => setAddingCategory(true)}
               title={isMobile ? t('todo.addCategory') : undefined}
               style={{
                 display: 'flex',
@@ -446,52 +355,37 @@ export default function TodoListPanel({
 
         {/* Task list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-          {filtered.length === 0
-            ? null
-            : filtered.map((item) => {
-                const contributions = contribFor(item.id);
-                return (
-                  <Fragment key={item.id}>
-                    <TodoRow
-                      item={item}
-                      members={members}
-                      categories={categories}
-                      today={today}
-                      isSelected={selectedId === item.id}
-                      canEdit={canEdit}
-                      formatDate={formatDate}
-                      onSelect={(id) => {
-                        setSelectedId(id);
-                        setIsAddingNew(false);
-                      }}
-                      onToggle={(id, checked) => toggleTodoItem(tripId, id, checked)}
-                      drag={
-                        canReorder
-                          ? {
-                              isDragging: dragId === item.id,
-                              isOver: overId === item.id && dragId !== null && dragId !== item.id,
-                              onStart: (id) => {
-                                setDragId(id);
-                                setOverId(null);
-                              },
-                              onOver: (id) => setOverId(id),
-                              onEnd: () => {
-                                setDragId(null);
-                                setOverId(null);
-                              },
-                              onDrop: handleReorderDrop,
-                            }
-                          : undefined
-                      }
-                    />
-                    {contributions.length > 0 && (
-                      <div style={{ padding: '0 20px 8px' }}>
-                        <PluginCardFooter items={contributions} tripId={tripId} />
-                      </div>
-                    )}
-                  </Fragment>
-                );
-              })}
+          {filtered.length === 0 ? <EmptyState scene="tasks" title={t('todo.empty')} /> : (
+            filtered.map(item => {
+              const contributions = contribFor(item.id)
+              return (
+                <Fragment key={item.id}>
+                  <TodoRow
+                    item={item}
+                    members={members}
+                    categories={categories}
+                    today={today}
+                    isSelected={selectedId === item.id}
+                    canEdit={canEdit}
+                    formatDate={formatDate}
+                    onSelect={(id) => { setSelectedId(id); setIsAddingNew(false) }}
+                    onToggle={(id, checked) => toggleTodoItem(tripId, id, checked)}
+                    drag={canReorder ? {
+                      isDragging: dragId === item.id,
+                      isOver: overId === item.id && dragId !== null && dragId !== item.id,
+                      onStart: (id) => { setDragId(id); setOverId(null) },
+                      onOver: (id) => setOverId(id),
+                      onEnd: () => { setDragId(null); setOverId(null) },
+                      onDrop: handleReorderDrop,
+                    } : undefined}
+                  />
+                  {contributions.length > 0 && (
+                    <div style={{ padding: '0 20px 8px' }}><PluginCardFooter items={contributions} tripId={tripId} /></div>
+                  )}
+                </Fragment>
+              )
+            })
+          )}
         </div>
       </div>
 
@@ -506,34 +400,10 @@ export default function TodoListPanel({
         />
       )}
       {selectedItem && !isAddingNew && isMobile && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedId(null);
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1000,
-            background: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'flex-end',
-            paddingBottom: 'var(--bottom-nav-h)',
-          }}
-        >
-          <div
-            style={{ width: '100%', maxHeight: '85vh', borderRadius: '16px 16px 0 0', overflow: 'auto' }}
-            ref={(el) => {
-              if (el) {
-                const child = el.firstElementChild as HTMLElement;
-                if (child) {
-                  child.style.width = '100%';
-                  child.style.borderLeft = 'none';
-                  child.style.borderRadius = '16px 16px 0 0';
-                }
-              }
-            }}
-          >
+        <div role="presentation" onClick={e => { if (e.target === e.currentTarget) setSelectedId(null) }}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', paddingBottom: 'var(--bottom-nav-h)' }}>
+          <div style={{ width: '100%', maxHeight: '85vh', borderRadius: '16px 16px 0 0', overflow: 'auto' }}
+            ref={el => { if (el) { const child = el.firstElementChild as HTMLElement; if (child) { child.style.width = '100%'; child.style.borderLeft = 'none'; child.style.borderRadius = '16px 16px 0 0' } } }}>
             <DetailPane
               item={selectedItem}
               tripId={tripId}
@@ -544,109 +414,42 @@ export default function TodoListPanel({
           </div>
         </div>
       )}
-      {isAddingNew &&
-        !selectedItem &&
-        !isMobile &&
-        ReactDOM.createPortal(
-          <div
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setIsAddingNew(false);
-            }}
-            className="trek-modal-backdrop"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 1000,
-              background: 'rgba(15,23,42,0.5)',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'flex-start',
-              paddingTop: 'calc(var(--nav-h) + 60px)',
-              paddingBottom: 40,
-            }}
-          >
-            <div
-              style={{
-                width: 'min(520px, 92vw)',
-                maxHeight: 'calc(100vh - var(--nav-h) - 120px)',
-                overflow: 'auto',
-                borderRadius: 16,
-                boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-              }}
-              ref={(el) => {
-                if (el) {
-                  const child = el.firstElementChild as HTMLElement;
-                  if (child) {
-                    child.style.width = '100%';
-                    child.style.borderLeft = 'none';
-                    child.style.borderRadius = '16px';
-                  }
-                }
-              }}
-            >
-              <NewTaskPane
-                tripId={tripId}
-                categories={categories}
-                members={members}
-                defaultCategory={typeof filter === 'string' && categories.includes(filter) ? filter : null}
-                onCreated={(id) => {
-                  setIsAddingNew(false);
-                  setSelectedId(id);
-                }}
-                onClose={() => setIsAddingNew(false)}
-              />
-            </div>
-          </div>,
-          document.body
-        )}
-      {isAddingNew &&
-        !selectedItem &&
-        isMobile &&
-        ReactDOM.createPortal(
-          <div
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setIsAddingNew(false);
-            }}
-            className="trek-modal-backdrop"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 1000,
-              background: 'rgba(0,0,0,0.4)',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'flex-end',
-              paddingBottom: 'var(--bottom-nav-h)',
-            }}
-          >
-            <div
-              style={{ width: '100%', maxHeight: '85vh', borderRadius: '16px 16px 0 0', overflow: 'auto' }}
-              ref={(el) => {
-                if (el) {
-                  const child = el.firstElementChild as HTMLElement;
-                  if (child) {
-                    child.style.width = '100%';
-                    child.style.borderLeft = 'none';
-                    child.style.borderRadius = '16px 16px 0 0';
-                  }
-                }
-              }}
-            >
-              <NewTaskPane
-                tripId={tripId}
-                categories={categories}
-                members={members}
-                defaultCategory={typeof filter === 'string' && categories.includes(filter) ? filter : null}
-                onCreated={(id) => {
-                  setIsAddingNew(false);
-                  setSelectedId(id);
-                }}
-                onClose={() => setIsAddingNew(false)}
-              />
-            </div>
-          </div>,
-          document.body
-        )}
+      {isAddingNew && !selectedItem && !isMobile && createPortal(
+        <div role="presentation" onClick={e => { if (e.target === e.currentTarget) setIsAddingNew(false) }}
+          className="trek-modal-backdrop"
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: 'calc(var(--nav-h) + 60px)', paddingBottom: 40 }}>
+          <div style={{ width: 'min(520px, 92vw)', maxHeight: 'calc(100vh - var(--nav-h) - 120px)', overflow: 'auto', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            ref={el => { if (el) { const child = el.firstElementChild as HTMLElement; if (child) { child.style.width = '100%'; child.style.borderLeft = 'none'; child.style.borderRadius = '16px' } } }}>
+            <NewTaskPane
+              tripId={tripId}
+              categories={categories}
+              members={members}
+              defaultCategory={typeof filter === 'string' && categories.includes(filter) ? filter : null}
+              onCreated={(id) => { setIsAddingNew(false); setSelectedId(id) }}
+              onClose={() => setIsAddingNew(false)}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+      {isAddingNew && !selectedItem && isMobile && createPortal(
+        <div role="presentation" onClick={e => { if (e.target === e.currentTarget) setIsAddingNew(false) }}
+          className="trek-modal-backdrop"
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', paddingBottom: 'var(--bottom-nav-h)' }}>
+          <div style={{ width: '100%', maxHeight: '85vh', borderRadius: '16px 16px 0 0', overflow: 'auto' }}
+            ref={el => { if (el) { const child = el.firstElementChild as HTMLElement; if (child) { child.style.width = '100%'; child.style.borderLeft = 'none'; child.style.borderRadius = '16px 16px 0 0' } } }}>
+            <NewTaskPane
+              tripId={tripId}
+              categories={categories}
+              members={members}
+              defaultCategory={typeof filter === 'string' && categories.includes(filter) ? filter : null}
+              onCreated={(id) => { setIsAddingNew(false); setSelectedId(id) }}
+              onClose={() => setIsAddingNew(false)}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -705,18 +508,13 @@ function DetailPane({
     setSaving(true);
     try {
       await updateTodoItem(tripId, item.id, {
-        name: name.trim(),
-        description: desc || null,
-        due_date: dueDate || null,
-        category: category || null,
-        assigned_user_id: assignedUserId,
-        priority,
-      } as any);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('common.error'));
-    }
-    setSaving(false);
-  };
+        name: name.trim(), description: desc || null,
+        due_date: dueDate || null, category: category || null,
+        assigned_user_id: assignedUserId, priority,
+      })
+    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.error')) }
+    setSaving(false)
+  }
 
   const handleDelete = async () => {
     try {
@@ -751,24 +549,9 @@ function DetailPane({
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 20px 12px',
-          borderBottom: '1px solid var(--border-faint)',
-        }}
-      >
-        <span
-          style={{ fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 700, color: 'var(--text-primary)' }}
-        >
-          {t('todo.detail.title')}
-        </span>
-        <button
-          onClick={onClose}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: 4 }}
-        >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px', borderBottom: '1px solid var(--border-faint)' }}>
+        <span style={{ fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 700, color: 'var(--text-primary)' }}>{t('todo.detail.title')}</span>
+        <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: 4 }}>
           <X size={16} />
         </button>
       </div>
@@ -816,9 +599,7 @@ function DetailPane({
               const cfg = PRIO_CONFIG[p];
               const isActive = priority === p;
               return (
-                <button
-                  key={p}
-                  onClick={() => canEdit && setPriority(p)}
+                <button type="button" key={p} onClick={() => canEdit && setPriority(p)}
                   style={{
                     flex: 1,
                     padding: '6px 0',
@@ -1021,8 +802,7 @@ function DetailPane({
       {/* Footer actions */}
       {canEdit && (
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-faint)', display: 'flex', gap: 8 }}>
-          <button
-            onClick={handleDelete}
+          <button type="button" onClick={handleDelete}
             style={{
               flex: 1,
               padding: '9px 16px',
@@ -1043,9 +823,7 @@ function DetailPane({
             <Trash2 size={13} />
             {t('todo.detail.delete')}
           </button>
-          <button
-            onClick={save}
-            disabled={!hasChanges || saving}
+          <button type="button" onClick={save} disabled={!hasChanges || saving}
             style={{
               flex: 1,
               padding: '9px 16px',
@@ -1112,43 +890,20 @@ function NewTaskPane({
         due_date: dueDate || null,
         category: trimmedCategory || null,
         assigned_user_id: assignedUserId,
-      } as any);
-      if (item?.id) onCreated(item.id);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('common.error'));
-    }
-    setSaving(false);
-  };
+      })
+      if (item?.id) onCreated(item.id)
+    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.error')) }
+    setSaving(false)
+  }
 
   return (
-    <div
-      style={{
-        width: 320,
-        flexShrink: 0,
-        borderLeft: '1px solid var(--border-faint)',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--bg-primary)',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 20px 12px',
-          borderBottom: '1px solid var(--border-faint)',
-        }}
-      >
-        <span
-          style={{ fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 700, color: 'var(--text-primary)' }}
-        >
-          {t('todo.newItem')}
-        </span>
-        <button
-          onClick={onClose}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: 4 }}
-        >
+    <div style={{
+      width: 320, flexShrink: 0, borderLeft: '1px solid var(--border-faint)',
+      display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px', borderBottom: '1px solid var(--border-faint)' }}>
+        <span style={{ fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 700, color: 'var(--text-primary)' }}>{t('todo.newItem')}</span>
+        <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: 4 }}>
           <X size={16} />
         </button>
       </div>
@@ -1321,9 +1076,7 @@ function NewTaskPane({
               const cfg = PRIO_CONFIG[p];
               const isActive = priority === p;
               return (
-                <button
-                  key={p}
-                  onClick={() => setPriority(p)}
+                <button type="button" key={p} onClick={() => setPriority(p)}
                   style={{
                     flex: 1,
                     padding: '6px 0',
@@ -1404,9 +1157,7 @@ function NewTaskPane({
       </div>
 
       <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-faint)' }}>
-        <button
-          onClick={create}
-          disabled={!name.trim() || saving}
+        <button type="button" onClick={create} disabled={!name.trim() || saving}
           style={{
             width: '100%',
             padding: '9px 16px',

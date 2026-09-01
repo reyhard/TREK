@@ -1,5 +1,7 @@
-import { Check, CheckCheck, FolderPlus, Luggage, Package, Upload, X } from 'lucide-react';
-import type { PackingState } from './usePackingListPanel';
+import {
+  X, Check, CheckCheck, Luggage, Package, FolderPlus, Download,
+} from 'lucide-react'
+import type { PackingState } from './usePackingListPanel'
 
 export function PackingHeader(S: PackingState) {
   const {
@@ -103,112 +105,47 @@ export function PackingHeader(S: PackingState) {
                   color: 'var(--text-primary)',
                 }}
               />
-              <button
-                onClick={handleSaveAsTemplate}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#10b981' }}
-              >
-                <Check size={14} />
-              </button>
-              <button
-                onClick={() => {
-                  setShowSaveTemplate(false);
-                  setSaveTemplateName('');
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 2,
-                  color: 'var(--text-faint)',
-                }}
-              >
-                <X size={14} />
-              </button>
+              <button type="button" onClick={handleSaveAsTemplate} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#10b981' }}><Check size={14} /></button>
+              <button type="button" onClick={() => { setShowSaveTemplate(false); setSaveTemplateName('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)' }}><X size={14} /></button>
             </div>
           )}
           {inlineHeader && canEdit && (
-            <button
-              onClick={() => setShowImportModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '5px 11px',
-                borderRadius: 99,
-                border: '1px solid var(--border-primary)',
-                fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                fontWeight: 500,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                background: 'var(--bg-card)',
-                color: 'var(--text-muted)',
-              }}
-            >
-              <Upload size={12} /> <span className="hidden sm:inline">{t('packing.import')}</span>
+            <button type="button" onClick={() => setShowImportModal(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
+              border: '1px solid var(--border-primary)', fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: 'pointer',
+              fontFamily: 'inherit', background: 'var(--bg-card)', color: 'var(--text-muted)',
+            }}>
+              <Download size={12} /> <span className="hidden sm:inline">{t('packing.import')}</span>
             </button>
           )}
           {inlineHeader && canEdit && abgehakt > 0 && (
-            <button
-              onClick={handleClearChecked}
-              style={{
-                fontSize: 'calc(11.5px * var(--fs-scale-caption, 1))',
-                padding: '5px 10px',
-                borderRadius: 99,
-                border: '1px solid rgba(239,68,68,0.3)',
-                background: 'rgba(239,68,68,0.1)',
-                color: '#ef4444',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
+            <button type="button" onClick={handleClearChecked} style={{
+              fontSize: 'calc(11.5px * var(--fs-scale-caption, 1))', padding: '5px 10px', borderRadius: 99, border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer', fontFamily: 'inherit',
+            }}>
               <span className="hidden sm:inline">{t('packing.clearChecked', { count: abgehakt })}</span>
               <span className="sm:hidden">{t('packing.clearCheckedShort', { count: abgehakt })}</span>
             </button>
           )}
           {inlineHeader && canEdit && availableTemplates.length > 0 && (
             <div ref={templateDropdownRef} style={{ position: 'relative' }}>
-              <button
-                onClick={() => setShowTemplateDropdown((v) => !v)}
-                disabled={applyingTemplate}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '5px 11px',
-                  borderRadius: 99,
-                  border: '1px solid',
-                  fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  background: showTemplateDropdown ? 'var(--text-primary)' : 'var(--bg-card)',
-                  borderColor: showTemplateDropdown ? 'var(--text-primary)' : 'var(--border-primary)',
-                  color: showTemplateDropdown ? 'var(--bg-primary)' : 'var(--text-muted)',
-                }}
-              >
-                <Package size={12} /> <span className="hidden sm:inline">{t('packing.applyTemplate')}</span>
-                <span className="sm:hidden">{t('packing.template')}</span>
+              <button type="button" onClick={() => setShowTemplateDropdown(v => !v)} disabled={applyingTemplate} style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
+                border: '1px solid', fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                background: showTemplateDropdown ? 'var(--text-primary)' : 'var(--bg-card)',
+                borderColor: showTemplateDropdown ? 'var(--text-primary)' : 'var(--border-primary)',
+                color: showTemplateDropdown ? 'var(--bg-primary)' : 'var(--text-muted)',
+              }}>
+                <Package size={12} /> <span className="hidden sm:inline">{t('packing.applyTemplate')}</span><span className="sm:hidden">{t('packing.template')}</span>
               </button>
               {showTemplateDropdown && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '100%',
-                    marginTop: 6,
-                    zIndex: 50,
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border-primary)',
-                    borderRadius: 10,
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                    padding: 4,
-                    minWidth: 200,
-                  }}
-                >
-                  {availableTemplates.map((tmpl) => (
-                    <button
-                      key={tmpl.id}
-                      onClick={() => handleApplyTemplate(tmpl.id)}
+                <div style={{
+                  position: 'absolute', right: 0, top: '100%', marginTop: 6, zIndex: 50,
+                  background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 200,
+                }}>
+                  {availableTemplates.map(tmpl => (
+                    <button type="button" key={tmpl.id} onClick={() => handleApplyTemplate(tmpl.id)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -243,30 +180,16 @@ export function PackingHeader(S: PackingState) {
             </div>
           )}
           {inlineHeader && canEdit && isAdmin && items.length > 0 && !showSaveTemplate && (
-            <button
-              onClick={() => setShowSaveTemplate(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '5px 11px',
-                borderRadius: 99,
-                border: '1px solid var(--border-primary)',
-                fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                fontWeight: 500,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                background: 'var(--bg-card)',
-                color: 'var(--text-muted)',
-              }}
-            >
+            <button type="button" onClick={() => setShowSaveTemplate(true)} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
+              border: '1px solid var(--border-primary)', fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+              background: 'var(--bg-card)', color: 'var(--text-muted)',
+            }}>
               <FolderPlus size={12} /> <span className="hidden sm:inline">{t('packing.saveAsTemplate')}</span>
             </button>
           )}
           {bagTrackingEnabled && (
-            <button
-              onClick={() => setShowBagModal(true)}
-              className="xl:!hidden"
+            <button type="button" onClick={() => setShowBagModal(true)} className="xl:!hidden"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -392,98 +315,32 @@ export function PackingHeader(S: PackingState) {
         </div>
       )}
 
-      {canEdit &&
-        (addingCategory ? (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input
-              autoFocus
-              type="text"
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAddNewCategory();
-                if (e.key === 'Escape') {
-                  setAddingCategory(false);
-                  setNewCatName('');
-                }
-              }}
-              placeholder={t('packing.newCategoryPlaceholder')}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 10,
-                border: '1px solid var(--border-primary)',
-                fontSize: 'calc(13.5px * var(--fs-scale-body, 1))',
-                fontFamily: 'inherit',
-                outline: 'none',
-                color: 'var(--text-primary)',
-              }}
-            />
-            <button
-              onClick={handleAddNewCategory}
-              disabled={!newCatName.trim()}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 10,
-                border: 'none',
-                background: newCatName.trim() ? 'var(--text-primary)' : 'var(--border-primary)',
-                color: 'var(--bg-primary)',
-                cursor: newCatName.trim() ? 'pointer' : 'default',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <Check size={16} />
-            </button>
-            <button
-              onClick={() => {
-                setAddingCategory(false);
-                setNewCatName('');
-              }}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 10,
-                border: '1px solid var(--border-primary)',
-                background: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                color: 'var(--text-faint)',
-              }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setAddingCategory(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              width: '100%',
-              padding: '9px 14px',
-              borderRadius: 10,
-              border: '1px dashed var(--border-primary)',
-              background: 'none',
-              cursor: 'pointer',
-              fontSize: 'calc(13px * var(--fs-scale-body, 1))',
-              color: 'var(--text-faint)',
-              fontFamily: 'inherit',
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--text-muted)';
-              e.currentTarget.style.color = 'var(--text-secondary)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-primary)';
-              e.currentTarget.style.color = 'var(--text-faint)';
-            }}
-          >
-            <FolderPlus size={14} /> {t('packing.addCategory')}
+      {canEdit && (addingCategory ? (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            autoFocus
+            type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddNewCategory(); if (e.key === 'Escape') { setAddingCategory(false); setNewCatName('') } }}
+            placeholder={t('packing.newCategoryPlaceholder')}
+            style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 'calc(13.5px * var(--fs-scale-body, 1))', fontFamily: 'inherit', outline: 'none', color: 'var(--text-primary)' }}
+          />
+          <button type="button" onClick={handleAddNewCategory} disabled={!newCatName.trim()}
+            style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: newCatName.trim() ? 'var(--text-primary)' : 'var(--border-primary)', color: 'var(--bg-primary)', cursor: newCatName.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}>
+            <Check size={16} />
           </button>
-        ))}
+          <button type="button" onClick={() => { setAddingCategory(false); setNewCatName('') }}
+            style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-faint)' }}>
+            <X size={16} />
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAddingCategory(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '9px 14px', borderRadius: 10, border: '1px dashed var(--border-primary)', background: 'none', cursor: 'pointer', fontSize: 'calc(13px * var(--fs-scale-body, 1))', color: 'var(--text-faint)', fontFamily: 'inherit', transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-faint)' }}>
+          <FolderPlus size={14} /> {t('packing.addCategory')}
+        </button>
+      ))}
     </div>
   );
 }

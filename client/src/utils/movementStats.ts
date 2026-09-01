@@ -1,6 +1,12 @@
+/**
+ * Daily movement totals. Every route connector, imported track, transit walk,
+ * and hotel bookend contributes at most once, including when route data is
+ * refreshed with a partial result.
+ */
 import type { Assignment, Place, Reservation, RouteSegment } from '../types'
 import { calculatePolylineDistanceMeters, decodePolyline } from './polyline'
 import { getTrackMovement } from './trackGeometry'
+import type { ResolvedMovementPart } from './resolveDayMovementPlan'
 
 export type MovementMode = 'walking' | 'driving' | 'cycling'
 export type MovementSource = 'route' | 'hotel-bookend' | 'transit-walk' | 'track'
@@ -54,7 +60,7 @@ export function createRouteContributions(
 ): MovementContribution[] {
   return Object.entries(routeLegs).map(([legId, leg]) => ({
     key: `route:${dayId}:${legId}`,
-    mode,
+    mode: normalizeMovementMode(leg.mode ?? mode),
     source: 'route',
     sourceId: legId,
     durationSeconds: metricOrNull(leg.duration),
@@ -74,7 +80,7 @@ export function createHotelBookendContributions(
     if (!leg) continue
     out.push({
       key: `hotel-bookend:${dayId}:${placement}`,
-      mode,
+      mode: normalizeMovementMode(leg.mode ?? mode),
       source: 'hotel-bookend',
       sourceId: placement,
       durationSeconds: metricOrNull(leg.duration),
@@ -123,14 +129,23 @@ interface TransitMetadataLeg {
   geometry_precision?: unknown
 }
 
-function parseMetadata(reservation: Reservation): Record<string, any> | null {
+interface TransitMetadata {
+  legs?: unknown
+  walk_seconds?: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseMetadata(reservation: Reservation): Record<string, unknown> | null {
   const raw: unknown = (reservation as Reservation & { metadata?: unknown }).metadata
   if (raw == null) return null
-  if (typeof raw === 'object') return raw as Record<string, any>
+  if (isRecord(raw)) return raw
   if (typeof raw !== 'string' || raw.trim() === '') return null
   try {
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : null
+    return isRecord(parsed) ? parsed : null
   } catch {
     return null
   }
@@ -147,13 +162,18 @@ function transitGeometryDistance(leg: TransitMetadataLeg): number | null {
 export function createTransitWalkContributions(
   dayId: number,
   reservations: Reservation[],
+  includedReservationIds?: ReadonlySet<number>,
 ): MovementContribution[] {
   const out: MovementContribution[] = []
   for (const reservation of reservations) {
     if (reservation.type !== 'transit' || reservation.day_id !== dayId) continue
-    const transit = parseMetadata(reservation)?.transit
-    if (!transit || typeof transit !== 'object') continue
-    const legs = Array.isArray(transit.legs) ? transit.legs as TransitMetadataLeg[] : []
+    if (includedReservationIds && !includedReservationIds.has(reservation.id)) continue
+    const rawTransit = parseMetadata(reservation)?.transit
+    if (!isRecord(rawTransit)) continue
+    const transit = rawTransit as TransitMetadata
+    const legs = Array.isArray(transit.legs)
+      ? transit.legs.filter(isRecord) as TransitMetadataLeg[]
+      : []
     const walkLegs = legs
       .map((leg, index) => ({ leg, index }))
       .filter(({ leg }) => typeof leg?.mode === 'string' && leg.mode.trim().toUpperCase() === 'WALK')
@@ -216,35 +236,129 @@ export function createTrackContributions(
 
 export interface CalculateDayMovementInput {
   dayId: number
-  activeProfile: 'walking' | 'driving'
+  activeProfile: MovementMode
   routeLegs: Record<number, RouteSegment>
   hotelLegs?: HotelMovementLegs
   assignments: Assignment[]
   places: Place[]
   reservations: Reservation[]
+  movementParts?: ResolvedMovementPart[]
   routeMetricsComplete: boolean
   routeMetricsExpected: boolean
 }
 
-export function calculateDayMovementStats(input: CalculateDayMovementInput): MovementTotal {
-  const mode: MovementMode = input.activeProfile
-  const contributions = [
-    ...createRouteContributions(input.dayId, mode, input.routeLegs),
-    ...createHotelBookendContributions(input.dayId, mode, input.hotelLegs),
-    ...createTransitWalkContributions(input.dayId, input.reservations),
-    ...createTrackContributions(input.dayId, input.assignments, input.places),
+export interface CalculateMovementTotalsFromPartsInput {
+  dayId: number
+  activeProfile: MovementMode
+  movementParts: ResolvedMovementPart[]
+  reservations: Reservation[]
+  routeMetricsComplete: boolean
+  routeMetricsExpected: boolean
+}
+
+const MOVEMENT_MODES: MovementMode[] = ['walking', 'driving', 'cycling']
+
+function canonicalMovementContributions(input: CalculateMovementTotalsFromPartsInput): MovementContribution[] {
+  const contributions: MovementContribution[] = [
+    ...input.movementParts.flatMap((part): MovementContribution[] => {
+      if (part.kind === 'track') {
+        return [{
+          key: part.key,
+          mode: part.mode,
+          source: 'track',
+          sourceId: part.assignmentId,
+          durationSeconds: part.duration,
+          distanceMeters: part.distance,
+        }]
+      }
+      if (part.kind === 'routed') {
+        return [{
+          key: part.key,
+          mode: normalizeMovementMode(part.profile),
+          source: part.placement.kind === 'hotel-top' || part.placement.kind === 'hotel-bottom'
+            ? 'hotel-bookend'
+            : 'route',
+          sourceId: part.key,
+          durationSeconds: part.duration,
+          distanceMeters: part.distance,
+        }]
+      }
+      return []
+    }),
+    ...createTransitWalkContributions(
+      input.dayId,
+      input.reservations,
+      new Set(input.movementParts
+        .filter((part): part is Extract<ResolvedMovementPart, { kind: 'transit' }> => part.kind === 'transit')
+        .map(part => part.reservationId)),
+    ),
   ]
-  if (input.routeMetricsExpected && !input.routeMetricsComplete) {
+  const hasCanonicalRoutedPart = input.movementParts.some(part => part.kind === 'routed')
+  if (input.routeMetricsExpected && !input.routeMetricsComplete && !hasCanonicalRoutedPart) {
     contributions.push({
       key: `route:${input.dayId}:missing`,
-      mode,
+      mode: input.activeProfile,
       source: 'route',
       sourceId: 'missing',
       durationSeconds: null,
       distanceMeters: null,
     })
   }
-  return aggregateMovementContributions(mode, contributions)
+  return contributions
+}
+
+function dayMovementContributions(input: CalculateDayMovementInput): MovementContribution[] {
+  if (input.movementParts) {
+    return canonicalMovementContributions({
+      dayId: input.dayId,
+      activeProfile: input.activeProfile,
+      movementParts: input.movementParts,
+      reservations: input.reservations,
+      routeMetricsComplete: input.routeMetricsComplete,
+      routeMetricsExpected: input.routeMetricsExpected,
+    })
+  }
+
+  const contributions = [
+    ...createRouteContributions(input.dayId, input.activeProfile, input.routeLegs),
+    ...createHotelBookendContributions(input.dayId, input.activeProfile, input.hotelLegs),
+    ...createTransitWalkContributions(input.dayId, input.reservations),
+    ...createTrackContributions(input.dayId, input.assignments, input.places),
+  ]
+  if (input.routeMetricsExpected && !input.routeMetricsComplete) {
+    contributions.push({
+      key: `route:${input.dayId}:missing`,
+      mode: input.activeProfile,
+      source: 'route',
+      sourceId: 'missing',
+      durationSeconds: null,
+      distanceMeters: null,
+    })
+  }
+  return contributions
+}
+
+export function calculateDayMovementStats(input: CalculateDayMovementInput): MovementTotal {
+  return aggregateMovementContributions(input.activeProfile, dayMovementContributions(input))
+}
+
+/** Calculate all mode totals from one day's resolved route and non-route sources. */
+export function calculateDayMovementTotals(
+  input: CalculateDayMovementInput,
+): Record<MovementMode, MovementTotal> {
+  const contributions = dayMovementContributions(input)
+  return combineMovementTotals(
+    MOVEMENT_MODES.map(mode => aggregateMovementContributions(mode, contributions)),
+  )
+}
+
+export function calculateMovementTotalsFromParts(
+  input: CalculateMovementTotalsFromPartsInput,
+): Record<MovementMode, MovementTotal> {
+  const contributions = canonicalMovementContributions(input)
+  return combineMovementTotals(
+    MOVEMENT_MODES.map(mode => aggregateMovementContributions(mode, contributions)),
+  )
 }
 
 function emptyTotal(mode: MovementMode): MovementTotal {

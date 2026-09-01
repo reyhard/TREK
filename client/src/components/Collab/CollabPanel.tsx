@@ -39,17 +39,11 @@ interface CollabPanelProps {
 }
 
 const ALL_TABS = [
-  { id: 'chat', featureKey: 'chat' as const, labelKey: 'collab.tabs.chat', fallback: 'Chat', icon: MessageCircle },
-  { id: 'notes', featureKey: 'notes' as const, labelKey: 'collab.tabs.notes', fallback: 'Notes', icon: StickyNote },
-  { id: 'polls', featureKey: 'polls' as const, labelKey: 'collab.tabs.polls', fallback: 'Polls', icon: BarChart3 },
-  {
-    id: 'next',
-    featureKey: 'whatsnext' as const,
-    labelKey: 'collab.whatsNext.title',
-    fallback: "What's Next",
-    icon: Sparkles,
-  },
-];
+  { id: 'chat', featureKey: 'chat' as const, labelKey: 'collab.tabs.chat', icon: MessageCircle },
+  { id: 'notes', featureKey: 'notes' as const, labelKey: 'collab.tabs.notes', icon: StickyNote },
+  { id: 'polls', featureKey: 'polls' as const, labelKey: 'collab.tabs.polls', icon: BarChart3 },
+  { id: 'next', featureKey: 'whatsnext' as const, labelKey: 'collab.whatsNext.title', icon: Sparkles },
+]
 
 export default function CollabPanel({ tripId, tripMembers = [], collabFeatures }: CollabPanelProps) {
   const { user } = useAuthStore();
@@ -58,14 +52,12 @@ export default function CollabPanel({ tripId, tripMembers = [], collabFeatures }
 
   const features = collabFeatures || { chat: true, notes: true, polls: true, whatsnext: true };
 
-  const tabs = useMemo(
-    () =>
-      ALL_TABS.filter((tab) => features[tab.featureKey]).map((tab) => ({
-        ...tab,
-        label: t(tab.labelKey) || tab.fallback,
-      })),
-    [features, t]
-  );
+  const tabs = useMemo(() =>
+    ALL_TABS.filter(tab => features[tab.featureKey]).map(tab => ({
+      ...tab,
+      label: t(tab.labelKey),
+    })),
+  [features, t])
 
   const [mobileTab, setMobileTab] = useState(() => tabs[0]?.id || 'chat');
 
@@ -192,27 +184,14 @@ export default function CollabPanel({ tripId, tripMembers = [], collabFeatures }
         {tabs.map((tab) => {
           const active = mobileTab === tab.id;
           return (
-            <button
-              key={tab.id}
-              onClick={() => setMobileTab(tab.id)}
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                padding: '8px 0',
-                borderRadius: 10,
-                border: 'none',
-                cursor: 'pointer',
-                background: active ? 'var(--accent)' : 'transparent',
-                color: active ? 'var(--accent-text)' : 'var(--text-muted)',
-                fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}
-            >
+            <button type="button" key={tab.id} onClick={() => setMobileTab(tab.id)} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '8px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+              background: active ? 'var(--accent)' : 'transparent',
+              color: active ? 'var(--accent-text)' : 'var(--text-muted)',
+              fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 600, fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}>
               {tab.label}
             </button>
           );

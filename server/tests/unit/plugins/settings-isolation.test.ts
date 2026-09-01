@@ -27,11 +27,19 @@ const { testDb, dbMock } = vi.hoisted(() => {
   return { testDb: db, dbMock: { db, closeDb: () => {}, reinitialize: () => {}, canAccessTrip: () => null } };
 });
 vi.mock('../../../src/db/database', () => dbMock);
-vi.mock('../../../src/config', () => ({
-  JWT_SECRET: 'x'.repeat(40),
-  ENCRYPTION_KEY: 'a'.repeat(64),
-  updateJwtSecret: () => {},
-}));
+import { db as dbConn } from '../../../src/db/database';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+import { AuditService } from '../../../src/nest/audit/audit.service';
+import { AddonsService } from '../../../src/nest/addons/addons.service';
+vi.mock('../../../src/config', () => ({ JWT_SECRET: 'x'.repeat(40), ENCRYPTION_KEY: 'a'.repeat(64), updateJwtSecret: () => {} }));
+
+import { createTables } from '../../../src/db/schema';
+import { runMigrations } from '../../../src/db/migrations';
+import { createUser } from '../../helpers/factories';
+import { PluginUserSettingsService } from '../../../src/nest/plugins/plugin-user-settings.service';
+import { parseManifest, ManifestError } from '../../../src/nest/plugins/install/manifest';
+/** The host-side settings reads, over the same connection the test seeded. */
+const userSettings = () => new PluginUserSettingsService(new DatabaseService(dbConn));
 
 let uid: number;
 
@@ -75,7 +83,7 @@ describe('plugin settings are isolated from core and from each other', () => {
       value: string;
     };
     expect(core.value).toBe('https://core.example.com/real');
-    expect(readUserSettingsDecrypted('evil', uid)).toEqual({ webhook_url: 'https://attacker.example.com' });
+    expect(userSettings().readAll('evil', uid)).toEqual({ webhook_url: 'https://attacker.example.com' });
   });
 
   it('PSET-002 — plugin A cannot read plugin B’s config, even with the same key name', () => {
@@ -83,16 +91,16 @@ describe('plugin settings are isolated from core and from each other', () => {
     declareField('b', 'token', { secret: true });
     setUserConfig('b', { token: 'B-SECRET' });
 
-    expect(readUserSettingsDecrypted('a', uid)).toEqual({});
-    expect(readUserSettingDecrypted('a', uid, 'token')).toBeUndefined();
-    expect(readUserSettingDecrypted('b', uid, 'token')).toBe('B-SECRET');
+    expect(userSettings().readAll('a', uid)).toEqual({});
+    expect(userSettings().readOne('a', uid, 'token')).toBeUndefined();
+    expect(userSettings().readOne('b', uid, 'token')).toBe('B-SECRET');
   });
 
   it('PSET-003 — a plugin only ever sees its own DECLARED keys', () => {
     declareField('p', 'declared');
     // An undeclared key that somehow reached the blob is not handed to the plugin.
     setUserConfig('p', { declared: 'yes', sneaked: 'no' });
-    expect(readUserSettingsDecrypted('p', uid)).toEqual({ declared: 'yes' });
+    expect(userSettings().readAll('p', uid)).toEqual({ declared: 'yes' });
   });
 });
 
@@ -102,16 +110,16 @@ describe('settings keys cannot resolve off the prototype chain', () => {
     (key) => {
       declareField('evil', key, { required: true });
       // The user has configured nothing at all.
-      expect(hasRequiredUserSettings('evil', uid)).toBe(false);
-      expect(readUserSettingsDecrypted('evil', uid)).toEqual({});
+      expect(userSettings().hasRequired('evil', uid)).toBe(false);
+      expect(userSettings().readAll('evil', uid)).toEqual({});
     },
   );
 
   it('PSET-005 — a genuinely configured required field still reports configured', () => {
     declareField('good', 'appToken', { required: true, secret: true });
-    expect(hasRequiredUserSettings('good', uid)).toBe(false);
+    expect(userSettings().hasRequired('good', uid)).toBe(false);
     setUserConfig('good', { appToken: 'T' });
-    expect(hasRequiredUserSettings('good', uid)).toBe(true);
+    expect(userSettings().hasRequired('good', uid)).toBe(true);
   });
 
   it('PSET-006 — the manifest rejects such a key at install', () => {
@@ -152,7 +160,7 @@ describe('a plugin channel label is bounded by the host', () => {
       )
       .run(JSON.stringify({ notificationChannel: { title: '🎉'.repeat(5) + 'A'.repeat(500) } }));
 
-    const rt = new PluginRuntimeService();
+    const rt = new PluginRuntimeService(new DatabaseService(dbConn), new AuditService(new DatabaseService(dbConn)), new AddonsService(new DatabaseService(dbConn)), userSettings());
     // Stand the plugin up as a granted, active notificationChannel provider.
     (rt as unknown as { supervisor: { running: Map<string, unknown> } }).supervisor.running.set('loud', {
       id: 'loud',

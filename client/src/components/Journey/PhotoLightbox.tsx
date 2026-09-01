@@ -1,6 +1,6 @@
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import VideoPlayer from './VideoPlayer';
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import VideoPlayer from './VideoPlayerLazy'
 
 interface LightboxPhoto {
   id: string;
@@ -119,46 +119,25 @@ export default function PhotoLightbox({ photos, startIndex = 0, onClose }: Props
           >
             {idx + 1} / {photos.length}
           </span>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              borderRadius: '50%',
-              width: 36,
-              height: 36,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
-          >
+          <button type="button" onClick={onClose} style={{
+            background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
+            width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', cursor: 'pointer',
+          }}>
             <X size={18} />
           </button>
         </div>
 
         {/* Prev button — visible on hover (desktop), always visible (mobile) */}
         {hasPrev && (
-          <button
-            onClick={prev}
-            className="flex transition-opacity sm:opacity-0 sm:group-hover/lightbox:opacity-100"
-            style={{
-              position: 'absolute',
-              left: 16,
-              zIndex: 5,
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: 'rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
-          >
+          <button type="button" onClick={prev} className="flex sm:opacity-0 sm:group-hover/lightbox:opacity-100 transition-opacity" style={{
+            position: 'absolute', left: 16, zIndex: 5,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            alignItems: 'center', justifyContent: 'center',
+            color: '#fff', cursor: 'pointer',
+          }}>
             <ChevronLeft size={22} />
           </button>
         )}
@@ -183,25 +162,14 @@ export default function PhotoLightbox({ photos, startIndex = 0, onClose }: Props
 
         {/* Next button */}
         {hasNext && (
-          <button
-            onClick={next}
-            className="flex transition-opacity sm:opacity-0 sm:group-hover/lightbox:opacity-100"
-            style={{
-              position: 'absolute',
-              right: 16,
-              zIndex: 5,
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: 'rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
-          >
+          <button type="button" onClick={next} className="flex sm:opacity-0 sm:group-hover/lightbox:opacity-100 transition-opacity" style={{
+            position: 'absolute', right: 16, zIndex: 5,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            alignItems: 'center', justifyContent: 'center',
+            color: '#fff', cursor: 'pointer',
+          }}>
             <ChevronRight size={22} />
           </button>
         )}

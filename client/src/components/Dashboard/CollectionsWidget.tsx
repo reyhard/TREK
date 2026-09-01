@@ -1,10 +1,10 @@
-import type { Collection } from '@trek/shared';
-import { ArrowRight, Bookmark, MapPin } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { collectionsApi } from '../../api/collections';
-import { useTranslation } from '../../i18n';
-import { entityGradient } from '../../utils/gradients';
+import React, { useEffect, useState } from 'react'
+import { Bookmark, ArrowRight, MapPin } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { useTranslation } from '../../i18n'
+import { collectionsApi } from '../../api/collections'
+import { entityGradient } from '../../utils/gradients'
+import type { Collection } from '@trek/shared'
 
 /**
  * Dashboard sidebar widget — a glassy `.tool` card that surfaces the user's
@@ -39,10 +39,8 @@ export default function CollectionsWidget({ onOpen }: { onOpen: () => void }): R
   return (
     <div className="tool">
       <div className="tool-head">
-        <div className="tool-title">
-          <Bookmark size={14} /> {t('collections.widget.title')}
-        </div>
-        <button className="tool-action" aria-label={t('collections.widget.title')} onClick={onOpen}>
+        <div className="tool-title"><Bookmark size={14} /> {t('collections.widget.title')}</div>
+        <button type="button" className="tool-action" aria-label={t('collections.widget.title')} onClick={onOpen}>
           <ArrowRight size={14} />
         </button>
       </div>
@@ -50,8 +48,8 @@ export default function CollectionsWidget({ onOpen }: { onOpen: () => void }): R
         <div className="col-empty">{t('collections.widget.empty')}</div>
       ) : (
         <div className="col-badges">
-          {lists.slice(0, 6).map((list) => (
-            <button
+          {lists.slice(0, 6).map(list => (
+            <button type="button"
               key={list.id}
               className="col-badge"
               style={{ ['--badge-color' as string]: list.color || '#6366f1' }}

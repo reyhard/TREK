@@ -39,7 +39,7 @@ export default function AdminUpdateBanner({ updateInfo, t, onHowTo }: AdminUpdat
             {t('admin.update.button')}
           </a>
         )}
-        <button
+        <button type="button"
           onClick={onHowTo}
           className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-gray-200"
         >

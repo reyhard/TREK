@@ -141,7 +141,7 @@ export function SlidingTabs<T extends string>({
           whiteSpace: 'nowrap',
         };
         return (
-          <button
+          <button type="button"
             key={tab.id}
             ref={(el) => {
               tabRefs.current.set(tab.id, el);

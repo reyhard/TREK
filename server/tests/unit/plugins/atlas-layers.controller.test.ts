@@ -20,13 +20,16 @@ vi.mock('../../../src/db/database', () => ({
 }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled }));
 
+import { AtlasLayersController } from '../../../src/nest/plugins/contributions/atlas-layers.controller';
+import type { PluginHooks } from '../../../src/nest/plugins/plugin-hooks.service';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const req = (id?: number) => ({ user: id === undefined ? undefined : { id } }) as any;
 function controller(invoke: (id: string) => unknown, providers = ['p1']) {
   const runtime = {
     providersOf: vi.fn(() => providers),
-    invokeHook: vi.fn(async (id: string) => invoke(id)),
-  } as unknown as PluginRuntimeService;
+    atlasLayers: vi.fn(async (id: string) => invoke(id)),
+  } as unknown as PluginHooks;
   return { c: new AtlasLayersController(runtime), runtime };
 }
 const layer = (over: Record<string, unknown> = {}) => ({ id: 'l1', countries: [{ code: 'FR' }], ...over });
@@ -60,7 +63,7 @@ describe('AtlasLayersController', () => {
       },
     ]);
     // user-scoped: empty args, the acting user is bound host-side
-    expect(runtime.invokeHook).toHaveBeenCalledWith('p1', 'atlasLayerProvider', 'getLayers', [], 5, 5000);
+    expect(runtime.atlasLayers).toHaveBeenCalledWith('p1', 5);
   });
 
   it('uppercase-coerces codes, drops anything that is not ISO alpha-2, defaults a bad tone', async () => {

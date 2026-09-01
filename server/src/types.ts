@@ -48,6 +48,7 @@ export interface Day {
   date?: string | null;
   notes?: string | null;
   title?: string | null;
+  default_transport_mode?: string | null;
 }
 
 export interface Place {
@@ -72,10 +73,11 @@ export interface Place {
   google_place_id?: string | null;
   google_ftid?: string | null;
   osm_id?: string | null;
+  route_geometry?: string | null;
+  route_color?: string | null;
   website?: string | null;
   phone?: string | null;
   transport_mode?: string;
-  route_geometry?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -108,6 +110,8 @@ export interface DayAssignment {
   reservation_datetime?: string | null;
   assignment_time?: string | null;
   assignment_end_time?: string | null;
+  leg_transport_mode?: string | null;
+  incoming_leg_transport_mode?: string | null;
   created_at?: string;
 }
 
@@ -132,7 +136,12 @@ export interface BudgetItem {
   persons?: number | null;
   days?: number | null;
   note?: string | null;
+  /** Itemized receipt for a per-item split, as JSON. Its own column since #1658. */
+  ticket_json?: string | null;
   reservation_id?: number | null;
+  /** Set when the expense was created from a place (#1298) — the other side of
+   *  the same link reservation_id is for a booking. */
+  place_id?: number | null;
   paid_by_user_id?: number | null;
   expense_date?: string | null;
   sort_order: number;
@@ -233,6 +242,8 @@ export interface DayNote {
   text: string;
   time?: string | null;
   icon: string;
+  /** One of NOTE_COLORS, or null for the neutral card (#1629). */
+  color?: string | null;
   sort_order: number;
   created_at?: string;
 }
@@ -304,15 +315,6 @@ export interface Setting {
   value?: string | null;
 }
 
-export interface AuthRequest extends Request {
-  user: User;
-  trip?: { id: number; user_id: number };
-}
-
-export interface OptionalAuthRequest extends Request {
-  user: User | null;
-}
-
 export interface AssignmentRow extends DayAssignment {
   place_name: string;
   place_description: string | null;
@@ -330,6 +332,7 @@ export interface AssignmentRow extends DayAssignment {
   transport_mode: string;
   google_place_id: string | null;
   google_ftid: string | null;
+  osm_id: string | null;
   website: string | null;
   phone: string | null;
   category_name: string | null;
@@ -395,6 +398,11 @@ export interface TrekPhoto {
   media_type?: string | null;
   /** Optional video duration in milliseconds. */
   duration_ms?: number | null;
+  /** When the picture was taken, as the provider or its EXIF reported it (#1614). */
+  taken_at?: string | null;
+  /** Capture coordinates. Stored as a pair or not at all. */
+  lat?: number | null;
+  lng?: number | null;
   created_at: string;
 }
 

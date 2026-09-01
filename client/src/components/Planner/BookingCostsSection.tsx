@@ -7,31 +7,38 @@ import { formatMoney } from '../../utils/formatters';
 import { catMeta } from '../Budget/costsCategories';
 
 /**
- * The Costs block inside a booking modal. Replaces the old inline price + budget
- * category fields: when no expense is linked yet it offers a "create expense"
- * button (the modal saves the booking first, then opens the full Costs editor);
- * once linked it shows the expense with edit / remove actions.
+ * The Costs block inside a booking modal — and, since #1298, inside the place
+ * form, which links its expense the same way. Replaces the old inline price +
+ * budget category fields: when no expense is linked yet it offers a "create
+ * expense" button (the modal saves its own record first, then opens the full
+ * Costs editor); once linked it shows the expense with edit / remove actions.
+ *
+ * Exactly one of reservationId / placeId is set — they are the two sides of the
+ * same link, and the block behaves identically on both.
  */
-export function BookingCostsSection({
-  reservationId,
-  pendingExpense,
-  onCreate,
-  onEdit,
-  onRemove,
-}: {
-  reservationId: number | null;
+export function BookingCostsSection({ reservationId, placeId = null, hintKey = 'reservations.createExpenseHint', pendingExpense, onCreate, onEdit, onRemove, createDisabled = false }: {
+  reservationId: number | null
+  /** Set instead of reservationId when the block sits in the place form (#1298). */
+  placeId?: number | null
+  /** What gets saved before the editor opens — "the booking" or "the place". */
+  hintKey?: string
   /** A cost parsed from an import that will be linked on save — previewed before the booking exists. */
-  pendingExpense?: { total_price: number; currency?: string | null; category: string } | null;
-  onCreate: () => void;
-  onEdit: (item: BudgetItem) => void;
-  onRemove: (item: BudgetItem) => void;
+  pendingExpense?: { total_price: number; currency?: string | null; category: string } | null
+  onCreate: () => void
+  onEdit: (item: BudgetItem) => void
+  onRemove: (item: BudgetItem) => void
+  createDisabled?: boolean
 }) {
-  const { t, locale } = useTranslation();
-  const budgetItems = useTripStore((s) => s.budgetItems);
-  const trip = useTripStore((s) => s.trip);
-  const displayCurrency = useSettingsStore((s) => s.settings.default_currency);
-  const base = (displayCurrency || trip?.currency || 'EUR').toUpperCase();
-  const linked = reservationId ? budgetItems.find((i) => i.reservation_id === reservationId) : null;
+  const { t, locale } = useTranslation()
+  const budgetItems = useTripStore(s => s.budgetItems)
+  const trip = useTripStore(s => s.trip)
+  const displayCurrency = useSettingsStore(s => s.settings.default_currency)
+  const base = (displayCurrency || trip?.currency || 'EUR').toUpperCase()
+  const linked = reservationId
+    ? budgetItems.find(i => i.reservation_id === reservationId)
+    : placeId
+      ? budgetItems.find(i => i.place_id === placeId)
+      : null
 
   const labelCls = 'block text-[11px] font-semibold uppercase tracking-[0.08em] text-content-faint mb-[6px]';
 
@@ -61,12 +68,8 @@ export function BookingCostsSection({
             <Icon size={14} />
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="text-content" style={{ fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 600 }}>
-              {t(meta.labelKey)}
-            </div>
-            <div className="text-content-faint" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>
-              {t('reservations.createExpenseHint')}
-            </div>
+            <div className="text-content" style={{ fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 600 }}>{t(meta.labelKey)}</div>
+            <div className="text-content-faint" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>{t(hintKey)}</div>
           </div>
           <span
             className="text-content"
@@ -152,29 +155,12 @@ export function BookingCostsSection({
   return (
     <div>
       <label className={labelCls}>{t('reservations.costsLabel')}</label>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="border border-edge bg-surface-secondary text-content"
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          padding: '11px 13px',
-          borderRadius: 10,
-          fontSize: 'calc(13.5px * var(--fs-scale-body, 1))',
-          fontWeight: 600,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}
-      >
+      <button type="button" onClick={onCreate} disabled={createDisabled}
+        className="bg-surface-secondary border border-edge text-content disabled:opacity-40"
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 13px', borderRadius: 10, fontSize: 'calc(13.5px * var(--fs-scale-body, 1))', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
         <Plus size={15} /> {t('reservations.createExpense')}
       </button>
-      <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', marginTop: 6 }}>
-        {t('reservations.createExpenseHint')}
-      </div>
+      <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', marginTop: 6 }}>{t(hintKey)}</div>
     </div>
   );
 }

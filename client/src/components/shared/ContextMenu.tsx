@@ -1,6 +1,6 @@
-import { LucideIcon } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { LucideIcon } from 'lucide-react'
 
 interface MenuItem {
   label?: string;
@@ -64,59 +64,32 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps) {
 
   if (!menu) return null;
 
-  return ReactDOM.createPortal(
-    <div
-      ref={ref}
-      className="trek-popover-enter"
-      style={{
-        position: 'fixed',
-        left: menu.x,
-        top: menu.y,
-        zIndex: 999999,
-        background: 'var(--bg-card)',
-        borderRadius: 10,
-        padding: '4px',
-        border: '1px solid var(--border-primary)',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        minWidth: 160,
-        fontFamily: 'var(--font-system)',
-        transformOrigin: 'top left',
-      }}
-    >
+  return createPortal(
+    <div ref={ref} className="trek-popover-enter" style={{
+      position: 'fixed', left: menu.x, top: menu.y, zIndex: 999999,
+      background: 'var(--bg-card)', borderRadius: 10, padding: '4px',
+      border: '1px solid var(--border-primary)',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+      backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+      minWidth: 160,
+      fontFamily: "var(--font-system)",
+      transformOrigin: 'top left',
+    }}>
       {menu.items.filter(Boolean).map((item, i) => {
         if (item.divider)
           return <div key={i} style={{ height: 1, background: 'var(--border-faint)', margin: '3px 6px' }} />;
         const Icon = item.icon;
         return (
-          <button
-            key={i}
-            onClick={() => {
-              item.onClick?.();
-              onClose();
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              width: '100%',
-              padding: '7px 10px',
-              borderRadius: 7,
-              border: 'none',
-              background: 'none',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-              fontWeight: 500,
-              textAlign: 'left',
-              color: item.danger ? '#ef4444' : 'var(--text-primary)',
-              transition: 'background 0.1s',
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = item.danger ? 'rgba(239,68,68,0.08)' : 'var(--bg-hover)')
-            }
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+          <button type="button" key={i} onClick={() => { item.onClick?.(); onClose() }} style={{
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+            padding: '7px 10px', borderRadius: 7, border: 'none',
+            background: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, textAlign: 'left',
+            color: item.danger ? '#ef4444' : 'var(--text-primary)',
+            transition: 'background 0.1s',
+          }}
+            onMouseEnter={e => e.currentTarget.style.background = item.danger ? 'rgba(239,68,68,0.08)' : 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
           >
             {Icon && <Icon size={13} style={{ flexShrink: 0, color: item.danger ? '#ef4444' : 'var(--text-faint)' }} />}
             <span>{item.label}</span>

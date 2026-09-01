@@ -5,10 +5,10 @@ import { useTranslation } from '../../i18n';
 export interface TimelineRouteToolbarProps {
   dayId: number;
   routeShown: boolean;
-  routeProfile: 'driving' | 'walking';
+  routeProfile: string;
   onToggleRoute?: () => void;
-  onSetRouteProfile?: (profile: 'driving' | 'walking') => void;
-  onPlanTransit?: (dayId: number) => void;
+  onSetRouteProfile?: (profile: string) => void;
+  onPlanTransit?: (dayId: number, prefill?: import('./transitSearchTypes').TransitSearchPrefill) => void;
 }
 
 export function TimelineRouteToolbar({

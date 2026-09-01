@@ -1,3 +1,6 @@
+// FE-PLANNER-TRANSITEDITOR-001 to 006 — the map-only route-endpoint editor for a stored
+// transit journey. It edits ONLY the origin/destination pins and never triggers a provider
+// search: the parent builds the full endpoints[] and calls the canonical reservation update.
 import userEvent from '@testing-library/user-event';
 import en from '@trek/shared/i18n/en';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -35,12 +38,12 @@ beforeEach(() => {
   seedStore(useSettingsStore, { settings: { time_format: '24h' } } as any);
 });
 
-it('shows the map-only warning and submits only the changed origin', async () => {
+it('FE-PLANNER-TRANSITEDITOR-001: shows the map-only warning and submits only the changed origin', async () => {
   const user = userEvent.setup();
   const onSave = vi.fn().mockResolvedValue({});
   render(<TransitRouteEndpointEditor from={from} to={to} onSave={onSave} onCancel={vi.fn()} />);
 
-  expect(screen.getByText(/changes map pinning only/i)).toBeInTheDocument();
+  expect(screen.getByText(/changes only the origin and destination pins/i)).toBeInTheDocument();
   const originName = screen.getByLabelText('Origin — Place or station label');
   const originLat = screen.getByLabelText('Origin — Latitude');
   const originLng = screen.getByLabelText('Origin — Longitude');
@@ -63,7 +66,27 @@ it('shows the map-only warning and submits only the changed origin', async () =>
   );
 });
 
-it('blocks invalid coordinates and unchanged values', async () => {
+it('FE-PLANNER-TRANSITEDITOR-002: edits only the destination endpoint', async () => {
+  const user = userEvent.setup();
+  const onSave = vi.fn().mockResolvedValue({});
+  render(<TransitRouteEndpointEditor from={from} to={to} onSave={onSave} onCancel={vi.fn()} />);
+
+  const destLat = screen.getByLabelText('Destination — Latitude');
+  const destLng = screen.getByLabelText('Destination — Longitude');
+  await user.clear(destLat);
+  await user.type(destLat, '34.995');
+  await user.clear(destLng);
+  await user.type(destLng, '135.786');
+  await user.click(screen.getByRole('button', { name: /^Save$/ }));
+
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith({
+      to: { name: 'Kiyomizu-dera', lat: 34.995, lng: 135.786 },
+    })
+  );
+});
+
+it('FE-PLANNER-TRANSITEDITOR-003: blocks invalid coordinates and unchanged values', async () => {
   const user = userEvent.setup();
   const onSave = vi.fn();
   render(<TransitRouteEndpointEditor from={from} to={to} onSave={onSave} onCancel={vi.fn()} />);
@@ -77,7 +100,7 @@ it('blocks invalid coordinates and unchanged values', async () => {
   expect(onSave).not.toHaveBeenCalled();
 });
 
-it('cancels without saving', async () => {
+it('FE-PLANNER-TRANSITEDITOR-004: cancels without saving', async () => {
   const user = userEvent.setup();
   const onCancel = vi.fn();
   render(<TransitRouteEndpointEditor from={from} to={to} onSave={vi.fn()} onCancel={onCancel} />);
@@ -85,27 +108,18 @@ it('cancels without saving', async () => {
   expect(onCancel).toHaveBeenCalledTimes(1);
 });
 
-it('reports errors for blank latitude and longitude and blocks save', async () => {
-  const user = userEvent.setup();
-  render(<TransitRouteEndpointEditor from={from} to={to} onSave={vi.fn()} onCancel={vi.fn()} />);
-  const latInput = screen.getByLabelText('Origin — Latitude');
-  await user.clear(latInput);
-  expect(screen.getByText('Latitude must be a number from -90 to 90.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled();
-});
-
-it('does not submit an accidental zero for blank coordinates', async () => {
+it('FE-PLANNER-TRANSITEDITOR-005: does not submit an accidental zero for blank coordinates', async () => {
   const user = userEvent.setup();
   const onSave = vi.fn().mockResolvedValue({});
   render(<TransitRouteEndpointEditor from={from} to={to} onSave={onSave} onCancel={vi.fn()} />);
   const lngInput = screen.getByLabelText('Origin — Longitude');
   await user.clear(lngInput);
-  // Save should be blocked — blank longitude must not coerce to 0
+  // Save must be blocked — blank longitude must not coerce to 0
   await user.click(screen.getByRole('button', { name: /^Save$/ }));
   expect(onSave).not.toHaveBeenCalled();
 });
 
-it('renders text from i18n keys rather than hardcoded English', async () => {
+it('FE-PLANNER-TRANSITEDITOR-006: renders text from i18n keys rather than hardcoded English', async () => {
   const user = userEvent.setup();
   render(<TransitRouteEndpointEditor from={from} to={to} onSave={vi.fn()} onCancel={vi.fn()} />);
 
@@ -116,7 +130,6 @@ it('renders text from i18n keys rather than hardcoded English', async () => {
   expect(screen.getAllByPlaceholderText(en['transit.endpointLatitude'] as string)).toHaveLength(2);
   expect(screen.getAllByPlaceholderText(en['transit.endpointLongitude'] as string)).toHaveLength(2);
 
-  // Trigger validation error — message comes from i18n, not hardcoded string
   const latInput = screen.getByLabelText(`Origin — ${en['transit.endpointLatitude'] as string}`);
   await user.clear(latInput);
   expect(screen.getByText(en['transit.endpointInvalidLatitude'] as string)).toBeInTheDocument();

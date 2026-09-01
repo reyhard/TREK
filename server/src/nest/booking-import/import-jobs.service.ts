@@ -1,9 +1,8 @@
-import { broadcastToUser } from '../../websocket';
-import { BookingImportService } from './booking-import.service';
 import { Injectable } from '@nestjs/common';
-import type { BookingImportMode, BookingImportPreviewResponse } from '@trek/shared';
-
 import { randomUUID } from 'node:crypto';
+import { RealtimeService } from '../realtime/realtime.service';
+import { BookingImportService } from './booking-import.service';
+import type { BookingImportMode, BookingImportPreviewResponse, TrekWsPayload } from '@trek/shared';
 
 type JobStatus = 'running' | 'done' | 'error';
 
@@ -37,20 +36,12 @@ export class ImportJobsService {
   /** Tail of each user's job chain — parses run one at a time per user, not all at once. */
   private readonly chains = new Map<number, Promise<void>>();
 
-  constructor(private readonly bookingImport: BookingImportService) {}
+  constructor(private readonly bookingImport: BookingImportService, private readonly realtime: RealtimeService) {}
 
   /** Create a job and queue it behind the user's other parses; returns the job id at once. */
   start(tripId: string, files: Express.Multer.File[], mode: BookingImportMode, userId: number): string {
     const id = randomUUID();
-    const job: ImportJob = {
-      id,
-      tripId,
-      userId,
-      status: 'running',
-      done: 0,
-      total: files.length,
-      createdAt: Date.now(),
-    };
+    const job: ImportJob = { id, tripId, userId, status: 'running', done: 0, total: files.length, createdAt: Date.now() };
     this.jobs.set(id, job);
     // Chain onto the user's previous parse so they run sequentially (one CPU-heavy
     // inference at a time), while the request returns immediately.
@@ -88,7 +79,18 @@ export class ImportJobsService {
     }
   }
 
-  private push(job: ImportJob, type: string, payload: Record<string, unknown>): void {
-    broadcastToUser(job.userId, { type, jobId: job.id, tripId: job.tripId, ...payload });
+  private push<E extends 'import:progress' | 'import:done' | 'import:error'>(
+    job: ImportJob,
+    type: E,
+    payload: Omit<TrekWsPayload<E>, 'jobId' | 'tripId'>,
+  ): void {
+    // jobId/tripId are injected here; TS can't re-associate the spread with the
+    // deferred generic payload, so re-assert the completed shape it just built.
+    this.realtime.broadcastToUser(job.userId, {
+      type,
+      jobId: job.id,
+      tripId: job.tripId,
+      ...payload,
+    } as { type: E } & TrekWsPayload<E>);
   }
 }

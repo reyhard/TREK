@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Reservasi Dikonfirmasi',
   'inspector.pendingRes': 'Reservasi Menunggu',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'Navigasi',
+  'inspector.openWith': 'Buka dengan',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.saveToCollection': 'Simpan ke Koleksi',
   'inspector.savedToCollection': 'Tersimpan',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'Warna jalur',
+  'inspector.trackColorAuto': 'Warna otomatis',
+  'inspector.trackColorCustom': 'Pilih warna kustom',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

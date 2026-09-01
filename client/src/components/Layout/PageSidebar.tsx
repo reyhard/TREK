@@ -58,8 +58,10 @@ export default function PageSidebar({
       }}
     >
       {/* Mobile top bar with hamburger */}
-      <div className="flex items-center justify-between border-b border-edge px-4 py-3 lg:hidden">
-        <button
+      <div
+        className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-edge"
+      >
+        <button type="button"
           onClick={() => setMobileOpen(true)}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-content transition-colors hover:bg-[var(--bg-hover)]"
           aria-label="Open navigation"
@@ -90,7 +92,11 @@ export default function PageSidebar({
       {/* Mobile drawer */}
       {mobileOpen && (
         <>
-          <div className="fixed inset-0 z-40 bg-[rgba(0,0,0,0.35)] lg:hidden" onClick={() => setMobileOpen(false)} />
+          <div
+            className="lg:hidden fixed inset-0 z-40 bg-[rgba(0,0,0,0.35)]"
+            role="presentation"
+            onClick={() => setMobileOpen(false)}
+          />
           <aside
             ref={drawerRef}
             className="fixed bottom-0 left-0 top-0 z-50 flex flex-col bg-surface-secondary shadow-2xl lg:hidden"
@@ -99,9 +105,13 @@ export default function PageSidebar({
               padding: '18px 14px',
             }}
           >
-            <div className="mb-3 flex items-center justify-between px-2">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-content-muted">{sidebarLabel}</span>
-              <button
+            <div className="flex items-center justify-between mb-3 px-2">
+              <span
+                className="text-[11px] font-bold tracking-widest uppercase text-content-muted"
+              >
+                {sidebarLabel}
+              </span>
+              <button type="button"
                 onClick={() => setMobileOpen(false)}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-content transition-colors hover:bg-[var(--bg-hover)]"
                 aria-label="Close navigation"
@@ -166,7 +176,7 @@ function SidebarInner({
                     {tab.group}
                   </div>
                 )}
-                <button
+                <button type="button"
                   onClick={() => onTabChange(tab.id)}
                   className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${active ? 'font-semibold text-content' : 'font-medium text-content-secondary'}`}
                   style={{

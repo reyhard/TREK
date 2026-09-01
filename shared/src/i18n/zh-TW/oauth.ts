@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': '行程',
   'oauth.scope.group.places': '地點',
+  'oauth.scope.group.collections': '收藏集',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': '行李',
   'oauth.scope.group.todos': '待辦事項',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': '天氣',
   'oauth.scope.group.journey': '旅程',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': '檢視行程與旅遊計畫',
   'oauth.scope.trips:read.description': '讀取行程、天數、每日筆記及成員',
   'oauth.scope.trips:write.label': '編輯行程與旅遊計畫',
@@ -26,6 +29,10 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': '讀取地點、每日指派、標籤及類別',
   'oauth.scope.places:write.label': '管理地點',
   'oauth.scope.places:write.description': '建立、更新及刪除地點、指派及標籤',
+  'oauth.scope.collections:read.label': '檢視收藏集',
+  'oauth.scope.collections:read.description': '讀取地點收藏集及其中的地點、評分、標籤與成員',
+  'oauth.scope.collections:write.label': '管理收藏集',
+  'oauth.scope.collections:write.description': '建立/編輯收藏集，儲存、評分、標記及複製地點，並分享清單',
   'oauth.scope.atlas:read.label': '檢視 Atlas',
   'oauth.scope.atlas:read.description': '讀取已造訪的國家、地區及願望清單',
   'oauth.scope.atlas:write.label': '管理 Atlas',
@@ -68,6 +75,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': '建立、更新及刪除旅程及其條目',
   'oauth.scope.journey:share.label': '管理旅程連結',
   'oauth.scope.journey:share.description': '建立、更新及撤銷旅程的公開分享連結',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

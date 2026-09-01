@@ -1,4 +1,5 @@
-import { validatePassword } from '../../../src/services/passwordPolicy';
+import { describe, it, expect } from 'vitest';
+import { validatePassword } from '../../../src/nest/common/passwordPolicy';
 
 import { describe, it, expect } from 'vitest';
 

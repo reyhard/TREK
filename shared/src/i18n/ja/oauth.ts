@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': '旅行',
   'oauth.scope.group.places': '場所',
+  'oauth.scope.group.collections': 'コレクション',
   'oauth.scope.group.atlas': '地図',
   'oauth.scope.group.packing': '持ち物',
   'oauth.scope.group.todos': 'ToDo',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': '地図',
   'oauth.scope.group.weather': '天気',
   'oauth.scope.group.journey': '日記',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': '旅行・旅程を表示',
   'oauth.scope.trips:read.description': '旅行、日程、メモ、メンバーを閲覧',
   'oauth.scope.trips:write.label': '旅行・旅程を編集',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': '場所、日への割り当て、タグ、カテゴリを閲覧',
   'oauth.scope.places:write.label': '場所を管理',
   'oauth.scope.places:write.description': '場所、割り当て、タグの作成・更新・削除',
+  'oauth.scope.collections:read.label': 'コレクションを表示',
+  'oauth.scope.collections:read.description':
+    '保存した場所のコレクションと、その中の場所、評価、ラベル、メンバーを読み取る',
+  'oauth.scope.collections:write.label': 'コレクションを管理',
+  'oauth.scope.collections:write.description':
+    'コレクションの作成・編集、場所の保存・評価・ラベル付け・コピー、リストの共有',
   'oauth.scope.atlas:read.label': '地図を表示',
   'oauth.scope.atlas:read.description': '訪問した国・地域、バケットリストを閲覧',
   'oauth.scope.atlas:write.label': '地図を管理',
@@ -68,6 +77,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': '日記やエントリーの作成・編集・削除',
   'oauth.scope.journey:share.label': '日記共有を管理',
   'oauth.scope.journey:share.description': '公開共有リンクの作成・更新・無効化',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

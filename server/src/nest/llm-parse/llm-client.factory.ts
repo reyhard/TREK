@@ -1,7 +1,7 @@
-import type { ResolvedLlmConfig } from '../../services/llmConfig';
-import { AnthropicClient } from './clients/anthropic.client';
-import { OpenAiCompatibleClient } from './clients/openai-compatible.client';
 import type { LlmExtractionClient } from './llm-provider.interface';
+import type { ResolvedLlmConfig } from './llm-config';
+import { OpenAiCompatibleClient } from './clients/openai-compatible.client';
+import { AnthropicClient } from './clients/anthropic.client';
 
 /**
  * Pick the provider client for a resolved config.

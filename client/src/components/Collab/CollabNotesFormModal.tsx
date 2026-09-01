@@ -1,11 +1,11 @@
-import { Plus, X } from 'lucide-react';
-import { useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
-import { useCanDo } from '../../store/permissionsStore';
-import { useTripStore } from '../../store/tripStore';
-import { FONT } from './CollabNotes.constants';
-import type { CollabNote } from './CollabNotes.types';
-import { AuthedImg } from './CollabNotesAuthedImg';
+import { createPortal } from 'react-dom'
+import { useState, useRef } from 'react'
+import { Plus, X } from 'lucide-react'
+import { useCanDo } from '../../store/permissionsStore'
+import { useTripStore } from '../../store/tripStore'
+import { FONT } from './CollabNotes.constants'
+import { AuthedImg } from './CollabNotesAuthedImg'
+import type { CollabNote } from './CollabNotes.types'
 
 // ── New Note Modal (portal to body) ─────────────────────────────────────────
 interface NoteFormModalProps {
@@ -85,7 +85,7 @@ export function NoteFormModal({
 
   const canSubmit = title.trim() && !submitting;
 
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
       style={{
         position: 'fixed',
@@ -102,6 +102,7 @@ export function NoteFormModal({
       }}
     >
       <form
+        role="presentation"
         style={{
           background: 'var(--bg-card)',
           borderRadius: 16,

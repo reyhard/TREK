@@ -3,7 +3,8 @@
  * The stored value is either an uploaded file name or an absolute https URL from
  * an OIDC `picture` claim (#1399); the helper resolves both to a renderable src.
  */
-import { avatarUrl } from '../../../src/services/avatarUrl';
+import { describe, it, expect } from 'vitest';
+import { avatarUrl } from '../../../src/nest/common/avatarUrl';
 
 import { describe, it, expect } from 'vitest';
 

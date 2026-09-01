@@ -1,7 +1,5 @@
-import { test, clearNotices, expect } from './shot'
+import { test, clearNotices, expect, loadSeed } from './shot'
 import type { Page, Locator } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
 
 /**
  * Collab surfaces, one capture each.
@@ -14,10 +12,6 @@ import path from 'node:path'
  * column and the other panels beside it, all visible at once (CollabPanel.tsx:94).
  * So each capture targets its own card element rather than clicking a tab.
  */
-
-const seed = JSON.parse(
-  readFileSync(path.join(process.cwd(), 'e2e', '.tmp', 'seed.json'), 'utf8'),
-) as { tripId: number }
 
 /**
  * The panel card containing a given piece of seeded content — see cardClass in
@@ -36,6 +30,7 @@ function card(page: Page, contains: string): Locator {
 }
 
 test.beforeEach(async ({ page }) => {
+  const seed = loadSeed()
   await page.goto(`/trips/${seed.tripId}`)
   await clearNotices(page)
   await page.getByRole('button', { name: 'Collab', exact: true }).first().click()

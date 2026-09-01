@@ -222,7 +222,7 @@ export default function OfflineTab(): React.ReactElement {
               {t('settings.offline.prepare.hint')}
             </p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button
+              <button type="button"
                 onClick={runPrepare}
                 disabled={preparing || offline}
                 className="border border-edge bg-surface-secondary text-content"
@@ -235,7 +235,7 @@ export default function OfflineTab(): React.ReactElement {
                 )}
                 {preparing ? t('settings.offline.prepare.running') : t('settings.offline.prepare.button')}
               </button>
-              <button
+              <button type="button"
                 onClick={handleResync}
                 disabled={syncing || offline}
                 className="border border-edge bg-surface-secondary text-content"
@@ -321,18 +321,10 @@ export default function OfflineTab(): React.ReactElement {
                   {t('settings.offline.conflicts.item', { name: conflictName(c) })}
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={() => resolveConflict(c.id, true)}
-                    className="border border-edge bg-surface-card text-content"
-                    style={smallBtnStyle()}
-                  >
+                  <button type="button" onClick={() => resolveConflict(c.id, true)} className="border border-edge bg-surface-card text-content" style={smallBtnStyle()}>
                     {t('settings.offline.conflicts.keepMine')}
                   </button>
-                  <button
-                    onClick={() => resolveConflict(c.id, false)}
-                    className="border border-edge bg-surface-card text-content"
-                    style={smallBtnStyle()}
-                  >
+                  <button type="button" onClick={() => resolveConflict(c.id, false)} className="border border-edge bg-surface-card text-content" style={smallBtnStyle()}>
                     {t('settings.offline.conflicts.keepServer')}
                   </button>
                 </div>
@@ -430,7 +422,7 @@ export default function OfflineTab(): React.ReactElement {
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
+            <button type="button"
               onClick={handleClear}
               disabled={clearing || rows.length === 0}
               className="border border-edge bg-surface-secondary text-[#ef4444]"

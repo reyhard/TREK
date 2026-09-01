@@ -1,18 +1,19 @@
-import { Car, Footprints } from 'lucide-react';
+import { Bike, Car, Footprints } from 'lucide-react';
 import type { DistanceUnit } from '../../types';
-import type { MovementTotal } from '../../utils/movementStats';
+import type { MovementMode, MovementTotal } from '../../utils/movementStats';
 import { formatDistance } from '../../utils/units';
 
 export type RouteMetricStatus = 'idle' | 'loading' | 'complete' | 'partial';
 
 interface DayMovementTotalRowProps {
   status: RouteMetricStatus;
-  profile: 'walking' | 'driving';
+  mode: MovementMode;
   total: MovementTotal;
   distanceUnit: DistanceUnit;
   calculatingLabel: string;
   totalLabel: string;
   incompleteLabel: string;
+  testId?: string;
 }
 
 export function formatMovementDuration(seconds: number): string {
@@ -28,17 +29,24 @@ export function formatMovementDistance(meters: number, unit: DistanceUnit): stri
   return formatDistance(safeMeters / 1000, unit);
 }
 
+const MODE_ICONS: Record<MovementMode, typeof Car> = {
+  driving: Car,
+  walking: Footprints,
+  cycling: Bike,
+};
+
 export default function DayMovementTotalRow({
   status,
-  profile,
+  mode,
   total,
   distanceUnit,
   calculatingLabel,
   totalLabel,
   incompleteLabel,
+  testId = 'day-movement-total',
 }: DayMovementTotalRowProps) {
   if (status === 'idle') return null;
-  const Icon = profile === 'driving' ? Car : Footprints;
+  const Icon = MODE_ICONS[mode];
 
   if (status === 'loading') {
     return (
@@ -70,7 +78,7 @@ export default function DayMovementTotalRow({
 
   return (
     <div
-      data-testid="day-movement-total"
+      data-testid={testId}
       aria-label={totalLabel}
       title={incomplete ? incompleteLabel : undefined}
       className="bg-surface-hover text-content-secondary"

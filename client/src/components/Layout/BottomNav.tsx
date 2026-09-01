@@ -1,11 +1,13 @@
-import type { LucideIcon } from 'lucide-react';
-import { Bookmark, CalendarDays, Compass, Globe, LayoutGrid, Plus } from 'lucide-react';
-import { useLocation, useMatch, useNavigate } from 'react-router-dom';
-import { useTranslation } from '../../i18n';
-import { useAddonStore } from '../../store/addonStore';
-import { usePluginStore } from '../../store/pluginStore';
-import { useSettingsStore } from '../../store/settingsStore';
-import { resolvePluginIcon } from '../shared/PluginIcon';
+import { useNavigate, useLocation, useMatch } from 'react-router'
+import { useAddonStore } from '../../store/addonStore'
+import { usePluginStore } from '../../store/pluginStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { useTranslation } from '../../i18n'
+import { LayoutGrid, CalendarDays, Globe, Compass, Bookmark, Plus } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { resolvePluginIcon } from '../shared/PluginIcon'
+import { useAuthStore } from '../../store/authStore'
+import { visibleManagedNavItems } from '../../managed'
 
 const ADDON_NAV: Record<string, { icon: LucideIcon; labelKey: string }> = {
   vacay: { icon: CalendarDays, labelKey: 'admin.addons.catalog.vacay.name' },
@@ -66,9 +68,10 @@ export default function BottomNav() {
   const globalAddons = addons.filter((a) => a.type === 'global' && a.enabled);
   // Page plugins are reachable from the mobile tab bar too, mirroring the desktop
   // nav pill (Navbar) — otherwise they were only reachable by typing /plugins/:id.
-  const pagePlugins = usePluginStore((s) => s.plugins).filter((p) => p.type === 'page');
-  const location = useLocation();
-  const create = useCreateAction();
+  const pagePlugins = usePluginStore(s => s.plugins).filter(p => p.type === 'page')
+  const location = useLocation()
+  const create = useCreateAction()
+  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
 
   const items: NavItem[] = [
     { to: '/dashboard', label: t('nav.myTrips'), icon: LayoutGrid },
@@ -76,8 +79,10 @@ export default function BottomNav() {
       const nav = ADDON_NAV[addon.id];
       return nav ? [{ to: `/${addon.id}`, label: t(nav.labelKey), icon: nav.icon }] : [];
     }),
-    ...pagePlugins.map((p) => ({ to: `/plugins/${p.id}`, label: p.name, icon: resolvePluginIcon(p.icon) })),
-  ];
+    ...pagePlugins.map(p => ({ to: `/plugins/${p.id}`, label: p.name, icon: resolvePluginIcon(p.icon) })),
+    // Empty in this repository — see client/src/managed.
+    ...visibleManagedNavItems(isAdmin).map(m => ({ to: m.path, label: m.label, icon: m.Icon })),
+  ]
   // Split the items so the raised "+" sits dead centre.
   const splitAt = Math.ceil(items.length / 2);
   const left = items.slice(0, splitAt);
@@ -89,7 +94,7 @@ export default function BottomNav() {
   const renderItem = ({ to, label, icon: Icon }: NavItem) => {
     const active = isActive(to);
     return (
-      <button
+      <button type="button"
         key={to}
         onClick={() => navigate(to)}
         className="flex min-w-0 flex-col items-center gap-1 px-1 py-1"
@@ -123,7 +128,7 @@ export default function BottomNav() {
     >
       <div className="flex min-w-0 flex-1 items-center justify-around">{left.map(renderItem)}</div>
 
-      <button
+      <button type="button"
         onClick={create.run}
         aria-label={create.label}
         className="flex flex-shrink-0 items-center justify-center transition-transform active:scale-95"

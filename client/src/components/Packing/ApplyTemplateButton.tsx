@@ -67,8 +67,8 @@ export default function ApplyTemplateButton({
 
   return (
     <div ref={dropRef} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
+      <button type="button"
+        onClick={() => setOpen(v => !v)}
         disabled={applying}
         className={className ?? 'hover:opacity-[0.88]'}
         style={style}
@@ -94,10 +94,8 @@ export default function ApplyTemplateButton({
             transformOrigin: 'top right',
           }}
         >
-          {templates.map((tmpl) => (
-            <button
-              key={tmpl.id}
-              onClick={() => handleApply(tmpl.id)}
+          {templates.map(tmpl => (
+            <button type="button" key={tmpl.id} onClick={() => handleApply(tmpl.id)}
               style={{
                 display: 'flex',
                 alignItems: 'center',

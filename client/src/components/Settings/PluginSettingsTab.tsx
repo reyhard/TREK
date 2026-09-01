@@ -58,25 +58,9 @@ function PluginOAuthSection({
           <>{t('settings.plugins.oauth.notConnected')}</>
         )}
       </span>
-      {state.connected ? (
-        <button
-          onClick={disconnect}
-          disabled={busy}
-          className="border-border inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold text-content disabled:opacity-60"
-        >
-          <Unlink className="h-4 w-4" />
-          {t('settings.plugins.oauth.disconnect')}
-        </button>
-      ) : (
-        <button
-          onClick={connect}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-          {t('settings.plugins.oauth.connect')}
-        </button>
-      )}
+      {state.connected
+        ? <button type="button" onClick={disconnect} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-content disabled:opacity-60"><Unlink className="w-4 h-4" />{t('settings.plugins.oauth.disconnect')}</button>
+        : <button type="button" onClick={connect} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}{t('settings.plugins.oauth.connect')}</button>}
     </div>
   );
 }
@@ -223,7 +207,7 @@ function PluginSettingsForm({ id, name, icon }: { id: string; name: string; icon
         ))}
       </div>
       {hasFields && (
-        <button
+        <button type="button"
           onClick={save}
           disabled={saving}
           className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
@@ -242,7 +226,7 @@ function PluginSettingsForm({ id, name, icon }: { id: string; name: string; icon
               const res = actionResult[a.key];
               return (
                 <div key={a.key} className="flex flex-wrap items-center gap-2">
-                  <button
+                  <button type="button"
                     onClick={() => runAction(a)}
                     disabled={running !== null}
                     className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:opacity-60 ${
@@ -289,7 +273,7 @@ function PluginSettingsUiCard({ id, name, icon }: { id: string; name: string; ic
           white canvas behind the transparent frame (same trap .hero-overlay-frame
           guards against), which glares in dark mode. */}
       <div className="min-h-[120px]">
-        <PluginFrame pluginId={id} path="settings.html" title={name} className="[color-scheme:light]" />
+        <PluginFrame pluginId={id} path="settings.html" title={name} surface="user-settings" className="[color-scheme:light]" />
       </div>
     </div>
   );

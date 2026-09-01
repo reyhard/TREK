@@ -30,11 +30,8 @@ export function MobileAddPlaceButton({
   return (
     <div className="md:hidden" style={{ padding: '8px 12px 12px' }}>
       {!open ? (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(true);
-          }}
+        <button type="button"
+          onClick={e => { e.stopPropagation(); setOpen(true) }}
           style={{
             width: '100%',
             display: 'flex',
@@ -80,13 +77,7 @@ export function MobileAddPlaceButton({
                 color: 'var(--text-primary)',
               }}
             />
-            <button
-              onClick={() => {
-                setOpen(false);
-                setSearch('');
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)' }}
-            >
+            <button type="button" onClick={() => { setOpen(false); setSearch('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)' }}>
               <X size={14} />
             </button>
           </div>
@@ -103,8 +94,8 @@ export function MobileAddPlaceButton({
                 {available.length === 0 ? t('dayplan.mobile.allAssigned') : t('dayplan.mobile.noMatch')}
               </div>
             )}
-            {filtered.slice(0, 20).map((p) => (
-              <button
+            {filtered.slice(0, 20).map(p => (
+              <button type="button"
                 key={p.id}
                 onClick={() => {
                   onAssign?.(p.id, dayId);
@@ -141,12 +132,8 @@ export function MobileAddPlaceButton({
             ))}
           </div>
           {onAddNew && (
-            <button
-              onClick={() => {
-                onAddNew();
-                setOpen(false);
-                setSearch('');
-              }}
+            <button type="button"
+              onClick={() => { onAddNew(); setOpen(false); setSearch('') }}
               style={{
                 width: '100%',
                 display: 'flex',

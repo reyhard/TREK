@@ -1,11 +1,11 @@
-import { getClientIp } from '../../services/auditLog';
-import type { User } from '../../types';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { MemoriesService } from './memories.service';
 import { Body, Controller, Get, Headers, HttpCode, Param, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
-
 import type { Request, Response } from 'express';
+import type { User } from '../../types';
+import { MemoriesService } from './memories.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { getClientIp } from '../audit/client-ip';
+import { ImmichSearchDto, ImmichSettingsDto, ImmichTestDto } from './memories.dto';
 
 /**
  * /api/integrations/memories/immich — Immich connection, browse/search, asset
@@ -31,7 +31,7 @@ export class ImmichMemoriesController {
   @Put('settings')
   async putSettings(
     @CurrentUser() user: User,
-    @Body() body: { immich_url?: string; immich_api_key?: string; auto_upload?: unknown },
+    @Body() body: ImmichSettingsDto,
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
@@ -58,7 +58,7 @@ export class ImmichMemoriesController {
 
   @Post('test')
   @HttpCode(200)
-  async test(@Body() body: { immich_url?: string; immich_api_key?: string }) {
+  async test(@Body() body: ImmichTestDto) {
     const { immich_url, immich_api_key } = body;
     if (!immich_url || !immich_api_key) {
       return { connected: false, error: 'URL and API key required' };
@@ -78,7 +78,7 @@ export class ImmichMemoriesController {
 
   @Post('search')
   @HttpCode(200)
-  async search(@CurrentUser() user: User, @Body() body: Record<string, unknown>, @Res() res: Response): Promise<void> {
+  async search(@CurrentUser() user: User, @Body() body: ImmichSearchDto, @Res() res: Response): Promise<void> {
     const { from, to, size, page } = body as { from?: string; to?: string; size?: unknown; page?: unknown };
     const pageNum = Math.max(1, Number(page) || 1);
     const pageSize = Math.min(Number(size) || 50, 200);

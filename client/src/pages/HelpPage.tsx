@@ -1,11 +1,11 @@
-import { AlertCircle, BookOpen, ChevronRight, Loader2, PanelLeft, Search, X } from 'lucide-react';
-import { Children, type ReactNode } from 'react';
-import Markdown from 'react-markdown';
-import { Link } from 'react-router-dom';
-import remarkGfm from 'remark-gfm';
-import PageShell from '../components/Layout/PageShell';
-import { useTranslation } from '../i18n';
-import { useHelp } from './help/useHelp';
+import { Children, type ReactNode } from 'react'
+import { Link } from 'react-router'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { Search, ChevronRight, Loader2, AlertCircle, BookOpen, PanelLeft, X } from 'lucide-react'
+import PageShell from '../components/Layout/PageShell'
+import { useTranslation } from '../i18n'
+import { useHelp } from './help/useHelp'
 
 export default function HelpPage() {
   const { t } = useTranslation();
@@ -72,7 +72,7 @@ export default function HelpPage() {
         {/* Content */}
         <main className="min-w-0 flex-1" ref={contentRef}>
           {/* Mobile nav toggle */}
-          <button
+          <button type="button"
             onClick={() => setNavOpen(true)}
             className="mb-4 inline-flex items-center gap-2 rounded-lg border border-edge bg-surface-card px-3 py-2 text-[13px] font-medium text-content lg:hidden"
           >
@@ -99,17 +99,18 @@ export default function HelpPage() {
 
       {/* Mobile sidebar drawer */}
       {navOpen && (
-        <div className="fixed inset-0 z-[120] lg:hidden" onClick={() => setNavOpen(false)}>
+        <div className="lg:hidden fixed inset-0 z-[120]" role="presentation" onClick={() => setNavOpen(false)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
-            className="absolute bottom-0 left-0 top-0 w-[280px] overflow-y-auto bg-surface-card p-5 shadow-xl"
+            className="absolute left-0 top-0 bottom-0 w-[280px] bg-surface-card p-5 overflow-y-auto shadow-xl"
+            role="presentation"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <span className="flex items-center gap-2 text-[14px] font-bold text-content">
                 <BookOpen size={16} className="text-accent" /> {t('help.title')}
               </span>
-              <button onClick={() => setNavOpen(false)} className="text-content-faint">
+              <button type="button" onClick={() => setNavOpen(false)} className="text-content-faint">
                 <X size={18} />
               </button>
             </div>

@@ -26,15 +26,11 @@ export function MapView({
   // group map entries by date
   const byDate = new Map<string, { entry: JourneyEntry; globalIdx: number }[]>();
   mapEntries.forEach((e, i) => {
-    const d = e.entry_date;
-    if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d)!.push({ entry: e, globalIdx: i });
-  });
-  const dates = [...byDate.keys()].sort();
-
-  // find first and last entry indices
-  const firstId = mapEntries[0]?.id;
-  const lastId = mapEntries[mapEntries.length - 1]?.id;
+    const d = e.entry_date
+    if (!byDate.has(d)) byDate.set(d, [])
+    byDate.get(d)!.push({ entry: e, globalIdx: i })
+  })
+  const dates = [...byDate.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 
   const mapItems = useMemo(
     () =>
@@ -99,16 +95,15 @@ export function MapView({
 
                 {/* Location items */}
                 {items.map(({ entry: e, globalIdx }, itemIdx) => {
-                  const isActive = activeLocationId === String(e.id);
-                  const isFirst = e.id === firstId;
-                  const isLast = e.id === lastId;
-                  const showConnector = itemIdx < items.length - 1;
+                  const isActive = activeLocationId === String(e.id)
+                  const showConnector = itemIdx < items.length - 1
 
                   return (
                     <div key={e.id}>
-                      <div
+                      <button
+                        type="button"
                         onClick={() => onLocationClick(String(e.id))}
-                        className={`flex cursor-pointer items-center gap-3 rounded-[14px] p-3 transition-all ${
+                        className={`w-full text-left flex items-center gap-3 p-3 rounded-[14px] cursor-pointer transition-all ${
                           isActive
                             ? 'translate-x-0.5 border border-zinc-900 bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-800'
                             : 'border border-zinc-200 bg-white hover:translate-x-0.5 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-500'
@@ -139,11 +134,8 @@ export function MapView({
                         </div>
 
                         {/* Chevron */}
-                        <ChevronRight
-                          size={14}
-                          className={`flex-shrink-0 ${isActive ? 'text-zinc-900 dark:text-white' : 'text-zinc-300 dark:text-zinc-600'}`}
-                        />
-                      </div>
+                        <ChevronRight size={14} className={`flex-shrink-0 ${isActive ? 'text-zinc-900 dark:text-white' : 'text-zinc-300 dark:text-zinc-600'}`} />
+                      </button>
 
                       {/* Connector line */}
                       {showConnector && (

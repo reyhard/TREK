@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': '已确认预订',
   'inspector.pendingRes': '待确认预订',
   'inspector.google': 'Google 地图',
+  'inspector.navigation': '导航',
+  'inspector.openWith': '打开方式',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.website': '打开网站',
   'inspector.saveToCollection': '保存到收藏',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': '轨迹颜色',
+  'inspector.trackColorAuto': '自动颜色',
+  'inspector.trackColorCustom': '选择自定义颜色',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

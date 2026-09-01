@@ -1,51 +1,52 @@
 // Trip PDF via browser print window
-import {
-  AlertTriangle,
-  BedDouble,
-  Bike,
-  Bookmark,
-  Bus,
-  Camera,
-  Car,
-  CarTaxiFront,
-  Clock,
-  Coffee,
-  FileText,
-  Flag,
-  Heart,
-  Hotel,
-  Info,
-  KeyRound,
-  Lightbulb,
-  LogIn,
-  LogOut,
-  LucideIcon,
-  MapPin,
-  Navigation,
-  Plane,
-  Route,
-  Sailboat,
-  Ship,
-  ShoppingBag,
-  Star,
-  Ticket,
-  Train,
-  Users,
-  Utensils,
-} from 'lucide-react';
-import { createElement } from 'react';
-import { accommodationsApi, mapsApi, pluginsApi } from '../../api/client';
-import { fetchExchangeRates } from '../../hooks/useExchangeRates';
-import type { AssignmentsMap, Category, Day, DayNote, Place, Trip } from '../../types';
-import { getDayOrder, isDayInAccommodationRange } from '../../utils/dayOrder';
-import { getFlightLegs, getTrainLegs } from '../../utils/flightLegs';
-import { formatMoney, formatMoneySum, splitReservationDateTime, type MoneyEntry } from '../../utils/formatters';
-import { safeParseMetadata } from '../../utils/safeParseMetadata';
-import { getCategoryIcon } from '../shared/categoryIcons';
+import { createElement } from 'react'
+import { getCategoryIcon } from '../shared/categoryIcons'
+import { FileText, Info, Clock, MapPin, Navigation, Train, Plane, Bus, Car, Ship, Sailboat, Bike, CarTaxiFront, Route, Coffee, Ticket, Star, Heart, Camera, Flag, Lightbulb, AlertTriangle, ShoppingBag, Bookmark, Hotel, LogIn, LogOut, KeyRound, BedDouble, Utensils, Users, ParkingSquare, LucideIcon } from 'lucide-react'
+import { accommodationsApi, mapsApi, pluginsApi } from '../../api/client'
+import type { Trip, Day, Place, Category, AssignmentsMap, DayNote } from '../../types'
+import { isDayInAccommodationRange, getDayOrder } from '../../utils/dayOrder'
+import { hidesOnMiddleDay, getTransportForDay, getMergedItems, getSpanPhase, getDisplayTimeForDay } from '../../utils/dayMerge'
+import { safeHexColor } from '../../utils/safeColor'
+import { renderIconMarkup } from '../../utils/iconMarkup'
+import { formatMoney, formatMoneySum, splitReservationDateTime, type MoneyEntry } from '../../utils/formatters'
+import { fetchExchangeRates } from '../../hooks/useExchangeRates'
+import { getFlightLegs, getTrainLegs } from '../../utils/flightLegs'
 
-function renderLucideIcon(icon: LucideIcon, props = {}) {
-  if (!_renderToStaticMarkup) return '';
-  return _renderToStaticMarkup(createElement(icon, props));
+/**
+ * Every day starts a new page by default. On a trip of short days that prints
+ * one sheet per handful of lines, so the preview offers the flowing layout the
+ * in-app view already uses, and remembers which one was picked (#1292).
+ */
+const PAGE_BREAK_KEY = 'trek_pdf_page_break_per_day'
+
+function pageBreakPerDay(): boolean {
+  try {
+    return localStorage.getItem(PAGE_BREAK_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+function rememberPageBreakPerDay(on: boolean): void {
+  try {
+    localStorage.setItem(PAGE_BREAK_KEY, on ? '1' : '0')
+  } catch {
+    // A blocked localStorage costs the preference, not the export.
+  }
+}
+
+/* The overlay is imperative DOM, so the switch from Settings/ToggleSwitch is
+   rebuilt here rather than rendered — as static markup it would carry no
+   behaviour. Same geometry and the same tokens, so it reads as the same control. */
+const TOGGLE_TRACK = 'position:relative;width:44px;height:24px;min-width:44px;flex-shrink:0;border-radius:12px;border:none;padding:0;cursor:pointer;transition:background 0.2s;'
+const TOGGLE_KNOB = 'position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:white;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);'
+const trackColour = (on: boolean) => (on ? 'var(--accent, #111827)' : 'var(--border-primary, #d1d5db)')
+const knobOffset = (on: boolean) => (on ? '22px' : '2px')
+
+function renderLucideIcon(icon:LucideIcon, props = {}) {
+  return renderIconMarkup(
+    createElement(icon, props)
+  );
 }
 
 const NOTE_ICON_MAP = {
@@ -75,36 +76,8 @@ function noteIconSvg(iconId) {
   return renderLucideIcon(Icon, { size: 14, strokeWidth: 1.8, color: '#94a3b8' });
 }
 
-const RESERVATION_ICON_MAP = {
-  flight: Plane,
-  train: Train,
-  bus: Bus,
-  car: Car,
-  taxi: CarTaxiFront,
-  bicycle: Bike,
-  cruise: Ship,
-  ferry: Sailboat,
-  transport_other: Route,
-  restaurant: Utensils,
-  event: Ticket,
-  tour: Users,
-  other: FileText,
-};
-const RESERVATION_COLOR_MAP = {
-  flight: '#3b82f6',
-  train: '#06b6d4',
-  bus: '#059669',
-  car: '#6b7280',
-  taxi: '#ca8a04',
-  bicycle: '#84cc16',
-  cruise: '#0ea5e9',
-  ferry: '#0d9488',
-  transport_other: '#6b7280',
-  restaurant: '#ef4444',
-  event: '#f59e0b',
-  tour: '#10b981',
-  other: '#6b7280',
-};
+const RESERVATION_ICON_MAP = { flight: Plane, train: Train, bus: Bus, car: Car, taxi: CarTaxiFront, bicycle: Bike, cruise: Ship, ferry: Sailboat, transport_other: Route, restaurant: Utensils, event: Ticket, tour: Users, parking: ParkingSquare, other: FileText }
+const RESERVATION_COLOR_MAP = { flight: '#3b82f6', train: '#06b6d4', bus: '#059669', car: '#6b7280', taxi: '#ca8a04', bicycle: '#84cc16', cruise: '#0ea5e9', ferry: '#0d9488', transport_other: '#6b7280', restaurant: '#ef4444', event: '#f59e0b', tour: '#10b981', parking: '#2563eb', other: '#6b7280' }
 function reservationIconSvg(type) {
   const Icon = RESERVATION_ICON_MAP[type] || Ticket;
   const color = RESERVATION_COLOR_MAP[type] || '#3b82f6';
@@ -136,6 +109,13 @@ function escHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// The style attribute is decoded back into raw quotes before the CSS is parsed, so
+// escHtml alone cannot stop a cover_image from closing the url() and appending its own
+// declaration. Percent-encoding is transparent to the fetch.
+function cssUrl(url) {
+  return String(url).replace(/["'()\\\s]/g, c => '%' + c.codePointAt(0).toString(16).padStart(2, '0'))
+}
+
 function absUrl(url) {
   if (!url) return null;
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
@@ -148,22 +128,18 @@ function safeImg(url) {
   // The in-app place-photo proxy always streams a JPEG but has no file extension
   // (it ends in …/bytes), so the extension check below would wrongly reject it —
   // which is why persisted place photos showed as category icons in the PDF.
-  if (url.startsWith('/api/maps/place-photo/')) return absUrl(url);
-  return /\.(jpe?g|png|webp|bmp|tiff?)(\?.*)?$/i.test(url) ? absUrl(url) : null;
+  if (url.startsWith('/api/maps/place-photo/')) return absUrl(url)
+  // gif is in the list because place-image-upload.ts accepts it; without it an
+  // uploaded GIF hero silently fell back to the category icon in the PDF.
+  return /\.(jpe?g|png|gif|webp|bmp|tiff?)(\?.*)?$/i.test(url) ? absUrl(url) : null
 }
 
 // Generate SVG string from Lucide icon name (for category thumbnails)
-let _renderToStaticMarkup = null;
-async function ensureRenderer() {
-  if (!_renderToStaticMarkup) {
-    const mod = await import('react-dom/server');
-    _renderToStaticMarkup = mod.renderToStaticMarkup;
-  }
-}
 function categoryIconSvg(iconName, color = '#6366f1', size = 24) {
-  if (!_renderToStaticMarkup) return '';
-  const Icon = getCategoryIcon(iconName);
-  return _renderToStaticMarkup(createElement(Icon, { size, strokeWidth: 1.8, color: 'rgba(255,255,255,0.92)' }));
+  const Icon = getCategoryIcon(iconName)
+  return renderIconMarkup(
+    createElement(Icon, { size, strokeWidth: 1.8, color: 'rgba(255,255,255,0.92)' })
+  )
 }
 
 function shortDate(d, locale) {
@@ -188,8 +164,8 @@ function longDateRange(days, locale) {
 // converted via the pre-fetched rates, or listed per-currency when rates are
 // unavailable (#1561).
 function dayCost(assignments, dayId, locale, tripCurrency, rates) {
-  const entries: MoneyEntry[] = (assignments[String(dayId)] || []).map((a) => ({
-    amount: parseFloat(a.place?.price) || 0,
+  const entries: MoneyEntry[] = (assignments[String(dayId)] || []).map(a => ({
+    amount: Number.parseFloat(a.place?.price) || 0,
     currency: a.place?.currency || tripCurrency,
   }));
   return formatMoneySum(entries, tripCurrency, locale || 'en', rates);
@@ -239,23 +215,15 @@ interface downloadTripPDFProps {
   locale: string;
 }
 
-export async function downloadTripPDF({
-  trip,
-  days,
-  places,
-  assignments,
-  categories,
-  dayNotes,
-  reservations = [],
-  t: _t,
-  locale: _locale,
-}: downloadTripPDFProps) {
-  await ensureRenderer();
-  const loc = _locale || undefined;
-  const tr = _t || ((k) => k);
-  const sorted = [...(days || [])].sort((a, b) => a.day_number - b.day_number);
-  const range = longDateRange(sorted, loc);
-  const coverImg = safeImg(trip?.cover_image);
+// `assignments` is normalised here once — every read below (and fetchPlacePhotos)
+// relies on it being an object.
+export async function downloadTripPDF({ trip, days, places, assignments = {}, categories, dayNotes, reservations = [], t: _t, locale: _locale }: downloadTripPDFProps) {
+  const breaksPerDay = pageBreakPerDay()
+  const loc = _locale || undefined
+  const tr = _t || (k => k)
+  const sorted = [...(days || [])].sort((a, b) => a.day_number - b.day_number)
+  const range = longDateRange(sorted, loc)
+  const coverImg = safeImg(trip?.cover_image)
   //retrieve accommodations for the trip to display on the day sections and prefetch their photos if needed
   const accommodations = await accommodationsApi.list(trip.id);
 
@@ -271,170 +239,178 @@ export async function downloadTripPDF({
   const photoMap = await fetchPlacePhotos(assignments, places);
 
   const totalAssigned = new Set(
-    Object.values(assignments || {})
-      .flatMap((a) => a.map((x) => x.place?.id))
-      .filter(Boolean)
-  ).size;
+    Object.values(assignments).flatMap(a => a.map(x => x.place?.id)).filter(Boolean)
+  ).size
   // The PDF is a trip-scoped, shareable document, so totals stay in the trip's
   // own currency. Rates are resolved ONCE before any HTML is built so the cover
   // stat and every day header agree; all-same-currency trips skip the FX fetch
   // entirely (offline export keeps working), and a failed fetch degrades to
   // per-currency breakdowns instead of mislabeled sums (#1561).
-  const tripCur = (trip?.currency || 'EUR').toUpperCase();
-  const allCostEntries: MoneyEntry[] = Object.values(assignments || {})
-    .flatMap((a) => a)
-    .map((a) => ({ amount: Number(a.place?.price) || 0, currency: a.place?.currency || tripCur }));
-  const needsFx = allCostEntries.some((e) => e.amount > 0 && e.currency.toUpperCase() !== tripCur);
-  const fxRates = needsFx ? await fetchExchangeRates(tripCur) : null;
-  const totalCostLabel = formatMoneySum(allCostEntries, tripCur, loc || 'en', fxRates);
+  const tripCur = (trip?.currency || 'EUR').toUpperCase()
+  const allCostEntries: MoneyEntry[] = Object.values(assignments)
+    .flatMap(a => a)
+    .map(a => ({ amount: Number(a.place?.price) || 0, currency: a.place?.currency || tripCur }))
+  const needsFx = allCostEntries.some(e => e.amount > 0 && e.currency.toUpperCase() !== tripCur)
+  const fxRates = needsFx ? await fetchExchangeRates(tripCur) : null
+  const totalCostLabel = formatMoneySum(allCostEntries, tripCur, loc || 'en', fxRates)
 
-  // Span helpers for multi-day transport (mirrors DayPlanSidebar logic)
-  const pdfGetDayOrder = (d: Day) => d.day_number;
-  const pdfGetSpanPhase = (r: any, dayId: number): 'single' | 'start' | 'middle' | 'end' => {
-    const startId = r.day_id;
-    const endId = r.end_day_id ?? startId;
-    if (!startId || startId === endId) return 'single';
-    if (dayId === startId) return 'start';
-    if (dayId === endId) return 'end';
-    return 'middle';
-  };
-  const pdfGetDisplayTime = (r: any, dayId: number): string | null => {
-    const phase = pdfGetSpanPhase(r, dayId);
-    if (phase === 'end') return r.reservation_end_time || null;
-    if (phase === 'middle') return null;
-    return r.reservation_time || null;
-  };
+  /*
+   * The span label is the only PDF-specific piece left here. Everything else
+   * about how a day is ordered — which transports belong to it, what time each
+   * one shows, where it sits among the places — comes from utils/dayMerge, the
+   * same functions the day plan itself uses (#1978).
+   *
+   * There used to be a second implementation in this file. It ordered by
+   * `day_plan_position`, which is one global number per booking, seeded from
+   * whichever day happened to render first; on any other day of a span it
+   * pointed at the wrong slot, and when it was still null the export fell back
+   * to the order the API returned. That is why the PDF was right some of the
+   * time and swapped two bookings the rest of it.
+   */
   const pdfGetSpanLabel = (r: any, phase: string): string | null => {
-    if (phase === 'single') return null;
-    if (r.type === 'flight')
-      return tr(`reservations.span.${phase === 'start' ? 'departure' : phase === 'end' ? 'arrival' : 'inTransit'}`);
-    if (r.type === 'car')
-      return tr(`reservations.span.${phase === 'start' ? 'pickup' : phase === 'end' ? 'return' : 'active'}`);
-    return tr(`reservations.span.${phase === 'start' ? 'start' : phase === 'end' ? 'end' : 'ongoing'}`);
-  };
-  const pdfGetTransportForDay = (dayId: number) =>
-    (reservations || []).filter((r) => {
-      if (r.type === 'hotel') return false;
-      const startId = r.day_id;
-      const endId = r.end_day_id ?? startId;
-      if (startId == null) return false;
-      if (endId !== startId) {
-        const startDay = sorted.find((d) => d.id === startId);
-        const endDay = sorted.find((d) => d.id === endId);
-        const thisDay = sorted.find((d) => d.id === dayId);
-        if (!startDay || !endDay || !thisDay) return false;
-        return pdfGetDayOrder(thisDay) >= pdfGetDayOrder(startDay) && pdfGetDayOrder(thisDay) <= pdfGetDayOrder(endDay);
-      }
-      return startId === dayId;
-    });
-
+    if (phase === 'single') return null
+    if (r.type === 'flight') return tr(`reservations.span.${phase === 'start' ? 'departure' : phase === 'end' ? 'arrival' : 'inTransit'}`)
+    if (r.type === 'car') return tr(`reservations.span.${phase === 'start' ? 'pickup' : phase === 'end' ? 'return' : 'active'}`)
+    // Parking reuses span.pickup for its end day: you drop the car off and collect it
+    // again later, so the rental car's wording carries over without a second key.
+    if (r.type === 'parking') return tr(`reservations.span.${phase === 'start' ? 'dropOff' : phase === 'end' ? 'pickup' : 'ongoing'}`)
+    return tr(`reservations.span.${phase === 'start' ? 'start' : phase === 'end' ? 'end' : 'ongoing'}`)
+  }
   // Build day HTML
-  const daysHtml = sorted
-    .map((day, di) => {
-      const assigned = assignments[String(day.id)] || [];
-      const notes = (dayNotes || []).filter((n) => n.day_id === day.id);
-      const cost = dayCost(assignments, day.id, loc, tripCur, fxRates);
+  const daysHtml = sorted.map((day, di) => {
+    const assigned = (assignments[String(day.id)] || []).slice()
+      .sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    const notes = (dayNotes || []).filter(n => n.day_id === day.id).slice()
+      .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    const cost = dayCost(assignments, day.id, loc, tripCur, fxRates)
 
-      // Reservations for this day (hotel rendered via accommodations block; car middle-phase rendered in sidebar header only)
-      const dayReservations = pdfGetTransportForDay(day.id).filter(
-        (r) => !(r.type === 'car' && pdfGetSpanPhase(r, day.id) === 'middle')
-      );
+    // Assembled exactly the way DayPlanSidebar assembles it, so the page and the
+    // print cannot disagree about what order a day is in.
+    const dayTransports = getTransportForDay({
+      reservations: reservations || [],
+      dayId: day.id,
+      dayAssignmentIds: assigned.map((a: any) => a.id),
+      days: sorted,
+    })
 
-      const merged = [];
-      assigned.forEach((a) => merged.push({ type: 'place', k: a.order_index ?? 0, data: a }));
-      notes.forEach((n) => merged.push({ type: 'note', k: n.sort_order ?? 0, data: n }));
-      dayReservations.forEach((r) => {
-        const pos =
-          r.day_positions?.[day.id] ??
-          r.day_positions?.[String(day.id)] ??
-          r.day_plan_position ??
-          (merged.length > 0 ? Math.max(...merged.map((m) => m.k)) + 0.5 : 0.5);
-        merged.push({ type: 'reservation', k: pos, data: r });
-      });
-      merged.sort((a, b) => a.k - b.k);
+    // Hotels come out in the accommodations block, a rental car's middle days
+    // appear only in the sidebar header, and a multi-day parking's middle days
+    // nowhere at all.
+    const merged = getMergedItems({
+      dayAssignments: assigned,
+      dayNotes: notes,
+      dayTransports,
+      dayId: day.id,
+    }).filter(item => {
+      if (item.type !== 'transport') return true
+      const r: any = item.data
+      if (r.type === 'car' && getSpanPhase(r, day.id) === 'middle') return false
+      return !hidesOnMiddleDay(r, day.id)
+    })
 
-      let pi = 0;
-      const itemsHtml =
-        merged.length === 0
-          ? `<div class="empty-day">${escHtml(tr('dayplan.emptyDay'))}</div>`
-          : merged
-              .map((item) => {
-                if (item.type === 'reservation') {
-                  const r = item.data;
-                  const meta = safeParseMetadata(r as any);
-                  const icon = reservationIconSvg(r.type);
-                  const color = RESERVATION_COLOR_MAP[r.type] || '#3b82f6';
-                  let subtitle = '';
-                  // Flights render one subtitle line per leg (see below); everything else is a single line.
-                  let subtitleLines: string[] = [];
-                  if (r.type === 'flight') {
-                    const legs = getFlightLegs(r);
-                    if (legs.length > 1) {
-                      // Multi-leg: one line per leg so every flight number + segment route is shown.
-                      subtitleLines = legs
-                        .map((l) =>
-                          [l.airline, l.flight_number, l.from || l.to ? [l.from, l.to].filter(Boolean).join(' → ') : '']
-                            .filter(Boolean)
-                            .join(' · ')
-                        )
-                        .filter(Boolean);
-                    } else {
-                      // Single-leg: full route over all waypoints (FRA → BER → HND), falling back to the
-                      // flat metadata pair for legacy single-leg flights without endpoints.
-                      const stops = (r.endpoints || [])
-                        .slice()
-                        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
-                        .map((e) => e.code || e.name);
-                      const route =
-                        stops.length >= 2
-                          ? stops.join(' → ')
-                          : meta.departure_airport && meta.arrival_airport
-                            ? `${meta.departure_airport} → ${meta.arrival_airport}`
-                            : '';
-                      subtitle = [meta.airline, meta.flight_number, route].filter(Boolean).join(' · ');
-                    }
-                  } else if (r.type === 'train') {
-                    const legs = getTrainLegs(r);
-                    if (legs.length > 1) {
-                      // Multi-leg: one line per leg so every train number + segment route shows.
-                      subtitleLines = legs
-                        .map((l) =>
-                          [
-                            l.train_number,
-                            l.platform ? `Gl. ${l.platform}` : '',
-                            l.from || l.to ? [l.from, l.to].filter(Boolean).join(' → ') : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')
-                        )
-                        .filter(Boolean);
-                    } else {
-                      const stops = (r.endpoints || [])
-                        .slice()
-                        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
-                        .map((e) => e.code || e.name);
-                      const route = stops.length >= 2 ? stops.join(' → ') : '';
-                      subtitle = [
-                        meta.train_number,
-                        meta.platform ? `Gl. ${meta.platform}` : '',
-                        meta.seat ? `Seat ${meta.seat}` : '',
-                        route,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ');
-                    }
-                  } else if (r.type === 'restaurant')
-                    subtitle = [meta.party_size ? `${meta.party_size} guests` : ''].filter(Boolean).join(' · ');
-                  else if (r.type === 'event') subtitle = [meta.venue].filter(Boolean).join(' · ');
-                  else if (r.type === 'tour') subtitle = [meta.operator].filter(Boolean).join(' · ');
-                  if (subtitleLines.length === 0 && subtitle) subtitleLines = [subtitle];
-                  const locationLine = r.location || meta.location || '';
-                  const phase = pdfGetSpanPhase(r, day.id);
-                  const spanLabel = pdfGetSpanLabel(r, phase);
-                  const displayTime = pdfGetDisplayTime(r, day.id);
-                  const time = splitReservationDateTime(displayTime).time ?? '';
-                  const titleHtml = `${spanLabel ? escHtml(spanLabel) + ': ' : ''}${escHtml(r.title)}`;
-                  return `
+    let pi = 0
+    const itemsHtml = merged.length === 0
+      ? `<div class="empty-day">${escHtml(tr('dayplan.emptyDay'))}</div>`
+      : merged.map(item => {
+          if (item.type === 'transport') {
+            const r = item.data
+            let meta: Record<string, unknown> = {}
+            if (typeof r.metadata === 'string') {
+              try {
+                const parsed = JSON.parse(r.metadata || '{}')
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) meta = parsed
+              } catch {
+                // A malformed metadata blob must not abort an otherwise valid export.
+              }
+            } else if (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)) {
+              meta = r.metadata
+            }
+            const icon = reservationIconSvg(r.type)
+            const color = RESERVATION_COLOR_MAP[r.type] || '#3b82f6'
+            let subtitle = ''
+            // Flights render one subtitle line per leg (see below); everything else is a single line.
+            let subtitleLines: string[] = []
+            /*
+             * A multi-leg booking arrives as one item per leg now, the way the
+             * day plan shows it, because the shared merge expands legs so each
+             * one can sit at its own time among the day's places. Previously
+             * the export printed a single row with every leg as a subtitle
+             * line, which put the second leg's departure next to the first
+             * leg's clock.
+             */
+            if (r.__leg) {
+              const l = r.__leg
+              // The segment's own booking code, which the leg object does not
+              // carry — read back from the booking by index. At the gate that is
+              // the code the airline asks for (#1943), so losing it here would
+              // have been a real regression for a stopover flight.
+              const source = (r.type === 'train' ? getTrainLegs(r) : getFlightLegs(r))[l.index]
+              subtitleLines = [[
+                l.airline, l.flight_number, l.train_number,
+                l.platform ? `Gl. ${l.platform}` : '',
+                l.seat ? `Seat ${l.seat}` : '',
+                (l.from || l.to) ? [l.from, l.to].filter(Boolean).join(' → ') : '',
+                source?.confirmation_number,
+              ].filter(Boolean).join(' · ')].filter(Boolean)
+            }
+            else if (r.type === 'flight') {
+              const legs = getFlightLegs(r)
+              if (legs.length > 1) {
+                // Multi-leg: one line per leg so every flight number + segment route is
+                // shown, with the segment's own booking code where it has one (#1943).
+                // At the gate that is the number the airline asks for.
+                subtitleLines = legs.map(l =>
+                  [l.airline, l.flight_number,
+                   (l.from || l.to) ? [l.from, l.to].filter(Boolean).join(' → ') : '',
+                   l.confirmation_number]
+                    .filter(Boolean).join(' · '))
+                  .filter(Boolean)
+              } else {
+                // Single-leg: full route over all waypoints (FRA → BER → HND), falling back to the
+                // flat metadata pair for legacy single-leg flights without endpoints.
+                const stops = (r.endpoints || []).slice().sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)).map(e => e.code || e.name)
+                const route = stops.length >= 2 ? stops.join(' → ') : (meta.departure_airport && meta.arrival_airport ? `${meta.departure_airport} → ${meta.arrival_airport}` : '')
+                subtitle = [meta.airline, meta.flight_number, route].filter(Boolean).join(' · ')
+              }
+            }
+            else if (r.type === 'train') {
+              const legs = getTrainLegs(r)
+              if (legs.length > 1) {
+                // Multi-leg: one line per leg so every train number + segment route shows,
+                // with the segment's own booking code where it has one (#1943).
+                subtitleLines = legs.map(l =>
+                  [l.train_number, l.platform ? `Gl. ${l.platform}` : '',
+                   (l.from || l.to) ? [l.from, l.to].filter(Boolean).join(' → ') : '',
+                   l.confirmation_number]
+                    .filter(Boolean).join(' · '))
+                  .filter(Boolean)
+              } else {
+                const stops = (r.endpoints || []).slice().sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)).map(e => e.code || e.name)
+                const route = stops.length >= 2 ? stops.join(' → ') : ''
+                subtitle = [meta.train_number, meta.platform ? `Gl. ${meta.platform}` : '', meta.seat ? `Seat ${meta.seat}` : '', route].filter(Boolean).join(' · ')
+              }
+            }
+            else if (r.type === 'restaurant') subtitle = [meta.party_size ? `${meta.party_size} guests` : ''].filter(Boolean).join(' · ')
+            else if (r.type === 'event') subtitle = [meta.venue].filter(Boolean).join(' · ')
+            else if (r.type === 'tour') subtitle = [meta.operator].filter(Boolean).join(' · ')
+            if (subtitleLines.length === 0 && subtitle) subtitleLines = [subtitle]
+            const locationLine = r.location || meta.location || ''
+            const phase = getSpanPhase(r, day.id)
+            const spanLabel = pdfGetSpanLabel(r, phase)
+            const displayTime = getDisplayTimeForDay(r, day.id)
+            // Start and end, the way the day plan draws it (#1310). Without the
+            // landing time a flight reads as an open-ended block and the reader
+            // cannot tell how much of the day is left for anything else.
+            //
+            // Only on a transport that begins and ends on this day: across a
+            // span the arrival belongs to the arrival day, which already shows
+            // it as its own time, and repeating it here would put tomorrow's
+            // clock next to today's departure.
+            const startTime = splitReservationDateTime(displayTime).time ?? ''
+            const endTime = phase === 'single' ? (splitReservationDateTime(r.reservation_end_time).time ?? '') : ''
+            const time = [startTime, endTime].filter(Boolean).join(' – ')
+            const titleHtml = `${spanLabel ? escHtml(spanLabel) + ': ' : ''}${escHtml(r.title)}`
+            return `
               <div class="note-card" style="border-left: 3px solid ${color};">
                 <div class="note-line" style="background: ${color};"></div>
                 <span class="note-icon">${icon}</span>
@@ -450,12 +426,16 @@ export async function downloadTripPDF({
               </div>`;
                 }
 
-                if (item.type === 'note') {
-                  const note = item.data;
-                  return `
-              <div class="note-card">
-                <div class="note-line"></div>
-                <span class="note-icon">${noteIconSvg(note.icon)}</span>
+          if (item.type === 'note') {
+            const note = item.data
+            // A coloured note carries its colour into print the same way a
+            // reservation does (#1629) — the rule and the spine, not a fill,
+            // because a tint costs ink and reads as grey on a mono printer.
+            const noteColor = note.color || ''
+            return `
+              <div class="note-card"${noteColor ? ` style="border-left: 3px solid ${noteColor};"` : ''}>
+                <div class="note-line"${noteColor ? ` style="background: ${noteColor};"` : ''}></div>
+                <span class="note-icon"${noteColor ? ` style="color: ${noteColor};"` : ''}>${noteIconSvg(note.icon)}</span>
                 <div class="note-body">
                   <div class="note-text">${escHtml(note.text)}</div>
                   ${note.time ? `<div class="note-time">${escHtml(note.time)}</div>` : ''}
@@ -463,11 +443,11 @@ export async function downloadTripPDF({
               </div>`;
                 }
 
-                pi++;
-                const place = item.data.place;
-                if (!place) return '';
-                const cat = categories.find((c) => c.id === place.category_id);
-                const color = cat?.color || '#6366f1';
+          pi++
+          const place = item.data.place
+          if (!place) return ''
+          const cat = categories.find(c => c.id === place.category_id)
+          const color = safeHexColor(cat?.color, '#6366f1')
 
                 // Image: direct > google photo > fallback icon. Both go through safeImg
                 // so the proxy path is resolved to an absolute URL the PDF can load.
@@ -482,14 +462,10 @@ export async function downloadTripPDF({
                  ${iconSvg}
                </div>`;
 
-                const chips = [
-                  place.place_time ? `<span class="chip">${svgClock}${escHtml(place.place_time)}</span>` : '',
-                  place.price && parseFloat(place.price) > 0
-                    ? `<span class="chip chip-green">${svgMoney}${formatMoney(Number(place.price), place.currency || trip.currency, loc)}</span>`
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join('');
+          const chips = [
+            place.place_time ? `<span class="chip">${svgClock}${escHtml(place.place_time)}</span>` : '',
+            place.price && Number.parseFloat(place.price) > 0 ? `<span class="chip chip-green">${svgMoney}${formatMoney(Number(place.price), place.currency || trip.currency, loc)}</span>` : '',
+          ].filter(Boolean).join('')
 
                 return `
             <div class="place-card">
@@ -554,11 +530,11 @@ export async function downloadTripPDF({
         </div>`
           : '';
 
-      // A real <table> so the browser repeats the <thead> day header at the top of
-      // every page an overflowing day spills onto (#1471). CSS `table-header-group`
-      // on a <div> is NOT repeated by Chromium's print engine — only real thead is.
-      return `
-      <table class="day-section${di > 0 ? ' page-break' : ''}">
+    // A real <table> so the browser repeats the <thead> day header at the top of
+    // every page an overflowing day spills onto (#1471). CSS `table-header-group`
+    // on a <div> is NOT repeated by Chromium's print engine — only real thead is.
+    return `
+      <table class="day-section${di > 0 ? ' day-break' : ''}">
         <thead class="day-header"><tr><td>
           <div class="day-header-bar">
             <span class="day-tag">${escHtml(tr('dayplan.dayN', { n: day.day_number })).toUpperCase()}</span>
@@ -602,7 +578,7 @@ export async function downloadTripPDF({
     </div>`;
 
   const html = `<!DOCTYPE html>
-<html lang="${loc.split('-')[0]}">
+<html lang="${(loc || 'en').split('-')[0]}">
 <head>
 <meta charset="UTF-8">
 <base href="${window.location.origin}/">
@@ -672,6 +648,20 @@ export async function downloadTripPDF({
   /* ── Day ───────────────────────────────────────── */
   /* .day-section is a real <table>; its <thead> day header repeats on overflow pages. */
   .page-break { page-break-before: always; }
+  /* Days break by default; .pdf-flow on <body> is the toggle in the preview (#1292).
+     Flowing days butt against each other without the page edge between them. */
+  .day-break { page-break-before: always; }
+  .pdf-flow .day-break { page-break-before: auto; }
+  .pdf-flow .day-section + .day-section { margin-top: 18px; }
+  /* Hold a flowing day together. Without this the header bar can be placed at the
+     foot of a sheet while its content moves to the next one, which then repeats
+     the header (#1471) and reads as the same day printed twice. A day too long
+     for one page still breaks and still repeats its header — the engine only
+     honours this where it can. Days that start a page of their own cannot strand
+     a header, so it is scoped to the flowing layout.
+     Measured, not assumed: break-after on the thead and break-before on the tbody
+     are both ignored by Chromium here. */
+  .pdf-flow .day-section { break-inside: avoid; page-break-inside: avoid; }
   .day-section { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .day-header-bar {
     background: #0f172a; padding: 11px 28px;
@@ -695,6 +685,10 @@ export async function downloadTripPDF({
     flex: 1 1 45%; min-width: 200px; margin: 4px 0; padding: 10px;
     border: 2px solid #e2e8f0; border-radius: 12px;
     display: flex; flex-direction: column;
+    /* Place and note cards have said this all along; without it a stay is torn
+       in half by a page edge, its check-in time on one sheet and the hotel name
+       on the next. Rare while every day started a page, common once they flow. */
+    break-inside: avoid; page-break-inside: avoid;
   }
   .day-accommodation-title {
     font-size: 16px; font-weight: 600; text-align: center;
@@ -775,7 +769,7 @@ export async function downloadTripPDF({
   }
 </style>
 </head>
-<body>
+<body${breaksPerDay ? '' : ' class="pdf-flow"'}>
 
 <!-- Footer on every page -->
 <div class="pdf-footer">
@@ -785,7 +779,7 @@ export async function downloadTripPDF({
 
 <!-- Cover -->
 <div class="cover">
-  ${coverImg ? `<div class="cover-bg" style="background-image:url('${escHtml(coverImg)}')"></div>` : ''}
+  ${coverImg ? `<div class="cover-bg" style="background-image:url('${escHtml(cssUrl(coverImg))}')"></div>` : ''}
   <div class="cover-dim"></div>
   <div class="cover-brand"><img src="${absUrl('/logo-light.svg')}" style="height:28px;opacity:0.5;" /></div>
   <div class="cover-body">
@@ -842,14 +836,17 @@ ${pluginSectionsHtml}
   card.style.cssText =
     'width:100%;max-width:1000px;height:95vh;background:var(--bg-card);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
 
-  const header = document.createElement('div');
-  header.style.cssText =
-    'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-primary);flex-shrink:0;';
+  const header = document.createElement('div')
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border-primary);flex-shrink:0;'
   header.innerHTML = `
-    <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${escHtml(trip?.title || tr('pdf.travelPlan'))}</span>
+    <span style="font-size:13px;font-weight:600;color:var(--text-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(trip?.title || tr('pdf.travelPlan'))}</span>
     <div style="display:flex;align-items:center;gap:8px">
-      <button id="pdf-print-btn" style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font-family:inherit">${tr('pdf.saveAsPdf')}</button>
-      <button id="pdf-close-btn" style="background:none;border:none;cursor:pointer;color:var(--text-faint);display:flex;padding:4px;border-radius:6px">
+      <label for="pdf-daybreak-toggle" style="font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none">${escHtml(tr('pdf.pageBreakPerDay'))}</label>
+      <button id="pdf-daybreak-toggle" type="button" role="switch" aria-checked="${breaksPerDay}" aria-label="${escHtml(tr('pdf.pageBreakPerDay'))}" style="${TOGGLE_TRACK} background:${trackColour(breaksPerDay)}">
+        <span style="${TOGGLE_KNOB} left:${knobOffset(breaksPerDay)}"></span>
+      </button>
+      <button type="button" id="pdf-print-btn" style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font-family:inherit">${tr('pdf.saveAsPdf')}</button>
+      <button type="button" id="pdf-close-btn" style="background:none;border:none;cursor:pointer;color:var(--text-faint);display:flex;padding:4px;border-radius:6px">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -867,11 +864,21 @@ ${pluginSectionsHtml}
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 
-  const closeBtn = header.querySelector<HTMLElement>('#pdf-close-btn');
-  if (closeBtn) closeBtn.onclick = () => overlay.remove();
-  const printBtn = header.querySelector<HTMLElement>('#pdf-print-btn');
-  if (printBtn)
-    printBtn.onclick = () => {
-      iframe.contentWindow?.print();
-    };
+  const closeBtn = header.querySelector<HTMLElement>('#pdf-close-btn')
+  if (closeBtn) closeBtn.onclick = () => overlay.remove()
+  const printBtn = header.querySelector<HTMLElement>('#pdf-print-btn')
+  if (printBtn) printBtn.onclick = () => { iframe.contentWindow?.print() }
+
+  // The two layouts differ by one class, so switching is instant in the preview
+  // and there is no need to re-fetch photos or rebuild the document.
+  const dayBreakSwitch = header.querySelector<HTMLButtonElement>('#pdf-daybreak-toggle')
+  if (dayBreakSwitch) dayBreakSwitch.onclick = () => {
+    const on = dayBreakSwitch.getAttribute('aria-checked') !== 'true'
+    dayBreakSwitch.setAttribute('aria-checked', String(on))
+    dayBreakSwitch.style.background = trackColour(on)
+    const knob = dayBreakSwitch.firstElementChild as HTMLElement | null
+    if (knob) knob.style.left = knobOffset(on)
+    rememberPageBreakPerDay(on)
+    iframe.contentDocument?.body.classList.toggle('pdf-flow', !on)
+  }
 }

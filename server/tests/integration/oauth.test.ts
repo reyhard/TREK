@@ -68,26 +68,36 @@ vi.mock('../../src/config', () => ({
   DEFAULT_LANGUAGE: 'en',
 }));
 
-const { isAddonEnabledMock } = vi.hoisted(() => {
-  const isAddonEnabledMock = vi.fn().mockReturnValue(true);
-  return { isAddonEnabledMock };
-});
-vi.mock('../../src/services/adminService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/adminService')>();
-  return { ...actual, isAddonEnabled: isAddonEnabledMock };
-});
-
-vi.mock('../../src/services/notifications', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/notifications')>();
-  return { ...actual, getMcpSafeUrl: () => 'https://trek.example.com' };
+vi.mock('../../src/app-config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/app-config')>();
+    return { ...actual, getMcpSafeUrl: () => 'https://trek.example.com' };
 });
 
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
-vi.mock('../../src/mcp/sessionManager', () => ({
-  revokeUserSessions: vi.fn(),
-  revokeUserSessionsForClient: vi.fn(),
-  sessions: new Map(),
-}));
+vi.mock('../../src/mcp/sessionManager', () => ({ revokeUserSessions: vi.fn(), revokeUserSessionsForClient: vi.fn(), sessions: new Map() }));
+
+import { buildApp } from '../../src/bootstrap';
+import { createTables } from '../../src/db/schema';
+import { runMigrations } from '../../src/db/migrations';
+import { resetTestDb, resetRateLimits } from '../helpers/test-db';
+import { createUser } from '../helpers/factories';
+import { authCookie } from '../helpers/auth';
+import { ALL_SCOPES } from '../../src/mcp/scopes';
+import { OauthService } from '../../src/nest/oauth/oauth.service';
+import { DatabaseService } from '../../src/nest/database/database.service';
+import { AddonsService } from '../../src/nest/addons/addons.service';
+import { AuditService } from '../../src/nest/audit/audit.service';
+
+// In production the consent controller writes pending codes through the
+// container instance and the SDK routes read them back through the same
+// injected singleton. These tests write codes the way the consent controller
+// does: through a service instance. The pending-code map is module-scoped in
+// oauth.pending-codes.ts, so the routes under test see every code written here.
+const oauthDbs = new DatabaseService(testDb);
+const containerSideOauth = new OauthService(oauthDbs, new AddonsService(oauthDbs), new AuditService(oauthDbs));
+const createAuthCode = containerSideOauth.createAuthCode.bind(containerSideOauth);
+const createOAuthClient = containerSideOauth.createOAuthClient.bind(containerSideOauth);
+const getUserByAccessToken = containerSideOauth.getUserByAccessToken.bind(containerSideOauth);
 
 let nestApp: INestApplication;
 let app: Application;
@@ -99,18 +109,14 @@ function makePkce() {
   return { verifier, challenge };
 }
 
-// A7: under the unified Nest app the adminService mock only reaches the directly
-// imported isAddonEnabled (OauthService.mcpEnabled); oauthService.ts reads the
-// addon state through its own import that the Nest module graph loads unmocked,
-// so it falls back to the real DB row. Drive BOTH so the MCP-enabled state is
-// consistent across mcpEnabled() AND validateAuthorizeRequest()/token/revoke.
+// Since the admin-1 extraction, both OauthService (injected AddonsService) and
+// the legacy oauthService (addons.bridge) resolve the MCP addon from the real
+// addons row, so driving the DB row keeps mcpEnabled() AND
+// validateAuthorizeRequest()/token/revoke consistent from one source.
 function setMcpEnabled(enabled: boolean) {
-  isAddonEnabledMock.mockReturnValue(enabled);
-  testDb
-    .prepare(
-      "INSERT OR REPLACE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('mcp', 'MCP', 'AI assistant integration', 'integration', 'Terminal', ?, 12)",
-    )
-    .run(enabled ? 1 : 0);
+    testDb.prepare(
+        "INSERT OR REPLACE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('mcp', 'MCP', 'AI assistant integration', 'integration', 'Terminal', ?, 12)"
+    ).run(enabled ? 1 : 0);
 }
 
 beforeAll(async () => {
@@ -181,6 +187,87 @@ describe('DCR scope optional — ChatGPT compatibility (issue #959 bug 2)', () =
     expect(res.status).toBe(201);
     expect(res.body.scope).toBe('trips:read');
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform/discovery parity pins — byte-level oracles for the MCP/OAuth mount
+// migration (these must pass identically before AND after the routes move
+// behind the Nest container).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('platform/discovery parity pins', () => {
+    it('PLAT-PIN-001 — GET /api/health returns the exact probe body + Cache-Control', async () => {
+        const res = await request(app).get('/api/health');
+        expect(res.status).toBe(200);
+        expect(res.headers['cache-control']).toBe('no-store, must-revalidate');
+        expect(res.body).toEqual({ status: 'ok' });
+    });
+
+    it('PLAT-PIN-002 — openid-configuration is the AS metadata plus userinfo_endpoint, exactly', async () => {
+        const res = await request(app).get('/.well-known/openid-configuration');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            issuer:                                'https://trek.example.com',
+            authorization_endpoint:                'https://trek.example.com/oauth/authorize',
+            token_endpoint:                        'https://trek.example.com/oauth/token',
+            revocation_endpoint:                   'https://trek.example.com/oauth/revoke',
+            registration_endpoint:                 'https://trek.example.com/oauth/register',
+            response_types_supported:              ['code'],
+            grant_types_supported:                 ['authorization_code', 'refresh_token', 'client_credentials'],
+            code_challenge_methods_supported:      ['S256'],
+            token_endpoint_auth_methods_supported: ['client_secret_post', 'none'],
+            scopes_supported:                      ALL_SCOPES,
+            userinfo_endpoint:                     'https://trek.example.com/oauth/userinfo',
+        });
+    });
+
+    it('PLAT-PIN-003 — flat oauth-protected-resource is the exact 5-key RFC 9728 document', async () => {
+        const res = await request(app).get('/.well-known/oauth-protected-resource');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            resource:                 'https://trek.example.com/mcp',
+            authorization_servers:    ['https://trek.example.com'],
+            bearer_methods_supported: ['header'],
+            scopes_supported:         ALL_SCOPES,
+            resource_name:            'TREK MCP',
+        });
+    });
+
+    it('PLAT-PIN-004 — every /.well-known/* path 404s with an EMPTY body when MCP is disabled', async () => {
+        setMcpEnabled(false);
+        for (const path of [
+            '/.well-known/openid-configuration',
+            '/.well-known/oauth-protected-resource',
+            '/.well-known/oauth-authorization-server',
+        ]) {
+            const res = await request(app).get(path);
+            expect(res.status, path).toBe(404);
+            expect(res.text, path).toBe('');
+        }
+    });
+
+    it('PLAT-PIN-005 — an unhandled /.well-known path gets the JSON 404, never SPA HTML', async () => {
+        const res = await request(app).get('/.well-known/does-not-exist');
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'not_found' });
+    });
+
+    it('PLAT-PIN-006 — /.well-known/ (trailing slash) also gets the JSON 404', async () => {
+        const res = await request(app).get('/.well-known/');
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'not_found' });
+    });
+
+    it('PLAT-PIN-007 — bare /.well-known falls through to the router 404 envelope', async () => {
+        const res = await request(app).get('/.well-known');
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'Cannot GET /.well-known' });
+    });
+
+    it('PLAT-PIN-008 — /oauth/consent responses carry the relaxed COOP header', async () => {
+        const res = await request(app).get('/oauth/consent');
+        expect(res.headers['cross-origin-opener-policy']).toBe('unsafe-none');
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,10 +431,16 @@ describe('POST /oauth/token — authorization_code grant', () => {
     expect(res.body.error).toBe('invalid_grant');
   });
 
-  it('OAUTH-010 — happy path: exchange auth code for tokens', async () => {
-    const { user } = createUser(testDb);
-    const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
-    const { verifier, challenge } = makePkce();
+        // Create code for client1
+        const code = createAuthCode({
+            clientId: r1.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app1.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
 
     const code = createAuthCode({
       clientId: r.client!.client_id as string,
@@ -358,13 +451,124 @@ describe('POST /oauth/token — authorization_code grant', () => {
       codeChallengeMethod: 'S256',
     });
 
-    const res = await request(app).post('/oauth/token').send({
-      grant_type: 'authorization_code',
-      client_id: r.client!.client_id,
-      client_secret: r.client!.client_secret,
-      code,
-      redirect_uri: 'https://app.example.com/cb',
-      code_verifier: verifier,
+    it('OAUTH-007 — redirect_uri mismatch returns 400 invalid_grant', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        const res = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                code,
+                redirect_uri: 'https://wrong.example.com/cb',
+                code_verifier: verifier,
+            });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('invalid_grant');
+    });
+
+    it('OAUTH-008 — wrong client_secret returns 401 invalid_client (timing-safe check)', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        const res = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: 'wrong-secret',
+                code,
+                redirect_uri: 'https://app.example.com/cb',
+                code_verifier: verifier,
+            });
+        expect(res.status).toBe(401);
+        expect(res.body.error).toBe('invalid_client');
+    });
+
+    it('OAUTH-009 — PKCE failure returns 400 invalid_grant', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        const res = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                code,
+                redirect_uri: 'https://app.example.com/cb',
+                code_verifier: 'this-is-a-wrong-verifier',
+            });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('invalid_grant');
+    });
+
+    it('OAUTH-010 — happy path: exchange auth code for tokens', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        const res = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                code,
+                redirect_uri: 'https://app.example.com/cb',
+                code_verifier: verifier,
+            });
+        expect(res.status).toBe(200);
+        expect(res.body.access_token).toBeDefined();
+        expect(res.body.refresh_token).toBeDefined();
+        expect(res.body.token_type).toBe('Bearer');
+        expect(typeof res.body.expires_in).toBe('number');
+        expect(res.body.scope).toBe('trips:read');
     });
     expect(res.status).toBe(200);
     expect(res.body.access_token).toBeDefined();
@@ -428,12 +632,47 @@ describe('POST /oauth/token — refresh_token grant', () => {
     expect(tokenRes.status).toBe(200);
     const { refresh_token } = tokenRes.body;
 
-    // Use refresh token to get new tokens
-    const refreshRes = await request(app).post('/oauth/token').send({
-      grant_type: 'refresh_token',
-      client_id: r.client!.client_id,
-      client_secret: r.client!.client_secret,
-      refresh_token,
+    it('OAUTH-013 — happy path: issue then refresh tokens', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        // Exchange code for tokens
+        const tokenRes = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                code,
+                redirect_uri: 'https://app.example.com/cb',
+                code_verifier: verifier,
+            });
+        expect(tokenRes.status).toBe(200);
+        const { refresh_token } = tokenRes.body;
+
+        // Use refresh token to get new tokens
+        const refreshRes = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'refresh_token',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                refresh_token,
+            });
+        expect(refreshRes.status).toBe(200);
+        expect(refreshRes.body.access_token).toBeDefined();
+        expect(refreshRes.body.refresh_token).toBeDefined();
     });
     expect(refreshRes.status).toBe(200);
     expect(refreshRes.body.access_token).toBeDefined();
@@ -518,12 +757,57 @@ describe('POST /oauth/revoke', () => {
       .send({ token: refresh_token, client_id: r.client!.client_id, client_secret: r.client!.client_secret });
     expect(revokeRes.status).toBe(200);
 
-    // Try to use the revoked token — should fail
-    const retryRes = await request(app).post('/oauth/token').send({
-      grant_type: 'refresh_token',
-      client_id: r.client!.client_id,
-      client_secret: r.client!.client_secret,
-      refresh_token,
+        const res = await request(app)
+            .post('/oauth/revoke')
+            .send({ token: 'nonexistent-token', client_id: r.client!.client_id, client_secret: r.client!.client_secret });
+        expect(res.status).toBe(200);
+    });
+
+    it('OAUTH-018 — happy path: issue token, revoke it, verify refresh no longer works', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        const tokenRes = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                code,
+                redirect_uri: 'https://app.example.com/cb',
+                code_verifier: verifier,
+            });
+        expect(tokenRes.status).toBe(200);
+        const { refresh_token } = tokenRes.body;
+
+        // Revoke the refresh token
+        const revokeRes = await request(app)
+            .post('/oauth/revoke')
+            .send({ token: refresh_token, client_id: r.client!.client_id, client_secret: r.client!.client_secret });
+        expect(revokeRes.status).toBe(200);
+
+        // Try to use the revoked token — should fail
+        const retryRes = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'refresh_token',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                refresh_token,
+            });
+        expect(retryRes.status).toBe(400);
+        expect(retryRes.body.error).toBe('invalid_grant');
     });
     expect(retryRes.status).toBe(400);
     expect(retryRes.body.error).toBe('invalid_grant');
@@ -737,24 +1021,52 @@ describe('POST /api/oauth/authorize', () => {
     expect(res.status).toBe(403);
   });
 
-  it('OAUTH-030 — user denied returns redirect with error=access_denied', async () => {
-    const { user } = createUser(testDb);
+    it('OAUTH-030 — user denied returns redirect with error=access_denied', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { challenge } = makePkce();
 
-    const res = await request(app).post('/api/oauth/authorize').set('Cookie', authCookie(user.id)).send({
-      approved: false,
-      client_id: 'any',
-      redirect_uri: 'https://app.example.com/cb',
-      scope: 'trips:read',
-      code_challenge: 'c',
-      code_challenge_method: 'S256',
+        const res = await request(app)
+            .post('/api/oauth/authorize')
+            .set('Cookie', authCookie(user.id))
+            .send({
+                approved: false,
+                client_id: r.client!.client_id,
+                redirect_uri: 'https://app.example.com/cb',
+                scope: 'trips:read',
+                code_challenge: challenge,
+                code_challenge_method: 'S256',
+            });
+        expect(res.status).toBe(200);
+        expect(res.body.redirect).toContain('error=access_denied');
     });
     expect(res.status).toBe(200);
     expect(res.body.redirect).toContain('error=access_denied');
   });
 
-  it('OAUTH-031 — invalid params returns 400', async () => {
-    const { user } = createUser(testDb);
-    const { challenge } = makePkce();
+    it('OAUTH-030b — a denial for an unregistered redirect_uri is refused, not redirected', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { challenge } = makePkce();
+
+        const res = await request(app)
+            .post('/api/oauth/authorize')
+            .set('Cookie', authCookie(user.id))
+            .send({
+                approved: false,
+                client_id: r.client!.client_id,
+                redirect_uri: 'https://attacker.example.com/cb',
+                scope: 'trips:read',
+                code_challenge: challenge,
+                code_challenge_method: 'S256',
+            });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('invalid_redirect_uri');
+    });
+
+    it('OAUTH-031 — invalid params returns 400', async () => {
+        const { user } = createUser(testDb);
+        const { challenge } = makePkce();
 
     const res = await request(app).post('/api/oauth/authorize').set('Cookie', authCookie(user.id)).send({
       approved: true,
@@ -911,11 +1223,15 @@ describe('Sessions — /api/oauth/sessions', () => {
     const sessionsRes = await request(app).get('/api/oauth/sessions').set('Cookie', authCookie(user.id));
     expect(sessionsRes.body.sessions).toHaveLength(1);
 
-    const sessionId = sessionsRes.body.sessions[0].id;
-    const deleteRes = await request(app).delete(`/api/oauth/sessions/${sessionId}`).set('Cookie', authCookie(user.id));
-    expect(deleteRes.status).toBe(200);
-    expect(deleteRes.body.success).toBe(true);
-  });
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
 
   it('OAUTH-043 — DELETE /sessions/:id returns 404 for non-existent', async () => {
     const { user } = createUser(testDb);
@@ -996,14 +1312,34 @@ describe('H1 — PKCE format validation', () => {
       codeChallengeMethod: 'S256',
     });
 
-    // Submit a valid-looking but wrong-format verifier (too short)
-    const res = await request(app).post('/oauth/token').send({
-      grant_type: 'authorization_code',
-      client_id: r.client!.client_id,
-      client_secret: r.client!.client_secret,
-      code,
-      redirect_uri: 'https://app.example.com/cb',
-      code_verifier: 'short',
+    it('OAUTH-SEC-005 — wrong code_verifier format rejected on /oauth/token (invalid_grant)', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        // Submit a valid-looking but wrong-format verifier (too short)
+        const res = await request(app)
+            .post('/oauth/token')
+            .send({
+                grant_type: 'authorization_code',
+                client_id: r.client!.client_id,
+                client_secret: r.client!.client_secret,
+                code,
+                redirect_uri: 'https://app.example.com/cb',
+                code_verifier: 'short',
+            });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('invalid_grant');
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('invalid_grant');
@@ -1040,13 +1376,51 @@ describe('H5 — All invalid_grant cases return identical response body', () => 
     const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
     const { verifier, challenge } = makePkce();
 
-    const code = createAuthCode({
-      clientId: r.client!.client_id as string,
-      userId: user.id,
-      redirectUri: 'https://app.example.com/cb',
-      scopes: ['trips:read'],
-      codeChallenge: challenge,
-      codeChallengeMethod: 'S256',
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        // Bad code
+        const res1 = await request(app).post('/oauth/token').send({
+            grant_type: 'authorization_code',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            code: 'bad-code-xyz',
+            redirect_uri: 'https://app.example.com/cb',
+            code_verifier: verifier,
+        });
+
+        // Redirect URI mismatch (need fresh code since code is single-use)
+        const code2 = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+        const res2 = await request(app).post('/oauth/token').send({
+            grant_type: 'authorization_code',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            code: code2,
+            redirect_uri: 'https://wrong.example.com/cb',
+            code_verifier: verifier,
+        });
+
+        expect(res1.status).toBe(400);
+        expect(res2.status).toBe(400);
+        expect(res1.body.error).toBe('invalid_grant');
+        expect(res2.body.error).toBe('invalid_grant');
+        // Both must use exactly the same error_description (H5)
+        expect(res1.body.error_description).toBe(res2.body.error_description);
     });
 
     // Bad code
@@ -1173,28 +1547,157 @@ describe('M7 — Cookie-only auth on privileged OAuth endpoints', () => {
 });
 
 describe('C3 — Refresh token replay detection', () => {
-  it('OAUTH-SEC-012 — replaying a rotated (old) refresh token returns invalid_grant', async () => {
-    const { user } = createUser(testDb);
-    const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
-    const { verifier, challenge } = makePkce();
+    /**
+     * Push a rotation out of the concurrency grace window (#1007) so a replay
+     * below still describes theft — a token used minutes later — rather than two
+     * clients refreshing at the same moment.
+     */
+    function agePastGrace(rawRefreshToken: string) {
+        const hash = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
+        const old = new Date(Date.now() - 5 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+        testDb.prepare('UPDATE oauth_tokens SET revoked_at = ? WHERE refresh_token_hash = ?').run(old, hash);
+    }
 
-    const code = createAuthCode({
-      clientId: r.client!.client_id as string,
-      userId: user.id,
-      redirectUri: 'https://app.example.com/cb',
-      scopes: ['trips:read'],
-      codeChallenge: challenge,
-      codeChallengeMethod: 'S256',
+    it('OAUTH-SEC-012 — replaying a rotated (old) refresh token returns invalid_grant', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        // Get initial tokens
+        const t1 = await request(app).post('/oauth/token').send({
+            grant_type: 'authorization_code',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            code,
+            redirect_uri: 'https://app.example.com/cb',
+            code_verifier: verifier,
+        });
+        expect(t1.status).toBe(200);
+        const originalRefreshToken = t1.body.refresh_token;
+
+        // Rotate once (legitimate use)
+        const t2 = await request(app).post('/oauth/token').send({
+            grant_type: 'refresh_token',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            refresh_token: originalRefreshToken,
+        });
+        expect(t2.status).toBe(200);
+
+        // Replay the original (now rotated/revoked) refresh token — must be rejected
+        agePastGrace(originalRefreshToken);
+        const t3 = await request(app).post('/oauth/token').send({
+            grant_type: 'refresh_token',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            refresh_token: originalRefreshToken,
+        });
+        expect(t3.status).toBe(400);
+        expect(t3.body.error).toBe('invalid_grant');
     });
 
-    // Get initial tokens
-    const t1 = await request(app).post('/oauth/token').send({
-      grant_type: 'authorization_code',
-      client_id: r.client!.client_id,
-      client_secret: r.client!.client_secret,
-      code,
-      redirect_uri: 'https://app.example.com/cb',
-      code_verifier: verifier,
+    it('OAUTH-SEC-012b — two clients refreshing the same token at once both keep working (#1007)', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+        const t1 = await request(app).post('/oauth/token').send({
+            grant_type: 'authorization_code',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            code,
+            redirect_uri: 'https://app.example.com/cb',
+            code_verifier: verifier,
+        });
+        const shared = t1.body.refresh_token;
+
+        const refresh = () => request(app).post('/oauth/token').send({
+            grant_type: 'refresh_token',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            refresh_token: shared,
+        });
+
+        // The second MCP session posts the token its sibling has just spent.
+        const first = await refresh();
+        const second = await refresh();
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+        expect(second.body.refresh_token).not.toBe(first.body.refresh_token);
+    });
+
+    it('OAUTH-SEC-013 — replaying old token also invalidates the new chain', async () => {
+        const { user } = createUser(testDb);
+        const r = createOAuthClient(user.id, 'App', ['https://app.example.com/cb'], ['trips:read']);
+        const { verifier, challenge } = makePkce();
+
+        const code = createAuthCode({
+            clientId: r.client!.client_id as string,
+            userId: user.id,
+            redirectUri: 'https://app.example.com/cb',
+            scopes: ['trips:read'],
+            codeChallenge: challenge,
+            codeChallengeMethod: 'S256',
+            resource: null,
+        });
+
+        const t1 = await request(app).post('/oauth/token').send({
+            grant_type: 'authorization_code',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            code,
+            redirect_uri: 'https://app.example.com/cb',
+            code_verifier: verifier,
+        });
+        const originalRefreshToken = t1.body.refresh_token;
+
+        // Legitimate rotate — get new token
+        const t2 = await request(app).post('/oauth/token').send({
+            grant_type: 'refresh_token',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            refresh_token: originalRefreshToken,
+        });
+        const newRefreshToken = t2.body.refresh_token;
+
+        // Replay original — triggers chain revocation
+        agePastGrace(originalRefreshToken);
+        await request(app).post('/oauth/token').send({
+            grant_type: 'refresh_token',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            refresh_token: originalRefreshToken,
+        });
+
+        // New token (from legitimate rotation) must also be dead now
+        const t4 = await request(app).post('/oauth/token').send({
+            grant_type: 'refresh_token',
+            client_id: r.client!.client_id,
+            client_secret: r.client!.client_secret,
+            refresh_token: newRefreshToken,
+        });
+        expect(t4.status).toBe(400);
+        expect(t4.body.error).toBe('invalid_grant');
     });
     expect(t1.status).toBe(200);
     const originalRefreshToken = t1.body.refresh_token;

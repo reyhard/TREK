@@ -1,12 +1,12 @@
-import type { ServiceResult } from '../../services/memories/helpersService';
-import { fail, success } from '../../services/memories/helpersService';
-import type { User } from '../../types';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { MemoriesService } from './memories.service';
 import { Body, Controller, Get, Headers, HttpCode, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
-
 import type { Response } from 'express';
+import type { User } from '../../types';
+import type { ServiceResult } from './memories.helpers';
+import { fail, success } from './memories.helpers';
+import { MemoriesService } from './memories.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { SynologySearchDto, SynologySettingsDto, SynologyTestDto } from './memories.dto';
 
 function _parseStringBodyField(value: unknown): string {
   return String(value ?? '').trim();
@@ -48,11 +48,7 @@ export class SynologyMemoriesController {
   }
 
   @Put('settings')
-  async putSettings(
-    @CurrentUser() user: User,
-    @Body() body: Record<string, unknown>,
-    @Res() res: Response,
-  ): Promise<void> {
+  async putSettings(@CurrentUser() user: User, @Body() body: SynologySettingsDto, @Res() res: Response): Promise<void> {
     const synology_url = _parseStringBodyField(body.synology_url);
     const synology_username = _parseStringBodyField(body.synology_username);
     const synology_password = _parseStringBodyField(body.synology_password);
@@ -61,16 +57,7 @@ export class SynologyMemoriesController {
     if (!synology_url || !synology_username) {
       this.handle(res, fail('URL and username are required', 400));
     } else {
-      this.handle(
-        res,
-        await this.memories.synologyUpdateSettings(
-          user.id,
-          synology_url,
-          synology_username,
-          synology_password,
-          synology_skip_ssl,
-        ),
-      );
+      this.handle(res, await this.memories.synologyUpdateSettings(user.id, synology_url, synology_username, synology_password, synology_skip_ssl));
     }
   }
 
@@ -81,7 +68,7 @@ export class SynologyMemoriesController {
 
   @Post('test')
   @HttpCode(200)
-  async test(@CurrentUser() user: User, @Body() body: Record<string, unknown>, @Res() res: Response): Promise<void> {
+  async test(@CurrentUser() user: User, @Body() body: SynologyTestDto, @Res() res: Response): Promise<void> {
     const synology_url = _parseStringBodyField(body.synology_url);
     const synology_username = _parseStringBodyField(body.synology_username);
     const synology_password = _parseStringBodyField(body.synology_password);
@@ -93,25 +80,9 @@ export class SynologyMemoriesController {
       if (!synology_url) missingFields.push('URL');
       if (!synology_username) missingFields.push('Username');
       if (!synology_password) missingFields.push('Password');
-      this.handle(
-        res,
-        success({
-          connected: false,
-          error: `${missingFields.join(', ')} ${missingFields.length > 1 ? 'are' : 'is'} required`,
-        }),
-      );
+      this.handle(res, success({ connected: false, error: `${missingFields.join(', ')} ${missingFields.length > 1 ? 'are' : 'is'} required` }));
     } else {
-      this.handle(
-        res,
-        await this.memories.synologyTestConnection(
-          user.id,
-          synology_url,
-          synology_username,
-          synology_password,
-          synology_otp,
-          synology_skip_ssl,
-        ),
-      );
+      this.handle(res, await this.memories.synologyTestConnection(user.id, synology_url, synology_username, synology_password, synology_otp, synology_skip_ssl));
     }
   }
 
@@ -121,12 +92,7 @@ export class SynologyMemoriesController {
   }
 
   @Get('albums/:albumId/photos')
-  async albumPhotos(
-    @CurrentUser() user: User,
-    @Param('albumId') albumId: string,
-    @Query('passphrase') passphraseRaw: string | undefined,
-    @Res() res: Response,
-  ): Promise<void> {
+  async albumPhotos(@CurrentUser() user: User, @Param('albumId') albumId: string, @Query('passphrase') passphraseRaw: string | undefined, @Res() res: Response): Promise<void> {
     const passphrase = passphraseRaw ? String(passphraseRaw) : undefined;
     this.handle(res, await this.memories.synologyGetAlbumPhotos(user.id, albumId, passphrase));
   }
@@ -145,7 +111,7 @@ export class SynologyMemoriesController {
 
   @Post('search')
   @HttpCode(200)
-  async search(@CurrentUser() user: User, @Body() body: Record<string, unknown>, @Res() res: Response): Promise<void> {
+  async search(@CurrentUser() user: User, @Body() body: SynologySearchDto, @Res() res: Response): Promise<void> {
     const from = _parseStringBodyField(body.from);
     const to = _parseStringBodyField(body.to);
     let offset = _parseNumberBodyField(body.offset, 0);
@@ -155,10 +121,7 @@ export class SynologyMemoriesController {
     if (size > 0) limit = size;
     if (page > 0) offset = page * limit;
 
-    this.handle(
-      res,
-      await this.memories.synologySearchPhotos(user.id, from || undefined, to || undefined, offset, limit),
-    );
+    this.handle(res, await this.memories.synologySearchPhotos(user.id, from || undefined, to || undefined, offset, limit));
   }
 
   @Get('assets/:tripId/:photoId/:ownerId/info')

@@ -1,17 +1,9 @@
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
-import { useSettingsStore } from '../../store/settingsStore';
-import { basemapLanguage, MAPBOX_DEFAULT_STYLE, styleForActiveProvider, type GlMapProvider } from '../Map/glProviders';
-import {
-  addCustom3dBuildings,
-  addTerrainAndSky,
-  isStandardFamily,
-  supportsCustom3d,
-  wantsTerrain,
-} from '../Map/mapboxSetup';
+import { useEffect, useRef, useImperativeHandle, useCallback, type Ref } from 'react'
+import type mapboxgl from 'mapbox-gl'
+import { useSettingsStore } from '../../store/settingsStore'
+import { isStandardFamily, supportsCustom3d, wantsTerrain, addCustom3dBuildings, addTerrainAndSky } from '../Map/mapboxSetup'
+import { MAPBOX_DEFAULT_STYLE, styleForActiveProvider, basemapLanguage, type GlMapProvider } from '../Map/glProviders'
+import type { JourneyTrack } from '@trek/shared'
 
 export interface JourneyMapGLHandle {
   highlightMarker: (id: string | null) => void;
@@ -32,16 +24,26 @@ interface MapEntry {
 }
 
 interface Props {
-  checkins: unknown[];
-  entries: MapEntry[];
-  trail?: { lat: number; lng: number }[];
-  height?: number;
-  dark?: boolean;
-  activeMarkerId?: string | null;
-  onMarkerClick?: (id: string, type?: string) => void;
-  fullScreen?: boolean;
-  paddingBottom?: number;
-  glProvider?: GlMapProvider;
+  ref?: Ref<JourneyMapGLHandle>
+  checkins: unknown[]
+  entries: MapEntry[]
+  trail?: { lat: number; lng: number }[]
+  /** Routed GPX geometries from the journey's trips (#1260). */
+  tracks?: JourneyTrack[]
+  height?: number
+  dark?: boolean
+  activeMarkerId?: string | null
+  onMarkerClick?: (id: string, type?: string) => void
+  fullScreen?: boolean
+  paddingBottom?: number
+  glProvider?: GlMapProvider
+  /**
+   * The GL engine, injected instead of imported. Both SDKs used to be pulled in
+   * statically here, so a single 2.8 MB chunk carried mapbox-gl and maplibre-gl
+   * together and every map user downloaded both while only one ever ran.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gl: any
 }
 
 interface Item {
@@ -209,34 +211,26 @@ function markerHtml(dayColor: string, dayLabel: number, highlighted: boolean): H
   return wrap;
 }
 
-const EMPTY_TRAIL: { lat: number; lng: number }[] = [];
+const EMPTY_TRAIL: { lat: number; lng: number }[] = []
+const EMPTY_TRACKS: JourneyTrack[] = []
+/** Fallback when a track carries no colour of its own, matching the planner's default. */
+const TRACK_FALLBACK_COLOR = '#4f46e5'
 
-const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL(
-  {
-    entries,
-    trail,
-    height = 220,
-    dark,
-    activeMarkerId,
-    onMarkerClick,
-    fullScreen,
-    paddingBottom,
-    glProvider = 'mapbox-gl',
-  },
-  ref
+function JourneyMapGL(
+  { entries, trail, tracks, height = 220, dark, activeMarkerId, onMarkerClick, fullScreen, paddingBottom, glProvider = 'mapbox-gl', gl, ref }: Props,
 ) {
-  const stableTrail = trail || EMPTY_TRAIL;
-  const rawMapboxStyle = useSettingsStore((s) => s.settings.mapbox_style || MAPBOX_DEFAULT_STYLE);
-  const rawMaplibreStyle = useSettingsStore((s) => s.settings.maplibre_style || '');
-  const mapboxToken = useSettingsStore((s) => s.settings.mapbox_access_token || '');
-  const mapbox3d = useSettingsStore((s) => s.settings.mapbox_3d_enabled !== false);
-  const mapboxQuality = useSettingsStore((s) => s.settings.mapbox_quality_mode === true);
-  const mapLang = useSettingsStore((s) => s.settings.language);
-  const isMapLibre = glProvider === 'maplibre-gl';
-  const gl = (isMapLibre ? maplibregl : mapboxgl) as any;
-  const glStyle = styleForActiveProvider(glProvider, rawMapboxStyle, rawMaplibreStyle);
-  const enableMapbox3d = !isMapLibre && mapbox3d;
-  const containerRef = useRef<HTMLDivElement>(null);
+  const stableTrail = trail || EMPTY_TRAIL
+  const stableTracks = tracks || EMPTY_TRACKS
+  const rawMapboxStyle = useSettingsStore(s => s.settings.mapbox_style || MAPBOX_DEFAULT_STYLE)
+  const rawMaplibreStyle = useSettingsStore(s => s.settings.maplibre_style || '')
+  const mapboxToken = useSettingsStore(s => s.settings.mapbox_access_token || '')
+  const mapbox3d = useSettingsStore(s => s.settings.mapbox_3d_enabled !== false)
+  const mapboxQuality = useSettingsStore(s => s.settings.mapbox_quality_mode === true)
+  const mapLang = useSettingsStore(s => s.settings.language)
+  const isMapLibre = glProvider === 'maplibre-gl'
+  const glStyle = styleForActiveProvider(glProvider, rawMapboxStyle, rawMaplibreStyle)
+  const enableMapbox3d = !isMapLibre && mapbox3d
+  const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -244,11 +238,13 @@ const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL
   const itemsRef = useRef<Item[]>([]);
   const highlightedRef = useRef<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const popupRef = useRef<any | null>(null);
-  const onMarkerClickRef = useRef(onMarkerClick);
-  onMarkerClickRef.current = onMarkerClick;
-  const darkRef = useRef(dark);
-  darkRef.current = dark;
+  const popupRef = useRef<any | null>(null)
+  const onMarkerClickRef = useRef(onMarkerClick)
+  onMarkerClickRef.current = onMarkerClick
+  const darkRef = useRef(dark)
+  darkRef.current = dark
+  const mapLangRef = useRef(mapLang)
+  mapLangRef.current = mapLang
 
   const showPopup = useCallback(
     (id: string) => {
@@ -381,8 +377,8 @@ const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL
   // Build map once per style/token change. Markers and layers are rebuilt
   // inside the same effect so they stay in sync with the active style.
   useEffect(() => {
-    if (!containerRef.current || (!isMapLibre && !mapboxToken)) return;
-    if (!isMapLibre) mapboxgl.accessToken = mapboxToken;
+    if (!containerRef.current || (!isMapLibre && !mapboxToken)) return
+    if (!isMapLibre) gl.accessToken = mapboxToken
 
     const items = buildItems(entries);
     itemsRef.current = items;
@@ -426,11 +422,7 @@ const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL
       // Pin the basemap label language to the UI language so labels don't fall back to the
       // browser/OS locale and stack multiple scripts per place (#1299).
       if (!isMapLibre && isStandardFamily(glStyle)) {
-        try {
-          map.setConfigProperty('basemap', 'language', basemapLanguage(mapLang));
-        } catch {
-          /* style/SDK may not support it */
-        }
+        try { map.setConfigProperty('basemap', 'language', basemapLanguage(mapLangRef.current)) } catch { /* style/SDK may not support it */ }
       }
 
       // route trail — dashed line connecting entries in time order
@@ -463,6 +455,43 @@ const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL
             },
             layout: { 'line-cap': 'round', 'line-join': 'round' },
           });
+        }
+      }
+
+      // GPX tracks — one source for all of them, coloured per feature so a journey
+      // with several recorded routes keeps them apart. Casing underneath, same as the
+      // planner map, so a track stays readable on satellite tiles.
+      if (stableTracks.length > 0) {
+        const featureCollection: GeoJSON.FeatureCollection = {
+          type: 'FeatureCollection',
+          features: stableTracks
+            .filter(track => track.points.length > 1)
+            .map(track => ({
+              type: 'Feature' as const,
+              properties: { color: track.color || TRACK_FALLBACK_COLOR, name: track.name },
+              geometry: { type: 'LineString' as const, coordinates: track.points.map(([lat, lng]) => [lng, lat]) },
+            })),
+        }
+        if (featureCollection.features.length > 0) {
+          if (map.getSource('journey-tracks')) {
+            (map.getSource('journey-tracks') as mapboxgl.GeoJSONSource).setData(featureCollection)
+          } else {
+            map.addSource('journey-tracks', { type: 'geojson', data: featureCollection })
+            map.addLayer({
+              id: 'journey-tracks-casing',
+              type: 'line',
+              source: 'journey-tracks',
+              paint: { 'line-color': '#ffffff', 'line-width': 6, 'line-opacity': 0.75 },
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+            })
+            map.addLayer({
+              id: 'journey-tracks-line',
+              type: 'line',
+              source: 'journey-tracks',
+              paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-opacity': 0.95 },
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+            })
+          }
         }
       }
 
@@ -504,25 +533,19 @@ const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL
         }
         popupRef.current = null;
       }
-      highlightedRef.current = null;
-      try {
-        map.remove();
-      } catch {
-        /* noop */
-      }
-      mapRef.current = null;
-    };
-  }, [
-    entries,
-    stableTrail,
-    glProvider,
-    glStyle,
-    mapboxToken,
-    enableMapbox3d,
-    mapboxQuality,
-    fullScreen,
-    paddingBottom,
-  ]);
+      highlightedRef.current = null
+      try { map.remove() } catch { /* noop */ }
+      mapRef.current = null
+    }
+  }, [entries, stableTrail, stableTracks, glProvider, glStyle, mapboxToken, enableMapbox3d, mapboxQuality, fullScreen, paddingBottom])
+
+  // Switching the UI language has to repin the basemap labels without tearing
+  // the map down. The load handler covers the initial run.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || isMapLibre || !isStandardFamily(glStyle)) return
+    try { map.setConfigProperty('basemap', 'language', basemapLanguage(mapLang)) } catch { /* style/SDK may not support it */ }
+  }, [mapLang, isMapLibre, glStyle])
 
   // external activeMarkerId → highlight + flyTo
   useEffect(() => {
@@ -578,7 +601,7 @@ const JourneyMapGL = forwardRef<JourneyMapGLHandle, Props>(function JourneyMapGL
     >
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
     </div>
-  );
-});
+  )
+}
 
 export default JourneyMapGL;

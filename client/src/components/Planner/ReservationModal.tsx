@@ -1,32 +1,36 @@
-import { typeToCostCategory } from '@trek/shared';
-import { ExternalLink, FileText, Hotel, Link2, Paperclip, Ticket, Users, Utensils, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import apiClient from '../../api/client';
-import { useTranslation } from '../../i18n';
-import { useAddonStore } from '../../store/addonStore';
-import { useTripStore } from '../../store/tripStore';
-import type { Accommodation, AssignmentsMap, BudgetItem, Day, Place, Reservation, TripFile } from '../../types';
-import { openFile } from '../../utils/fileDownload';
-import { resolveDayId } from '../../utils/formatters';
-import { safeParseMetadata } from '../../utils/safeParseMetadata';
-import { CustomDatePicker } from '../shared/CustomDateTimePicker';
-import CustomSelect from '../shared/CustomSelect';
-import CustomTimePicker from '../shared/CustomTimePicker';
-import Modal from '../shared/Modal';
-import { useToast } from '../shared/Toast';
-import AddressInput from './AddressInput';
-import { BookingCostsSection } from './BookingCostsSection';
-import type { BookingExpenseRequest } from './BookingCostsSection.types';
-import type { BookingReviewDraft } from './parsedItemToDraft';
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { localIsoDate } from '../../utils/localDate'
+import { useParams } from 'react-router'
+import apiClient from '../../api/client'
+import { useTripStore } from '../../store/tripStore'
+import { useAddonStore } from '../../store/addonStore'
+import Modal from '../shared/Modal'
+import CustomSelect from '../shared/CustomSelect'
+import AddressInput from './AddressInput'
+import { Hotel, Utensils, Ticket, FileText, Users, Paperclip, X, ExternalLink, Link2, ParkingSquare } from 'lucide-react'
+import { useToast } from '../shared/Toast'
+import { useTranslation } from '../../i18n'
+import { CustomDatePicker } from '../shared/CustomDateTimePicker'
+import CustomTimePicker from '../shared/CustomTimePicker'
+import { openFile } from '../../utils/fileDownload'
+import { parseReservationMetadata } from '../../utils/flightLegs'
+import { resolveDayId } from '../../utils/formatters'
+import type { Day, Place, Reservation, TripFile, AssignmentsMap, Accommodation, BudgetItem } from '../../types'
+import { BookingCostsSection } from './BookingCostsSection'
+import { TravelerPicker } from './TravelerPicker'
+import type { TripMember } from '../Budget/BudgetPanelMemberChips'
+import type { BookingExpenseRequest } from './BookingCostsSection.types'
+import type { BookingReviewDraft } from './parsedItemToDraft'
+import { typeToCostCategory } from '@trek/shared'
 
 const TYPE_OPTIONS = [
   { value: 'hotel', labelKey: 'reservations.type.hotel', Icon: Hotel },
   { value: 'restaurant', labelKey: 'reservations.type.restaurant', Icon: Utensils },
-  { value: 'event', labelKey: 'reservations.type.event', Icon: Ticket },
-  { value: 'tour', labelKey: 'reservations.type.tour', Icon: Users },
-  { value: 'other', labelKey: 'reservations.type.other', Icon: FileText },
-];
+  { value: 'event',      labelKey: 'reservations.type.event',      Icon: Ticket },
+  { value: 'tour',       labelKey: 'reservations.type.tour',       Icon: Users },
+  { value: 'parking',    labelKey: 'reservations.type.parking',    Icon: ParkingSquare },
+  { value: 'other',      labelKey: 'reservations.type.other',      Icon: FileText },
+]
 
 function buildAssignmentOptions(days, assignments, t, locale) {
   const options = [];
@@ -70,34 +74,21 @@ interface ReservationModalProps {
   onOpenExpense?: (req: BookingExpenseRequest) => void;
   // Pre-fill a brand-new booking from a parsed import item (review-before-save).
   // Distinct from `reservation`: the form is populated but stays in create mode.
-  prefill?: BookingReviewDraft | null;
+  prefill?: BookingReviewDraft | null
+  /** Trip members + guests, for the traveler picker (#1517). */
+  tripMembers?: TripMember[]
 }
 
-export function ReservationModal({
-  isOpen,
-  onClose,
-  onSave,
-  reservation,
-  days,
-  places,
-  assignments,
-  selectedDayId,
-  files = [],
-  onFileUpload,
-  onFileDelete,
-  accommodations = [],
-  defaultAssignmentId = null,
-  onOpenExpense,
-  prefill = null,
-}: ReservationModalProps) {
-  const { id: tripId } = useParams<{ id: string }>();
-  const loadFiles = useTripStore((s) => s.loadFiles);
-  const toast = useToast();
-  const { t, locale } = useTranslation();
-  const fileInputRef = useRef(null);
+export function ReservationModal({ isOpen, onClose, onSave, reservation, days, places, assignments, selectedDayId, files = [], onFileUpload, onFileDelete, accommodations = [], defaultAssignmentId = null, onOpenExpense, prefill = null, tripMembers = [] }: ReservationModalProps) {
+  const { id: tripId } = useParams<{ id: string }>()
+  const loadFiles = useTripStore(s => s.loadFiles)
+  const setReservationTravelers = useTripStore(s => s.setReservationTravelers)
+  const toast = useToast()
+  const { t, locale } = useTranslation()
+  const fileInputRef = useRef(null)
 
-  const isBudgetEnabled = useAddonStore((s) => s.isEnabled('budget'));
-  const deleteBudgetItem = useTripStore((s) => s.deleteBudgetItem);
+  const isBudgetEnabled = useAddonStore(s => s.isEnabled('budget'))
+  const updateBudgetItem = useTripStore(s => s.updateBudgetItem)
   // Set right before submit when the user clicked create/edit expense (see TransportModal).
   const expenseIntentRef = useRef<{ editItem?: BudgetItem; create?: boolean } | null>(null);
 
@@ -122,17 +113,27 @@ export function ReservationModal({
     hotel_start_day: '' as string | number,
     hotel_end_day: '' as string | number,
     hotel_address: '',
-  });
-  const [isSaving, setIsSaving] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [showFilePicker, setShowFilePicker] = useState(false);
-  const [linkedFileIds, setLinkedFileIds] = useState<number[]>([]);
+  })
+  const [isSaving, setIsSaving] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [showFilePicker, setShowFilePicker] = useState(false)
+  const [linkedFileIds, setLinkedFileIds] = useState<number[]>([])
+  // Travelers assigned to this booking (#1517) — seeded on open, persisted after the save resolves.
+  const [travelerIds, setTravelerIds] = useState<Set<number>>(new Set())
 
   const assignmentOptions = useMemo(
     () => buildAssignmentOptions(days, assignments, t, locale),
     [days, assignments, t, locale]
   );
+
+  // Restrict non-hotel booking dates to the trip's span (#1662). Hotels already
+  // constrain to trip days via their day dropdowns. Falls back to no limit when
+  // the trip has no dated days.
+  const tripDateRange = useMemo(() => {
+    const dates = (days || []).map(d => d.date).filter((d): d is string => !!d).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    return { min: dates[0], max: dates[dates.length - 1] }
+  }, [days])
 
   useEffect(() => {
     // Match an existing place by name (exact, then loose contains) for hotels.
@@ -147,11 +148,12 @@ export function ReservationModal({
       return loose?.id ?? '';
     };
 
+    setTravelerIds(new Set((reservation?.travelers || []).map(tv => tv.user_id)))
     if (reservation) {
-      const meta = safeParseMetadata(reservation as any);
-      const rawEnd = reservation.reservation_end_time || '';
-      let endDate = '';
-      let endTime = rawEnd;
+      const meta = parseReservationMetadata(reservation)
+      const rawEnd = reservation.reservation_end_time || ''
+      let endDate = ''
+      let endTime = rawEnd
       if (rawEnd.includes('T')) {
         endDate = rawEnd.split('T')[0];
         endTime = rawEnd.split('T')[1]?.slice(0, 5) || '';
@@ -252,26 +254,13 @@ export function ReservationModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reservation, prefill, isOpen, selectedDayId, defaultAssignmentId, days, places, accommodations]);
 
-  // Re-hydrate hotel day range when the accommodations prop arrives after the modal opens
-  // (race: tripAccommodations fetch may complete after isOpen fires, leaving hotel fields empty)
-  useEffect(() => {
-    if (!isOpen || !reservation || reservation.type !== 'hotel' || !reservation.accommodation_id) return;
-    const acc = accommodations.find((a) => a.id == reservation.accommodation_id);
-    if (!acc) return;
-    setForm((prev) => {
-      if (prev.hotel_place_id !== '' || prev.hotel_start_day !== '' || prev.hotel_end_day !== '') return prev;
-      const accPlace = places.find((p) => p.id == acc.place_id);
-      return {
-        ...prev,
-        hotel_place_id: acc.place_id,
-        hotel_start_day: acc.start_day_id,
-        hotel_end_day: acc.end_day_id,
-        hotel_address: accPlace?.address || prev.hotel_address,
-      };
-    });
-  }, [accommodations, isOpen, reservation, places]);
+  const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
 
-  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const toggleTraveler = (id: number) => setTravelerIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
 
   const isEndBeforeStart = (() => {
     if (!form.end_date || !form.reservation_time) return false;
@@ -357,7 +346,18 @@ export function ReservationModal({
           saveData.create_budget_entry = { total_price: price, category: typeToCostCategory(form.type) };
         }
       }
-      const saved = await onSave(saveData);
+      const saved = await onSave(saveData)
+      // Persist the traveler assignment once we have the reservation id (create → save
+      // result, edit → existing reservation), and only when it actually changed (#1517).
+      const savedId = saved?.id ?? reservation?.id
+      if (savedId && tripId) {
+        const original = (reservation?.travelers || []).map(tv => tv.user_id)
+        const nextIds = [...travelerIds]
+        const changed = original.length !== nextIds.length || nextIds.some(id => !original.includes(id))
+        if (changed) {
+          try { await setReservationTravelers(tripId, savedId, nextIds) } catch { toast.error(t('common.unknownError')) }
+        }
+      }
       if (!reservation?.id && saved?.id && pendingFiles.length > 0) {
         for (const file of pendingFiles) {
           const fd = new FormData();
@@ -392,12 +392,11 @@ export function ReservationModal({
     handleSubmit();
   };
   const handleRemoveExpense = async (item: BudgetItem) => {
-    try {
-      await deleteBudgetItem(Number(tripId), item.id);
-    } catch {
-      toast.error(t('common.unknownError'));
-    }
-  };
+    // Unlink the existing cost from this reservation — never delete it. The
+    // canonical update path clears budget_items.reservation_id and broadcasts
+    // budget:updated; the cost (financials, split, category) survives.
+    try { await updateBudgetItem(Number(tripId), item.id, { reservation_id: null }) } catch { toast.error(t('common.unknownError')) }
+  }
 
   // On an import review (not yet saved), preview the parsed price as the cost that will be linked.
   const prefillMeta =
@@ -587,20 +586,19 @@ export function ReservationModal({
                     const [, tm] = (form.reservation_time || '').split('T');
                     set('reservation_time', d ? (tm ? `${d}T${tm}` : d) : '');
                   }}
+                  min={tripDateRange.min}
+                  max={tripDateRange.max}
                 />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <label className={labelClass}>{t('reservations.startTime')}</label>
                 <CustomTimePicker
-                  value={(() => {
-                    const [, tm] = (form.reservation_time || '').split('T');
-                    return tm || '';
-                  })()}
-                  onChange={(tm) => {
-                    const [d] = (form.reservation_time || '').split('T');
-                    const selectedDay = days.find((dy) => dy.id === selectedDayId);
-                    const date = d || selectedDay?.date || new Date().toISOString().split('T')[0];
-                    set('reservation_time', tm ? `${date}T${tm}` : date);
+                  value={(() => { const [, tm] = (form.reservation_time || '').split('T'); return tm || '' })()}
+                  onChange={tm => {
+                    const [d] = (form.reservation_time || '').split('T')
+                    const selectedDay = days.find(dy => dy.id === selectedDayId)
+                    const date = d || selectedDay?.date || localIsoDate()
+                    set('reservation_time', tm ? `${date}T${tm}` : date)
                   }}
                 />
               </div>
@@ -608,7 +606,12 @@ export function ReservationModal({
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <label className={labelClass}>{t('reservations.endDate')}</label>
-                <CustomDatePicker value={form.end_date} onChange={(d) => set('end_date', d || '')} />
+                <CustomDatePicker
+                  value={form.end_date}
+                  onChange={d => set('end_date', d || '')}
+                  min={tripDateRange.min}
+                  max={tripDateRange.max}
+                />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <label className={labelClass}>{t('reservations.endTime')}</label>
@@ -834,6 +837,12 @@ export function ReservationModal({
           />
         </div>
 
+        {/* Travelers — assign trip members & guests to this booking (#1517) */}
+        <div>
+          <label className={labelClass}>{t('reservations.travelers.label')}</label>
+          <TravelerPicker tripMembers={tripMembers} selectedIds={travelerIds} onToggle={toggleTraveler} />
+        </div>
+
         {/* Files */}
         <div>
           <label className={labelClass}>{t('files.title')}</label>
@@ -845,59 +854,20 @@ export function ReservationModal({
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 8 }}
               >
                 <FileText size={12} className="text-content-muted" style={{ flexShrink: 0 }} />
-                <span
-                  className="text-content-secondary"
-                  style={{
-                    flex: 1,
-                    fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {f.original_name}
-                </span>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openFile(f.url).catch(() => {});
-                  }}
-                  className="text-content-faint"
-                  style={{ display: 'flex', flexShrink: 0, cursor: 'pointer' }}
-                >
-                  <ExternalLink size={11} />
-                </a>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (f.reservation_id === reservation?.id) {
-                      try {
-                        await apiClient.put(`/trips/${tripId}/files/${f.id}`, { reservation_id: null });
-                      } catch {
-                        toast.error(t('reservations.toast.updateError'));
-                      }
-                    }
-                    try {
-                      const linksRes = await apiClient.get(`/trips/${tripId}/files/${f.id}/links`);
-                      const link = (linksRes.data.links || []).find((l: any) => l.reservation_id === reservation?.id);
-                      if (link) await apiClient.delete(`/trips/${tripId}/files/${f.id}/link/${link.id}`);
-                    } catch {
-                      toast.error(t('reservations.toast.updateError'));
-                    }
-                    setLinkedFileIds((prev) => prev.filter((id) => id !== f.id));
-                    if (tripId) loadFiles(tripId);
-                  }}
-                  className="text-content-faint"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    padding: 0,
-                    flexShrink: 0,
-                  }}
-                >
+                <span className="text-content-secondary" style={{ flex: 1, fontSize: 'calc(12px * var(--fs-scale-body, 1))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
+                <button type="button" onClick={() => { openFile(f.url).catch(() => {}) }} className="text-content-faint" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 0, flexShrink: 0 }}><ExternalLink size={11} /></button>
+                <button type="button" onClick={async () => {
+                  if (f.reservation_id === reservation?.id) {
+                    try { await apiClient.put(`/trips/${tripId}/files/${f.id}`, { reservation_id: null }) } catch { toast.error(t('reservations.toast.updateError')) }
+                  }
+                  try {
+                    const linksRes = await apiClient.get(`/trips/${tripId}/files/${f.id}/links`)
+                    const link = (linksRes.data.links || []).find((l: any) => l.reservation_id === reservation?.id)
+                    if (link) await apiClient.delete(`/trips/${tripId}/files/${f.id}/link/${link.id}`)
+                  } catch { toast.error(t('reservations.toast.updateError')) }
+                  setLinkedFileIds(prev => prev.filter(id => id !== f.id))
+                  if (tripId) loadFiles(tripId)
+                }} className="text-content-faint" style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 0, flexShrink: 0 }}>
                   <X size={11} />
                 </button>
               </div>
@@ -1075,7 +1045,6 @@ export function ReservationModal({
 }
 
 function formatDate(dateStr, locale) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00Z');
-  return d.toLocaleDateString(locale || undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const d = new Date(dateStr + 'T00:00:00Z')
+  return d.toLocaleDateString(locale || undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
 }

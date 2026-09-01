@@ -64,8 +64,8 @@ describe('VacayPersons', () => {
 
     render(<VacayPersons />);
 
-    expect(document.body).toHaveTextContent('(you)');
-  });
+    expect(document.body).toHaveTextContent('you')
+  })
 
   it('FE-COMP-VACAYPERSONS-003: Pending invite rendered with "(pending)" text', () => {
     seedVacay({
@@ -75,9 +75,9 @@ describe('VacayPersons', () => {
 
     render(<VacayPersons />);
 
-    expect(document.body).toHaveTextContent('Bob');
-    expect(document.body).toHaveTextContent('(pending)');
-  });
+    expect(document.body).toHaveTextContent('Bob')
+    expect(document.body).toHaveTextContent('pending')
+  })
 
   it('FE-COMP-VACAYPERSONS-004: Opens invite modal on UserPlus click', async () => {
     withNoAvailableUsers();

@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Utazások',
   'oauth.scope.group.places': 'Helyek',
+  'oauth.scope.group.collections': 'Gyűjtemények',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Csomagolás',
   'oauth.scope.group.todos': 'Feladatok',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Időjárás',
   'oauth.scope.group.journey': 'Útinaplók',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Utazások és útvonalak megtekintése',
   'oauth.scope.trips:read.description': 'Utazások, napok, napi feljegyzések és tagok olvasása',
   'oauth.scope.trips:write.label': 'Utazások és útvonalak szerkesztése',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Helyek, napi hozzárendelések, címkék és kategóriák olvasása',
   'oauth.scope.places:write.label': 'Helyek kezelése',
   'oauth.scope.places:write.description': 'Helyek, hozzárendelések és címkék létrehozása, frissítése és törlése',
+  'oauth.scope.collections:read.label': 'Gyűjtemények megtekintése',
+  'oauth.scope.collections:read.description':
+    'Helygyűjtemények, azok helyeinek, értékeléseinek, címkéinek és tagjainak olvasása',
+  'oauth.scope.collections:write.label': 'Gyűjtemények kezelése',
+  'oauth.scope.collections:write.description':
+    'Gyűjtemények létrehozása/szerkesztése, helyek mentése, értékelése, címkézése és másolása, valamint listák megosztása',
   'oauth.scope.atlas:read.label': 'Atlas megtekintése',
   'oauth.scope.atlas:read.description': 'Meglátogatott országok, régiók és bakancslisták olvasása',
   'oauth.scope.atlas:write.label': 'Atlas kezelése',
@@ -72,6 +81,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Útinapló-linkek kezelése',
   'oauth.scope.journey:share.description':
     'Nyilvános megosztási linkek létrehozása, frissítése és visszavonása útinaplókhoz',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

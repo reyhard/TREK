@@ -1,10 +1,9 @@
-import { db } from '../../db/database';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { readAuditForUser } from './host/plugin-audit';
-import { pluginsEnabled } from './kill-switch';
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
-
 import type { Request } from 'express';
+import { DatabaseService } from '../database/database.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { pluginsEnabled } from './kill-switch';
+import { readAuditForUser } from './host/plugin-audit';
 
 /**
  * GET /api/plugin-activity — the authenticated user's OWN plugin activity log:
@@ -19,6 +18,8 @@ import type { Request } from 'express';
 @Controller('api/plugin-activity')
 @UseGuards(JwtAuthGuard)
 export class PluginActivityController {
+  constructor(private readonly dbs: DatabaseService) {}
+
   @Get()
   mine(@Req() req: Request & { user?: { id: number } }, @Query('limit') limitRaw?: string): { activity: unknown[] } {
     if (!pluginsEnabled()) return { activity: [] };
@@ -27,6 +28,6 @@ export class PluginActivityController {
     // Math.floor so a non-integer (e.g. ?limit=2.5) can't reach SQLite's LIMIT and 500;
     // Math.floor(NaN) stays NaN so the `|| 200` fallback still applies.
     const limit = Math.min(Math.max(Math.floor(Number(limitRaw)) || 200, 1), 500);
-    return { activity: readAuditForUser(db, userId, limit) };
+    return { activity: readAuditForUser(this.dbs.connection, userId, limit) };
   }
 }

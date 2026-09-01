@@ -4,14 +4,13 @@
  * flag, that link validates its body, and that reload maps a re-consent error to 409
  * exactly like activate does. The runtime is mocked — this is the HTTP glue only.
  */
+import { HttpException } from '@nestjs/common';
 import { PluginConsentRequired } from '../../../src/nest/plugins/plugin-runtime.service';
 import { PluginsController } from '../../../src/nest/plugins/plugins.controller';
-import { HttpException } from '@nestjs/common';
-
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { RuntimeEnvService } from '../../../src/nest/app-config/runtime-env.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ctrl = (runtime: any) => new PluginsController({} as any, runtime, {} as any);
+const ctrl = (runtime: any) => new PluginsController({} as any, runtime, {} as any, { isManaged: () => false } as unknown as RuntimeEnvService);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const status = async (p: Promise<any>): Promise<number> =>
   p.then(

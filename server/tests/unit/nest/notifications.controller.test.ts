@@ -1,4 +1,5 @@
 import { NotificationsController } from '../../../src/nest/notifications/notifications.controller';
+import { NotificationRespondDto } from '../../../src/nest/notifications/notifications.dto';
 import type { NotificationsService } from '../../../src/nest/notifications/notifications.service';
 import type { User } from '../../../src/types';
 import { HttpException } from '@nestjs/common';
@@ -46,16 +47,15 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
   describe('test-smtp', () => {
     it('403 { error: Admin only } for a non-admin (distinct from AdminGuard wording)', async () => {
       const testSmtp = vi.fn();
-      expect(await thrown(() => makeController({ testSmtp }).testSmtp(user))).toEqual({
-        status: 403,
-        body: { error: 'Admin only' },
+      expect(await thrown(() => makeController({ testSmtp }).testSmtp(user, {}))).toEqual({
+        status: 403, body: { error: 'Admin only' },
       });
       expect(testSmtp).not.toHaveBeenCalled();
     });
 
     it("falls back to the admin's own email when none given", async () => {
       const testSmtp = vi.fn().mockResolvedValue({ success: true });
-      await makeController({ testSmtp }).testSmtp(admin);
+      await makeController({ testSmtp }).testSmtp(admin, {});
       expect(testSmtp).toHaveBeenCalledWith('admin@example.test');
     });
   });
@@ -63,30 +63,28 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
   describe('test-webhook', () => {
     it('uses the provided url', async () => {
       const testWebhook = vi.fn().mockResolvedValue({ success: true });
-      await makeController({ testWebhook }).testWebhook(user, 'https://hooks.example/x');
+      await makeController({ testWebhook }).testWebhook(user, { url: 'https://hooks.example/x' });
       expect(testWebhook).toHaveBeenCalledWith('https://hooks.example/x');
     });
 
     it('falls back to the saved user url when the masked placeholder is sent', async () => {
       const testWebhook = vi.fn().mockResolvedValue({ success: true });
       const userWebhookUrl = vi.fn().mockReturnValue('https://saved.example/u');
-      await makeController({ testWebhook, userWebhookUrl }).testWebhook(user, MASKED);
+      await makeController({ testWebhook, userWebhookUrl }).testWebhook(user, { url: MASKED });
       expect(userWebhookUrl).toHaveBeenCalledWith(4);
       expect(testWebhook).toHaveBeenCalledWith('https://saved.example/u');
     });
 
     it('400 when no url is configured', async () => {
       const userWebhookUrl = vi.fn().mockReturnValue(null);
-      expect(await thrown(() => makeController({ userWebhookUrl }).testWebhook(user, undefined))).toEqual({
-        status: 400,
-        body: { error: 'No webhook URL configured' },
+      expect(await thrown(() => makeController({ userWebhookUrl }).testWebhook(user, {}))).toEqual({
+        status: 400, body: { error: 'No webhook URL configured' },
       });
     });
 
     it('400 on an invalid url', async () => {
-      expect(await thrown(() => makeController({}).testWebhook(user, 'not a url'))).toEqual({
-        status: 400,
-        body: { error: 'Invalid URL' },
+      expect(await thrown(() => makeController({}).testWebhook(user, { url: 'not a url' }))).toEqual({
+        status: 400, body: { error: 'Invalid URL' },
       });
     });
   });
@@ -95,9 +93,8 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
     it('400 when no topic can be resolved', async () => {
       const userNtfyConfig = vi.fn().mockReturnValue(null);
       const adminNtfyConfig = vi.fn().mockReturnValue({ server: null, token: null });
-      expect(await thrown(() => makeController({ userNtfyConfig, adminNtfyConfig }).testNtfy(user))).toEqual({
-        status: 400,
-        body: { error: 'No ntfy topic configured' },
+      expect(await thrown(() => makeController({ userNtfyConfig, adminNtfyConfig }).testNtfy(user, {}))).toEqual({
+        status: 400, body: { error: 'No ntfy topic configured' },
       });
     });
 
@@ -107,7 +104,7 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
         .fn()
         .mockReturnValue({ topic: 'saved-topic', server: 'https://ntfy.me', token: 'saved-token' });
       const adminNtfyConfig = vi.fn().mockReturnValue({ server: null, token: null });
-      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, undefined, undefined, MASKED);
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { token: MASKED });
       expect(testNtfy).toHaveBeenCalledWith({ topic: 'saved-topic', server: 'https://ntfy.me', token: 'saved-token' });
     });
 
@@ -117,7 +114,7 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
       const adminNtfyConfig = vi
         .fn()
         .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
-      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, undefined, undefined, MASKED);
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { token: MASKED });
       expect(testNtfy).toHaveBeenCalledWith({ topic: 'user-topic', server: 'https://admin-ntfy.example', token: null });
     });
 
@@ -129,7 +126,7 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
       const adminNtfyConfig = vi
         .fn()
         .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
-      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, undefined, undefined, MASKED);
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { token: MASKED });
       expect(testNtfy).toHaveBeenCalledWith({
         topic: 'user-topic',
         server: 'https://admin-ntfy.example',
@@ -143,12 +140,10 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
       const adminNtfyConfig = vi
         .fn()
         .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
-      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(
-        user,
-        'user-topic',
-        undefined,
-        'explicit-body-token',
-      );
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, {
+        topic: 'user-topic',
+        token: 'explicit-body-token',
+      });
       expect(testNtfy).toHaveBeenCalledWith({
         topic: 'user-topic',
         server: 'https://admin-ntfy.example',
@@ -215,26 +210,25 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
   });
 
   describe('respond', () => {
-    it('400 on an invalid response value', async () => {
-      expect(await thrown(() => makeController({}).respond(user, '5', 'maybe'))).toEqual({
-        status: 400,
-        body: { error: 'response must be "positive" or "negative"' },
-      });
+    it('rejects an invalid response value at the contract (ZodValidationPipe owns the 400 now)', () => {
+      // The inline enum check died with the DTO ratchet: over HTTP the global
+      // pipe rejects the body before the handler runs, with the standard
+      // { error: 'field: message; …' } envelope.
+      expect(NotificationRespondDto.schema.safeParse({ response: 'maybe' }).success).toBe(false);
+      expect(NotificationRespondDto.schema.safeParse({ response: 'positive' }).success).toBe(true);
     });
 
     it('400 with the service error when the response fails', async () => {
       const respond = vi.fn().mockResolvedValue({ success: false, error: 'Already responded' });
-      expect(await thrown(() => makeController({ respond }).respond(user, '5', 'positive'))).toEqual({
-        status: 400,
-        body: { error: 'Already responded' },
+      expect(await thrown(() => makeController({ respond }).respond(user, '5', { response: 'positive' }))).toEqual({
+        status: 400, body: { error: 'Already responded' },
       });
     });
 
     it('returns success + the updated notification', async () => {
       const respond = vi.fn().mockResolvedValue({ success: true, notification: { id: 5, response: 'positive' } });
-      expect(await makeController({ respond }).respond(user, '5', 'positive')).toEqual({
-        success: true,
-        notification: { id: 5, response: 'positive' },
+      expect(await makeController({ respond }).respond(user, '5', { response: 'positive' })).toEqual({
+        success: true, notification: { id: 5, response: 'positive' },
       });
       expect(respond).toHaveBeenCalledWith(5, 4, 'positive');
     });

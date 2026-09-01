@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Resor',
   'oauth.scope.group.places': 'Platser',
+  'oauth.scope.group.collections': 'Samlingar',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Packning',
   'oauth.scope.group.todos': 'Att göra',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Väder',
   'oauth.scope.group.journey': 'Journey',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Visa resor och resplaner',
   'oauth.scope.trips:read.description': 'Läs om resor, dagar, daganteckningar och medlemmar',
   'oauth.scope.trips:write.label': 'Redigera resor och resplaner',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Läsa platser, dagsuppdrag, taggar och kategorier',
   'oauth.scope.places:write.label': 'Hantera platser',
   'oauth.scope.places:write.description': 'Skapa, uppdatera och ta bort platser, uppdrag och taggar',
+  'oauth.scope.collections:read.label': 'Visa samlingar',
+  'oauth.scope.collections:read.description':
+    'Läs samlingar med sparade platser, deras platser, betyg, etiketter och medlemmar',
+  'oauth.scope.collections:write.label': 'Hantera samlingar',
+  'oauth.scope.collections:write.description':
+    'Skapa/redigera samlingar, spara, betygsätt, etikettera och kopiera platser samt dela listor',
   'oauth.scope.atlas:read.label': 'Visa Atlas',
   'oauth.scope.atlas:read.description': 'Läs om besökta länder, regioner och bucketlist',
   'oauth.scope.atlas:write.label': 'Hantera Atlas',
@@ -73,6 +82,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': 'Skapa, uppdatera och ta bort journeys och deras poster',
   'oauth.scope.journey:share.label': 'Hantera journey länkar',
   'oauth.scope.journey:share.description': 'Skapa, uppdatera och återkalla offentliga delningslänkar för journeys',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Autentiserar…',
   'oauth.authorize.loading': 'Laddar…',
   'oauth.authorize.errorTitle': 'Auktoriseringsfel',

@@ -1,11 +1,11 @@
-import { ArrowLeft } from 'lucide-react';
-import React from 'react';
-import { Link } from 'react-router-dom';
-import FileManager from '../components/Files/FileManager';
-import PageShell from '../components/Layout/PageShell';
-import { PageSpinner } from '../components/shared/Spinner';
-import { useTranslation } from '../i18n';
-import { useFiles } from './files/useFiles';
+import React from 'react'
+import { Link } from 'react-router'
+import PageShell from '../components/Layout/PageShell'
+import { PageSpinner } from '../components/shared/Spinner'
+import FileManager from '../components/Files/FileManager'
+import { ArrowLeft } from 'lucide-react'
+import { useTranslation } from '../i18n'
+import { useFiles } from './files/useFiles'
 
 export default function FilesPage(): React.ReactElement {
   const { t } = useTranslation();

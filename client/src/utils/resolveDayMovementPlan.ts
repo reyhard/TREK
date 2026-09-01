@@ -1,7 +1,7 @@
-import { calculateRouteWithLegs } from '../components/Map/RouteCalculator'
-import type { RouteSegment } from '../types'
+import { calculateRouteWithLegs, type RouteProfileKey } from '../components/Map/RouteCalculator'
+import { resolveLegMode } from '../components/Planner/legMode'
+import type { RouteSegment, RouteVia } from '../types'
 import type {
-  ConnectorProfile,
   DayMovementPlan,
   PlannedRoutedPart,
   TrackMovementPart,
@@ -9,7 +9,7 @@ import type {
 } from './dayMovementPlan'
 
 export interface ResolvedRoutedPart extends PlannedRoutedPart {
-  profile: ConnectorProfile
+  profile: RouteProfileKey
   geometry: [number, number][]
   distance: number | null
   duration: number | null
@@ -22,6 +22,7 @@ export interface ResolvedDayMovementPlan {
   dayId: number
   parts: ResolvedMovementPart[]
   routedPolylines: [number, number][][]
+  routedVias: RouteVia[]
 }
 
 const samePoint = (left: PlannedRoutedPart['to'], right: PlannedRoutedPart['from']) =>
@@ -44,39 +45,59 @@ const isValidPolyline = (coordinates: unknown): coordinates is [number, number][
     point.every(coordinate => typeof coordinate === 'number' && Number.isFinite(coordinate)),
   )
 
+const isHotelPlacement = (part: PlannedRoutedPart) =>
+  part.placement.kind === 'hotel-top' || part.placement.kind === 'hotel-bottom'
+
 const straightLineFallback = (
   group: PlannedRoutedPart[],
-  profile: ConnectorProfile,
-  waypoints: Array<{ lat: number; lng: number }>,
+  profile: RouteProfileKey,
+  legs: RouteSegment[] = [],
 ): { parts: ResolvedRoutedPart[]; polyline: [number, number][] } => ({
-  polyline: waypoints.map(point => [point.lat, point.lng]),
-  parts: group.map(part => ({
-    ...part,
-    profile,
-    geometry: endpointGeometry(part),
-    routeSegment: null,
-    distance: null,
-    duration: null,
-  })),
+  polyline: [
+    [group[0].from.lat, group[0].from.lng],
+    ...group.map(part => [part.to.lat, part.to.lng] as [number, number]),
+  ],
+  parts: group.map((part, index) => {
+    const routeSegment = legs[index] ? { ...legs[index], mode: profile } : null
+    return {
+      ...part,
+      profile,
+      geometry: endpointGeometry(part),
+      routeSegment,
+      distance: routeSegment?.distance ?? null,
+      duration: routeSegment?.duration ?? null,
+    }
+  }),
 })
 
 async function resolveRoutedGroup(
   group: PlannedRoutedPart[],
-  profile: ConnectorProfile,
-  signal?: AbortSignal,
-): Promise<{ parts: ResolvedRoutedPart[]; polyline: [number, number][] }> {
+  profile: RouteProfileKey,
+  options: { signal?: AbortSignal; tripId?: number | string | null; dayId?: number | null },
+): Promise<{ parts: ResolvedRoutedPart[]; polyline: [number, number][]; vias: RouteVia[] }> {
   const waypoints = [
     { lat: group[0].from.lat, lng: group[0].from.lng },
     ...group.map(part => ({ lat: part.to.lat, lng: part.to.lng })),
   ]
 
   try {
-    const result = await calculateRouteWithLegs(waypoints, { signal, profile })
-    if (!isValidPolyline(result.coordinates)) return straightLineFallback(group, profile, waypoints)
+    const result = await calculateRouteWithLegs(waypoints, {
+      signal: options.signal,
+      profile,
+      tripId: options.tripId,
+      dayId: options.dayId,
+    })
+    if (!isValidPolyline(result.coordinates)) {
+      const fallback = straightLineFallback(group, profile, result.legs)
+      return { ...fallback, vias: [] }
+    }
     return {
       polyline: result.coordinates,
+      vias: result.vias ?? [],
       parts: group.map((part, index) => {
-        const routeSegment = result.legs[index] ?? null
+        const routeSegment = result.legs[index]
+          ? { ...result.legs[index], mode: profile }
+          : null
         return {
           ...part,
           profile,
@@ -88,19 +109,22 @@ async function resolveRoutedGroup(
       }),
     }
   } catch (error) {
-    if (signal?.aborted) throw signal.reason ?? error
+    if (options.signal?.aborted) throw options.signal.reason ?? error
     if (isAbortError(error)) throw error
-    return straightLineFallback(group, profile, waypoints)
+    const fallback = straightLineFallback(group, profile)
+    return { ...fallback, vias: [] }
   }
 }
 
+/** Resolve adjacent connectors in one canonical route request where possible. */
 export async function resolveDayMovementPlan(
   plan: DayMovementPlan,
-  profile: ConnectorProfile,
-  signal?: AbortSignal,
+  dayDefaultMode: RouteProfileKey,
+  options: { signal?: AbortSignal; tripId?: number | string | null; dayId?: number | null } = {},
 ): Promise<ResolvedDayMovementPlan> {
   const parts: ResolvedMovementPart[] = []
   const routedPolylines: [number, number][][] = []
+  const routedVias: RouteVia[] = []
 
   for (let index = 0; index < plan.parts.length;) {
     const part = plan.parts[index]
@@ -110,19 +134,34 @@ export async function resolveDayMovementPlan(
       continue
     }
 
+    const profile = resolveLegMode(
+      { ...part.from, isPlace: part.from.source === 'place' },
+      { ...part.to, isPlace: part.to.source === 'place' },
+      dayDefaultMode,
+    ) as RouteProfileKey
     const group = [part]
     index += 1
     while (index < plan.parts.length) {
       const next = plan.parts[index]
       if (next.kind !== 'routed' || !samePoint(group[group.length - 1].to, next.from)) break
+      const nextProfile = resolveLegMode(
+        { ...next.from, isPlace: next.from.source === 'place' },
+        { ...next.to, isPlace: next.to.source === 'place' },
+        dayDefaultMode,
+      ) as RouteProfileKey
+      if (nextProfile !== profile || isHotelPlacement(group[group.length - 1]) || isHotelPlacement(next)) break
       group.push(next)
       index += 1
     }
 
-    const resolved = await resolveRoutedGroup(group, profile, signal)
+    const resolved = await resolveRoutedGroup(group, profile, {
+      ...options,
+      dayId: options.dayId ?? plan.dayId,
+    })
     parts.push(...resolved.parts)
     routedPolylines.push(resolved.polyline)
+    routedVias.push(...resolved.vias)
   }
 
-  return { dayId: plan.dayId, parts, routedPolylines }
+  return { dayId: plan.dayId, parts, routedPolylines, routedVias }
 }

@@ -20,6 +20,8 @@ export const SCOPE_GROUPS: Record<string, ScopeKeys> = {
   'trips:share':         { labelKey: 'oauth.scope.trips:share.label',         descriptionKey: 'oauth.scope.trips:share.description',         groupKey: 'oauth.scope.group.trips' },
   'places:read':         { labelKey: 'oauth.scope.places:read.label',         descriptionKey: 'oauth.scope.places:read.description',         groupKey: 'oauth.scope.group.places' },
   'places:write':        { labelKey: 'oauth.scope.places:write.label',        descriptionKey: 'oauth.scope.places:write.description',        groupKey: 'oauth.scope.group.places' },
+  'collections:read':    { labelKey: 'oauth.scope.collections:read.label',    descriptionKey: 'oauth.scope.collections:read.description',    groupKey: 'oauth.scope.group.collections' },
+  'collections:write':   { labelKey: 'oauth.scope.collections:write.label',   descriptionKey: 'oauth.scope.collections:write.description',   groupKey: 'oauth.scope.group.collections' },
   'atlas:read':          { labelKey: 'oauth.scope.atlas:read.label',          descriptionKey: 'oauth.scope.atlas:read.description',          groupKey: 'oauth.scope.group.atlas' },
   'atlas:write':         { labelKey: 'oauth.scope.atlas:write.label',         descriptionKey: 'oauth.scope.atlas:write.description',         groupKey: 'oauth.scope.group.atlas' },
   'packing:read':        { labelKey: 'oauth.scope.packing:read.label',        descriptionKey: 'oauth.scope.packing:read.description',        groupKey: 'oauth.scope.group.packing' },
@@ -38,12 +40,23 @@ export const SCOPE_GROUPS: Record<string, ScopeKeys> = {
   'vacay:write':         { labelKey: 'oauth.scope.vacay:write.label',         descriptionKey: 'oauth.scope.vacay:write.description',         groupKey: 'oauth.scope.group.vacay' },
   'geo:read':            { labelKey: 'oauth.scope.geo:read.label',            descriptionKey: 'oauth.scope.geo:read.description',            groupKey: 'oauth.scope.group.geo' },
   'weather:read':        { labelKey: 'oauth.scope.weather:read.label',        descriptionKey: 'oauth.scope.weather:read.description',        groupKey: 'oauth.scope.group.weather' },
-  'journey:read':        { labelKey: 'oauth.scope.journey:read.label',        descriptionKey: 'oauth.scope.journey:read.description',        groupKey: 'oauth.scope.group.journey' },
+'journey:read':        { labelKey: 'oauth.scope.journey:read.label',        descriptionKey: 'oauth.scope.journey:read.description',        groupKey: 'oauth.scope.group.journey' },
   'journey:write':       { labelKey: 'oauth.scope.journey:write.label',       descriptionKey: 'oauth.scope.journey:write.description',       groupKey: 'oauth.scope.group.journey' },
   'journey:share':       { labelKey: 'oauth.scope.journey:share.label',       descriptionKey: 'oauth.scope.journey:share.description',       groupKey: 'oauth.scope.group.journey' },
+  'plugins:use':         { labelKey: 'oauth.scope.plugins:use.label',         descriptionKey: 'oauth.scope.plugins:use.description',         groupKey: 'oauth.scope.group.plugins' },
 }
 
 export const ALL_SCOPES = Object.keys(SCOPE_GROUPS)
+
+/**
+ * Scopes a client preset must never tick for you.
+ *
+ * The presets are written as "everything except deletes", so a new scope joins
+ * them silently. That is right for a new read or write scope on data the user
+ * already owns, and wrong for plugins:use: it turns on third-party tool
+ * execution, which nobody would have chosen by installing an editor.
+ */
+export const PRESET_OPT_IN_ONLY = new Set(['plugins:use'])
 
 // Group all scopes for the client registration form
 export const SCOPE_GROUP_NAMES = [...new Set(Object.values(SCOPE_GROUPS).map(s => s.groupKey))]

@@ -1,4 +1,4 @@
-import { AssignmentTimingError, resolveAssignmentTiming } from '../../../src/services/assignmentTiming';
+import { AssignmentTimingError, resolveAssignmentTiming } from '../../../src/nest/common/assignmentTiming';
 
 import { describe, expect, it } from 'vitest';
 

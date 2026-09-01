@@ -50,6 +50,14 @@ vi.mock('../../src/config', () => ({
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
+import { buildApp } from '../../src/bootstrap';
+import { createTables } from '../../src/db/schema';
+import { runMigrations } from '../../src/db/migrations';
+import { resetTestDb, resetRateLimits } from '../helpers/test-db';
+import { createUser, createTrip, addTripMember } from '../helpers/factories';
+import { authCookie } from '../helpers/auth';
+import { invalidatePermissionsCache } from '../../src/nest/permissions/permissions-cache';
+
 let nestApp: INestApplication;
 let app: Application;
 

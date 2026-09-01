@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Ταξίδια',
   'oauth.scope.group.places': 'Τοποθεσίες',
+  'oauth.scope.group.collections': 'Συλλογές',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Αποσκευές',
   'oauth.scope.group.todos': 'Εργασίες',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Γεωγραφικά',
   'oauth.scope.group.weather': 'Καιρός',
   'oauth.scope.group.journey': 'Ταξίδι',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Προβολή ταξιδιών & δρομολογίων',
   'oauth.scope.trips:read.description': 'Ανάγνωση ταξιδιών, ημερών, σημειώσεων και μελών',
   'oauth.scope.trips:write.label': 'Επεξεργασία ταξιδιών & δρομολογίων',
@@ -27,6 +30,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Ανάγνωση τοποθεσιών, αναθέσεων ημερών, ετικετών και κατηγοριών',
   'oauth.scope.places:write.label': 'Διαχείριση τοποθεσιών',
   'oauth.scope.places:write.description': 'Δημιουργία, ενημέρωση και διαγραφή τοποθεσιών, αναθέσεων και ετικετών',
+  'oauth.scope.collections:read.label': 'Προβολή συλλογών',
+  'oauth.scope.collections:read.description':
+    'Ανάγνωση συλλογών αποθηκευμένων τοποθεσιών, των τοποθεσιών τους, των βαθμολογιών, των ετικετών και των μελών τους',
+  'oauth.scope.collections:write.label': 'Διαχείριση συλλογών',
+  'oauth.scope.collections:write.description':
+    'Δημιουργία/επεξεργασία συλλογών, αποθήκευση, βαθμολόγηση, προσθήκη ετικετών και αντιγραφή τοποθεσιών και κοινή χρήση λιστών',
   'oauth.scope.atlas:read.label': 'Προβολή Atlas',
   'oauth.scope.atlas:read.description': 'Ανάγνωση περιοχών που έχουν επισκεφθεί, χωρών και λίστας επιθυμιών',
   'oauth.scope.atlas:write.label': 'Διαχείριση Atlas',
@@ -73,6 +82,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Διαχείριση συνδέσμων ταξιδιών',
   'oauth.scope.journey:share.description':
     'Δημιουργία, ενημέρωση και ανάκληση δημόσιων συνδέσμων κοινής χρήσης για ταξίδια',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

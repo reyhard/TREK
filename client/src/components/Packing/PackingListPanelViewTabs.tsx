@@ -29,29 +29,18 @@ export function PackingViewTabs(S: PackingState) {
   const viewPill = (id: 'common' | 'personal', icon: React.ReactNode, label: string, count: number) => {
     const active = view === id;
     return (
-      <button
-        onClick={() => setView(id)}
-        style={{
-          ...pillBase,
-          background: active ? 'var(--text-primary)' : 'transparent',
-          borderColor: active ? 'var(--text-primary)' : 'var(--border-primary)',
-          color: active ? 'var(--bg-primary)' : 'var(--text-secondary)',
-        }}
-      >
-        {icon}
-        {label}
-        <span
-          style={{
-            fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-            fontWeight: 700,
-            borderRadius: 99,
-            padding: '0 6px',
-            background: active ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
-            color: active ? 'var(--text-primary)' : 'var(--text-faint)',
-          }}
-        >
-          {count}
-        </span>
+      <button type="button" onClick={() => setView(id)} style={{
+        ...pillBase,
+        background: active ? 'var(--text-primary)' : 'transparent',
+        borderColor: active ? 'var(--text-primary)' : 'var(--border-primary)',
+        color: active ? 'var(--bg-primary)' : 'var(--text-secondary)',
+      }}>
+        {icon}{label}
+        <span style={{
+          fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 700, borderRadius: 99, padding: '0 6px',
+          background: active ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
+          color: active ? 'var(--text-primary)' : 'var(--text-faint)',
+        }}>{count}</span>
       </button>
     );
   };
@@ -59,22 +48,13 @@ export function PackingViewTabs(S: PackingState) {
   const filterPill = (id: string, label: string) => {
     const active = filter === id;
     return (
-      <button
-        key={id}
-        onClick={() => setFilter(id)}
-        style={{
-          ...pillBase,
-          gap: 0,
-          border: '1px solid transparent',
-          fontWeight: active ? 600 : 400,
-          background: active ? 'var(--text-primary)' : 'transparent',
-          color: active ? 'var(--bg-primary)' : 'var(--text-muted)',
-        }}
-      >
-        {label}
-      </button>
-    );
-  };
+      <button type="button" key={id} onClick={() => setFilter(id)} style={{
+        ...pillBase, gap: 0, border: '1px solid transparent', fontWeight: active ? 600 : 400,
+        background: active ? 'var(--text-primary)' : 'transparent',
+        color: active ? 'var(--bg-primary)' : 'var(--text-muted)',
+      }}>{label}</button>
+    )
+  }
 
   return (
     <div

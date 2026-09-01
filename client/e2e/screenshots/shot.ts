@@ -1,5 +1,5 @@
 import { test as base, expect, type Page, type Locator } from '@playwright/test'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -20,6 +20,17 @@ export const OUT_DIR = path.join(process.cwd(), 'e2e', '.tmp', 'shots')
 
 /** Desktop capture size. 2x scale keeps text crisp; images are squeezed on promote. */
 export const VIEWPORT = { width: 1440, height: 900 }
+
+export interface ScreenshotSeed {
+  tripId: number
+  collectionId?: number
+  journeyId?: number
+}
+
+/** Read seed output at test runtime, after the dependent seed project has run. */
+export function loadSeed(): ScreenshotSeed {
+  return JSON.parse(readFileSync(path.join(process.cwd(), 'e2e', '.tmp', 'seed.json'), 'utf8')) as ScreenshotSeed
+}
 
 export const test = base.extend<{ shot: Shot }>({
   // Overriding `page` (rather than doing this inside the `shot` fixture) is

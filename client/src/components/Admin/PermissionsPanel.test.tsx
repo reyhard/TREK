@@ -246,6 +246,6 @@ describe('PermissionsPanel', () => {
   it('FE-ADMIN-PERM-010: load failure shows error toast', async () => {
     server.use(http.get('/api/admin/permissions', () => HttpResponse.json({ error: 'server error' }, { status: 500 })));
     renderPanel();
-    await screen.findByText('Error');
+    expect(await screen.findByText('Error')).toBeInTheDocument();
   });
 });

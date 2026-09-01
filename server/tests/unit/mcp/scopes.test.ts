@@ -12,6 +12,8 @@ import {
   canShareJourneys,
   ALL_SCOPES,
   SCOPE_INFO,
+  OPT_IN_ONLY_SCOPES,
+  DEFAULT_CLIENT_SCOPES,
 } from '../../../src/mcp/scopes';
 
 import { describe, it, expect } from 'vitest';
@@ -46,6 +48,38 @@ describe('ALL_SCOPES', () => {
   it('is a non-empty array', () => {
     expect(Array.isArray(ALL_SCOPES)).toBe(true);
     expect(ALL_SCOPES.length).toBeGreaterThan(0);
+  });
+
+  it('derives exactly the 15 known scope groups (ScopeGroup lockstep)', () => {
+    // The runtime half of the ScopeGroup lockstep — the type half is
+    // MCP_ACCESS_GROUPS_MATCH_SCOPE_GROUPS in src/mcp/nest-mcp-policy.ts,
+    // covered by `npm run typecheck`. If this list changes, the MCP
+    // access-group union and boot gate change with it — update deliberately.
+    const groups = [...new Set(ALL_SCOPES.map((s) => s.split(':')[0]))].sort();
+    expect(groups).toEqual([
+      'atlas',
+      'budget',
+      'collab',
+      'collections',
+      'geo',
+      'journey',
+      'notifications',
+      'packing',
+      'places',
+      'plugins',
+      'reservations',
+      'todos',
+      'trips',
+      'vacay',
+      'weather',
+    ]);
+  });
+
+  it('has no :write scope for the read-only geo and weather groups', () => {
+    expect(ALL_SCOPES).not.toContain('geo:write');
+    expect(ALL_SCOPES).not.toContain('weather:write');
+    expect(ALL_SCOPES).toContain('geo:read');
+    expect(ALL_SCOPES).toContain('weather:read');
   });
 });
 
@@ -265,101 +299,38 @@ describe('canShareTrips', () => {
 });
 
 // ---------------------------------------------------------------------------
-// canShareJourneys
+// F16/F17 — plugin OAuth scopes are NOT part of the v4.0.0 scope model.
+//
+// The reyhard/TREK fork minted dynamic per-plugin scopes
+// (`plugin:<id>:read` / `plugin:<id>:write`, server/src/services/oauthResources.ts)
+// to gate an inbound `trekoa_` resource proxy on `/api/plugins/:id/*` (F17).
+// v4.0.0 has no such proxy (plugins run in sandboxed iframes on their own
+// origin) and no plugin MCP tool surface, so those scopes must NOT exist here:
+// default-deny. The canonical coarse `plugins:use` OAuth scope exists only in
+// current upstream to gate plugin MCP tools (plugin-mcp-tools.ts), a surface
+// v4.0.0 does not have — so it is not added either (nothing to gate; would be
+// dead code). These tests pin that default-deny so the legacy grammar can
+// never creep back in.
 // ---------------------------------------------------------------------------
 
-describe('canShareJourneys', () => {
-  it('returns true when scopes is null (full access)', () => {
-    expect(canShareJourneys(null)).toBe(true);
-  });
-
-  it('returns true when journey:share is present', () => {
-    expect(canShareJourneys(['journey:share'])).toBe(true);
-  });
-
-  it('returns false when only journey:read is present', () => {
-    expect(canShareJourneys(['journey:read'])).toBe(false);
-  });
-
-  it('returns false when only journey:write is present', () => {
-    expect(canShareJourneys(['journey:write'])).toBe(false);
-  });
-
-  it('returns false for empty scopes array', () => {
-    expect(canShareJourneys([])).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Plugin scope validation — grammar ^plugin:([a-z][a-z0-9-]{2,39}):(read|write)$
-// ---------------------------------------------------------------------------
-
-describe('validateScopes with plugin scopes', () => {
-  it('SCOP-PLUGIN-001: accepts valid plugin:read and plugin:write scopes', () => {
-    const result = validateScopes(['plugin:mymap:read', 'plugin:weather-io:write']);
-    expect(result.valid).toBe(true);
-    expect(result.invalid).toEqual([]);
-  });
-
-  it('SCOP-PLUGIN-002: mixes static scopes with valid plugin scopes', () => {
-    const result = validateScopes(['trips:read', 'plugin:mymap:read', 'budget:write']);
-    expect(result.valid).toBe(true);
-    expect(result.invalid).toEqual([]);
-  });
-
-  it('SCOP-PLUGIN-003: rejects malformed plugin scopes (underscore in id)', () => {
-    const result = validateScopes(['plugin:bad_id:read']);
+describe('F16/F17 — legacy dynamic plugin scopes stay out of the scope model', () => {
+  it('PLUGIN-SCOPES-001: the dynamic plugin:<id>:read/write grammar is not a valid scope', () => {
+    const result = validateScopes(['plugin:flight-tracker:read', 'plugin:flight-tracker:write']);
     expect(result.valid).toBe(false);
-    expect(result.invalid).toContain('plugin:bad_id:read');
+    expect(result.invalid).toContain('plugin:flight-tracker:read');
+    expect(result.invalid).toContain('plugin:flight-tracker:write');
   });
 
-  it('SCOP-PLUGIN-004: rejects plugin scopes with invalid access level', () => {
-    const result = validateScopes(['plugin:app:delete']);
-    expect(result.valid).toBe(false);
-    expect(result.invalid).toContain('plugin:app:delete');
+  it('PLUGIN-SCOPES-002: no scope carries a plugin: prefix at all (no dynamic grammar)', () => {
+    const pluginScoped = ALL_SCOPES.filter((s) => s.startsWith('plugin:'));
+    expect(pluginScoped).toEqual([]);
   });
 
-  it('SCOP-PLUGIN-005: rejects plugin scopes with too-short plugin id (less than 3 chars)', () => {
-    const result = validateScopes(['plugin:ab:read']);
-    expect(result.valid).toBe(false);
-    expect(result.invalid).toContain('plugin:ab:read');
-  });
-
-  it('SCOP-PLUGIN-006: rejects plugin scopes with too-long plugin id (more than 40 chars)', () => {
-    const id41 = 'a'.repeat(41);
-    const scope = `plugin:${id41}:read`;
-    const result = validateScopes([scope]);
-    expect(result.valid).toBe(false);
-    expect(result.invalid).toContain(scope);
-  });
-
-  it('SCOP-PLUGIN-007: accepts 3-char minimum valid plugin id', () => {
-    const result = validateScopes(['plugin:abc:read']);
-    expect(result.valid).toBe(true);
-  });
-
-  it('SCOP-PLUGIN-008: accepts 40-char maximum valid plugin id', () => {
-    const id40 = 'a'.repeat(40);
-    const scope = `plugin:${id40}:write`;
-    const result = validateScopes([scope]);
-    expect(result.valid).toBe(true);
-  });
-
-  it('SCOP-PLUGIN-009: rejects plugin scopes with uppercase in id', () => {
-    const result = validateScopes(['plugin:MyPlugin:read']);
-    expect(result.valid).toBe(false);
-    expect(result.invalid).toContain('plugin:MyPlugin:read');
-  });
-
-  it('SCOP-PLUGIN-010: rejects plugin scopes starting with number in id', () => {
-    const result = validateScopes(['plugin:2plugin:read']);
-    expect(result.valid).toBe(false);
-    expect(result.invalid).toContain('plugin:2plugin:read');
-  });
-
-  it('SCOP-PLUGIN-011: rejects completely invalid scopes while accepting plugin scopes', () => {
-    const result = validateScopes(['plugin:mymap:read', 'totally:invalid']);
-    expect(result.valid).toBe(false);
-    expect(result.invalid).toEqual(['totally:invalid']);
+  it('PLUGIN-SCOPES-003: plugins:use is a valid, opt-in-only scope (out of the DCR default)', () => {
+    expect(ALL_SCOPES).toContain('plugins:use');
+    expect(validateScopes(['plugins:use']).valid).toBe(true);
+    // Opt-in only: a DCR that names no scopes must NOT receive it.
+    expect(OPT_IN_ONLY_SCOPES).toContain('plugins:use');
+    expect(DEFAULT_CLIENT_SCOPES).not.toContain('plugins:use');
   });
 });

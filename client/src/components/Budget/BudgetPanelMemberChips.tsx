@@ -1,7 +1,7 @@
-import { Check, Pencil, Users } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
-import type { BudgetItemMember } from '../../types';
+import { createPortal } from 'react-dom'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Pencil, Users, Check } from 'lucide-react'
+import type { BudgetItemMember } from '../../types'
 
 export interface TripMember {
   id: number;
@@ -20,9 +20,9 @@ interface ChipWithTooltipProps {
 }
 
 export function ChipWithTooltip({ label, avatarUrl, size = 20, paid, onClick }: ChipWithTooltipProps) {
-  const [hover, setHover] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const ref = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLElement | null>(null)
 
   const onEnter = () => {
     if (ref.current) {
@@ -35,81 +35,54 @@ export function ChipWithTooltip({ label, avatarUrl, size = 20, paid, onClick }: 
   const borderColor = paid ? '#22c55e' : 'var(--border-primary)';
   const bg = paid ? 'rgba(34,197,94,0.15)' : 'var(--bg-tertiary)';
 
+  // Identical for both shells — a clickable chip is a real button so it can be
+  // tabbed to and pressed, a decorative one stays a plain div.
+  const chipStyle = {
+    width: size, height: size, borderRadius: '50%', border: `2px solid ${borderColor}`,
+    background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: size * 0.4, fontWeight: 700, color: paid ? '#16a34a' : 'var(--text-muted)',
+    overflow: 'hidden', flexShrink: 0, cursor: onClick ? 'pointer' : 'default',
+    transition: 'border-color 0.15s, background 0.15s',
+    padding: 0, fontFamily: 'inherit',
+  }
+  const inner = avatarUrl
+    ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+    : label?.[0]?.toUpperCase()
+
   return (
     <>
-      <div
-        ref={ref}
-        onMouseEnter={onEnter}
-        onMouseLeave={() => setHover(false)}
-        onClick={onClick}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          border: `2px solid ${borderColor}`,
-          background: bg,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: size * 0.4,
-          fontWeight: 700,
-          color: paid ? '#16a34a' : 'var(--text-muted)',
-          overflow: 'hidden',
-          flexShrink: 0,
-          cursor: onClick ? 'pointer' : 'default',
-          transition: 'border-color 0.15s, background 0.15s',
-        }}
-      >
-        {avatarUrl ? (
-          <img src={avatarUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          label?.[0]?.toUpperCase()
-        )}
-      </div>
-      {hover &&
-        ReactDOM.createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              top: pos.top,
-              left: pos.left,
-              transform: 'translate(-50%, -100%)',
-              pointerEvents: 'none',
-              zIndex: 10000,
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              background: 'var(--bg-card, white)',
-              color: 'var(--text-primary, #111827)',
-              fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-              fontWeight: 500,
-              padding: '5px 10px',
-              borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              border: '1px solid var(--border-faint, #e5e7eb)',
-            }}
-          >
-            {label}
-            {paid && (
-              <span
-                style={{
-                  fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
-                  fontWeight: 700,
-                  padding: '1px 5px',
-                  borderRadius: 4,
-                  background: 'rgba(34,197,94,0.15)',
-                  color: '#16a34a',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                Paid
-              </span>
-            )}
-          </div>,
-          document.body
-        )}
+      {onClick ? (
+        <button type="button" ref={el => { ref.current = el }} aria-label={label}
+          onMouseEnter={onEnter} onMouseLeave={() => setHover(false)}
+          onClick={onClick} style={chipStyle}>
+          {inner}
+        </button>
+      ) : (
+        <div ref={el => { ref.current = el }} onMouseEnter={onEnter} onMouseLeave={() => setHover(false)}
+          style={chipStyle}>
+          {inner}
+        </div>
+      )}
+      {hover && createPortal(
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, transform: 'translate(-50%, -100%)',
+          pointerEvents: 'none', zIndex: 10000, whiteSpace: 'nowrap',
+          display: 'flex', alignItems: 'center', gap: 5,
+          background: 'var(--bg-card, white)', color: 'var(--text-primary, #111827)',
+          fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 500, padding: '5px 10px', borderRadius: 8,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--border-faint, #e5e7eb)',
+        }}>
+          {label}
+          {paid && (
+            <span style={{
+              fontSize: 'calc(9px * var(--fs-scale-caption, 1))', fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+              background: 'rgba(34,197,94,0.15)', color: '#16a34a',
+              textTransform: 'uppercase', letterSpacing: '0.03em',
+            }}>Paid</span>
+          )}
+        </div>,
+        document.body
+      )}
     </>
   );
 }
@@ -179,9 +152,7 @@ export default function BudgetMemberChips({
         />
       ))}
       {!readOnly && (
-        <button
-          ref={btnRef}
-          onClick={openDropdown}
+        <button type="button" ref={btnRef} onClick={openDropdown}
           style={{
             width: btnSize,
             height: btnSize,
@@ -200,82 +171,41 @@ export default function BudgetMemberChips({
           {members.length > 0 ? <Pencil size={iconSize} /> : <Users size={iconSize} />}
         </button>
       )}
-      {showDropdown &&
-        ReactDOM.createPortal(
-          <div
-            ref={dropRef}
-            style={{
-              position: 'fixed',
-              top: dropPos.top,
-              left: dropPos.left,
-              transform: 'translateX(-50%)',
-              zIndex: 10000,
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 10,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-              padding: 4,
-              minWidth: 150,
-            }}
-          >
-            {tripMembers.map((tm) => {
-              const isActive = memberIds.includes(tm.id);
-              return (
-                <button
-                  key={tm.id}
-                  onClick={() => toggleMember(tm.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    width: '100%',
-                    padding: '5px 8px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: isActive ? 'var(--bg-hover)' : 'none',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                    color: 'var(--text-primary)',
-                    textAlign: 'left',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'none';
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: '50%',
-                      background: 'var(--bg-tertiary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 'calc(8px * var(--fs-scale-caption, 1))',
-                      fontWeight: 700,
-                      color: 'var(--text-muted)',
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {tm.avatar_url ? (
-                      <img src={tm.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      tm.username?.[0]?.toUpperCase()
-                    )}
-                  </div>
-                  <span style={{ flex: 1 }}>{tm.username}</span>
-                  {isActive && <Check size={12} color="var(--text-primary)" />}
-                </button>
-              );
-            })}
-          </div>,
-          document.body
-        )}
+      {showDropdown && createPortal(
+        <div ref={dropRef} style={{
+          position: 'fixed', top: dropPos.top, left: dropPos.left, transform: 'translateX(-50%)', zIndex: 10000,
+          background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 150,
+        }}>
+          {tripMembers.map(tm => {
+            const isActive = memberIds.includes(tm.id)
+            return (
+              <button type="button" key={tm.id} onClick={() => toggleMember(tm.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 8px',
+                borderRadius: 6, border: 'none', background: isActive ? 'var(--bg-hover)' : 'none', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', color: 'var(--text-primary)', textAlign: 'left',
+              }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none' }}
+              >
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%', background: 'var(--bg-tertiary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(8px * var(--fs-scale-caption, 1))', fontWeight: 700,
+                  color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
+                }}>
+                  {tm.avatar_url
+                    ? <img src={tm.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : tm.username?.[0]?.toUpperCase()
+                  }
+                </div>
+                <span style={{ flex: 1 }}>{tm.username}</span>
+                {isActive && <Check size={12} color="var(--text-primary)" />}
+              </button>
+            )
+          })}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

@@ -34,7 +34,7 @@ export interface DayTimelinePlannerProps {
   reservations?: Reservation[];
   notes?: DayNote[];
   routeShown?: boolean;
-  routeProfile?: 'driving' | 'walking';
+  routeProfile?: string;
   canEdit: boolean;
   selectedPlaceId: number | null;
   selectedAssignmentId: number | null;
@@ -48,8 +48,8 @@ export interface DayTimelinePlannerProps {
   onEditPlace: (place: Place, assignmentId?: number) => void;
   onSelectDay: (dayId: number) => void;
   onToggleRoute?: () => void;
-  onSetRouteProfile?: (profile: 'driving' | 'walking') => void;
-  onPlanTransit?: (dayId: number) => void;
+  onSetRouteProfile?: (profile: string) => void;
+  onPlanTransit?: (dayId: number, prefill?: import('./transitSearchTypes').TransitSearchPrefill) => void;
   onOpenTransit?: (reservation: Reservation) => void;
   onEditTransport?: (reservation: Reservation) => void;
 }

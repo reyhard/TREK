@@ -1,9 +1,10 @@
-import { checkTransitUsage, type TransitUsageKind } from '../../services/transitRateLimit';
-import * as transit from '../../services/transitService';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Controller, Get, HttpException, Query, Req, UseGuards } from '@nestjs/common';
-
 import type { Request } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RateLimitService } from '../common/rate-limit.service';
+import { TransitService } from './transit.service';
+
+const RL_WINDOW = 15 * 60 * 1000;
 
 /**
  * /api/transit — public transit routing (#1065) proxied through Transitous
@@ -14,9 +15,13 @@ import type { Request } from 'express';
 @Controller('api/transit')
 @UseGuards(JwtAuthGuard)
 export class TransitController {
-  private limit(kind: TransitUsageKind, req: Request): void {
-    const callerKey = `http:${req.ip || 'unknown'}`;
-    if (!checkTransitUsage(kind, callerKey)) {
+  constructor(
+    private readonly rl: RateLimitService,
+    private readonly transit: TransitService,
+  ) {}
+
+  private limit(bucket: string, req: Request, max: number): void {
+    if (!this.rl.check(bucket, req.ip || 'unknown', max, RL_WINDOW, Date.now())) {
       throw new HttpException({ error: 'Too many requests. Please try again later.' }, 429);
     }
   }
@@ -34,12 +39,10 @@ export class TransitController {
     @Query('near') near: string | undefined,
     @Req() req: Request,
   ) {
-    this.limit('geocode', req);
+    this.limit('transit_geocode', req, 300);
     try {
-      return await transit.geocode(q || '', lang, near);
-    } catch (err) {
-      this.rethrow(err);
-    }
+      return await this.transit.geocode(q || '', lang, near);
+    } catch (err) { this.rethrow(err); }
   }
 
   @Get('plan')
@@ -52,9 +55,9 @@ export class TransitController {
     @Query('maxTransfers') maxTransfers: string | undefined,
     @Req() req: Request,
   ) {
-    this.limit('plan', req);
+    this.limit('transit_plan', req, 60);
     try {
-      return await transit.plan({
+      return await this.transit.plan({
         from: from || '',
         to: to || '',
         time,
@@ -62,8 +65,6 @@ export class TransitController {
         modes,
         maxTransfers: maxTransfers !== undefined && maxTransfers !== '' ? Number(maxTransfers) : undefined,
       });
-    } catch (err) {
-      this.rethrow(err);
-    }
+    } catch (err) { this.rethrow(err); }
   }
 }

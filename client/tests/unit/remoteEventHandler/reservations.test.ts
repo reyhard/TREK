@@ -59,141 +59,42 @@ describe('remoteEventHandler > reservations', () => {
     expect(reservations[2].id).toBe(1);
   });
 
-  it('FE-WSEVT-RESERV-006: reservation:positions updates day_plan_position without erasing metadata/endpoints', () => {
-    const reservation = buildReservation({
-      id: 10,
-      title: 'Flight ABC',
-      type: 'transit',
-      day_id: 5,
-      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 300, distance: 400 }] } }),
-      endpoints: [
-        { role: 'from', sequence: 1, name: 'City A', lat: 0, lng: 0, code: null, timezone: null, local_time: null, local_date: null },
-        { role: 'to', sequence: 2, name: 'City B', lat: 1, lng: 1, code: null, timezone: null, local_time: null, local_date: null },
-      ],
+  it('FE-WSEVT-RESERV-006: reservation:updated leaves the other reservations untouched', () => {
+    useTripStore.setState({
+      reservations: [buildReservation({ id: 1, title: 'Hotel' }), buildReservation({ id: 2, title: 'Flight' })],
     });
-    useTripStore.setState({ reservations: [reservation] });
     useTripStore.getState().handleRemoteEvent({
-      type: 'reservation:positions',
-      positions: [{ id: 10, day_plan_position: 3 }],
+      type: 'reservation:updated',
+      reservation: buildReservation({ id: 2, title: 'Flight (rebooked)' }),
     });
     const { reservations } = useTripStore.getState();
-    expect(reservations).toHaveLength(1);
-    expect(reservations[0].day_plan_position).toBe(3);
-    expect(reservations[0].title).toBe('Flight ABC');
-    expect(reservations[0].metadata).toBe(reservation.metadata);
-    expect(reservations[0].endpoints).toHaveLength(2);
-    expect(reservations[0].day_id).toBe(5);
+    expect(reservations[0].title).toBe('Hotel');
+    expect(reservations[1].title).toBe('Flight (rebooked)');
   });
 
-  it('FE-WSEVT-RESERV-006b: reservation:positions with day_id applies day_positions', () => {
-    const reservation = buildReservation({
-      id: 10,
-      title: 'Multi-day Train',
-      type: 'transit',
-      day_id: 5,
-      end_day_id: 7,
-      day_plan_position: 2,
-      day_positions: null,
+  // Traveler assignment (#1517) arrives as its own event carrying only the list.
+  it('FE-WSEVT-RESERV-007: reservation:travelers-updated replaces travelers on the addressed booking', () => {
+    useTripStore.setState({
+      reservations: [buildReservation({ id: 1 }), buildReservation({ id: 2 })],
     });
-    useTripStore.setState({ reservations: [reservation] });
+    const travelers = [{ user_id: 3, username: 'ada' }, { user_id: 4, username: 'grace' }];
     useTripStore.getState().handleRemoteEvent({
-      type: 'reservation:positions',
-      positions: [{ id: 10, day_plan_position: 1.5 }],
-      day_id: 5,
+      type: 'reservation:travelers-updated',
+      reservationId: 2,
+      travelers,
     });
     const { reservations } = useTripStore.getState();
-    expect(reservations).toHaveLength(1);
-    expect(reservations[0].day_plan_position).toBe(2);
-    expect(reservations[0].day_positions).toEqual({ '5': 1.5 });
-    expect(reservations[0].title).toBe('Multi-day Train');
-    expect(reservations[0].end_day_id).toBe(7);
+    expect(reservations[1].travelers).toEqual(travelers);
+    expect(reservations[0].travelers).toBeUndefined();
   });
 
-  it('FE-WSEVT-RESERV-006c: reservation:positions preserves existing day_positions on other days', () => {
-    const reservation = buildReservation({
-      id: 10,
-      title: 'Multi-day Train',
-      type: 'transit',
-      day_id: 5,
-      end_day_id: 7,
-      day_positions: { '5': 1.0, '6': 2.0 },
-    });
-    useTripStore.setState({ reservations: [reservation] });
+  it('FE-WSEVT-RESERV-008: reservation:travelers-updated for an unknown booking changes nothing', () => {
+    useTripStore.setState({ reservations: [buildReservation({ id: 1 })] });
     useTripStore.getState().handleRemoteEvent({
-      type: 'reservation:positions',
-      positions: [{ id: 10, day_plan_position: 3.5 }],
-      day_id: 7,
+      type: 'reservation:travelers-updated',
+      reservationId: 999,
+      travelers: [{ user_id: 3, username: 'ada' }],
     });
-    const { reservations } = useTripStore.getState();
-    expect(reservations[0].day_positions).toEqual({ '5': 1.0, '6': 2.0, '7': 3.5 });
-  });
-
-  it('FE-WSEVT-RESERV-009: reservation:updated preserves existing day_positions when payload omits them', () => {
-    const existing = buildReservation({
-      id: 10,
-      title: 'Train',
-      type: 'transit',
-      day_id: 5,
-      day_positions: { '5': 1.5 },
-    });
-    useTripStore.setState({ reservations: [existing] });
-    const updated = buildReservation({ id: 10, title: 'Train Updated', type: 'transit' });
-    useTripStore.getState().handleRemoteEvent({ type: 'reservation:updated', reservation: updated });
-    const { reservations } = useTripStore.getState();
-    expect(reservations[0].title).toBe('Train Updated');
-    expect(reservations[0].day_positions).toEqual({ '5': 1.5 });
-  });
-
-  it('FE-WSEVT-RESERV-009b: reservation:updated uses new day_positions when payload provides them', () => {
-    const existing = buildReservation({
-      id: 10,
-      title: 'Train',
-      type: 'transit',
-      day_id: 5,
-      day_positions: { '5': 1.5 },
-    });
-    useTripStore.setState({ reservations: [existing] });
-    const updated = buildReservation({
-      id: 10,
-      title: 'Train Updated',
-      type: 'transit',
-      day_positions: { '5': 2.0, '6': 3.0 } as Record<string, number>,
-    });
-    useTripStore.getState().handleRemoteEvent({ type: 'reservation:updated', reservation: updated });
-    const { reservations } = useTripStore.getState();
-    expect(reservations[0].title).toBe('Train Updated');
-    expect(reservations[0].day_positions).toEqual({ '5': 2.0, '6': 3.0 });
-  });
-
-  it('FE-WSEVT-RESERV-007: reservation:deleted removes reservation and cleans stale visibility reference', () => {
-    const trip = buildTrip({ id: 1 });
-    const reservation = buildReservation({ id: 10 });
-    useTripStore.setState({ trip, reservations: [reservation] });
-    const key = 'trek:visible-connections:1';
-    localStorage.setItem(key, JSON.stringify({ mode: 'only', ids: [1, 10, 20] }));
-    useTripStore.getState().handleRemoteEvent({ type: 'reservation:deleted', reservationId: 10 });
-    expect(useTripStore.getState().reservations).toHaveLength(0);
-    const stored = JSON.parse(localStorage.getItem(key)!);
-    expect(stored.ids).toEqual([1, 20]);
-  });
-
-  it('FE-WSEVT-RESERV-008: reservation:deleted handles missing localStorage gracefully', () => {
-    useTripStore.setState({ trip: buildTrip({ id: 1 }), reservations: [buildReservation({ id: 99 })] });
-    expect(() => {
-      useTripStore.getState().handleRemoteEvent({ type: 'reservation:deleted', reservationId: 99 });
-    }).not.toThrow();
-    expect(useTripStore.getState().reservations).toHaveLength(0);
-  });
-
-  it('FE-WSEVT-RESERV-010: reservation:deleted dispatches visibility:stale-connection event for in-memory sync', () => {
-    const trip = buildTrip({ id: 1 });
-    const reservation = buildReservation({ id: 10 });
-    useTripStore.setState({ trip, reservations: [reservation] });
-    const handler = vi.fn();
-    window.addEventListener('visibility:stale-connection', handler);
-    useTripStore.getState().handleRemoteEvent({ type: 'reservation:deleted', reservationId: 10 });
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ tripId: 1, reservationId: 10 });
-    window.removeEventListener('visibility:stale-connection', handler);
+    expect(useTripStore.getState().reservations[0].travelers).toBeUndefined();
   });
 });

@@ -1,21 +1,19 @@
-import { RateLimitService } from '../../../src/nest/auth/rate-limit.service';
-import { OauthApiController } from '../../../src/nest/oauth/oauth-api.controller';
-import { OauthPublicController } from '../../../src/nest/oauth/oauth-public.controller';
-import type { OauthService } from '../../../src/nest/oauth/oauth.service';
-import { getClientIp } from '../../../src/services/auditLog';
-import type { User } from '../../../src/types';
-import { HttpException } from '@nestjs/common';
-
-import type { Request, Response } from 'express';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HttpException } from '@nestjs/common';
+import type { Request, Response } from 'express';
 
-vi.mock('../../../src/services/auditLog', () => ({
-  writeAudit: vi.fn(),
-  getClientIp: vi.fn(() => '1.2.3.4'),
-  logWarn: vi.fn(),
-}));
+vi.mock('../../../src/nest/audit/client-ip', () => ({ getClientIp: vi.fn(() => '1.2.3.4') }));
+vi.mock('../../../src/nest/audit/audit-log.logger', () => ({ LOG_LEVEL: 'error', logInfo: vi.fn(), logDebug: vi.fn(), logError: vi.fn(), logWarn: vi.fn() }));
 
+import { getClientIp } from '../../../src/nest/audit/client-ip';
 const getClientIpMock = vi.mocked(getClientIp);
+
+import { OauthPublicController } from '../../../src/nest/oauth/oauth-public.controller';
+import { OauthApiController } from '../../../src/nest/oauth/oauth-api.controller';
+import { RateLimitService } from '../../../src/nest/common/rate-limit.service';
+import type { OauthService } from '../../../src/nest/oauth/oauth.service';
+import type { AuditService } from '../../../src/nest/audit/audit.service';
+import type { User } from '../../../src/types';
 
 function osvc(o: Partial<OauthService> = {}): OauthService {
   return {
@@ -28,6 +26,13 @@ function osvc(o: Partial<OauthService> = {}): OauthService {
 function rl(): RateLimitService {
   return new RateLimitService();
 }
+function rl(): RateLimitService { return new RateLimitService(); }
+
+// AuditService is constructor-injected since the auditLog DI migration; the
+// wrapper keeps the historical construction sites positional.
+const writeAudit = vi.fn();
+const audit = { writeAudit } as unknown as AuditService;
+const opc = (s: OauthService, limiter: RateLimitService) => new OauthPublicController(s, limiter, audit);
 function makeRes() {
   const res = {
     statusCode: 200,
@@ -96,14 +101,14 @@ describe('OauthPublicController /token', () => {
 
   it('404 (empty) when MCP is disabled', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ mcpEnabled: vi.fn().mockReturnValue(false) }), rl()).token(reqWith({}), res);
+    opc(osvc({ mcpEnabled: vi.fn().mockReturnValue(false) }), rl()).token(reqWith({}), res);
     expect(res.statusCode).toBe(404);
     expect(res.ended).toBe(true);
   });
 
   it('sets no-store headers + 401 without client_id', () => {
     const res = makeRes();
-    new OauthPublicController(osvc(), rl()).token(reqWith({}), res);
+    opc(osvc(), rl()).token(reqWith({}), res);
     expect(res.headers['Cache-Control']).toBe('no-store');
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'invalid_client', error_description: 'client_id is required' });
@@ -111,10 +116,7 @@ describe('OauthPublicController /token', () => {
 
   it('authorization_code: invalid_grant on a bad code, success issues tokens', () => {
     const bad = makeRes();
-    new OauthPublicController(osvc({ consumeAuthCode: vi.fn().mockReturnValue(null) }), rl()).token(
-      reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }),
-      bad,
-    );
+    opc(osvc({ consumeAuthCode: vi.fn().mockReturnValue(null) }), rl()).token(reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }), bad);
     expect(bad.statusCode).toBe(400);
     expect(bad.body).toEqual({ error: 'invalid_grant', error_description: 'Authorization grant is invalid.' });
 
@@ -132,26 +134,17 @@ describe('OauthPublicController /token', () => {
       verifyPKCE: vi.fn().mockReturnValue(true),
       issueTokens: vi.fn().mockReturnValue({ access_token: 'at', token_type: 'Bearer' }),
     });
-    new OauthPublicController(svc, rl()).token(
-      reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }),
-      ok,
-    );
+    opc(svc, rl()).token(reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }), ok);
     expect(ok.body).toEqual({ access_token: 'at', token_type: 'Bearer' });
   });
 
   it('authorization_code: maps client_id / redirect_uri / resource mismatches + pkce + client auth', () => {
     const base = { grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' };
-    const mk = (pending: Record<string, unknown>, extra: Partial<OauthService> = {}, body = base) => {
+    // body is the loose form the controller actually reads off req.body, not the
+    // shape of `base`, so a case can add a field such as `resource`.
+    const mk = (pending: Record<string, unknown>, extra: Partial<OauthService> = {}, body: Record<string, string> = base) => {
       const res = makeRes();
-      new OauthPublicController(
-        osvc({
-          consumeAuthCode: vi.fn().mockReturnValue(pending),
-          authenticateClient: vi.fn().mockReturnValue({ id: 'c' }),
-          verifyPKCE: vi.fn().mockReturnValue(true),
-          ...extra,
-        }),
-        rl(),
-      ).token(reqWith(body), res);
+      opc(osvc({ consumeAuthCode: vi.fn().mockReturnValue(pending), authenticateClient: vi.fn().mockReturnValue({ id: 'c' }), verifyPKCE: vi.fn().mockReturnValue(true), ...extra }), rl()).token(reqWith(body), res);
       return res;
     };
     expect(mk({ clientId: 'OTHER', redirectUri: 'u', userId: 1 }).statusCode).toBe(400); // client_id mismatch
@@ -174,7 +167,7 @@ describe('OauthPublicController /token', () => {
 
   it('authorization_code: 400 when code/redirect/verifier missing', () => {
     const res = makeRes();
-    new OauthPublicController(osvc(), rl()).token(reqWith({ grant_type: 'authorization_code', client_id: 'c' }), res);
+    opc(osvc(), rl()).token(reqWith({ grant_type: 'authorization_code', client_id: 'c' }), res);
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({
       error: 'invalid_request',
@@ -184,41 +177,22 @@ describe('OauthPublicController /token', () => {
 
   it('refresh_token: 400 without a refresh_token, maps a service error, success', () => {
     const miss = makeRes();
-    new OauthPublicController(osvc(), rl()).token(reqWith({ grant_type: 'refresh_token', client_id: 'c' }), miss);
+    opc(osvc(), rl()).token(reqWith({ grant_type: 'refresh_token', client_id: 'c' }), miss);
     expect(miss.statusCode).toBe(400);
     const err = makeRes();
-    new OauthPublicController(
-      osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_grant', status: 400 }) }),
-      rl(),
-    ).token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), err);
+    opc(osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_grant', status: 400 }) }), rl()).token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), err);
     expect(err.body).toEqual({ error: 'invalid_grant', error_description: 'Refresh token is invalid or expired' });
     const ok = makeRes();
-    new OauthPublicController(
-      osvc({ refreshTokens: vi.fn().mockReturnValue({ tokens: { access_token: 'new' } }) }),
-      rl(),
-    ).token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), ok);
+    opc(osvc({ refreshTokens: vi.fn().mockReturnValue({ tokens: { access_token: 'new' } }) }), rl()).token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), ok);
     expect(ok.body).toEqual({ access_token: 'new' });
   });
 
   it('client_credentials: 401 without secret, invalid_scope for a disallowed scope', () => {
     const noSecret = makeRes();
-    new OauthPublicController(osvc(), rl()).token(
-      reqWith({ grant_type: 'client_credentials', client_id: 'c' }),
-      noSecret,
-    );
+    opc(osvc(), rl()).token(reqWith({ grant_type: 'client_credentials', client_id: 'c' }), noSecret);
     expect(noSecret.statusCode).toBe(401);
     const badScope = makeRes();
-    new OauthPublicController(
-      osvc({
-        authenticateClient: vi
-          .fn()
-          .mockReturnValue({ is_public: false, user_id: 1, allows_client_credentials: true, allowed_scopes: '["a"]' }),
-      }),
-      rl(),
-    ).token(
-      reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's', scope: 'a zzz' }),
-      badScope,
-    );
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue({ is_public: false, user_id: 1, allows_client_credentials: true, allowed_scopes: '["a"]' }) }), rl()).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's', scope: 'a zzz' }), badScope);
     expect(badScope.statusCode).toBe(400);
     expect(badScope.body).toEqual({
       error: 'invalid_scope',
@@ -228,14 +202,7 @@ describe('OauthPublicController /token', () => {
 
   it('client_credentials: unauthorized_client for a public client, else issues a token', () => {
     const pub = makeRes();
-    new OauthPublicController(
-      osvc({
-        authenticateClient: vi
-          .fn()
-          .mockReturnValue({ is_public: true, user_id: null, allows_client_credentials: false, allowed_scopes: '[]' }),
-      }),
-      rl(),
-    ).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }), pub);
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue({ is_public: true, user_id: null, allows_client_credentials: false, allowed_scopes: '[]' }) }), rl()).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }), pub);
     expect(pub.statusCode).toBe(400);
     expect(pub.body).toEqual({
       error: 'unauthorized_client',
@@ -243,24 +210,16 @@ describe('OauthPublicController /token', () => {
     });
 
     const ok = makeRes();
-    new OauthPublicController(
-      osvc({
-        authenticateClient: vi.fn().mockReturnValue({
-          is_public: false,
-          user_id: 1,
-          allows_client_credentials: true,
-          allowed_scopes: '["a","b"]',
-        }),
-        issueClientCredentialsToken: vi.fn().mockReturnValue({ access_token: 'cc_at' }),
-      }),
-      rl(),
-    ).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }), ok);
+    opc(osvc({
+      authenticateClient: vi.fn().mockReturnValue({ is_public: false, user_id: 1, allows_client_credentials: true, allowed_scopes: '["a","b"]' }),
+      issueClientCredentialsToken: vi.fn().mockReturnValue({ access_token: 'cc_at' }),
+    }), rl()).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }), ok);
     expect(ok.body).toEqual({ access_token: 'cc_at' });
   });
 
   it('unsupported grant -> 400', () => {
     const res = makeRes();
-    new OauthPublicController(osvc(), rl()).token(reqWith({ grant_type: 'password', client_id: 'c' }), res);
+    opc(osvc(), rl()).token(reqWith({ grant_type: 'password', client_id: 'c' }), res);
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({
       error: 'unsupported_grant_type',
@@ -272,13 +231,13 @@ describe('OauthPublicController /token', () => {
     const s = rl();
     for (let i = 0; i < 30; i++) s.check('oauth_token', '7.7.7.7|c', 30, 60000, Date.now());
     const res = makeRes();
-    new OauthPublicController(osvc(), s).token(reqWith({ client_id: 'c' }), res);
+    opc(osvc(), s).token(reqWith({ client_id: 'c' }), res);
     expect(res.statusCode).toBe(429);
   });
 
   it('falls back to {} when the body is not an object', () => {
     const res = makeRes();
-    new OauthPublicController(osvc(), rl()).token({ ip: '7.7.7.7', body: 'not-an-object' } as unknown as Request, res);
+    opc(osvc(), rl()).token({ ip: '7.7.7.7', body: 'not-an-object' } as unknown as Request, res);
     // no client_id in the {} fallback -> 401
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'invalid_client', error_description: 'client_id is required' });
@@ -286,52 +245,33 @@ describe('OauthPublicController /token', () => {
 
   it('authorization_code: invalid client secret writes an audit + 401', () => {
     const res = makeRes();
-    new OauthPublicController(
-      osvc({
-        consumeAuthCode: vi.fn().mockReturnValue({
-          clientId: 'c',
-          redirectUri: 'u',
-          userId: 1,
-          scopes: ['s'],
-          codeChallenge: 'cc',
-          resource: null,
-        }),
-        authenticateClient: vi.fn().mockReturnValue(null),
-      }),
-      rl(),
-    ).token(
-      reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }),
-      res,
-    );
+    opc(osvc({
+      consumeAuthCode: vi.fn().mockReturnValue({ clientId: 'c', redirectUri: 'u', userId: 1, scopes: ['s'], codeChallenge: 'cc', resource: null }),
+      authenticateClient: vi.fn().mockReturnValue(null),
+    }), rl()).token(reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }), res);
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'invalid_client', error_description: 'Invalid client credentials' });
   });
 
   it('refresh_token: invalid_client maps to its specific 401 message', () => {
     const res = makeRes();
-    new OauthPublicController(
-      osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_client', status: 401 }) }),
-      rl(),
-    ).token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), res);
+    opc(osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_client', status: 401 }) }), rl())
+      .token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), res);
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'invalid_client', error_description: 'Invalid client credentials' });
   });
 
   it('refresh_token: defaults the status to 400 when the service omits it', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_grant' }) }), rl()).token(
-      reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }),
-      res,
-    );
+    opc(osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_grant' }) }), rl())
+      .token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), res);
     expect(res.statusCode).toBe(400);
   });
 
   it('client_credentials: 401 when the client cannot be authenticated', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl()).token(
-      reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }),
-      res,
-    );
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl())
+      .token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }), res);
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'invalid_client', error_description: 'Invalid client credentials' });
   });
@@ -339,18 +279,10 @@ describe('OauthPublicController /token', () => {
   it('client_credentials: honours a valid requested scope subset', () => {
     const res = makeRes();
     const issueClientCredentialsToken = vi.fn().mockReturnValue({ access_token: 'cc_at' });
-    new OauthPublicController(
-      osvc({
-        authenticateClient: vi.fn().mockReturnValue({
-          is_public: false,
-          user_id: 1,
-          allows_client_credentials: true,
-          allowed_scopes: '["a","b"]',
-        }),
-        issueClientCredentialsToken,
-      }),
-      rl(),
-    ).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's', scope: 'a' }), res);
+    opc(osvc({
+      authenticateClient: vi.fn().mockReturnValue({ is_public: false, user_id: 1, allows_client_credentials: true, allowed_scopes: '["a","b"]' }),
+      issueClientCredentialsToken,
+    }), rl()).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's', scope: 'a' }), res);
     expect(res.body).toEqual({ access_token: 'cc_at' });
     expect(issueClientCredentialsToken).toHaveBeenCalledWith('c', 1, ['a'], expect.any(String));
   });
@@ -358,18 +290,10 @@ describe('OauthPublicController /token', () => {
   it('client_credentials: derives the audience from an explicit resource', () => {
     const res = makeRes();
     const issueClientCredentialsToken = vi.fn().mockReturnValue({ access_token: 'cc_at' });
-    new OauthPublicController(
-      osvc({
-        authenticateClient: vi
-          .fn()
-          .mockReturnValue({ is_public: false, user_id: 1, allows_client_credentials: true, allowed_scopes: '["a"]' }),
-        issueClientCredentialsToken,
-      }),
-      rl(),
-    ).token(
-      reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's', resource: 'https://aud/' }),
-      res,
-    );
+    opc(osvc({
+      authenticateClient: vi.fn().mockReturnValue({ is_public: false, user_id: 1, allows_client_credentials: true, allowed_scopes: '["a"]' }),
+      issueClientCredentialsToken,
+    }), rl()).token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's', resource: 'https://aud/' }), res);
     // trailing slashes are trimmed, not the mcpSafeUrl fallback
     expect(issueClientCredentialsToken).toHaveBeenCalledWith('c', 1, ['a'], 'https://aud');
   });
@@ -377,43 +301,26 @@ describe('OauthPublicController /token', () => {
   it('logs a dash for a missing ip on the authorization_code client-auth failure', () => {
     getClientIpMock.mockReturnValueOnce(undefined);
     const res = makeRes();
-    new OauthPublicController(
-      osvc({
-        consumeAuthCode: vi.fn().mockReturnValue({
-          clientId: 'c',
-          redirectUri: 'u',
-          userId: 1,
-          scopes: ['s'],
-          codeChallenge: 'cc',
-          resource: null,
-        }),
-        authenticateClient: vi.fn().mockReturnValue(null),
-      }),
-      rl(),
-    ).token(
-      reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }),
-      res,
-    );
+    opc(osvc({
+      consumeAuthCode: vi.fn().mockReturnValue({ clientId: 'c', redirectUri: 'u', userId: 1, scopes: ['s'], codeChallenge: 'cc', resource: null }),
+      authenticateClient: vi.fn().mockReturnValue(null),
+    }), rl()).token(reqWith({ grant_type: 'authorization_code', client_id: 'c', code: 'x', redirect_uri: 'u', code_verifier: 'v' }), res);
     expect(res.statusCode).toBe(401);
   });
 
   it('logs a dash for a missing ip on the refresh invalid_client failure', () => {
     getClientIpMock.mockReturnValueOnce(undefined);
     const res = makeRes();
-    new OauthPublicController(
-      osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_client', status: 401 }) }),
-      rl(),
-    ).token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), res);
+    opc(osvc({ refreshTokens: vi.fn().mockReturnValue({ error: 'invalid_client', status: 401 }) }), rl())
+      .token(reqWith({ grant_type: 'refresh_token', client_id: 'c', refresh_token: 'rt' }), res);
     expect(res.statusCode).toBe(401);
   });
 
   it('logs a dash for a missing ip on the client_credentials auth failure', () => {
     getClientIpMock.mockReturnValueOnce(undefined);
     const res = makeRes();
-    new OauthPublicController(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl()).token(
-      reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }),
-      res,
-    );
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl())
+      .token(reqWith({ grant_type: 'client_credentials', client_id: 'c', client_secret: 's' }), res);
     expect(res.statusCode).toBe(401);
   });
 });
@@ -421,30 +328,24 @@ describe('OauthPublicController /token', () => {
 describe('OauthPublicController /userinfo + /revoke', () => {
   it('userinfo: 401 challenge without a Bearer, returns claims with a valid token', () => {
     const r1 = makeRes();
-    new OauthPublicController(osvc(), rl()).userinfo(undefined, r1);
+    opc(osvc(), rl()).userinfo(undefined, r1);
     expect(r1.statusCode).toBe(401);
     expect(r1.headers['WWW-Authenticate']).toBe('Bearer realm="TREK MCP"');
     const r2 = makeRes();
-    new OauthPublicController(
-      osvc({ getUserByAccessToken: vi.fn().mockReturnValue({ user: { id: 1, email: 'a@b.c', username: 'u' } }) }),
-      rl(),
-    ).userinfo('Bearer tok', r2);
+    opc(osvc({ getUserByAccessToken: vi.fn().mockReturnValue({ user: { id: 1, email: 'a@b.c', username: 'u' } }) }), rl()).userinfo('Bearer tok', r2);
     expect(r2.body).toEqual({ sub: '1', email: 'a@b.c', email_verified: true, preferred_username: 'u' });
   });
 
   it('userinfo: 404 empty when MCP is disabled', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ mcpEnabled: vi.fn().mockReturnValue(false) }), rl()).userinfo('Bearer tok', res);
+    opc(osvc({ mcpEnabled: vi.fn().mockReturnValue(false) }), rl()).userinfo('Bearer tok', res);
     expect(res.statusCode).toBe(404);
     expect(res.ended).toBe(true);
   });
 
   it('userinfo: 401 with the error challenge when the token is unknown', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ getUserByAccessToken: vi.fn().mockReturnValue(null) }), rl()).userinfo(
-      'Bearer tok',
-      res,
-    );
+    opc(osvc({ getUserByAccessToken: vi.fn().mockReturnValue(null) }), rl()).userinfo('Bearer tok', res);
     expect(res.statusCode).toBe(401);
     expect(res.headers['WWW-Authenticate']).toBe('Bearer realm="TREK MCP", error="invalid_token"');
     expect(res.body).toEqual({ error: 'invalid_token' });
@@ -452,14 +353,11 @@ describe('OauthPublicController /userinfo + /revoke', () => {
 
   it('revoke: 400 without token/client, always 200 once authenticated', () => {
     const r1 = makeRes();
-    new OauthPublicController(osvc(), rl()).revoke({ ip: '1', body: { client_id: 'c' } } as Request, r1);
+    opc(osvc(), rl()).revoke({ ip: '1', body: { client_id: 'c' } } as Request, r1);
     expect(r1.statusCode).toBe(400);
     const r2 = makeRes();
     const revokeToken = vi.fn();
-    new OauthPublicController(
-      osvc({ authenticateClient: vi.fn().mockReturnValue({ id: 'c' }), revokeToken }),
-      rl(),
-    ).revoke({ ip: '1', body: { token: 't', client_id: 'c' } } as Request, r2);
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue({ id: 'c' }), revokeToken }), rl()).revoke({ ip: '1', body: { token: 't', client_id: 'c' } } as Request, r2);
     expect(r2.statusCode).toBe(200);
     expect(r2.body).toEqual({});
     expect(revokeToken).toHaveBeenCalled();
@@ -467,10 +365,7 @@ describe('OauthPublicController /userinfo + /revoke', () => {
 
   it('revoke: 404 empty when MCP is disabled', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ mcpEnabled: vi.fn().mockReturnValue(false) }), rl()).revoke(
-      { ip: '1', body: {} } as Request,
-      res,
-    );
+    opc(osvc({ mcpEnabled: vi.fn().mockReturnValue(false) }), rl()).revoke({ ip: '1', body: {} } as Request, res);
     expect(res.statusCode).toBe(404);
     expect(res.ended).toBe(true);
   });
@@ -479,26 +374,22 @@ describe('OauthPublicController /userinfo + /revoke', () => {
     const s = rl();
     for (let i = 0; i < 10; i++) s.check('oauth_revoke', '1', 10, 60000, Date.now());
     const res = makeRes();
-    new OauthPublicController(osvc(), s).revoke({ ip: '1', body: { token: 't', client_id: 'c' } } as Request, res);
+    opc(osvc(), s).revoke({ ip: '1', body: { token: 't', client_id: 'c' } } as Request, res);
     expect(res.statusCode).toBe(429);
   });
 
   it('revoke: falls back to a default ip key and {} body when both are missing', () => {
     const res = makeRes();
-    new OauthPublicController(
-      osvc({ authenticateClient: vi.fn().mockReturnValue({ id: 'c' }), revokeToken: vi.fn() }),
-      rl(),
-    ).revoke({ body: undefined } as unknown as Request, res);
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue({ id: 'c' }), revokeToken: vi.fn() }), rl())
+      .revoke({ body: undefined } as unknown as Request, res);
     // body fell back to {} -> token/client missing -> 400
     expect(res.statusCode).toBe(400);
   });
 
   it('revoke: 401 when the client credentials are invalid', () => {
     const res = makeRes();
-    new OauthPublicController(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl()).revoke(
-      { ip: '1', body: { token: 't', client_id: 'c' } } as Request,
-      res,
-    );
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl())
+      .revoke({ ip: '1', body: { token: 't', client_id: 'c' } } as Request, res);
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'invalid_client', error_description: 'Invalid client credentials' });
   });
@@ -506,10 +397,8 @@ describe('OauthPublicController /userinfo + /revoke', () => {
   it('revoke: logs a dash for a missing ip on the invalid-client failure', () => {
     getClientIpMock.mockReturnValueOnce(undefined);
     const res = makeRes();
-    new OauthPublicController(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl()).revoke(
-      { ip: '1', body: { token: 't', client_id: 'c' } } as Request,
-      res,
-    );
+    opc(osvc({ authenticateClient: vi.fn().mockReturnValue(null) }), rl())
+      .revoke({ ip: '1', body: { token: 't', client_id: 'c' } } as Request, res);
     expect(res.statusCode).toBe(401);
   });
 });
@@ -549,18 +438,8 @@ describe('OauthApiController', () => {
   });
 
   it('authorize: denied returns a redirect with access_denied, approved issues a code', () => {
-    const denied = new OauthApiController(osvc(), rl()).authorize(
-      user,
-      {
-        client_id: 'c',
-        redirect_uri: 'https://cb',
-        scope: 's',
-        code_challenge: 'cc',
-        code_challenge_method: 'S256',
-        approved: false,
-      },
-      req,
-    );
+    const deniedSvc = osvc({ validateAuthorizeRequest: vi.fn().mockReturnValue({ valid: true, scopes: ['s'] }) });
+    const denied = new OauthApiController(deniedSvc, rl()).authorize(user, { client_id: 'c', redirect_uri: 'https://cb', scope: 's', code_challenge: 'cc', code_challenge_method: 'S256', approved: false }, req);
     expect((denied as { redirect: string }).redirect).toContain('error=access_denied');
     const svc = osvc({
       validateAuthorizeRequest: vi.fn().mockReturnValue({ valid: true, scopes: ['s'], resource: null }),
@@ -757,19 +636,8 @@ describe('OauthApiController', () => {
   });
 
   it('authorize: carries the state through both the denied and approved redirects', () => {
-    const denied = new OauthApiController(osvc(), rl()).authorize(
-      user,
-      {
-        client_id: 'c',
-        redirect_uri: 'https://cb',
-        scope: 's',
-        state: 'xyz',
-        code_challenge: 'cc',
-        code_challenge_method: 'S256',
-        approved: false,
-      },
-      req,
-    );
+    const deniedSvc = osvc({ validateAuthorizeRequest: vi.fn().mockReturnValue({ valid: true, scopes: ['s'] }) });
+    const denied = new OauthApiController(deniedSvc, rl()).authorize(user, { client_id: 'c', redirect_uri: 'https://cb', scope: 's', state: 'xyz', code_challenge: 'cc', code_challenge_method: 'S256', approved: false }, req);
     expect((denied as { redirect: string }).redirect).toContain('state=xyz');
 
     const svc = osvc({
@@ -792,6 +660,15 @@ describe('OauthApiController', () => {
     );
     expect((ok as { redirect: string }).redirect).toContain('code=the_code');
     expect((ok as { redirect: string }).redirect).toContain('state=xyz');
+  });
+
+  it('authorize: a denial is validated too, so the redirect can only be a registered URI', () => {
+    const validateAuthorizeRequest = vi.fn().mockReturnValue({ valid: false, error: 'invalid_redirect_uri', error_description: 'Invalid redirect URI' });
+    const svc = osvc({ validateAuthorizeRequest, saveConsent: vi.fn(), createAuthCode: vi.fn() });
+    expect(thrown(() => new OauthApiController(svc, rl())
+      .authorize(user, { client_id: 'c', redirect_uri: 'not a url', scope: 's', code_challenge: 'cc', code_challenge_method: 'S256', approved: false }, req)))
+      .toEqual({ status: 400, body: { error: 'invalid_redirect_uri', error_description: 'Invalid redirect URI' } });
+    expect(validateAuthorizeRequest).toHaveBeenCalled();
   });
 
   it('client/session errors default the status to 400 when the service omits it', () => {

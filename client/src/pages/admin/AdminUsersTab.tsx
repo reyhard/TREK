@@ -44,7 +44,7 @@ export default function AdminUsersTab({ admin, t, locale }: AdminUsersTabProps):
               {users.length} {t('admin.stats.users')}
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={() => setShowCreateUser(true)}
             className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white transition-colors hover:bg-slate-700"
           >
@@ -122,15 +122,15 @@ export default function AdminUsersTab({ admin, t, locale }: AdminUsersTabProps):
                         : '—'}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
+                      <div className="flex items-center gap-2 justify-end">
+                        <button type="button"
                           onClick={() => handleEditUser(u)}
                           className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
                           title={t('admin.editUser')}
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDeleteUser(u)}
                           disabled={u.id === currentUser?.id}
                           className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
@@ -155,7 +155,7 @@ export default function AdminUsersTab({ admin, t, locale }: AdminUsersTabProps):
             <h2 className="font-semibold text-slate-900">{t('admin.invite.title')}</h2>
             <p className="mt-1 text-xs text-slate-400">{t('admin.invite.subtitle')}</p>
           </div>
-          <button
+          <button type="button"
             onClick={() => setShowCreateInvite(true)}
             className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white transition-colors hover:bg-slate-700"
           >
@@ -199,20 +199,14 @@ export default function AdminUsersTab({ admin, t, locale }: AdminUsersTabProps):
                     </div>
                   </div>
                   {isActive && (
-                    <button
-                      onClick={() => copyInviteLink(inv.token)}
-                      title={t('admin.invite.copyLink')}
-                      className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
+                    <button type="button" onClick={() => copyInviteLink(inv.token)} title={t('admin.invite.copyLink')}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                      <Copy className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button
-                    onClick={() => handleDeleteInvite(inv.id)}
-                    title={t('common.delete')}
-                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <button type="button" onClick={() => handleDeleteInvite(inv.id)} title={t('common.delete')}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               );
@@ -299,19 +293,9 @@ export default function AdminUsersTab({ admin, t, locale }: AdminUsersTabProps):
               <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{t('admin.invite.tripHint')}</p>
             </div>
           )}
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-2">
-            <button
-              onClick={() => setShowCreateInvite(false)}
-              className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleCreateInvite}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700"
-            >
-              {t('admin.invite.createAndCopy')}
-            </button>
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button type="button" onClick={() => setShowCreateInvite(false)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">{t('common.cancel')}</button>
+            <button type="button" onClick={handleCreateInvite} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700">{t('admin.invite.createAndCopy')}</button>
           </div>
         </div>
       </Modal>

@@ -1,6 +1,6 @@
 import { WeatherController } from '../../../src/nest/weather/weather.controller';
+import { ApiError } from '../../../src/nest/weather/weather.impl';
 import type { WeatherService } from '../../../src/nest/weather/weather.service';
-import { ApiError } from '../../../src/services/weatherService';
 import { HttpException } from '@nestjs/common';
 
 import { describe, it, expect, vi } from 'vitest';
@@ -38,14 +38,14 @@ describe('WeatherController (parity with the legacy /api/weather route)', () => 
       const c = makeController({ get });
       const res = await c.getWeather('52.5', '13.4', undefined, undefined);
       expect(res).toEqual(sample);
-      expect(get).toHaveBeenCalledWith('52.5', '13.4', undefined, 'de');
+      expect(get).toHaveBeenCalledWith('52.5', '13.4', undefined, 'de', undefined);
     });
 
     it('passes an explicit lang and date through unchanged', async () => {
       const get = vi.fn().mockResolvedValue(sample);
       const c = makeController({ get });
       await c.getWeather('1', '2', '2026-07-01', 'en');
-      expect(get).toHaveBeenCalledWith('1', '2', '2026-07-01', 'en');
+      expect(get).toHaveBeenCalledWith('1', '2', '2026-07-01', 'en', undefined);
     });
 
     it('maps an ApiError to its status + { error: message }', async () => {

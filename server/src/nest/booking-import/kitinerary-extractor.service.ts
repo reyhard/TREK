@@ -1,15 +1,18 @@
-import type { KiReservation } from './kitinerary.types';
 import { Injectable, OnModuleInit } from '@nestjs/common';
-
 import { execFile } from 'node:child_process';
-import { execSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, extname } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readEnv } from '../../app-config';
+import { execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { KiReservation } from './kitinerary.types';
 
 const execFileAsync = promisify(execFile);
+
+/** Also the leaf name looked for on each PATH entry. */
+const BINARY_NAME = 'kitinerary-extractor';
 const TIMEOUT_MS = 30_000;
 const MAX_BUFFER = 5 * 1024 * 1024;
 
@@ -52,10 +55,8 @@ export class KitineraryExtractorService implements OnModuleInit {
         // most won't match the current document).
         const unexpected = stderr
           .split('\n')
-          .filter((l) => l.trim())
-          .filter(
-            (l) => !l.includes('Ambig') && !l.includes('JS ERROR') && !l.includes('Invalid result type from script'),
-          );
+          .filter(l => l.trim())
+          .filter(l => !l.includes('Ambig') && !l.includes('JS ERROR') && !l.includes('Invalid result type from script'));
         if (unexpected.length) {
           console.warn(`[KItinerary] stderr for "${fileName}":`, unexpected.join('\n'));
         }
@@ -76,14 +77,12 @@ export class KitineraryExtractorService implements OnModuleInit {
       if (typeof parsed === 'object' && parsed !== null) return [parsed as KiReservation];
       return [];
     } finally {
-      try {
-        unlinkSync(tmpFile);
-      } catch {}
+      try { unlinkSync(tmpFile); } catch {}
     }
   }
 
   private findBinary(): string | null {
-    const envPath = process.env.KITINERARY_EXTRACTOR_PATH;
+    const envPath = readEnv().integrations.kitineraryExtractorPath;
     if (envPath) {
       if (existsSync(envPath)) return envPath;
       console.warn(`[KItinerary] KITINERARY_EXTRACTOR_PATH="${envPath}" not found`);
@@ -93,19 +92,25 @@ export class KitineraryExtractorService implements OnModuleInit {
     // Debian/Ubuntu: /usr/lib/<triplet>/libexec/kf6/kitinerary-extractor
     try {
       for (const dir of readdirSync('/usr/lib')) {
-        const candidate = join('/usr/lib', dir, 'libexec', 'kf6', 'kitinerary-extractor');
+        const candidate = join('/usr/lib', dir, 'libexec', 'kf6', BINARY_NAME);
         if (existsSync(candidate)) return candidate;
       }
-    } catch {
-      /* not a Debian system */
-    }
+    } catch { /* not a Debian system */ }
 
-    // Fallback: binary in PATH
-    try {
-      execSync('kitinerary-extractor --version', { stdio: 'pipe', timeout: 3000 });
-      return 'kitinerary-extractor';
-    } catch {
-      /* not in PATH */
+    // Fallback: binary on the search path — resolved to an absolute path here,
+    // not left as a bare name. Storing 'kitinerary-extractor' meant every later
+    // extraction re-resolved it through whatever PATH held at that moment, so on
+    // a bare-metal install (the official image sets KITINERARY_EXTRACTOR_PATH, so
+    // this branch is dead there) anyone who could write to a PATH directory could
+    // have their binary run as the TREK user. Probing the concrete file with
+    // execFileSync also drops the /bin/sh hop the old execSync string needed.
+    for (const dir of readEnv().integrations.searchPath) {
+      const candidate = join(dir, BINARY_NAME);
+      if (!existsSync(candidate)) continue;
+      try {
+        execFileSync(candidate, ['--version'], { stdio: 'pipe', timeout: 3000 });
+        return candidate;
+      } catch { /* present but not runnable — keep looking */ }
     }
 
     return null;

@@ -5,30 +5,10 @@ import type { SidebarState } from './usePlacesSidebar';
 
 export function PlacesList(S: SidebarState) {
   const {
-    filtered,
-    scrollContainerRef,
-    onScrollTopChange,
-    filter,
-    t,
-    canEditPlaces,
-    onAddPlace,
-    categories,
-    selectedPlaceId,
-    plannedIds,
-    inDaySet,
-    selectedIds,
-    selectMode,
-    selectedDayId,
-    isMobile,
-    isTouch,
-    onPlaceClick,
-    openContextMenu,
-    onAssignToDay,
-    toggleSelected,
-    setDayPickerPlace,
-    registerPlaceRow,
-    tripId,
-  } = S;
+    filtered, scrollContainerRef, onScrollTopChange, filter, t, canEditPlaces, onAddPlace,
+    categories, selectedPlaceId, plannedIds, inDaySet, selectedIds, selectMode, selectedDayId,
+    isMobile, onPlaceClick, openContextMenu, onAssignToDay, toggleSelected, setDayPickerPlace, registerPlaceRow, tripId,
+  } = S
   // Plugin-contributed columns/actions for the places view, keyed by place id (#plugins).
   const contribFor = usePluginViewContributions('places', tripId);
   return (
@@ -43,22 +23,9 @@ export function PlacesList(S: SidebarState) {
           <span className="text-content-faint" style={{ fontSize: 'calc(13px * var(--fs-scale-body, 1))' }}>
             {filter === 'unplanned' ? t('places.allPlanned') : t('places.noneFound')}
           </span>
-          {canEditPlaces && (
-            <button
-              onClick={onAddPlace}
-              className="text-content"
-              style={{
-                fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontFamily: 'inherit',
-              }}
-            >
-              {t('places.addPlace')}
-            </button>
-          )}
+          {canEditPlaces && <button type="button" onClick={onAddPlace} className="text-content" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+            {t('places.addPlace')}
+          </button>}
         </div>
       ) : (
         filtered.map((place) => {
@@ -81,7 +48,6 @@ export function PlacesList(S: SidebarState) {
                 selectedDayId={selectedDayId}
                 canEditPlaces={canEditPlaces}
                 isMobile={isMobile}
-                isTouch={Boolean(isTouch)}
                 t={t}
                 onPlaceClick={onPlaceClick}
                 onContextMenu={openContextMenu}

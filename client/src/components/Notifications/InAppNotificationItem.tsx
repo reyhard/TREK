@@ -1,9 +1,9 @@
-import { ArrowRight, Check, CheckCheck, Trash2, User, X } from 'lucide-react';
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useTranslation } from '../../i18n';
-import { InAppNotification, useInAppNotificationStore } from '../../store/inAppNotificationStore';
-import { useSettingsStore } from '../../store/settingsStore';
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { User, Check, X, ArrowRight, Trash2, CheckCheck } from 'lucide-react'
+import { useTranslation } from '../../i18n'
+import { useInAppNotificationStore, InAppNotification } from '../../store/inAppNotificationStore'
+import { useSettingsStore } from '../../store/settingsStore'
 
 function relativeTime(dateStr: string, locale: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -89,7 +89,7 @@ export default function InAppNotificationItem({ notification, onClose }: Notific
             <div className="flex flex-shrink-0 items-center gap-0.5">
               <span className="mr-1 text-xs text-content-faint">{relativeTime(notification.created_at, locale)}</span>
               {!notification.is_read && (
-                <button
+                <button type="button"
                   onClick={() => markRead(notification.id)}
                   title={t('notifications.markRead')}
                   className="rounded p-1 transition-colors"
@@ -106,7 +106,7 @@ export default function InAppNotificationItem({ notification, onClose }: Notific
                   <CheckCheck className="h-3.5 w-3.5" />
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={() => deleteNotification(notification.id)}
                 title={t('notifications.delete')}
                 className="rounded p-1 transition-colors"
@@ -131,28 +131,20 @@ export default function InAppNotificationItem({ notification, onClose }: Notific
 
           {/* Boolean actions */}
           {notification.type === 'boolean' && notification.positive_text_key && notification.negative_text_key && (
-            <div className="mt-2 flex gap-2">
-              <button
+            <div className="flex gap-2 mt-2">
+              <button type="button"
                 onClick={() => handleRespond('positive')}
                 disabled={responding || notification.response !== null}
                 className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
                 style={{
-                  background:
-                    notification.response === 'positive'
-                      ? 'var(--text-primary)'
-                      : notification.response === 'negative'
-                        ? dark
-                          ? '#27272a'
-                          : '#f1f5f9'
-                        : dark
-                          ? '#27272a'
-                          : '#f1f5f9',
-                  color:
-                    notification.response === 'positive'
-                      ? '#fff'
-                      : notification.response === 'negative'
-                        ? 'var(--text-faint)'
-                        : 'var(--text-secondary)',
+                  background: notification.response === 'positive'
+                    ? 'var(--text-primary)'
+                    : (dark ? '#27272a' : '#f1f5f9'),
+                  color: notification.response === 'positive'
+                    ? '#fff'
+                    : notification.response === 'negative'
+                      ? 'var(--text-faint)'
+                      : 'var(--text-secondary)',
                   opacity: notification.response === 'negative' ? 0.5 : 1,
                   cursor: notification.response !== null || responding ? 'default' : 'pointer',
                 }}
@@ -160,27 +152,19 @@ export default function InAppNotificationItem({ notification, onClose }: Notific
                 <Check className="h-3 w-3" />
                 {t(notification.positive_text_key)}
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleRespond('negative')}
                 disabled={responding || notification.response !== null}
                 className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
                 style={{
-                  background:
-                    notification.response === 'negative'
-                      ? '#ef4444'
-                      : notification.response === 'positive'
-                        ? dark
-                          ? '#27272a'
-                          : '#f1f5f9'
-                        : dark
-                          ? '#27272a'
-                          : '#f1f5f9',
-                  color:
-                    notification.response === 'negative'
-                      ? '#fff'
-                      : notification.response === 'positive'
-                        ? 'var(--text-faint)'
-                        : 'var(--text-secondary)',
+                  background: notification.response === 'negative'
+                    ? '#ef4444'
+                    : (dark ? '#27272a' : '#f1f5f9'),
+                  color: notification.response === 'negative'
+                    ? '#fff'
+                    : notification.response === 'positive'
+                      ? 'var(--text-faint)'
+                      : 'var(--text-secondary)',
                   opacity: notification.response === 'positive' ? 0.5 : 1,
                   cursor: notification.response !== null || responding ? 'default' : 'pointer',
                 }}
@@ -193,7 +177,7 @@ export default function InAppNotificationItem({ notification, onClose }: Notific
 
           {/* Navigate action */}
           {notification.type === 'navigate' && notification.navigate_text_key && notification.navigate_target && (
-            <button
+            <button type="button"
               onClick={handleNavigate}
               className="mt-2 flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
               style={{ background: dark ? '#27272a' : '#f1f5f9', color: 'var(--text-secondary)' }}

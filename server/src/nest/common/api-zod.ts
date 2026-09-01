@@ -41,6 +41,8 @@ const HTTP_METHOD: Partial<Record<RequestMethod, string>> = {
 // @nestjs/common path, so the value is pinned here with a boot-time test.
 const BODY_PARAMTYPE = '3';
 
+type ZodPipeInstance = { schemaOrDto?: unknown };
+
 function joinPath(base: string | undefined, sub: string | undefined): string {
   const parts = `${base ?? ''}/${sub ?? ''}`.split('/').filter(Boolean);
   // Express ":param" → OpenAPI "{param}"
@@ -77,7 +79,14 @@ export function attachZodBodySchemas(app: INestApplication, document: OpenAPIObj
             (meta.pipes ?? []).some((p) => p instanceof ZodValidationPipe),
         );
         if (!bodyArg) continue;
-        const zodPipe = (bodyArg[1].pipes ?? []).find((p): p is ZodValidationPipe => p instanceof ZodValidationPipe)!;
+        const zodPipe = (bodyArg[1].pipes ?? []).find((p): p is ZodPipeInstance => p instanceof ZodValidationPipe);
+        if (!zodPipe?.schemaOrDto) continue;
+        const schemaOrDto = zodPipe.schemaOrDto;
+        const schema =
+          typeof schemaOrDto === 'function' && 'schema' in schemaOrDto
+            ? (schemaOrDto as { schema?: ZodType }).schema
+            : schemaOrDto;
+        if (!schema || typeof schema !== 'object') continue;
 
         const route =
           document.paths[joinPath(basePath, Reflect.getMetadata(PATH_METADATA, handler) as string | undefined)];
@@ -85,7 +94,7 @@ export function attachZodBodySchemas(app: INestApplication, document: OpenAPIObj
         if (!operation) continue;
         operation.requestBody = {
           required: true,
-          content: { 'application/json': { schema: zodToOpenApi(zodPipe.schema) } },
+          content: { 'application/json': { schema: zodToOpenApi(schema as ZodType) } },
         };
       }
     }

@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Megerősített foglalás',
   'inspector.pendingRes': 'Függőben lévő foglalás',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'Navigáció',
+  'inspector.openWith': 'Megnyitás ezzel',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.website': 'Weboldal megnyitása',
   'inspector.saveToCollection': 'Mentés gyűjteménybe',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'Útvonal színe',
+  'inspector.trackColorAuto': 'Automatikus szín',
+  'inspector.trackColorCustom': 'Egyéni szín kiválasztása',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

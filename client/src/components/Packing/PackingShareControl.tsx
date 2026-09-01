@@ -1,9 +1,9 @@
-import { Check, Copy, HandHelping, Share2, UserRound, Users } from 'lucide-react';
-import { useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
-import { useTranslation } from '../../i18n';
-import type { PackingItem } from '../../types';
-import type { TripMember } from './usePackingListPanel';
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { Users, UserRound, Share2, Check, Copy, HandHelping } from 'lucide-react'
+import { useTranslation } from '../../i18n'
+import type { PackingItem } from '../../types'
+import type { TripMember } from './usePackingListPanel'
 
 interface Props {
   item: PackingItem;
@@ -64,25 +64,10 @@ export default function PackingShareControl({
   };
 
   const btn = (onClick: () => void, title: string, active: boolean, node: React.ReactNode) => (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '3px 4px',
-        borderRadius: 6,
-        display: 'flex',
-        color: active ? 'var(--accent)' : 'var(--text-faint)',
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.color = 'var(--text-secondary)';
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.color = 'var(--text-faint)';
-      }}
-    >
+    <button type="button" onClick={onClick} title={title}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px', borderRadius: 6, display: 'flex', color: active ? 'var(--accent)' : 'var(--text-faint)' }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--text-secondary)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--text-faint)' }}>
       {node}
     </button>
   );
@@ -106,149 +91,45 @@ export default function PackingShareControl({
 
   return (
     <div style={{ display: 'flex' }}>
-      <button
-        ref={btnRef}
-        onClick={toggle}
-        title={t('packing.share')}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '3px 4px',
-          borderRadius: 6,
-          display: 'flex',
-          color: visibility !== 'common' ? 'var(--accent)' : 'var(--text-faint)',
-        }}
-        onMouseEnter={(e) => {
-          if (visibility === 'common') e.currentTarget.style.color = 'var(--text-secondary)';
-        }}
-        onMouseLeave={(e) => {
-          if (visibility === 'common') e.currentTarget.style.color = 'var(--text-faint)';
-        }}
-      >
+      <button type="button" ref={btnRef} onClick={toggle} title={t('packing.share')}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px', borderRadius: 6, display: 'flex', color: visibility !== 'common' ? 'var(--accent)' : 'var(--text-faint)' }}
+        onMouseEnter={e => { if (visibility === 'common') e.currentTarget.style.color = 'var(--text-secondary)' }}
+        onMouseLeave={e => { if (visibility === 'common') e.currentTarget.style.color = 'var(--text-faint)' }}>
         <Share2 size={14} />
       </button>
-      {open &&
-        pos &&
-        ReactDOM.createPortal(
-          <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 1099 }} onClick={() => setOpen(false)} />
-            <div
-              style={{
-                position: 'fixed',
-                top: pos.top,
-                right: pos.right,
-                zIndex: 1100,
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 10,
-                boxShadow: '0 8px 28px rgba(0,0,0,0.18)',
-                padding: 4,
-                minWidth: 200,
-                maxHeight: '60vh',
-                overflowY: 'auto',
-              }}
-            >
-              <Row
-                icon={<Users size={13} />}
-                label={t('packing.viewCommon')}
-                sub={t('packing.tierCommonHint')}
-                active={visibility === 'common'}
-                onClick={() => {
-                  onSetSharing(item.id, 'common', []);
-                  setOpen(false);
-                }}
-              />
-              <Row
-                icon={<UserRound size={13} />}
-                label={t('packing.tierPersonal')}
-                sub={t('packing.tierPersonalHint')}
-                active={visibility === 'personal'}
-                onClick={() => {
-                  onSetSharing(item.id, 'personal', []);
-                  setOpen(false);
-                }}
-              />
-              <div style={{ height: 1, background: 'var(--bg-tertiary)', margin: '4px 0' }} />
-              <div
-                style={{
-                  padding: '4px 10px 2px',
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  fontWeight: 700,
-                  color: 'var(--text-faint)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                }}
-              >
-                <Share2 size={10} /> {t('packing.tierShared')}
-              </div>
-              {others.length === 0 ? (
-                <div
-                  style={{
-                    padding: '4px 10px 6px',
-                    fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                    color: 'var(--text-faint)',
-                  }}
-                >
-                  {t('packing.noOneToShare')}
-                </div>
-              ) : (
-                others.map((m) => {
-                  const on = recipientIds.includes(m.id);
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => toggleRecipient(m.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        width: '100%',
-                        padding: '6px 10px',
-                        borderRadius: 7,
-                        border: 'none',
-                        cursor: 'pointer',
-                        background: 'none',
-                        fontFamily: 'inherit',
-                        fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                        color: 'var(--text-primary)',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                    >
-                      <span
-                        style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          flexShrink: 0,
-                          background: `hsl(${(m.username.charCodeAt(0) * 37) % 360}, 55%, 55%)`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
-                          fontWeight: 700,
-                          color: 'white',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {m.username[0]}
-                      </span>
-                      <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {m.username}
-                      </span>
-                      {on && <Check size={13} className="text-content-muted" />}
-                    </button>
-                  );
-                })
-              )}
+      {open && pos && createPortal(
+        <>
+          <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1099 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: 'fixed', top: pos.top, right: pos.right, zIndex: 1100,
+            background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+            boxShadow: '0 8px 28px rgba(0,0,0,0.18)', padding: 4, minWidth: 200, maxHeight: '60vh', overflowY: 'auto',
+          }}>
+            <Row icon={<Users size={13} />} label={t('packing.viewCommon')} sub={t('packing.tierCommonHint')} active={visibility === 'common'} onClick={() => { onSetSharing(item.id, 'common', []); setOpen(false) }} />
+            <Row icon={<UserRound size={13} />} label={t('packing.tierPersonal')} sub={t('packing.tierPersonalHint')} active={visibility === 'personal'} onClick={() => { onSetSharing(item.id, 'personal', []); setOpen(false) }} />
+            <div style={{ height: 1, background: 'var(--bg-tertiary)', margin: '4px 0' }} />
+            <div style={{ padding: '4px 10px 2px', fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Share2 size={10} /> {t('packing.tierShared')}
             </div>
-          </>,
-          document.body
-        )}
+            {others.length === 0 ? (
+              <div style={{ padding: '4px 10px 6px', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', color: 'var(--text-faint)' }}>{t('packing.noOneToShare')}</div>
+            ) : others.map(m => {
+              const on = recipientIds.includes(m.id)
+              return (
+                <button type="button" key={m.id} onClick={() => toggleRecipient(m.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', background: 'none', fontFamily: 'inherit', fontSize: 'calc(12px * var(--fs-scale-body, 1))', color: 'var(--text-primary)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <span style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0, background: `hsl(${(m.username.codePointAt(0) ?? 0) * 37 % 360}, 55%, 55%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(9px * var(--fs-scale-caption, 1))', fontWeight: 700, color: 'white', textTransform: 'uppercase' }}>{m.username[0]}</span>
+                  <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</span>
+                  {on && <Check size={13} className="text-content-muted" />}
+                </button>
+              )
+            })}
+          </div>
+        </>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -267,28 +148,10 @@ function Row({
   onClick: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8,
-        width: '100%',
-        padding: '7px 10px',
-        borderRadius: 7,
-        border: 'none',
-        cursor: 'pointer',
-        background: active ? 'var(--bg-tertiary)' : 'none',
-        fontFamily: 'inherit',
-        textAlign: 'left',
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = 'var(--bg-tertiary)';
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = active ? 'var(--bg-tertiary)' : 'none';
-      }}
-    >
+    <button type="button" onClick={onClick}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', background: active ? 'var(--bg-tertiary)' : 'none', fontFamily: 'inherit', textAlign: 'left' }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'none' }}>
       <span style={{ color: active ? 'var(--accent)' : 'var(--text-muted)', marginTop: 1 }}>{icon}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span

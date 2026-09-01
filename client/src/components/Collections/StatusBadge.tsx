@@ -64,7 +64,7 @@ export default function StatusBadge({
     );
   }
 
-  // Rendered as a role=button span (not a native <button>) on purpose: inside
+  // Rendered as a role=button span (not a native <button type="button">) on purpose: inside
   // the .trek-dash scope the global `.trek-dash button` reset would strip the
   // pill's background/border/padding, and the pill also has to sit inside the
   // grid card's own clickable element without nesting one button in another.

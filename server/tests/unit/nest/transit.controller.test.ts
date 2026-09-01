@@ -1,25 +1,27 @@
 import { TransitController } from '../../../src/nest/transit/transit.controller';
 import { TransitModule } from '../../../src/nest/transit/transit.module';
-import { resetTransitUsageLimits, TRANSIT_RATE_LIMITS } from '../../../src/services/transitRateLimit';
+import { RateLimitService } from '../../../src/nest/common/rate-limit.service';
+import { TRANSIT_RATE_LIMITS } from '../../../src/nest/common/transitRateLimit';
+import type { TransitService } from '../../../src/nest/transit/transit.service';
 import { HttpException } from '@nestjs/common';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const transitMock = vi.hoisted(() => ({ geocode: vi.fn(), plan: vi.fn() }));
-vi.mock('../../../src/services/transitService', () => transitMock);
+const rateLimit = new RateLimitService();
 
 const req = { ip: '127.0.0.1' } as any;
 
 describe('TransitController', () => {
   beforeEach(() => {
-    resetTransitUsageLimits();
+    rateLimit.reset();
     transitMock.geocode.mockReset();
     transitMock.plan.mockReset();
   });
 
   it('maps geocode query parameters exactly', async () => {
     transitMock.geocode.mockResolvedValue({ results: [] });
-    const controller = new TransitController();
+    const controller = new TransitController(rateLimit, transitMock as unknown as TransitService);
 
     await expect(controller.geocode('station', 'de', '52.5,13.4', req)).resolves.toEqual({ results: [] });
 
@@ -28,7 +30,7 @@ describe('TransitController', () => {
 
   it('maps planning query parameters exactly', async () => {
     transitMock.plan.mockResolvedValue({ itineraries: [] });
-    const controller = new TransitController();
+    const controller = new TransitController(rateLimit, transitMock as unknown as TransitService);
 
     await controller.plan('52.5,13.4', '52.6,13.5', '2026-10-02T08:00:00Z', 'true', 'BUS', '2', req);
 
@@ -44,7 +46,7 @@ describe('TransitController', () => {
 
   it('returns HTTP 429 before calling the provider after the shared planning limit', async () => {
     transitMock.plan.mockResolvedValue({ itineraries: [] });
-    const controller = new TransitController();
+    const controller = new TransitController(rateLimit, transitMock as unknown as TransitService);
 
     for (let i = 0; i < TRANSIT_RATE_LIMITS.plan; i++) {
       await controller.plan('52.5,13.4', '52.6,13.5', undefined, undefined, undefined, undefined, req);
@@ -58,7 +60,7 @@ describe('TransitController', () => {
 
   it('preserves transit provider HTTP error mapping', async () => {
     transitMock.geocode.mockRejectedValue(Object.assign(new Error('Provider unavailable'), { status: 503 }));
-    const controller = new TransitController();
+    const controller = new TransitController(rateLimit, transitMock as unknown as TransitService);
 
     const error = await controller.geocode('station', undefined, undefined, req).catch((err) => err);
 
@@ -69,6 +71,6 @@ describe('TransitController', () => {
 
 describe('TransitModule', () => {
   it('does not create an unused auth rate limiter', () => {
-    expect(Reflect.getMetadata('providers', TransitModule)).toEqual([]);
+    expect(Reflect.getMetadata('providers', TransitModule)).not.toContain(RateLimitService);
   });
 });

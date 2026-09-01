@@ -63,7 +63,7 @@ export function DayReorderPopup({ isOpen, days, t, locale, onReorder, onAddDay, 
       size="md"
       footer={
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <button
+          <button type="button"
             onClick={onClose}
             style={{
               padding: '8px 16px',
@@ -79,7 +79,7 @@ export function DayReorderPopup({ isOpen, days, t, locale, onReorder, onAddDay, 
           >
             {t('common.close')}
           </button>
-          <button
+          <button type="button"
             onClick={onAddDay}
             className="bg-accent text-accent-text"
             style={{
@@ -105,7 +105,10 @@ export function DayReorderPopup({ isOpen, days, t, locale, onReorder, onAddDay, 
         {t('dayplan.reorderHint')}
       </p>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {/* The popup is a modal, so it portals out of the planner and has to opt
+          into the long-press drag itself (#1616). Without this a finger only
+          selects the row text. */}
+      <div data-touch-drag style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {ordered.map((day, index) => (
           <div
             key={day.id}
@@ -179,6 +182,7 @@ export function DayReorderPopup({ isOpen, days, t, locale, onReorder, onAddDay, 
               {label(day, index)}
             </span>
             <button
+              type="button"
               onClick={() => move(index, index - 1)}
               disabled={index === 0}
               aria-label={t('dayplan.moveUp')}
@@ -187,6 +191,7 @@ export function DayReorderPopup({ isOpen, days, t, locale, onReorder, onAddDay, 
               <ArrowUp size={14} strokeWidth={2} />
             </button>
             <button
+              type="button"
               onClick={() => move(index, index + 1)}
               disabled={index === ordered.length - 1}
               aria-label={t('dayplan.moveDown')}

@@ -291,9 +291,9 @@ describe('Task 03 — Clean database migration', () => {
     }
   });
 
-  it('has oauth_tokens.user_password_version column', () => {
+  it('does not add the legacy fork-only password-version column to a fresh database', () => {
     const cols = (db.prepare("PRAGMA table_info('oauth_tokens')").all() as Array<{ name: string }>).map((c) => c.name);
-    expect(cols).toContain('user_password_version');
+    expect(cols).not.toContain('user_password_version');
   });
 
   it('has reservations.needs_review column', () => {
@@ -563,15 +563,11 @@ describe('Task 03 — Fork fixture migration and data preservation', () => {
     expect(reservation!.day_plan_position).toBe(2.5);
   });
 
-  it('has oauth_tokens.user_password_version column after migration 176', () => {
+  it('keeps the upstream migration-176 schema distinct from the legacy fork column', () => {
     const cols = (db.prepare("PRAGMA table_info('oauth_tokens')").all() as Array<{ name: string }>).map((c) => c.name);
-    expect(cols).toContain('user_password_version');
-    // Verify migration 176 backfilled existing tokens from users.password_version
-    const token = db.prepare('SELECT user_password_version FROM oauth_tokens LIMIT 1').get() as
-      | { user_password_version: number }
-      | undefined;
-    expect(token).toBeDefined();
-    expect(token!.user_password_version).toBe(1);
+    expect(cols).not.toContain('user_password_version');
+    const vacayColumns = (db.prepare("PRAGMA table_info('vacay_entries')").all() as Array<{ name: string }>).map((c) => c.name);
+    expect(vacayColumns).toContain('fraction');
   });
 
   it('has plugins.trek_range column after migration 173', () => {

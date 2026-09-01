@@ -50,10 +50,8 @@ export default function JoinTripPage() {
         {state === 'invalid' ? (
           <>
             <h1 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{t('trip.invite.invalidTitle')}</h1>
-            <p className="text-content-secondary" style={{ fontSize: 14, marginBottom: 20 }}>
-              {t('trip.invite.invalid')}
-            </p>
-            <button
+            <p className="text-content-secondary" style={{ fontSize: 14, marginBottom: 20 }}>{t('trip.invite.invalid')}</p>
+            <button type="button"
               onClick={goToDashboard}
               className="bg-surface-hover text-content"
               style={{
@@ -75,7 +73,7 @@ export default function JoinTripPage() {
               {state === 'loading' ? t('common.loading') : t('trip.invite.joinPrompt', { title })}
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button
+              <button type="button"
                 onClick={goToDashboard}
                 className="bg-surface-hover text-content"
                 style={{
@@ -89,7 +87,7 @@ export default function JoinTripPage() {
               >
                 {t('common.cancel')}
               </button>
-              <button
+              <button type="button"
                 onClick={accept}
                 disabled={state !== 'ready'}
                 className="bg-accent text-accent-text"

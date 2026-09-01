@@ -1,29 +1,17 @@
-import ReactDOM from 'react-dom';
-import ToggleSwitch from '../Settings/ToggleSwitch';
-import type { SidebarState } from './usePlacesSidebar';
+import { createPortal } from 'react-dom'
+import ToggleSwitch from '../Settings/ToggleSwitch'
+import type { SidebarState } from './usePlacesSidebar'
 
 export function ListImportModal(S: SidebarState) {
   const {
-    setListImportOpen,
-    setListImportUrl,
-    t,
-    hasMultipleListImportProviders,
-    availableListImportProviders,
-    listImportProvider,
-    setListImportProvider,
-    listImportUrl,
-    listImportLoading,
-    handleListImport,
-    listImportEnrich,
-    setListImportEnrich,
-    canEnrichImport,
-  } = S;
-  return ReactDOM.createPortal(
+    setListImportOpen, setListImportUrl, t, hasMultipleListImportProviders, availableListImportProviders,
+    listImportProvider, setListImportProvider, listImportUrl, listImportLoading, handleListImport,
+    listImportEnrich, setListImportEnrich, canEnrichImport,
+  } = S
+  return createPortal(
     <div
-      onClick={() => {
-        setListImportOpen(false);
-        setListImportUrl('');
-      }}
+      role="presentation"
+      onClick={() => { setListImportOpen(false); setListImportUrl('') }}
       className="bg-[rgba(0,0,0,0.4)]"
       style={{
         position: 'fixed',
@@ -36,7 +24,8 @@ export function ListImportModal(S: SidebarState) {
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        onClick={e => e.stopPropagation()}
         className="bg-surface-card"
         style={{ borderRadius: 16, width: '100%', maxWidth: 440, padding: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
       >
@@ -48,8 +37,8 @@ export function ListImportModal(S: SidebarState) {
         </div>
         {hasMultipleListImportProviders && (
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {availableListImportProviders.map((provider) => (
-              <button
+            {availableListImportProviders.map(provider => (
+              <button type="button"
                 key={provider}
                 onClick={() => setListImportProvider(provider)}
                 className={
@@ -119,11 +108,8 @@ export function ListImportModal(S: SidebarState) {
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => {
-              setListImportOpen(false);
-              setListImportUrl('');
-            }}
+          <button type="button"
+            onClick={() => { setListImportOpen(false); setListImportUrl('') }}
             className="text-content"
             style={{
               padding: '8px 16px',
@@ -138,7 +124,7 @@ export function ListImportModal(S: SidebarState) {
           >
             {t('common.cancel')}
           </button>
-          <button
+          <button type="button"
             onClick={handleListImport}
             disabled={!listImportUrl.trim() || listImportLoading}
             className={

@@ -1,3 +1,8 @@
+/**
+ * Track-aware day movement plan. Imported tracks are represented by one
+ * `track` part, so the normal router only computes connectors outside the
+ * imported geometry.
+ */
 import type { Accommodation, Assignment, Day, Place, Reservation, Waypoint } from '../types'
 import { getMergedItems, getSpanPhase, getTransportForDay, getTransportRouteEndpoints, TRANSPORT_TYPES } from './dayMerge'
 import { getDayBookendHotels, shouldDrawEveningLeg, shouldDrawMorningLeg } from './dayOrder'
@@ -9,6 +14,8 @@ export interface MovementAnchor {
   lat: number
   lng: number
   source: 'place' | 'track-start' | 'track-end' | 'transport-from' | 'transport-to' | 'accommodation'
+  leg_transport_mode?: string | null
+  incoming_leg_transport_mode?: string | null
   assignmentId?: number
   reservationId?: number
   placeId?: number
@@ -28,7 +35,7 @@ export interface PlannedRoutedPart {
   placement: ConnectorPlacement
 }
 
-export interface TrackMovementPart extends Omit<TrackMovementMetrics, 'start' | 'end' | 'coordinates'> {
+export interface TrackMovementPart extends Omit<TrackMovementMetrics, 'start' | 'end' | 'coordinates' | 'geometry'> {
   kind: 'track'
   key: string
   assignmentId: number
@@ -143,6 +150,7 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
   const evening = hotelAnchor(bookends.evening)
   const drawMorning = !!morning && shouldDrawMorningLeg(bookends, day, edgeInfo(first))
   const drawEvening = !!evening && shouldDrawEveningLeg(bookends, day, edgeInfo(last, true))
+
   if (drawMorning && morning) {
     cursor = {
       anchor: morning,
@@ -157,25 +165,46 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
       const place = fullPlace(assignment)
       const movement = getTrackMovement(place)
       if (movement) {
-        const { start, end, coordinates, ...metrics } = movement
+        const { start, end, coordinates, geometry: _geometry, ...metrics } = movement
         const from: MovementAnchor = {
-          lat: start[0], lng: start[1], source: 'track-start',
-          assignmentId: assignment.id, placeId: place.id,
+          lat: start[0],
+          lng: start[1],
+          source: 'track-start',
+          assignmentId: assignment.id,
+          placeId: place.id,
         }
         const to: MovementAnchor = {
-          lat: end[0], lng: end[1], source: 'track-end',
-          assignmentId: assignment.id, placeId: place.id,
+          lat: end[0],
+          lng: end[1],
+          source: 'track-end',
+          assignmentId: assignment.id,
+          placeId: place.id,
         }
         if (cursor) addConnector(cursor, from)
         parts.push({
           ...metrics,
-          kind: 'track', key: trackKey(assignment.id, from, to), assignmentId: assignment.id,
-          placeId: place.id, from, to, geometry: coordinates,
+          kind: 'track',
+          key: trackKey(assignment.id, from, to),
+          assignmentId: assignment.id,
+          placeId: place.id,
+          from,
+          to,
+          geometry: coordinates,
         })
         cursor = { anchor: to, placement: { kind: 'after-assignment', assignmentId: assignment.id }, hasPlace: true }
       } else if (finite(place.lat) && finite(place.lng)) {
+        const placeWithModes = assignment as Assignment & {
+          leg_transport_mode?: string | null
+          incoming_leg_transport_mode?: string | null
+        }
         const anchor: MovementAnchor = {
-          lat: place.lat, lng: place.lng, source: 'place', assignmentId: assignment.id, placeId: place.id,
+          lat: place.lat,
+          lng: place.lng,
+          source: 'place',
+          assignmentId: assignment.id,
+          placeId: place.id,
+          leg_transport_mode: placeWithModes.leg_transport_mode ?? null,
+          incoming_leg_transport_mode: placeWithModes.incoming_leg_transport_mode ?? null,
         }
         if (cursor) addConnector(cursor, anchor)
         cursor = { anchor, placement: { kind: 'after-assignment', assignmentId: assignment.id }, hasPlace: true }
@@ -186,10 +215,14 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
     const reservation = item.data as Reservation
     const endpoints = getTransportRouteEndpoints(reservation, day.id)
     const from: MovementAnchor | null = endpoints.from ? {
-      ...endpoints.from, source: 'transport-from', reservationId: reservation.id,
+      ...endpoints.from,
+      source: 'transport-from',
+      reservationId: reservation.id,
     } : null
     const to: MovementAnchor | null = endpoints.to ? {
-      ...endpoints.to, source: 'transport-to', reservationId: reservation.id,
+      ...endpoints.to,
+      source: 'transport-to',
+      reservationId: reservation.id,
     } : null
     if (from || to) {
       if (from && cursor?.hasPlace) addConnector(cursor, from)
@@ -212,17 +245,18 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
   if (drawEvening && evening) {
     if (cursor) {
       addConnector(cursor, evening, {
-        kind: 'hotel-bottom', dayId: day.id, name: bookends.evening?.place_name ?? '',
+        kind: 'hotel-bottom',
+        dayId: day.id,
+        name: bookends.evening?.place_name ?? '',
       })
     } else if (drawMorning && morning && !samePoint(morning, evening)) {
+      const placement = { kind: 'hotel-bottom' as const, dayId: day.id, name: bookends.evening?.place_name ?? '' }
       parts.push({
-        kind: 'routed', from: morning, to: evening,
-        placement: { kind: 'hotel-bottom', dayId: day.id, name: bookends.evening?.place_name ?? '' },
-        key: routedKey(
-          { kind: 'hotel-bottom', dayId: day.id, name: bookends.evening?.place_name ?? '' },
-          morning,
-          evening,
-        ),
+        kind: 'routed',
+        from: morning,
+        to: evening,
+        placement,
+        key: routedKey(placement, morning, evening),
       })
     }
   }
@@ -240,6 +274,11 @@ export function hasDayRouteTools(plan: DayMovementPlan): boolean {
   return plan.hasRoutedConnectors || plan.hasTracks || plan.hasTransit
 }
 
+/** The routed connectors of a day, which are the only parts the normal router computes. */
+export function routedConnectors(plan: DayMovementPlan): PlannedRoutedPart[] {
+  return plan.parts.filter((part): part is PlannedRoutedPart => part.kind === 'routed')
+}
+
 export function movementPlanWaypoints(plan: DayMovementPlan): Waypoint[] {
   const points: Waypoint[] = []
   const add = (anchor: MovementAnchor) => {
@@ -251,9 +290,8 @@ export function movementPlanWaypoints(plan: DayMovementPlan): Waypoint[] {
       add(part.from)
       add(part.to)
     } else if (part.kind === 'track') {
-      // Deduplicate the boundary shared with an approach connector, but retain
-      // both semantic track endpoints even for a loop whose start equals end.
       add(part.from)
+      // Retain both semantic track endpoints even when an imported track loops.
       points.push({ lat: part.to.lat, lng: part.to.lng })
     }
   }

@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { server } from '../../tests/helpers/msw/server';
 import { render, screen, waitFor } from '../../tests/helpers/render';
 import { resetAllStores } from '../../tests/helpers/store';
+import { START_DESTINATION_ROUTE } from '../utils/startDestination';
 import LoginPage from './LoginPage';
 
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
@@ -74,12 +75,12 @@ describe('LoginPage — OIDC redirect preservation', () => {
       expect(sessionStorage.getItem('oidc_redirect')).toBeNull();
     });
 
-    it('falls back to /dashboard when no sessionStorage redirect is set', async () => {
+    it('falls back to the startup destination when no sessionStorage redirect is set', async () => {
       setSearch('?oidc_code=testcode123');
       render(<LoginPage />);
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith(START_DESTINATION_ROUTE, { replace: true });
       });
     });
   });

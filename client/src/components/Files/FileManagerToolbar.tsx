@@ -62,9 +62,7 @@ export function FileManagerToolbar(S: FileManagerState) {
                               ? files.filter((f) => f.note_id).length
                               : 0;
                 return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setFilterType(tab.id)}
+                  <button type="button" key={tab.id} onClick={() => setFilterType(tab.id)}
                     style={{
                       appearance: 'none',
                       border: 'none',
@@ -113,29 +111,17 @@ export function FileManagerToolbar(S: FileManagerState) {
           </>
         )}
 
-        <button
-          onClick={toggleTrash}
-          style={{
-            appearance: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '9px 14px',
-            borderRadius: 10,
-            fontSize: 'calc(13px * var(--fs-scale-body, 1))',
-            fontWeight: 500,
-            background: 'var(--accent)',
-            color: 'var(--accent-text)',
-            flexShrink: 0,
-            marginLeft: 'auto',
-            opacity: showTrash ? 1 : 0.88,
-            transition: 'opacity 0.15s ease',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = showTrash ? '1' : '0.88')}
+        <button type="button" onClick={toggleTrash} style={{
+          appearance: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '9px 14px', borderRadius: 10, fontSize: 'calc(13px * var(--fs-scale-body, 1))', fontWeight: 500,
+          background: 'var(--accent)', color: 'var(--accent-text)',
+          flexShrink: 0, marginLeft: 'auto',
+          opacity: showTrash ? 1 : 0.88,
+          transition: 'opacity 0.15s ease',
+        }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = showTrash ? '1' : '0.88'}
         >
           <Trash2 size={14} strokeWidth={2.5} /> <span className="hidden sm:inline">{t('files.trash') || 'Trash'}</span>
         </button>

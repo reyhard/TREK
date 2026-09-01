@@ -1,11 +1,11 @@
-// FE-PLANNER-TRANSITJOURNEY-001 to 005 — the journey view for a saved transit entry.
-import userEvent from '@testing-library/user-event';
-import { buildReservation, buildUser } from '../../../tests/helpers/factories';
-import { render, screen, waitFor } from '../../../tests/helpers/render';
-import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { useAuthStore } from '../../store/authStore';
-import { useSettingsStore } from '../../store/settingsStore';
-import TransitJourneyModal from './TransitJourneyModal';
+// FE-PLANNER-TRANSITJOURNEY-001 to 016 — the journey view for a saved transit entry.
+import { render, screen, waitFor, fireEvent } from '../../../tests/helpers/render'
+import userEvent from '@testing-library/user-event'
+import { resetAllStores, seedStore } from '../../../tests/helpers/store'
+import { useAuthStore } from '../../store/authStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { buildUser, buildReservation } from '../../../tests/helpers/factories'
+import TransitJourneyModal from './TransitJourneyModal'
 
 function makeReservation() {
   return {
@@ -73,8 +73,8 @@ function makeProps(overrides = {}) {
     onSave: vi.fn().mockResolvedValue({}),
     onDelete: vi.fn().mockResolvedValue({}),
     onChangeRoute: vi.fn(),
-    canEdit: true,
     onUpdateEndpoints: vi.fn().mockResolvedValue({}),
+    canEdit: true,
     canEditEndpoints: true,
     ...overrides,
   };
@@ -172,42 +172,218 @@ describe('TransitJourneyModal', () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalled());
   });
 
-  it('offers a distinct endpoint editor and keeps Change route available', async () => {
-    const user = userEvent.setup();
-    render(<TransitJourneyModal {...makeProps()} />);
-    expect(screen.getByRole('button', { name: /Change route/ })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }));
-    expect(screen.getByText('Map route endpoints')).toBeInTheDocument();
-    expect(screen.getByText(/changes map pinning only/i)).toBeInTheDocument();
-  });
+  it('FE-PLANNER-TRANSITJOURNEY-005: read-only without edit rights — no delete/save/change-route', () => {
+    render(<TransitJourneyModal {...makeProps({ canEdit: false, canEditEndpoints: false })} />)
+    expect(screen.queryByRole('button', { name: /^Delete$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Change route/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Close/ })).toBeInTheDocument()
+  })
 
-  it('hides endpoint editing without reservation_edit permission', () => {
-    render(<TransitJourneyModal {...makeProps({ canEditEndpoints: false })} />);
-    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
-  });
+  it('FE-PLANNER-TRANSITJOURNEY-009: metadata stored as a JSON string is parsed into the itinerary', () => {
+    const res = makeReservation()
+    res.metadata = JSON.stringify(res.metadata)
+    render(<TransitJourneyModal {...makeProps({ reservation: res })} />)
+    expect(screen.getByText('U2')).toBeInTheDocument()
+    expect(screen.getByText('Transfers')).toBeInTheDocument()
+  })
 
-  it('does not offer endpoint editing when from or to is missing', () => {
-    const reservation = {
-      ...makeReservation(),
-      endpoints: makeReservation().endpoints.filter((endpoint: any) => endpoint.role !== 'to'),
-    };
-    render(<TransitJourneyModal {...makeProps({ reservation })} />);
-    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
-  });
+  it('FE-PLANNER-TRANSITJOURNEY-010: unparsable metadata degrades to a journey without an itinerary', () => {
+    const res = { ...makeReservation(), metadata: '{not json' }
+    render(<TransitJourneyModal {...makeProps({ reservation: res })} />)
+    // Title/date header still renders, the stat tiles and legs do not.
+    expect(screen.getByText('Fernsehturm')).toBeInTheDocument()
+    expect(screen.queryByText('Transfers')).not.toBeInTheDocument()
+    expect(screen.queryByText('U2')).not.toBeInTheDocument()
+  })
 
-  it('FE-PLANNER-TRANSITJOURNEY-005: read-only without day_edit — no delete/save/change-route, but endpoint editor is shown with reservation_edit alone', () => {
-    render(<TransitJourneyModal {...makeProps({ canEdit: false })} />);
-    expect(screen.queryByRole('button', { name: /^Delete$/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Change route/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument();
-    // Endpoint editing is gated by reservation_edit (canEditEndpoints), not day_edit
-    expect(screen.getByRole('button', { name: /Edit route endpoints/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Close/ })).toBeInTheDocument();
-  });
+  it('FE-PLANNER-TRANSITJOURNEY-011: a zero-duration, zero-walk journey renders em dashes, not "0 min"', () => {
+    const res = makeReservation()
+    res.metadata = { transit: { ...res.metadata.transit, duration: 0, walk_seconds: 12, transfers: 0 } }
+    render(<TransitJourneyModal {...makeProps({ reservation: res })} />)
+    // Duration + walking tiles both fall back to the dash; transfers shows 0.
+    expect(screen.getAllByText('—')).toHaveLength(2)
+    expect(screen.getByText('0')).toBeInTheDocument()
+  })
 
-  it('hides endpoint editing when reservation_edit is missing even with day_edit', () => {
-    render(<TransitJourneyModal {...makeProps({ canEdit: true, canEditEndpoints: false })} />);
-    expect(screen.getByRole('button', { name: /Change route/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument();
-  });
-});
+  it('FE-PLANNER-TRANSITJOURNEY-012: Escape while renaming restores the previous title', async () => {
+    const user = userEvent.setup()
+    render(<TransitJourneyModal {...makeProps()} />)
+    await user.click(screen.getByLabelText('Edit'))
+    const input = screen.getByDisplayValue('Fernsehturm → Zoo')
+    await user.clear(input)
+    await user.type(input, 'Scrapped')
+    await user.keyboard('{Escape}')
+    // Inline editing closed and the original title is back — save stays disabled.
+    expect(screen.queryByDisplayValue('Scrapped')).not.toBeInTheDocument()
+    expect(screen.getByText('Fernsehturm')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Save$/ })).toBeDisabled()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-013: blurring the title input closes inline editing but keeps the typed name', async () => {
+    const user = userEvent.setup()
+    render(<TransitJourneyModal {...makeProps()} />)
+    await user.click(screen.getByLabelText('Edit'))
+    const input = screen.getByDisplayValue('Fernsehturm → Zoo')
+    await user.clear(input)
+    await user.type(input, 'Zum Zoo')
+    fireEvent.blur(input)
+    expect(screen.queryByDisplayValue('Zum Zoo')).not.toBeInTheDocument()
+    expect(screen.getByText('Zum Zoo')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Save$/ })).toBeEnabled()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-014: switching to a different reservation re-seeds title and notes', () => {
+    const first = { ...makeReservation(), notes: 'first note' }
+    const { rerender } = render(<TransitJourneyModal {...makeProps({ reservation: first })} />)
+    expect(document.querySelector('.collab-note-md')?.textContent).toContain('first note')
+
+    const second = { ...makeReservation(), id: 8, title: 'Zoo → Hbf', notes: '' }
+    rerender(<TransitJourneyModal {...makeProps({ reservation: second })} />)
+    expect(screen.getByText('Hbf')).toBeInTheDocument()
+    // No notes on the new entry → the write tab is active again.
+    expect(screen.getByPlaceholderText(/notes/i)).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-015: the endpoint editor opens from the footer and edits only the changed origin', async () => {
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn().mockResolvedValue({})
+    render(<TransitJourneyModal {...makeProps({ onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+
+    // The editor replaces the itinerary body.
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+    expect(screen.queryByText('U2')).not.toBeInTheDocument()
+
+    const originLat = screen.getByLabelText('Origin — Latitude')
+    const originLng = screen.getByLabelText('Origin — Longitude')
+    await user.clear(originLat)
+    await user.type(originLat, '52.521')
+    await user.clear(originLng)
+    await user.type(originLng, '13.401')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    await waitFor(() =>
+      expect(onUpdateEndpoints).toHaveBeenCalledWith({
+        from: { name: 'Fernsehturm', lat: 52.521, lng: 13.401 },
+      })
+    )
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-016: cancelling the endpoint editor returns to the itinerary without saving', async () => {
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn()
+    render(<TransitJourneyModal {...makeProps({ onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Cancel$/ }))
+    expect(screen.queryByText(/Map route endpoints/)).not.toBeInTheDocument()
+    expect(screen.getByText('U2')).toBeInTheDocument()
+    expect(onUpdateEndpoints).not.toHaveBeenCalled()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-017: the endpoint editor is hidden without edit rights', () => {
+    render(<TransitJourneyModal {...makeProps({ canEdit: false, canEditEndpoints: false })} />)
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-019: the endpoint editor is gated by reservation_edit (canEditEndpoints), independent of day_edit (canEdit)', () => {
+    // Divergent case A: day_edit present but reservation_edit absent → NO editor UI.
+    render(<TransitJourneyModal {...makeProps({ canEdit: true, canEditEndpoints: false })} />)
+    expect(screen.queryByRole('button', { name: /Edit route endpoints/ })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-020: the endpoint editor shows with reservation_edit even when day_edit differs', async () => {
+    // Divergent case B: reservation_edit present but day_edit absent → editor UI is available.
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn().mockResolvedValue({})
+    render(<TransitJourneyModal {...makeProps({ canEdit: false, canEditEndpoints: true, onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+
+    const originLat = screen.getByLabelText('Origin — Latitude')
+    await user.clear(originLat)
+    await user.type(originLat, '52.521')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    await waitFor(() =>
+      expect(onUpdateEndpoints).toHaveBeenCalledWith({
+        from: { name: 'Fernsehturm', lat: 52.521, lng: 13.4 },
+      })
+    )
+  })
+})
+
+describe('TransitJourneyModal (mobile viewport)', () => {
+  const desktopWidth = window.innerWidth
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 420 })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: desktopWidth })
+  })
+
+  function makeMobileReservation() {
+    const res = makeReservation()
+    res.metadata = {
+      transit: {
+        provider: 'transitous', duration: 1800, transfers: 1, walk_seconds: 240,
+        legs: [
+          { mode: 'WALK', duration: 240, from: { name: 'Start' }, to: { name: 'Alexanderplatz' } },
+          {
+            mode: 'SUBWAY', line: 'U2', line_color: '#FF3300', line_text_color: '#FFFFFF',
+            headsign: 'Ruhleben', agency: 'BVG', duration: 1440, stops: 6,
+            from: { name: 'Alexanderplatz', time: '08:36', track: '2' },
+            to: { name: 'Zoo', time: '09:00' },
+          },
+          // No line/colour/headsign/agency and no times — exercises every fallback.
+          { mode: 'BUS', from: { name: 'Zoo' }, to: { name: 'Kudamm' } },
+        ],
+      },
+    }
+    return res
+  }
+
+  it('FE-PLANNER-TRANSITJOURNEY-015: renders the per-leg rail with platform, headsign and meta line', () => {
+    render(<TransitJourneyModal {...makeProps({ reservation: makeMobileReservation() })} />)
+    expect(screen.getByText('U2')).toBeInTheDocument()
+    expect(screen.getByText(/Platform 2/)).toBeInTheDocument()
+    expect(screen.getByText('Ruhleben')).toBeInTheDocument()
+    // mins · stops · agency collapse into one quiet line.
+    expect(screen.getByText(/24 min · 6 stops · BVG/)).toBeInTheDocument()
+    expect(screen.getByText('08:36')).toBeInTheDocument()
+    // The meta-less leg falls back to its mode as the badge and shows no meta line.
+    expect(screen.getByText('BUS')).toBeInTheDocument()
+    expect(screen.getByText('Kudamm')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-016: mobile stat tiles stay iconless but keep value + caption', () => {
+    render(<TransitJourneyModal {...makeProps({ reservation: makeMobileReservation() })} />)
+    expect(screen.getByText('Transfers')).toBeInTheDocument()
+    expect(screen.getByText('Walking')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    // Delete collapses to an icon-only button on a phone.
+    const deleteBtn = screen.getByRole('button', { name: 'Delete' })
+    expect(deleteBtn.textContent?.trim()).toBe('')
+  })
+
+  it('FE-PLANNER-TRANSITJOURNEY-018: the endpoint editor opens and edits a pin on mobile too', async () => {
+    const user = userEvent.setup()
+    const onUpdateEndpoints = vi.fn().mockResolvedValue({})
+    render(<TransitJourneyModal {...makeProps({ onUpdateEndpoints })} />)
+    await user.click(screen.getByRole('button', { name: /Edit route endpoints/ }))
+    expect(screen.getByText(/Map route endpoints/)).toBeInTheDocument()
+
+    const destLat = screen.getByLabelText('Destination — Latitude')
+    await user.clear(destLat)
+    await user.type(destLat, '52.499')
+    await user.click(screen.getByRole('button', { name: /^Save$/ }))
+    await waitFor(() =>
+      expect(onUpdateEndpoints).toHaveBeenCalledWith({
+        to: { name: 'Zoo', lat: 52.499, lng: 13.33 },
+      })
+    )
+  })
+})

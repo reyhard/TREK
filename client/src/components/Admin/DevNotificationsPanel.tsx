@@ -1,3 +1,8 @@
+import React, { useState, useEffect } from 'react'
+import { adminApi, tripsApi } from '../../api/client'
+import { getApiErrorMessage } from '../../utils/apiError'
+import { useAuthStore } from '../../store/authStore'
+import { useToast } from '../shared/Toast'
 import {
   Bell,
   Calendar,
@@ -12,10 +17,6 @@ import {
   UserPlus,
   Zap,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { adminApi, tripsApi } from '../../api/client';
-import { useAuthStore } from '../../store/authStore';
-import { useToast } from '../shared/Toast';
 
 interface Trip {
   id: number;
@@ -59,10 +60,10 @@ export default function DevNotificationsPanel(): React.ReactElement {
   const fire = async (label: string, payload: Record<string, unknown>) => {
     setSending(label);
     try {
-      await adminApi.sendTestNotification(payload);
-      toast.success(`Sent: ${label}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed');
+      await adminApi.sendTestNotification(payload)
+      toast.success(`Sent: ${label}`)
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed'))
     } finally {
       setSending(null);
     }
@@ -90,7 +91,7 @@ export default function DevNotificationsPanel(): React.ReactElement {
     color: string;
     onClick: () => void;
   }) => (
-    <button
+    <button type="button"
       onClick={onClick}
       disabled={sending !== null}
       className="flex w-full items-center gap-3 rounded-lg border border-edge bg-surface-card px-4 py-3 text-left transition-colors"

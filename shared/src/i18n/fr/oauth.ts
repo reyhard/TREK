@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Voyages',
   'oauth.scope.group.places': 'Lieux',
+  'oauth.scope.group.collections': 'Collections',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Bagages',
   'oauth.scope.group.todos': 'Tâches',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Géo',
   'oauth.scope.group.weather': 'Météo',
   'oauth.scope.group.journey': 'Journal de voyage',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Voir les voyages et itinéraires',
   'oauth.scope.trips:read.description': 'Lire les voyages, jours, notes et membres',
   'oauth.scope.trips:write.label': 'Modifier les voyages et itinéraires',
@@ -27,6 +30,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Lire les lieux, affectations de jours, étiquettes et catégories',
   'oauth.scope.places:write.label': 'Gérer les lieux',
   'oauth.scope.places:write.description': 'Créer, modifier et supprimer des lieux, affectations et étiquettes',
+  'oauth.scope.collections:read.label': 'Voir les collections',
+  'oauth.scope.collections:read.description':
+    'Consulter les collections de lieux enregistrés, ainsi que leurs lieux, notes, étiquettes et membres',
+  'oauth.scope.collections:write.label': 'Gérer les collections',
+  'oauth.scope.collections:write.description':
+    'Créer/modifier des collections, enregistrer, noter, étiqueter et copier des lieux, et partager des listes',
   'oauth.scope.atlas:read.label': "Voir l'Atlas",
   'oauth.scope.atlas:read.description': 'Lire les pays visités, régions et liste de souhaits',
   'oauth.scope.atlas:write.label': "Gérer l'Atlas",
@@ -71,6 +80,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Gérer les liens de journaux de voyage',
   'oauth.scope.journey:share.description':
     'Créer, modifier et révoquer des liens de partage publics pour les journaux de voyage',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

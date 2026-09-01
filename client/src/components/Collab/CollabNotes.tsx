@@ -1,24 +1,25 @@
-import { Pencil, Plus, Settings, StickyNote, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import ReactDOM from 'react-dom';
-import Markdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
-import { collabApi } from '../../api/client';
-import { addListener, removeListener } from '../../api/websocket';
-import { useTranslation } from '../../i18n';
-import { useCanDo } from '../../store/permissionsStore';
-import { useTripStore } from '../../store/tripStore';
-import type { User } from '../../types';
-import ConfirmDialog from '../shared/ConfirmDialog';
-import { useToast } from '../shared/Toast';
-import { FONT, NOTE_COLORS } from './CollabNotes.constants';
-import type { CollabNote } from './CollabNotes.types';
-import { AuthedImg } from './CollabNotesAuthedImg';
-import { NoteCard } from './CollabNotesCard';
-import { CategorySettingsModal } from './CollabNotesCategorySettingsModal';
-import { FilePreviewPortal } from './CollabNotesFilePreviewPortal';
-import { NoteFormModal } from './CollabNotesFormModal';
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import { createPortal } from 'react-dom'
+import { Plus, Pencil, X, StickyNote, Settings } from 'lucide-react'
+import { collabApi } from '../../api/client'
+import { useCanDo } from '../../store/permissionsStore'
+import { useTripStore } from '../../store/tripStore'
+import { addListener, removeListener } from '../../api/websocket'
+import { useTranslation } from '../../i18n'
+import { useToast } from '../shared/Toast'
+import ConfirmDialog from '../shared/ConfirmDialog'
+import EmptyState from '../shared/EmptyState'
+import type { User } from '../../types'
+import type { CollabNote } from './CollabNotes.types'
+import { FONT, NOTE_COLORS } from './CollabNotes.constants'
+import { NoteFormModal } from './CollabNotesFormModal'
+import { CategorySettingsModal } from './CollabNotesCategorySettingsModal'
+import { NoteCard } from './CollabNotesCard'
+import { FilePreviewPortal } from './CollabNotesFilePreviewPortal'
+import { AuthedImg } from './CollabNotesAuthedImg'
 
 // ── Main Component ──────────────────────────────────────────────────────────
 interface CollabNotesProps {
@@ -101,6 +102,9 @@ function useCollabNotes({ tripId, currentUser }: CollabNotesProps) {
     if (!tripId) return;
 
     const handler = (msg) => {
+      // The panel is not remounted on a trip change, so an event still in flight
+      // from the trip we just left must not land in this list.
+      if (String(msg?.tripId) !== String(tripId)) return
       if (msg.type === 'collab:note:created' && msg.note) {
         setNotes((prev) => {
           if (prev.some((n) => n.id === msg.note.id)) return prev;
@@ -163,95 +167,103 @@ function useCollabNotes({ tripId, currentUser }: CollabNotesProps) {
     [tripId, toast, t]
   );
 
-  const handleUpdateNote = useCallback(
-    async (noteId, data) => {
-      let result;
-      try {
-        result = await collabApi.updateNote(tripId, noteId, data);
-      } catch (err) {
-        toast.error(t('common.error'));
-        throw err;
-      }
-      const updated = result?.note || result;
-      if (updated) {
-        setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, ...updated } : n)));
-      }
-    },
-    [tripId, toast, t]
-  );
+  const handleUpdateNote = useCallback(async (noteId, data, opts: { silent?: boolean } = {}) => {
+    let result
+    try {
+      result = await collabApi.updateNote(tripId, noteId, data)
+    } catch (err) {
+      // A batch of writes reports once for the whole run instead of once per note.
+      if (!opts.silent) toast.error(t('common.error'))
+      throw err
+    }
+    const updated = result?.note || result
+    if (updated) {
+      setNotes(prev =>
+        prev.map(n => (n.id === noteId ? { ...n, ...updated } : n))
+      )
+    }
+  }, [tripId, toast, t])
 
-  const saveCategoryColors = useCallback(
-    async (newMap) => {
-      // Update notes with changed colors
-      for (const [cat, color] of Object.entries(newMap)) {
-        const notesInCat = notes.filter((n) => n.category === cat);
-        if (notesInCat.length > 0 && categoryColors[cat] !== color) {
-          for (const n of notesInCat) {
-            await handleUpdateNote(n.id, { color });
-          }
+  // A colour or a rename is N single-note writes; if one of them is rejected the
+  // rest still have to run, and the list has to be re-read so it stops showing a
+  // change the server never took. Reporting the failure is the caller's job.
+  const resyncNotes = useCallback(async () => {
+    try {
+      const fresh = await collabApi.getNotes(tripId)
+      setNotes(fresh?.notes || fresh || [])
+    } catch {}
+  }, [tripId])
+
+  const saveCategoryColors = useCallback(async (newMap) => {
+    let failed = 0
+    // Update notes with changed colors
+    for (const [cat, color] of Object.entries(newMap)) {
+      const notesInCat = notes.filter(n => n.category === cat)
+      if (notesInCat.length > 0 && categoryColors[cat] !== color) {
+        for (const n of notesInCat) {
+          try { await handleUpdateNote(n.id, { color }) } catch { failed++ }
         }
       }
-      // Save all categories (including empty ones) to localStorage
-      const emptyCats = {};
-      for (const [cat, color] of Object.entries(newMap)) {
-        if (!notes.some((n) => n.category === cat)) {
-          emptyCats[cat] = color;
-        }
+    }
+    if (failed > 0) await resyncNotes()
+    // Save all categories (including empty ones) to localStorage
+    const emptyCats = {}
+    for (const [cat, color] of Object.entries(newMap)) {
+      if (!notes.some(n => n.category === cat)) {
+        emptyCats[cat] = color
       }
-      saveEmptyCategories(emptyCats);
-    },
-    [categoryColors, notes, handleUpdateNote]
-  );
+    }
+    saveEmptyCategories(emptyCats)
+  }, [categoryColors, notes, handleUpdateNote, resyncNotes])
 
-  const handleEditSubmit = useCallback(
-    async (data) => {
-      if (!editingNote) return;
-      const pendingFiles = data._pendingFiles || [];
-      delete data._pendingFiles;
-      await handleUpdateNote(editingNote.id, data);
-      if (pendingFiles.length > 0) {
-        for (const file of pendingFiles) {
-          const fd = new FormData();
-          fd.append('file', file);
-          try {
-            await collabApi.uploadNoteFile(tripId, editingNote.id, fd);
-          } catch {
-            toast.error(t('common.error'));
-          }
-        }
-        const fresh = await collabApi.getNotes(tripId);
-        if (fresh?.notes) setNotes(fresh.notes);
-        window.dispatchEvent(new Event('collab-files-changed'));
-      }
-    },
-    [editingNote, tripId, handleUpdateNote, toast, t]
-  );
+  const renameCategory = useCallback(async (oldName, newName) => {
+    // Update all notes with this category in DB
+    const toUpdate = notes.filter(n => n.category === oldName)
+    let failed = 0
+    for (const n of toUpdate) {
+      try { await handleUpdateNote(n.id, { category: newName }, { silent: true }) } catch { failed++ }
+    }
+    // The rest still had to run, but a partial rename is not a saved rename: the
+    // settings modal has to stay open on the rejection instead of closing on it.
+    if (failed > 0) {
+      await resyncNotes()
+      toast.error(t('common.error'))
+      throw new Error(`rename failed for ${failed} of ${toUpdate.length} notes`)
+    }
+  }, [notes, handleUpdateNote, resyncNotes, toast, t])
 
-  const handleDeleteNoteFile = useCallback(
-    async (noteId, fileId) => {
-      try {
-        await collabApi.deleteNoteFile(tripId, noteId, fileId);
-      } catch {
-        toast.error(t('common.error'));
+  const handleEditSubmit = useCallback(async (data) => {
+    if (!editingNote) return
+    const pendingFiles = data._pendingFiles || []
+    delete data._pendingFiles
+    await handleUpdateNote(editingNote.id, data)
+    if (pendingFiles.length > 0) {
+      for (const file of pendingFiles) {
+        const fd = new FormData()
+        fd.append('file', file)
+        try { await collabApi.uploadNoteFile(tripId, editingNote.id, fd) } catch { toast.error(t('common.error')) }
       }
-      window.dispatchEvent(new Event('collab-files-changed'));
-    },
-    [tripId, toast, t]
-  );
+      const fresh = await collabApi.getNotes(tripId)
+      if (fresh?.notes) setNotes(fresh.notes)
+      window.dispatchEvent(new Event('collab-files-changed'))
+    }
+  }, [editingNote, tripId, handleUpdateNote, toast, t])
 
-  const handleDeleteNote = useCallback(
-    async (noteId) => {
-      try {
-        await collabApi.deleteNote(tripId, noteId);
-      } catch (err) {
-        toast.error(t('common.error'));
-        throw err;
-      }
-      setNotes((prev) => prev.filter((n) => n.id !== noteId));
-      window.dispatchEvent(new Event('collab-files-changed'));
-    },
-    [tripId, toast, t]
-  );
+  const handleDeleteNoteFile = useCallback(async (noteId, fileId) => {
+    try { await collabApi.deleteNoteFile(tripId, noteId, fileId) } catch { toast.error(t('common.error')) }
+    window.dispatchEvent(new Event('collab-files-changed'))
+  }, [tripId, toast, t])
+
+  const handleDeleteNote = useCallback(async (noteId) => {
+    try {
+      await collabApi.deleteNote(tripId, noteId)
+    } catch (err) {
+      toast.error(t('common.error'))
+      throw err
+    }
+    setNotes(prev => prev.filter(n => n.id !== noteId))
+    window.dispatchEvent(new Event('collab-files-changed'))
+  }, [tripId, toast, t])
 
   // ── Derived data ──
   const categories = [...new Set(notes.map((n) => n.category).filter(Boolean))];
@@ -267,37 +279,14 @@ function useCollabNotes({ tripId, currentUser }: CollabNotesProps) {
     });
 
   return {
-    tripId,
-    currentUser,
-    t,
-    canEdit,
-    notes,
-    loading,
-    showNewModal,
-    setShowNewModal,
-    editingNote,
-    setEditingNote,
-    viewingNote,
-    setViewingNote,
-    previewFile,
-    setPreviewFile,
-    showSettings,
-    setShowSettings,
-    activeCategory,
-    setActiveCategory,
-    categoryColors,
-    getCategoryColor,
-    handleCreateNote,
-    handleUpdateNote,
-    saveCategoryColors,
-    handleEditSubmit,
-    handleDeleteNoteFile,
-    handleDeleteNote,
-    categories,
-    sortedNotes,
-    pendingDeleteNoteId,
-    setPendingDeleteNoteId,
-  };
+    tripId, currentUser, t, canEdit,
+    notes, loading, showNewModal, setShowNewModal, editingNote, setEditingNote,
+    viewingNote, setViewingNote, previewFile, setPreviewFile, showSettings, setShowSettings,
+    activeCategory, setActiveCategory, categoryColors, getCategoryColor,
+    handleCreateNote, handleUpdateNote, saveCategoryColors, renameCategory, handleEditSubmit,
+    handleDeleteNoteFile, handleDeleteNote, categories, sortedNotes,
+    pendingDeleteNoteId, setPendingDeleteNoteId,
+  }
 }
 
 type NotesState = ReturnType<typeof useCollabNotes>;
@@ -364,52 +353,17 @@ function CollabNotesHeader({ t, canEdit, setShowSettings, setShowNewModal }: Not
         {t('collab.notes.title')}
       </h3>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {canEdit && (
-          <button
-            onClick={() => setShowSettings(true)}
-            title={t('collab.notes.categorySettings') || 'Categories'}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              color: 'var(--text-faint)',
-              transition: 'color 0.12s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-          >
-            <Settings size={14} />
-          </button>
-        )}
-        {canEdit && (
-          <button
-            onClick={() => setShowNewModal(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              borderRadius: 99,
-              padding: '6px 12px',
-              background: 'var(--accent)',
-              color: 'var(--accent-text)',
-              fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-              fontWeight: 600,
-              fontFamily: FONT,
-              border: 'none',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <Plus size={12} />
-            {t('collab.notes.new')}
-          </button>
-        )}
+        {canEdit && <button type="button" onClick={() => setShowSettings(true)} title={t('collab.notes.categorySettings')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-faint)', transition: 'color 0.12s' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+          <Settings size={14} />
+        </button>}
+        {canEdit && <button type="button" onClick={() => setShowNewModal(true)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 99, padding: '6px 12px', background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 600, fontFamily: FONT, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <Plus size={12} />
+          {t('collab.notes.new')}
+        </button>}
       </div>
     </div>
   );
@@ -418,7 +372,7 @@ function CollabNotesHeader({ t, canEdit, setShowSettings, setShowNewModal }: Not
 function CollabCategoryPills({ categories, activeCategory, setActiveCategory, t }: NotesState) {
   return (
     <div style={{ display: 'flex', gap: 4, padding: '8px 12px 0', overflowX: 'auto', flexShrink: 0 }}>
-      <button
+      <button type="button"
         onClick={() => setActiveCategory(null)}
         style={{
           flexShrink: 0,
@@ -438,8 +392,8 @@ function CollabCategoryPills({ categories, activeCategory, setActiveCategory, t 
       >
         {t('collab.notes.all')}
       </button>
-      {categories.map((cat) => (
-        <button
+      {categories.map(cat => (
+        <button type="button"
           key={cat}
           onClick={() => setActiveCategory((prev) => (prev === cat ? null : cat))}
           style={{
@@ -483,35 +437,7 @@ function CollabNotesGrid(S: NotesState) {
     <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
       {sortedNotes.length === 0 ? (
         /* ── Empty state ── */
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '48px 20px',
-            textAlign: 'center',
-            height: '100%',
-          }}
-        >
-          <Pencil size={36} color="var(--text-faint)" style={{ marginBottom: 12 }} />
-          <div
-            style={{
-              fontSize: 'calc(14px * var(--fs-scale-body, 1))',
-              fontWeight: 600,
-              color: 'var(--text-secondary)',
-              marginBottom: 4,
-              fontFamily: FONT,
-            }}
-          >
-            {t('collab.notes.empty')}
-          </div>
-          <div
-            style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', color: 'var(--text-faint)', fontFamily: FONT }}
-          >
-            {t('collab.notes.emptyDesc') || 'Create a note to get started'}
-          </div>
-        </div>
+        <EmptyState scene="notes" title={t('collab.notes.empty')} />
       ) : (
         /* ── Notes grid — 2 columns ── */
         <div
@@ -544,9 +470,9 @@ function CollabNotesGrid(S: NotesState) {
 }
 
 function ViewNoteModal(S: NotesState) {
-  const { viewingNote, setViewingNote, canEdit, setEditingNote, getCategoryColor, t, setPreviewFile } = S;
-  if (!viewingNote) return null;
-  return ReactDOM.createPortal(
+  const { viewingNote, setViewingNote, canEdit, setEditingNote, getCategoryColor, t, setPreviewFile } = S
+  if (!viewingNote) return null
+  return createPortal(
     <div
       style={{
         position: 'fixed',
@@ -560,7 +486,8 @@ function ViewNoteModal(S: NotesState) {
         zIndex: 10000,
         padding: 16,
       }}
-      onClick={() => setViewingNote(null)}
+      role="presentation"
+      onClick={e => { if (e.target === e.currentTarget) setViewingNote(null) }}
     >
       <div
         style={{
@@ -573,7 +500,6 @@ function ViewNoteModal(S: NotesState) {
           display: 'flex',
           flexDirection: 'column',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
@@ -613,41 +539,16 @@ function ViewNoteModal(S: NotesState) {
             )}
           </div>
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            {canEdit && (
-              <button
-                onClick={() => {
-                  setViewingNote(null);
-                  setEditingNote(viewingNote);
-                }}
-                style={{
-                  padding: 6,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-faint)',
-                  display: 'flex',
-                  borderRadius: 6,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-              >
-                <Pencil size={16} />
-              </button>
-            )}
-            <button
-              onClick={() => setViewingNote(null)}
-              style={{
-                padding: 6,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-faint)',
-                display: 'flex',
-                borderRadius: 6,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-            >
+            {canEdit && <button type="button" onClick={() => { setViewingNote(null); setEditingNote(viewingNote) }}
+              style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', borderRadius: 6 }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+              <Pencil size={16} />
+            </button>}
+            <button type="button" onClick={() => setViewingNote(null)}
+              style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', borderRadius: 6 }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
               <X size={18} />
             </button>
           </div>
@@ -687,64 +588,32 @@ function ViewNoteModal(S: NotesState) {
                       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: 72 }}
                     >
                       {isImage ? (
-                        <AuthedImg
-                          src={a.url}
-                          alt={a.original_name}
+                        <AuthedImg src={a.url} alt={a.original_name}
+                          style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', transition: 'transform 0.12s, box-shadow 0.12s' }}
+                          onClick={() => setPreviewFile(a)}
+                          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)' }}
+                          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none' }} />
+                      ) : (
+                        <button type="button" title={a.original_name} onClick={() => setPreviewFile(a)}
                           style={{
                             width: 64,
                             height: 64,
                             objectFit: 'cover',
                             borderRadius: 8,
-                            cursor: 'pointer',
-                            transition: 'transform 0.12s, box-shadow 0.12s',
-                          }}
-                          onClick={() => setPreviewFile(a)}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.06)';
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.boxShadow = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div
-                          title={a.original_name}
-                          onClick={() => setPreviewFile(a)}
-                          style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: 8,
-                            cursor: 'pointer',
                             background: a.mime_type === 'application/pdf' ? '#ef44441a' : 'var(--bg-secondary)',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 1,
+                            cursor: 'pointer',
                             transition: 'transform 0.12s, box-shadow 0.12s',
+                            border: 'none', padding: 0, fontFamily: 'inherit',
                           }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'scale(1.06)';
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                            e.currentTarget.style.boxShadow = 'none';
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                              fontWeight: 700,
-                              color: a.mime_type === 'application/pdf' ? '#ef4444' : 'var(--text-muted)',
-                              letterSpacing: 0.3,
-                            }}
-                          >
-                            {ext}
-                          </span>
-                        </div>
+                          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)' }}
+                          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none' }}>
+                          <span style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 700, color: a.mime_type === 'application/pdf' ? '#ef4444' : 'var(--text-muted)', letterSpacing: 0.3 }}>{ext}</span>
+                        </button>
                       )}
                       <span
                         style={{
@@ -775,31 +644,12 @@ function ViewNoteModal(S: NotesState) {
 export default function CollabNotes(props: CollabNotesProps) {
   const S = useCollabNotes(props);
   const {
-    loading,
-    tripId,
-    t,
-    categories,
-    categoryColors,
-    getCategoryColor,
-    notes,
-    viewingNote,
-    showNewModal,
-    editingNote,
-    previewFile,
-    showSettings,
-    setShowNewModal,
-    setEditingNote,
-    setPreviewFile,
-    setShowSettings,
-    handleCreateNote,
-    handleEditSubmit,
-    handleDeleteNoteFile,
-    saveCategoryColors,
-    handleUpdateNote,
-    handleDeleteNote,
-    pendingDeleteNoteId,
-    setPendingDeleteNoteId,
-  } = S;
+    loading, tripId, t, categories, categoryColors, getCategoryColor, notes,
+    viewingNote, showNewModal, editingNote, previewFile, showSettings,
+    setShowNewModal, setEditingNote, setPreviewFile, setShowSettings,
+    handleCreateNote, handleEditSubmit, handleDeleteNoteFile, saveCategoryColors, renameCategory, handleUpdateNote,
+    handleDeleteNote, pendingDeleteNoteId, setPendingDeleteNoteId,
+  } = S
 
   if (loading) return <CollabNotesLoading {...S} />;
 
@@ -846,13 +696,7 @@ export default function CollabNotes(props: CollabNotesProps) {
           categories={categories}
           categoryColors={categoryColors}
           onSave={saveCategoryColors}
-          onRenameCategory={async (oldName, newName) => {
-            // Update all notes with this category in DB
-            const toUpdate = notes.filter((n) => n.category === oldName);
-            for (const n of toUpdate) {
-              await handleUpdateNote(n.id, { category: newName });
-            }
-          }}
+          onRenameCategory={renameCategory}
           t={t}
         />
       )}
@@ -861,9 +705,8 @@ export default function CollabNotes(props: CollabNotesProps) {
       <ConfirmDialog
         isOpen={pendingDeleteNoteId !== null}
         onClose={() => setPendingDeleteNoteId(null)}
-        onConfirm={() => {
-          if (pendingDeleteNoteId !== null) handleDeleteNote(pendingDeleteNoteId);
-        }}
+        // Hand the promise back so the dialog absorbs the rethrow of a failed DELETE.
+        onConfirm={() => (pendingDeleteNoteId !== null ? handleDeleteNote(pendingDeleteNoteId) : undefined)}
         title={t('collab.notes.confirmDeleteTitle')}
         message={t('collab.notes.confirmDeleteBody')}
       />

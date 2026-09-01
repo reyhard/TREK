@@ -20,14 +20,10 @@ const { pluginsEnabledMock, extractTokenMock, verifyMock, getUserByAccessTokenMo
   })),
 }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled: pluginsEnabledMock }));
-vi.mock('../../../src/middleware/auth', () => ({ extractToken: extractTokenMock, verifyJwtAndLoadUser: verifyMock }));
-vi.mock('../../../src/services/oauthService', () => ({ getUserByAccessToken: getUserByAccessTokenMock }));
-vi.mock('../../../src/services/oauthResources', () => ({
-  pluginResourceUri: (id: string) => `https://trek.example/api/plugins/${id}`,
-  isPluginScopeAllowed: (scopes: string[], pluginId: string, access: string) =>
-    scopes.includes(`plugin:${pluginId}:${access}`) ||
-    (access === 'read' && scopes.includes(`plugin:${pluginId}:write`)),
-}));
+vi.mock('../../../src/nest/auth/jwt-verify', () => ({ extractToken: extractTokenMock, verifyJwtAndLoadUser: verifyMock }));
+
+import { PluginsProxyController } from '../../../src/nest/plugins/plugins-proxy.controller';
+import type { PluginRuntimeService } from '../../../src/nest/plugins/plugin-runtime.service';
 
 function fakeRes() {
   const res = {

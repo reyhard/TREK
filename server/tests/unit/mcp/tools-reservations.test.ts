@@ -50,6 +50,12 @@ vi.mock('../../../src/config', () => ({
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
+import { createTables } from '../../../src/db/schema';
+import { runMigrations } from '../../../src/db/migrations';
+import { resetTestDb } from '../../helpers/test-db';
+import { createUser, createTrip, createDay, createPlace, createReservation, createDayAssignment } from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -91,6 +97,20 @@ describe('Tool: create_reservation', () => {
       expect(data.reservation.title).toBe('Eiffel Tower Tour');
       expect(data.reservation.type).toBe('tour');
       expect(data.reservation.status).toBe('pending');
+    });
+  });
+
+  it('creates a parking reservation (#1444)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: { tripId: trip.id, title: 'Airport Parking P1', type: 'parking' },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.title).toBe('Airport Parking P1');
+      expect(data.reservation.type).toBe('parking');
     });
   });
 
@@ -650,6 +670,156 @@ describe('Tool: link_hotel_accommodation', () => {
         },
       });
       expect(result.isError).toBe(true);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// trek://trips/{tripId}/reservations resource (moved from the legacy
+// registerResources into the DI-discovered ReservationsMcp)
+// ---------------------------------------------------------------------------
+
+describe('Resource: trek://trips/{tripId}/reservations', () => {
+  it('returns reservations for a trip', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    createReservation(testDb, trip.id, { title: 'Flight to Paris', type: 'flight' });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: `trek://trips/${trip.id}/reservations` });
+      const items = parseResourceResult(result) as { title: string }[];
+      expect(items).toHaveLength(1);
+      expect(items[0].title).toBe('Flight to Paris');
+    });
+  });
+
+  it('returns access denied for unauthorized trip', async () => {
+    const { user } = createUser(testDb);
+    const { user: other } = createUser(testDb);
+    const trip = createTrip(testDb, other.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: `trek://trips/${trip.id}/reservations` });
+      const data = parseResourceResult(result) as { error?: string };
+      expect(data.error).toBeTruthy();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The booking link and the end time
+//
+// Both are persisted on create and update and rendered by the planner; neither
+// was in any tool schema at the 4.0.0 base, so an imported booking arrived
+// without its confirmation link and a dinner could only carry a start. Ported
+// from upstream f1bbd94f ("feat(mcp): booking link and end time on a
+// reservation"), adapted to the 4.0.0 transport enum (flight|train|car|cruise).
+// ---------------------------------------------------------------------------
+
+describe('Reservation tools: url and reservation_end_time', () => {
+  it('stores the booking link on create', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: {
+          tripId: trip.id, type: 'restaurant', title: 'Dinner',
+          url: 'https://example.com/booking/abc123',
+        },
+      });
+      const data = parseToolResult(result) as any;
+      expect(data.reservation.url).toBe('https://example.com/booking/abc123');
+      const row = testDb.prepare('SELECT url FROM reservations WHERE id = ?').get(data.reservation.id) as any;
+      expect(row.url).toBe('https://example.com/booking/abc123');
+    });
+  });
+
+  it('stores an end time on a non-transport booking', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: {
+          tripId: trip.id, type: 'restaurant', title: 'Dinner',
+          reservation_time: '2025-06-01T19:00:00', reservation_end_time: '2025-06-01T21:30:00',
+        },
+      });
+      const data = parseToolResult(result) as any;
+      const row = testDb.prepare('SELECT reservation_time, reservation_end_time FROM reservations WHERE id = ?').get(data.reservation.id) as any;
+      expect(row.reservation_time).toBe('2025-06-01T19:00:00');
+      expect(row.reservation_end_time).toBe('2025-06-01T21:30:00');
+    });
+  });
+
+  it('updates the link and the end time on an existing booking', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const created = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: { tripId: trip.id, type: 'tour', title: 'Walking tour' },
+      });
+      const { reservation } = parseToolResult(created) as { reservation: { id: number } };
+
+      await h.client.callTool({
+        name: 'update_reservation',
+        arguments: {
+          tripId: trip.id, reservationId: reservation.id,
+          url: 'https://tours.example/booking/9', reservation_end_time: '2025-06-02T16:00:00',
+        },
+      });
+      const row = testDb.prepare('SELECT url, reservation_end_time FROM reservations WHERE id = ?').get(reservation.id) as any;
+      expect(row.url).toBe('https://tours.example/booking/9');
+      expect(row.reservation_end_time).toBe('2025-06-02T16:00:00');
+    });
+  });
+
+  it('refuses a javascript: link, like the REST contract does', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: { tripId: trip.id, type: 'other', title: 'Nope', url: 'javascript:alert(1)' },
+      });
+      expect(result.isError).toBe(true);
+      expect(testDb.prepare('SELECT COUNT(*) AS n FROM reservations').get()).toEqual({ n: 0 });
+    });
+  });
+
+  it('refuses a javascript: link split by a control character', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_reservation',
+        arguments: { tripId: trip.id, type: 'other', title: 'Nope', url: 'java\tscript:alert(1)' },
+      });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  it('stores the booking link on a transport booking too', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const created = await h.client.callTool({
+        name: 'create_transport',
+        arguments: {
+          tripId: trip.id, type: 'car', title: 'Zurich → Milan',
+          url: 'https://rental.example/booking/8891',
+        },
+      });
+      const { reservation } = parseToolResult(created) as { reservation: { id: number } };
+      expect(testDb.prepare('SELECT url FROM reservations WHERE id = ?').get(reservation.id)).toEqual({ url: 'https://rental.example/booking/8891' });
+
+      await h.client.callTool({
+        name: 'update_transport',
+        arguments: { tripId: trip.id, reservationId: reservation.id, url: 'https://rental.example/booking/8892' },
+      });
+      expect(testDb.prepare('SELECT url FROM reservations WHERE id = ?').get(reservation.id)).toEqual({ url: 'https://rental.example/booking/8892' });
     });
   });
 });

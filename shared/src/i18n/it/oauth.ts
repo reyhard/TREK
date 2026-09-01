@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Viaggi',
   'oauth.scope.group.places': 'Luoghi',
+  'oauth.scope.group.collections': 'Raccolte',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Bagagli',
   'oauth.scope.group.todos': 'Attività',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Meteo',
   'oauth.scope.group.journey': 'Diario di viaggio',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Visualizza viaggi e itinerari',
   'oauth.scope.trips:read.description': 'Leggi viaggi, giorni, note giornaliere e membri',
   'oauth.scope.trips:write.label': 'Modifica viaggi e itinerari',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Leggi luoghi, assegnazioni giornaliere, tag e categorie',
   'oauth.scope.places:write.label': 'Gestisci luoghi',
   'oauth.scope.places:write.description': 'Crea, aggiorna ed elimina luoghi, assegnazioni e tag',
+  'oauth.scope.collections:read.label': 'Visualizza raccolte',
+  'oauth.scope.collections:read.description':
+    'Leggi le raccolte di luoghi salvati, i relativi luoghi, valutazioni, etichette e membri',
+  'oauth.scope.collections:write.label': 'Gestisci raccolte',
+  'oauth.scope.collections:write.description':
+    'Crea/modifica raccolte, salva, valuta, etichetta e copia luoghi e condividi elenchi',
   'oauth.scope.atlas:read.label': 'Visualizza Atlas',
   'oauth.scope.atlas:read.description': 'Leggi paesi visitati, regioni e lista dei desideri',
   'oauth.scope.atlas:write.label': 'Gestisci Atlas',
@@ -70,6 +79,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Gestisci link diari di viaggio',
   'oauth.scope.journey:share.description':
     'Crea, aggiorna e revoca link di condivisione pubblici per i diari di viaggio',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

@@ -1,6 +1,7 @@
-import { ArrowLeft, Calendar, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
-import { useTranslation } from '../../i18n';
+import { useState } from 'react'
+import { localIsoDate } from '../../utils/localDate'
+import { ArrowLeft, ChevronRight, Calendar } from 'lucide-react'
+import { useTranslation } from '../../i18n'
 
 export function DatePicker({
   value,
@@ -63,8 +64,10 @@ export function DatePicker({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-[10]" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-[20] mt-1 w-[280px] rounded-xl border border-zinc-200 bg-white p-3 shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
+          {/* Click-away catcher — no semantics of its own; the trigger button
+              above closes the popover again from the keyboard. */}
+          <div role="presentation" className="fixed inset-0 z-[10]" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 z-[20] bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg p-3 w-[280px]">
             {/* Month nav */}
             <div className="mb-2 flex items-center justify-between">
               <button
@@ -96,11 +99,11 @@ export function DatePicker({
             {/* Day grid */}
             <div className="grid grid-cols-7">
               {cells.map((day, i) => {
-                if (day === null) return <div key={`e${i}`} />;
-                const dateStr = `${viewMonth.year}-${pad(viewMonth.month + 1)}-${pad(day)}`;
-                const isSelected = dateStr === value;
-                const isTrip = tripDates?.has(dateStr);
-                const isToday = dateStr === new Date().toISOString().split('T')[0];
+                if (day === null) return <div key={`e${i}`} />
+                const dateStr = `${viewMonth.year}-${pad(viewMonth.month + 1)}-${pad(day)}`
+                const isSelected = dateStr === value
+                const isTrip = tripDates?.has(dateStr)
+                const isToday = dateStr === localIsoDate()
 
                 return (
                   <button

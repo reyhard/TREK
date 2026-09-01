@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Chuyến đi',
   'oauth.scope.group.places': 'Địa điểm',
+  'oauth.scope.group.collections': 'Bộ sưu tập',
   'oauth.scope.group.atlas': 'Bản đồ',
   'oauth.scope.group.packing': 'Đóng gói',
   'oauth.scope.group.todos': 'Việc cần làm',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'địa lý',
   'oauth.scope.group.weather': 'Thời tiết',
   'oauth.scope.group.journey': 'Hành trình',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Xem chuyến đi & hành trình',
   'oauth.scope.trips:read.description': 'Đọc các chuyến đi, ngày, ghi chú trong ngày và các thành viên',
   'oauth.scope.trips:write.label': 'Chỉnh sửa chuyến đi và hành trình',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Đọc địa điểm, bài tập trong ngày, thẻ và danh mục',
   'oauth.scope.places:write.label': 'Quản lý địa điểm',
   'oauth.scope.places:write.description': 'Tạo, cập nhật và xóa địa điểm, bài tập và thẻ',
+  'oauth.scope.collections:read.label': 'Xem bộ sưu tập',
+  'oauth.scope.collections:read.description':
+    'Đọc bộ sưu tập địa điểm đã lưu cùng các địa điểm, đánh giá, nhãn và thành viên trong đó',
+  'oauth.scope.collections:write.label': 'Quản lý bộ sưu tập',
+  'oauth.scope.collections:write.description':
+    'Tạo/chỉnh sửa bộ sưu tập, lưu, đánh giá, gắn nhãn và sao chép địa điểm, chia sẻ danh sách',
   'oauth.scope.atlas:read.label': 'Xem bản đồ',
   'oauth.scope.atlas:read.description': 'Đọc các quốc gia, khu vực và danh sách nhóm đã ghé thăm',
   'oauth.scope.atlas:write.label': 'Quản lý bản đồ',
@@ -70,6 +79,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': 'Tạo, cập nhật và xóa hành trình cũng như các mục nhập của chúng',
   'oauth.scope.journey:share.label': 'Quản lý liên kết hành trình',
   'oauth.scope.journey:share.description': 'Tạo, cập nhật và thu hồi liên kết chia sẻ công khai cho hành trình',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Đang ủy quyền…',
   'oauth.authorize.loading': 'Đang tải…',
   'oauth.authorize.errorTitle': 'Lỗi ủy quyền',

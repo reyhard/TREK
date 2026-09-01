@@ -1,4 +1,4 @@
-import { forwardRef, useRef, type InputHTMLAttributes } from 'react';
+import { useRef, type InputHTMLAttributes, type Ref } from 'react'
 
 export type NumericMode = 'integer' | 'decimal' | 'signed';
 
@@ -22,8 +22,9 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange' | '
   onValueChange: (value: string) => void;
   mode?: NumericMode;
   /** Escape hatch for a field that must not steal the caret (none today). */
-  selectOnFocus?: boolean;
-};
+  selectOnFocus?: boolean
+  ref?: Ref<HTMLInputElement>
+}
 
 /**
  * A numeric text input that replaces its contents when you type into it.
@@ -52,10 +53,9 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange' | '
  * Styling and commit semantics stay with the caller: some fields save on every keystroke,
  * others on blur. This owns only the part that was uniformly broken.
  */
-export const NumericInput = forwardRef<HTMLInputElement, Props>(function NumericInput(
-  { value, onValueChange, mode = 'integer', selectOnFocus = true, onFocus, inputMode, ...rest },
-  ref
-) {
+export function NumericInput({
+  value, onValueChange, mode = 'integer', selectOnFocus = true, onFocus, inputMode, ref, ...rest
+}: Props) {
   // Set while a deferred select() is queued; any input in that window cancels it.
   const selectPending = useRef(false);
 
@@ -83,5 +83,5 @@ export const NumericInput = forwardRef<HTMLInputElement, Props>(function Numeric
         onFocus?.(e);
       }}
     />
-  );
-});
+  )
+}

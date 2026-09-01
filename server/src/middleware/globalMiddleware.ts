@@ -1,11 +1,63 @@
-import { logDebug, logWarn, logError } from '../services/auditLog';
-import { enforceGlobalMfaPolicy } from './mfaPolicy';
-
-import compression from 'compression';
-import cookieParser from 'cookie-parser';
-import cors from 'cors';
 import express, { Request, Response, NextFunction } from 'express';
+import compression from 'compression';
+import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import { readEnv, type AppEnv } from '../app-config';
+import { logDebug, logWarn, logError } from '../nest/audit/audit-log.logger';
+
+/**
+ * Field names redacted from request-log query/body dumps (case-insensitive —
+ * lookup lowercases the key first). `secretaccesskey` covers the S3 storage
+ * backend's secret field (storage-admin PUT bodies land in the same debug
+ * log line as any other request body).
+ *
+ * Exported (module-level, not per-request) so it can be unit-tested directly
+ * without threading LOG_LEVEL through the real logger pipeline.
+ */
+export const SENSITIVE_KEYS = new Set([
+  'password',
+  'new_password',
+  'current_password',
+  'token',
+  'jwt',
+  'authorization',
+  'cookie',
+  'client_secret',
+  'mfa_token',
+  'code',
+  'smtp_pass',
+  'secretaccesskey',
+]);
+
+/**
+ * Suffixes that make a field sensitive whatever its prefix. Matched on the end of
+ * the key, not anywhere in it: `accessKeyId` is an identifier and stays readable,
+ * while `refresh_token`, `code_verifier`, `mapbox_access_token` and the whole
+ * `*_api_key` family are secrets nobody needs in a debug log.
+ */
+const SENSITIVE_SUFFIXES = ['_token', '_key', '_secret', '_password', '_pass', '_verifier'];
+
+function isSensitiveName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return SENSITIVE_KEYS.has(lower) || SENSITIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
+
+/** Deep-redacts every key in `SENSITIVE_KEYS` (case-insensitive) from a request-log value. */
+export function redact(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return (value as unknown[]).map(redact);
+  const entries = value as Record<string, unknown>;
+  // PUT /api/settings names the setting instead of using it as the field:
+  // {key: 'carto_api_key', value: '<secret>'}. Neither field name is sensitive
+  // on its own, so without this the secret goes into the debug log in cleartext.
+  const namedSecret = typeof entries.key === 'string' && isSensitiveName(entries.key);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(entries)) {
+    out[k] = isSensitiveName(k) || (namedSecret && k === 'value') ? '[REDACTED]' : redact(v);
+  }
+  return out;
+}
 
 /**
  * The global request pipeline shared by the legacy Express app and the NestJS
@@ -16,15 +68,24 @@ import helmet from 'helmet';
  * behaviourally transparent — and is the prerequisite for retiring Express,
  * since the Nest instance must carry the whole shell on its own.
  *
- * `bodyParser` is opt-out: the Nest instance does its own body parsing, so it
- * passes `false` to avoid parsing the request twice.
+ * Body parsing is NOT here: the Nest instance does it, with the limit pinned in
+ * bootstrap.ts. The flag that used to switch a second parser on had exactly one
+ * caller, which passed false.
  */
-export function applyGlobalMiddleware(app: express.Application, opts: { bodyParser?: boolean } = {}): void {
-  const { bodyParser = true } = opts;
+export function applyGlobalMiddleware(
+  app: express.Application,
+  opts: { http?: AppEnv['http'] } = {},
+): void {
+  // The whole pipeline is configured at APPLY time (the per-request closures
+  // capture these values), so a snapshot is the correct semantic. bootstrap
+  // threads in the DI-loaded httpConfig; direct callers fall back to an
+  // apply-time readEnv() — same values, same freeze point.
+  const { http = readEnv().http } = opts;
+  const { nodeEnv, isProduction } = readEnv().app;
 
   // Trust first proxy (nginx/Docker) for correct req.ip
-  if (process.env.NODE_ENV?.toLowerCase() === 'production' || process.env.TRUST_PROXY) {
-    app.set('trust proxy', Number.parseInt(process.env.TRUST_PROXY) || 1);
+  if (isProduction || http.trustProxyRaw) {
+    app.set('trust proxy', http.trustProxy);
   }
 
   // Compress responses (gzip via Accept-Encoding). The Atlas admin-0 country
@@ -42,11 +103,7 @@ export function applyGlobalMiddleware(app: express.Application, opts: { bodyPars
     }),
   );
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-        .map((o) => o.trim())
-        .filter(Boolean)
-    : null;
+  const allowedOrigins = http.corsOrigins;
 
   let corsOrigin: cors.CorsOptions['origin'];
   if (allowedOrigins) {
@@ -54,13 +111,13 @@ export function applyGlobalMiddleware(app: express.Application, opts: { bodyPars
       if (!origin || allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error('Not allowed by CORS'));
     };
-  } else if (process.env.NODE_ENV?.toLowerCase() === 'production') {
+  } else if (isProduction) {
     corsOrigin = false;
   } else {
     corsOrigin = true;
   }
 
-  const shouldForceHttps = process.env.FORCE_HTTPS?.toLowerCase() === 'true';
+  const shouldForceHttps = http.forceHttps;
   // HSTS is worth enabling any time we're serving production traffic,
   // not only when FORCE_HTTPS is set. Self-hosters behind Traefik /
   // Caddy / Cloudflare Tunnel typically leave FORCE_HTTPS unset (the
@@ -72,8 +129,10 @@ export function applyGlobalMiddleware(app: express.Application, opts: { bodyPars
   // sibling subdomain the same operator may still be running over plain
   // HTTP. Operators who want the stricter policy opt in with
   // `HSTS_INCLUDE_SUBDOMAINS=true`.
-  const hstsActive = shouldForceHttps || process.env.NODE_ENV === 'production';
-  const hstsIncludeSubdomains = process.env.HSTS_INCLUDE_SUBDOMAINS === 'true';
+  // nodeEnv compared case-sensitively here on purpose (legacy parity — the
+  // trust-proxy/CORS checks above are the case-insensitive ones).
+  const hstsActive = shouldForceHttps || nodeEnv === 'production';
+  const hstsIncludeSubdomains = http.hstsIncludeSubdomains;
 
   // RFC 8414 / RFC 9728 / RFC 7591: discovery docs and DCR are world-readable/writable.
   // /mcp needs open CORS so external MCP clients (ChatGPT, Claude.ai, Inspector) can call it
@@ -90,118 +149,107 @@ export function applyGlobalMiddleware(app: express.Application, opts: { bodyPars
   // session per tool call until the per-user cap wedges the connection. Same reasoning for
   // WWW-Authenticate, which carries the RFC 9728 resource-metadata challenge that drives
   // OAuth discovery.
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    if (
-      req.path.startsWith('/.well-known/') ||
-      req.path === '/oauth/register' ||
-      req.path === '/oauth/authorize' ||
-      req.path === '/oauth/userinfo' ||
-      req.path === '/mcp'
-    ) {
-      cors({
-        origin: '*',
-        credentials: false,
-        exposedHeaders: ['Mcp-Session-Id', 'MCP-Protocol-Version', 'WWW-Authenticate'],
-      })(req, _res, next);
-    } else {
-      next();
-    }
-  });
-  app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'wasm-unsafe-eval'", "'unsafe-eval'"],
-          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://unpkg.com'],
-          imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-          connectSrc: [
-            "'self'",
-            'ws:',
-            'wss:',
-            'https://nominatim.openstreetmap.org',
-            'https://overpass-api.de',
-            'https://places.googleapis.com',
-            'https://api.openweathermap.org',
-            'https://en.wikipedia.org',
-            'https://commons.wikimedia.org',
-            'https://*.basemaps.cartocdn.com',
-            'https://*.tile.openstreetmap.org',
-            'https://unpkg.com',
-            'https://open-meteo.com',
-            'https://api.open-meteo.com',
-            'https://geocoding-api.open-meteo.com',
-            'https://api.frankfurter.dev',
-            'https://router.project-osrm.org/route/v1/',
-            'https://routing.openstreetmap.de/',
-            'https://api.mapbox.com',
-            'https://*.tiles.mapbox.com',
-            'https://events.mapbox.com',
-            'https://tiles.openfreemap.org',
-          ],
-          workerSrc: ["'self'", 'blob:'],
-          childSrc: ["'self'", 'blob:'],
-          fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-          // 'self' so same-origin file previews can embed PDFs via <object>/<embed>
-          // (Firefox/Chrome enforce object-src; 'none' broke inline PDF previews there).
-          objectSrc: ["'self'"],
-          // 'self' so the app can embed same-origin, sandboxed plugin frames
-          // (/plugin-frame/*). Those frames are sandboxed WITHOUT allow-same-origin,
-          // so they run at an opaque origin and get their own locked-down CSP.
-          frameSrc: ["'self'"],
-          frameAncestors: ["'self'"],
-          // Restrict <form> submission targets (form-action has no default-src
-          // fallback, so it must be set explicitly).
-          formAction: ["'self'"],
-          upgradeInsecureRequests: shouldForceHttps ? [] : null,
-        },
-      },
-      crossOriginEmbedderPolicy: false,
-      hsts: hstsActive ? { maxAge: 31536000, includeSubDomains: hstsIncludeSubdomains } : false,
-      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    }),
+    (req: Request, _res: Response, next: NextFunction) => {
+      if (
+        req.path.startsWith('/.well-known/') ||
+        req.path === '/oauth/register' ||
+        req.path === '/oauth/authorize' ||
+        req.path === '/oauth/userinfo' ||
+        req.path === '/mcp'
+      ) {
+        cors({
+          origin: '*',
+          credentials: false,
+          exposedHeaders: ['Mcp-Session-Id', 'MCP-Protocol-Version', 'WWW-Authenticate'],
+        })(req, _res, next);
+      } else {
+        next();
+      }
+    },
   );
+  app.use(cors({ origin: corsOrigin, credentials: true }));
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // 'unsafe-eval' is load-bearing, not leftover: heic-to's libheif build
+        // initialises embind through new Function(), and that is what converts
+        // an iPhone .heic the moment somebody picks one. 'wasm-unsafe-eval'
+        // alone was tried first and was not enough (93b51a0b). The package
+        // ships a CSP-safe entry point at heic-to/csp; dropping this directive
+        // means switching client/src/utils/convertHeic.ts over to it and
+        // verifying a real .heic upload in a browser, not just deleting the
+        // string here.
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        connectSrc: [
+          "'self'", "ws:", "wss:",
+          "https://nominatim.openstreetmap.org", "https://overpass-api.de",
+          "https://places.googleapis.com", "https://api.openweathermap.org",
+          "https://en.wikipedia.org", "https://commons.wikimedia.org",
+          // Both forms here too: CARTO documents the apex host on its key page,
+          // so that is the template users paste in, and the {s} sharded form is
+          // what TREK ships (#2054).
+          "https://basemaps.cartocdn.com", "https://*.basemaps.cartocdn.com",
+          // Both forms: a CSP wildcard host never matches the apex, and OSM
+          // serves everything from the bare tile.openstreetmap.org since it
+          // retired the a/b/c/d shards (#1733). The sharded hosts stay listed
+          // for tile templates users saved before that.
+          "https://tile.openstreetmap.org", "https://*.tile.openstreetmap.org",
+          "https://unpkg.com", "https://open-meteo.com", "https://api.open-meteo.com",
+          "https://geocoding-api.open-meteo.com", "https://api.frankfurter.dev",
+          "https://router.project-osrm.org/route/v1/", "https://routing.openstreetmap.de/",
+          "https://api.mapbox.com", "https://*.tiles.mapbox.com", "https://events.mapbox.com",
+          "https://tiles.openfreemap.org"
+        ],
+        workerSrc: ["'self'", "blob:"],
+        childSrc: ["'self'", "blob:"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        // 'self' so same-origin file previews can embed PDFs via <object>/<embed>
+        // (Firefox/Chrome enforce object-src; 'none' broke inline PDF previews there).
+        objectSrc: ["'self'"],
+        // 'self' so the app can embed same-origin, sandboxed plugin frames
+        // (/plugin-frame/*). Those frames are sandboxed WITHOUT allow-same-origin,
+        // so they run at an opaque origin and get their own locked-down CSP.
+        frameSrc: ["'self'"],
+        frameAncestors: ["'self'"],
+        // Restrict <form> submission targets (form-action has no default-src
+        // fallback, so it must be set explicitly).
+        formAction: ["'self'"],
+        upgradeInsecureRequests: shouldForceHttps ? [] : null
+      }
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: hstsActive ? { maxAge: 31536000, includeSubDomains: hstsIncludeSubdomains } : false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  }));
+
+  // The instance's own hostname, when the operator configured one. The redirect
+  // below is a 301, so echoing a client-supplied Host header would let a stranger
+  // park a foreign origin in a visitor's cache. Falls back to the request Host for
+  // instances that never set APP_URL, which is what it always did.
+  const configuredHost = (() => {
+    const url = readEnv().app.appUrl;
+    try {
+      return url ? new URL(url).host : null;
+    } catch {
+      return null;
+    }
+  })();
 
   if (shouldForceHttps) {
     app.use((req: Request, res: Response, next: NextFunction) => {
       if (req.path === '/api/health') return next();
       if (req.secure || req.headers['x-forwarded-proto'] === 'https') return next();
-      res.redirect(301, 'https://' + req.headers.host + req.url);
+      res.redirect(301, 'https://' + (configuredHost ?? req.headers.host) + req.url);
     });
   }
 
-  if (bodyParser) {
-    app.use(express.json({ limit: '100kb' }));
-    app.use(express.urlencoded({ extended: true }));
-  }
   app.use(cookieParser());
-  app.use(enforceGlobalMfaPolicy);
 
-  // Request logging with sensitive field redaction
-  const SENSITIVE_KEYS = new Set([
-    'password',
-    'new_password',
-    'current_password',
-    'token',
-    'jwt',
-    'authorization',
-    'cookie',
-    'client_secret',
-    'mfa_token',
-    'code',
-    'smtp_pass',
-  ]);
-  const redact = (value: unknown): unknown => {
-    if (!value || typeof value !== 'object') return value;
-    if (Array.isArray(value)) return (value as unknown[]).map(redact);
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = SENSITIVE_KEYS.has(k.toLowerCase()) ? '[REDACTED]' : redact(v);
-    }
-    return out;
-  };
-
+  // Request logging with sensitive field redaction (SENSITIVE_KEYS/redact above)
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/api/health') return next();
     const startedAt = Date.now();

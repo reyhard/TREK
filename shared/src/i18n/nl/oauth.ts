@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Reizen',
   'oauth.scope.group.places': 'Plaatsen',
+  'oauth.scope.group.collections': 'Collecties',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Paklijst',
   'oauth.scope.group.todos': 'Taken',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Weer',
   'oauth.scope.group.journey': 'Reisverslag',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Reizen en reisplannen bekijken',
   'oauth.scope.trips:read.description': 'Reizen, dagen, notities en leden lezen',
   'oauth.scope.trips:write.label': 'Reizen en reisplannen bewerken',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Plaatsen, dagtoewijzingen, tags en categorieën lezen',
   'oauth.scope.places:write.label': 'Plaatsen beheren',
   'oauth.scope.places:write.description': 'Plaatsen, toewijzingen en tags aanmaken, bijwerken en verwijderen',
+  'oauth.scope.collections:read.label': 'Collecties bekijken',
+  'oauth.scope.collections:read.description':
+    'Collecties met opgeslagen plekken lezen, inclusief hun plekken, beoordelingen, labels en leden',
+  'oauth.scope.collections:write.label': 'Collecties beheren',
+  'oauth.scope.collections:write.description':
+    'Collecties maken/bewerken, plekken opslaan, beoordelen, labelen en kopiëren, en lijsten delen',
   'oauth.scope.atlas:read.label': 'Atlas bekijken',
   'oauth.scope.atlas:read.description': "Bezochte landen, regio's en bucketlist lezen",
   'oauth.scope.atlas:write.label': 'Atlas beheren',
@@ -71,6 +80,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': 'Reisverslagen en hun vermeldingen aanmaken, bijwerken en verwijderen',
   'oauth.scope.journey:share.label': 'Reisverslag-links beheren',
   'oauth.scope.journey:share.description': 'Publieke deellinks voor reisverslagen aanmaken, bijwerken en intrekken',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Επιβεβαιωμένη Κράτηση',
   'inspector.pendingRes': 'Εκκρεμής Κράτηση',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'Πλοήγηση',
+  'inspector.openWith': 'Άνοιγμα με',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.saveToCollection': 'Αποθήκευση στη Συλλογή',
   'inspector.savedToCollection': 'Αποθηκεύτηκε',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'Χρώμα διαδρομής',
+  'inspector.trackColorAuto': 'Αυτόματο χρώμα',
+  'inspector.trackColorCustom': 'Επιλογή προσαρμοσμένου χρώματος',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

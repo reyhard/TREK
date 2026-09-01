@@ -1,5 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 export interface McpSession {
   server: McpServer;
@@ -12,6 +12,8 @@ export interface McpSession {
   /** true when authenticated via static trek_ token */
   isStaticToken: boolean;
   lastActivity: number;
+  /** IP of the most recent authorized request — what mcp.tool_call audit rows record */
+  lastClientIp: string | null;
 }
 
 export const sessions = new Map<string, McpSession>();

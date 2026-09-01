@@ -147,9 +147,9 @@ describe('DEPLOY-DOCS-004: deployment surface parity preserved', () => {
 });
 
 describe('DEPLOY-DOCS-005: chart version bumped', () => {
-  it('Chart.yaml version is 3.4.1', () => {
+  it('Chart.yaml version is 4.0.0', () => {
     const content = readRelative(['charts', 'trek', 'Chart.yaml']);
-    expect(content).toMatch(/^version:\s*3\.4\.1$/m);
-    expect(content).toMatch(/^appVersion:\s*"3\.4\.1"$/m);
+    expect(content).toMatch(/^version:\s*4\.0\.0$/m);
+    expect(content).toMatch(/^appVersion:\s*"4\.0\.0"$/m);
   });
 });

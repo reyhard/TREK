@@ -1,6 +1,4 @@
-import { test, clearNotices, expect } from './shot'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
+import { test, clearNotices, expect, loadSeed } from './shot'
 
 /**
  * Detail pages and the surfaces that need a couple of clicks to reach.
@@ -10,11 +8,8 @@ import path from 'node:path'
  * the run instead of producing a screenshot of the wrong screen.
  */
 
-const seed = JSON.parse(
-  readFileSync(path.join(process.cwd(), 'e2e', '.tmp', 'seed.json'), 'utf8'),
-) as { tripId: number; collectionId?: number; journeyId?: number }
-
 test('collection detail', async ({ page, shot }) => {
+  const seed = loadSeed()
   test.skip(!seed.collectionId, 'collections addon unavailable during seed')
   await page.goto(`/collections/${seed.collectionId}`)
   await clearNotices(page)
@@ -22,6 +17,7 @@ test('collection detail', async ({ page, shot }) => {
 })
 
 test('journey detail', async ({ page, shot }) => {
+  const seed = loadSeed()
   test.skip(!seed.journeyId, 'journey addon unavailable during seed')
   await page.goto(`/journey/${seed.journeyId}`)
   await clearNotices(page)
@@ -65,6 +61,7 @@ test('two-factor setup', async ({ page, shot }) => {
  * instead — same surface, no side effect — and close it again.
  */
 test('costs — record a settle-up payment', async ({ page, shot }) => {
+  const seed = loadSeed()
   await page.goto(`/trips/${seed.tripId}`)
   await clearNotices(page)
   await page.getByRole('button', { name: 'Costs', exact: true }).first().click()
@@ -81,6 +78,7 @@ test('costs — record a settle-up payment', async ({ page, shot }) => {
 })
 
 test('trip files', async ({ page, shot }) => {
+  const seed = loadSeed()
   await page.goto(`/trips/${seed.tripId}/files`)
   await clearNotices(page)
   await expect(page).toHaveURL(/files/)

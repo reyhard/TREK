@@ -1,7 +1,5 @@
 import { AnthropicClient } from '../../../../src/nest/llm-parse/clients/anthropic.client';
-import { OpenAiCompatibleClient } from '../../../../src/nest/llm-parse/clients/openai-compatible.client';
-import { createLlmClient } from '../../../../src/nest/llm-parse/llm-client.factory';
-import type { ResolvedLlmConfig } from '../../../../src/services/llmConfig';
+import type { ResolvedLlmConfig } from '../../../../src/nest/llm-parse/llm-config';
 
 import { describe, it, expect } from 'vitest';
 

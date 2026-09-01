@@ -68,10 +68,22 @@ export default function PasskeysSection({ demoMode }: { demoMode?: boolean }): R
 
   const canAdd = enabled && configured;
 
+  // Both step-up flows are gated by disabled={busy || !pwd} on their submit button,
+  // so the password is always present by the time these run.
   const handleAdd = async () => {
-    if (!addPwd) {
-      toast.error(t('settings.passkey.passwordRequired'));
-      return;
+    setBusy(true)
+    try {
+      const options = await authApi.passkey.registerOptions(addPwd)
+      const attResp = await startRegistration({ optionsJSON: options })
+      await authApi.passkey.registerVerify(attResp, addName.trim() || undefined)
+      toast.success(t('settings.passkey.addedToast'))
+      setAddOpen(false); setAddPwd(''); setAddName('')
+      refresh()
+    } catch (err: unknown) {
+      if (isWebauthnAbort(err)) toast.error(t('settings.passkey.cancelled'))
+      else toast.error(getApiErrorMessage(err, t('settings.passkey.addError')))
+    } finally {
+      setBusy(false)
     }
     setBusy(true);
     try {
@@ -107,9 +119,16 @@ export default function PasskeysSection({ demoMode }: { demoMode?: boolean }): R
   };
 
   const handleDelete = async (id: number) => {
-    if (!deletePwd) {
-      toast.error(t('settings.passkey.passwordRequired'));
-      return;
+    setBusy(true)
+    try {
+      await authApi.passkey.delete(id, deletePwd)
+      toast.success(t('settings.passkey.deleted'))
+      setDeletingId(null); setDeletePwd('')
+      refresh()
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, t('common.error')))
+    } finally {
+      setBusy(false)
     }
     setBusy(true);
     try {

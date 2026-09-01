@@ -1,13 +1,13 @@
-import { Download, ExternalLink, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import ReactDOM from 'react-dom';
-import Markdown from 'react-markdown';
-import rehypeSanitize from 'rehype-sanitize';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
-import { openFile as openFileUrl } from '../../utils/fileDownload';
-import { triggerDownload } from './FileManager.helpers';
-import type { FileManagerState } from './useFileManager';
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ExternalLink, Download, X } from 'lucide-react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import rehypeSanitize from 'rehype-sanitize'
+import { openFile as openFileUrl } from '../../utils/fileDownload'
+import type { FileManagerState } from './useFileManager'
+import { triggerDownload } from './FileManager.helpers'
 
 /**
  * Inline preview for uploaded Markdown files (#1345). Fetches the file's text via
@@ -38,33 +38,16 @@ export function MarkdownPreviewModal(S: FileManagerState) {
     };
   }, [previewFileUrl]);
 
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.85)',
-        zIndex: 10000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-      }}
+      role="presentation"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={() => setPreviewFile(null)}
     >
       <div
-        style={{
-          width: '100%',
-          maxWidth: 820,
-          height: '94vh',
-          background: 'var(--bg-card)',
-          borderRadius: 12,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        }}
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        style={{ width: '100%', maxWidth: 820, height: '94vh', background: 'var(--bg-card)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+        onClick={e => e.stopPropagation()}
       >
         <div
           style={{
@@ -90,26 +73,12 @@ export function MarkdownPreviewModal(S: FileManagerState) {
             {previewFile.original_name}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <button
-              onClick={() =>
-                openFileUrl(previewFile.url, previewFile.original_name).catch(() => toast.error(t('files.openError')))
-              }
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                color: 'var(--text-muted)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: 6,
-              }}
-            >
+            <button type="button"
+              onClick={() => openFileUrl(previewFile.url, previewFile.original_name).catch(() => toast.error(t('files.openError')))}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(12px * var(--fs-scale-body, 1))', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 6 }}>
               <ExternalLink size={13} /> {t('files.openTab')}
             </button>
-            <button
+            <button type="button"
               onClick={() => triggerDownload(previewFile.url, previewFile.original_name)}
               style={{
                 display: 'flex',
@@ -126,18 +95,8 @@ export function MarkdownPreviewModal(S: FileManagerState) {
             >
               <Download size={13} /> {t('files.download') || 'Download'}
             </button>
-            <button
-              onClick={() => setPreviewFile(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-faint)',
-                display: 'flex',
-                padding: 4,
-                borderRadius: 6,
-              }}
-            >
+            <button type="button" onClick={() => setPreviewFile(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 4, borderRadius: 6 }}>
               <X size={18} />
             </button>
           </div>

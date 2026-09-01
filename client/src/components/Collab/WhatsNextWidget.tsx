@@ -1,9 +1,11 @@
-import { Calendar, MapPin, Sparkles } from 'lucide-react';
-import React, { useMemo } from 'react';
-import { useTranslation } from '../../i18n';
-import { useSettingsStore } from '../../store/settingsStore';
-import { useTripStore } from '../../store/tripStore';
-import { avatarSrc } from '../../utils/avatarSrc';
+import React, { useMemo } from 'react'
+import { avatarSrc } from '../../utils/avatarSrc'
+import { useTripStore } from '../../store/tripStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { useTranslation } from '../../i18n'
+import { MapPin, Clock, Users, Sparkles } from 'lucide-react'
+import EmptyState from '../shared/EmptyState'
+import { localToday } from '../Planner/today'
 
 function formatTime(timeStr, is12h) {
   if (!timeStr) return '';
@@ -17,10 +19,11 @@ function formatTime(timeStr, is12h) {
 }
 
 function formatDayLabel(date, t, locale) {
-  const now = new Date();
-  const nowDate = now.toISOString().split('T')[0];
-  const tomorrowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-  const tomorrowDate = tomorrowUtc.toISOString().split('T')[0];
+  const now = new Date()
+  // Day dates are plain calendar strings, so "today"/"tomorrow" have to be
+  // compared against the local calendar day, not the UTC one.
+  const nowDate = localToday(now)
+  const tomorrowDate = localToday(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
 
   if (date === nowDate) return t('collab.whatsNext.today') || 'Today';
   if (date === tomorrowDate) return t('collab.whatsNext.tomorrow') || 'Tomorrow';
@@ -50,10 +53,10 @@ export default function WhatsNextWidget({ tripMembers = [] }: WhatsNextWidgetPro
   const is12h = useSettingsStore((s) => s.settings.time_format) === '12h';
 
   const upcoming = useMemo(() => {
-    const now = new Date();
-    const nowDate = now.toISOString().split('T')[0];
-    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const items = [];
+    const now = new Date()
+    const nowDate = localToday(now)
+    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    const items = []
 
     for (const day of days || []) {
       if (!day.date) continue;
@@ -120,32 +123,7 @@ export default function WhatsNextWidget({ tripMembers = [] }: WhatsNextWidgetPro
       {/* List */}
       <div className="chat-scroll" style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
         {upcoming.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              padding: '48px 20px',
-              textAlign: 'center',
-            }}
-          >
-            <Calendar size={36} color="var(--text-faint)" strokeWidth={1.3} style={{ marginBottom: 12 }} />
-            <div
-              style={{
-                fontSize: 'calc(14px * var(--fs-scale-body, 1))',
-                fontWeight: 600,
-                color: 'var(--text-secondary)',
-                marginBottom: 4,
-              }}
-            >
-              {t('collab.whatsNext.empty')}
-            </div>
-            <div style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', color: 'var(--text-faint)' }}>
-              {t('collab.whatsNext.emptyHint')}
-            </div>
-          </div>
+          <EmptyState scene="guide" title={t('collab.whatsNext.empty')} />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {upcoming.map((item, idx) => {
@@ -279,43 +257,21 @@ export default function WhatsNextWidget({ tripMembers = [] }: WhatsNextWidgetPro
                       {/* Participants */}
                       {item.participants.length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                          {item.participants.map((p) => (
-                            <div
-                              key={p.user_id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                padding: '2px 8px 2px 3px',
-                                borderRadius: 99,
-                                background: 'var(--bg-tertiary)',
-                                border: '1px solid var(--border-faint)',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: 16,
-                                  height: 16,
-                                  borderRadius: '50%',
-                                  background: 'var(--bg-secondary)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: 'calc(7px * var(--fs-scale-caption, 1))',
-                                  fontWeight: 700,
-                                  color: 'var(--text-muted)',
-                                  overflow: 'hidden',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {p.avatar ? (
-                                  <img
-                                    src={avatarSrc(p.avatar)!}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                  />
-                                ) : (
-                                  p.username?.[0]?.toUpperCase()
-                                )}
+                          {item.participants.map(p => (
+                            <div key={p.user_id} style={{
+                              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px 2px 3px',
+                              borderRadius: 99, background: 'var(--bg-tertiary)', border: '1px solid var(--border-faint)',
+                            }}>
+                              <div style={{
+                                width: 16, height: 16, borderRadius: '50%', background: 'var(--bg-secondary)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 'calc(7px * var(--fs-scale-caption, 1))', fontWeight: 700, color: 'var(--text-muted)',
+                                overflow: 'hidden', flexShrink: 0,
+                              }}>
+                                {p.avatar
+                                  ? <img src={avatarSrc(p.avatar)!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  : p.username?.[0]?.toUpperCase()
+                                }
                               </div>
                               <span
                                 style={{

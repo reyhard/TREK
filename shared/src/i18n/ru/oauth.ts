@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Поездки',
   'oauth.scope.group.places': 'Места',
+  'oauth.scope.group.collections': 'Коллекции',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Вещи',
   'oauth.scope.group.todos': 'Задачи',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Погода',
   'oauth.scope.group.journey': 'Путешествия',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Просмотр поездок и маршрутов',
   'oauth.scope.trips:read.description': 'Чтение поездок, дней, заметок и участников',
   'oauth.scope.trips:write.label': 'Редактирование поездок и маршрутов',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Чтение мест, назначений по дням, тегов и категорий',
   'oauth.scope.places:write.label': 'Управление местами',
   'oauth.scope.places:write.description': 'Создание, обновление и удаление мест, назначений и тегов',
+  'oauth.scope.collections:read.label': 'Просмотр коллекций',
+  'oauth.scope.collections:read.description':
+    'Чтение коллекций сохранённых мест, входящих в них мест, оценок, меток и участников',
+  'oauth.scope.collections:write.label': 'Управление коллекциями',
+  'oauth.scope.collections:write.description':
+    'Создание и изменение коллекций, сохранение, оценка, добавление меток и копирование мест, а также предоставление доступа к спискам',
   'oauth.scope.atlas:read.label': 'Просмотр Atlas',
   'oauth.scope.atlas:read.description': 'Чтение посещённых стран, регионов и списка желаний',
   'oauth.scope.atlas:write.label': 'Управление Atlas',
@@ -70,6 +79,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': 'Создание, обновление и удаление путешествий и их записей',
   'oauth.scope.journey:share.label': 'Управление ссылками на путешествия',
   'oauth.scope.journey:share.description': 'Создание, обновление и отзыв публичных ссылок для путешествий',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

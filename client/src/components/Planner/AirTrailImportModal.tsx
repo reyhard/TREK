@@ -1,12 +1,13 @@
-import type { AirtrailFlight, AirtrailImportResult } from '@trek/shared';
-import { Check, Plane, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
-import { airtrailApi, reservationsApi } from '../../api/client';
-import { useTranslation } from '../../i18n';
-import { useTripStore } from '../../store/tripStore';
-import { parseReservationMetadata } from '../../utils/flightLegs';
-import { useToast } from '../shared/Toast';
+import React from 'react'
+import { createPortal } from 'react-dom'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Plane, X, Check } from 'lucide-react'
+import type { AirtrailFlight, AirtrailImportResult } from '@trek/shared'
+import { useTranslation } from '../../i18n'
+import { useToast } from '../shared/Toast'
+import { airtrailApi, reservationsApi } from '../../api/client'
+import { useTripStore } from '../../store/tripStore'
+import { parseReservationMetadata } from '../../utils/flightLegs'
 
 interface AirTrailImportModalProps {
   isOpen: boolean;
@@ -242,7 +243,7 @@ export default function AirTrailImportModal({ isOpen, onClose, tripId, pushUndo 
       ? `${f.airline ? `${f.airline} ` : ''}${f.flightNumber}`
       : `${f.fromCode ?? '?'} → ${f.toCode ?? '?'}`;
     return (
-      <button
+      <button type="button"
         key={f.id}
         onClick={() => !already && toggle(f.id)}
         disabled={already}
@@ -332,7 +333,7 @@ export default function AirTrailImportModal({ isOpen, onClose, tripId, pushUndo 
         style={{ border: '1px solid var(--border-primary)', borderRadius: 12, padding: '8px 8px 0', marginBottom: 8 }}
       >
         {chain.map(renderFlight)}
-        <button
+        <button type="button"
           onClick={() => toggleJoin(chain)}
           className="bg-transparent"
           style={{
@@ -375,28 +376,20 @@ export default function AirTrailImportModal({ isOpen, onClose, tripId, pushUndo 
   const renderItem = (item: { chain?: AirtrailFlight[]; flight?: AirtrailFlight }) =>
     item.chain ? renderChain(item.chain) : renderFlight(item.flight!);
 
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
       className="bg-[rgba(0,0,0,0.4)]"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 99999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-      }}
-      onMouseDown={(e) => {
-        mouseDownTarget.current = e.target;
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && mouseDownTarget.current === e.currentTarget) handleClose();
-        mouseDownTarget.current = null;
+      style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      role="presentation"
+      onMouseDown={e => { mouseDownTarget.current = e.target }}
+      onClick={e => {
+        if (e.target === e.currentTarget && mouseDownTarget.current === e.currentTarget) handleClose()
+        mouseDownTarget.current = null
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        onClick={e => e.stopPropagation()}
         className="bg-surface-card"
         style={{
           borderRadius: 16,
@@ -422,18 +415,7 @@ export default function AirTrailImportModal({ isOpen, onClose, tripId, pushUndo 
           >
             {t('reservations.airtrail.title')}
           </div>
-          <button
-            onClick={handleClose}
-            className="bg-transparent text-content-faint"
-            style={{
-              border: 'none',
-              cursor: 'pointer',
-              padding: 4,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
+          <button type="button" onClick={handleClose} className="bg-transparent text-content-faint" style={{ border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center' }}>
             <X size={16} />
           </button>
         </div>
@@ -506,17 +488,8 @@ export default function AirTrailImportModal({ isOpen, onClose, tripId, pushUndo 
           )}
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            justifyContent: 'flex-end',
-            marginTop: 14,
-            paddingTop: 14,
-            borderTop: '1px solid var(--border-faint)',
-          }}
-        >
-          <button
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-faint)' }}>
+          <button type="button"
             onClick={handleClose}
             style={{
               padding: '8px 16px',
@@ -532,7 +505,7 @@ export default function AirTrailImportModal({ isOpen, onClose, tripId, pushUndo 
           >
             {t('common.cancel')}
           </button>
-          <button
+          <button type="button"
             onClick={handleImport}
             disabled={selectableCount === 0 || importing}
             className={

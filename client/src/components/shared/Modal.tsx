@@ -1,7 +1,7 @@
-import { X } from 'lucide-react';
-import React, { useCallback, useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
-import { restoreFocus, saveFocusForRestore } from '../../utils/accessibility';
+import React, { useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
+import { lockBodyScroll } from '../../utils/bodyScrollLock'
 
 const sizeClasses: Record<string, string> = {
   sm: 'max-w-sm',
@@ -10,7 +10,11 @@ const sizeClasses: Record<string, string> = {
   xl: 'max-w-2xl',
   '2xl': 'max-w-4xl',
   '3xl': 'max-w-5xl',
-};
+  // Wide enough for the add-place dialog to carry a detail column beside the
+  // form, and both together beside the collection picker.
+  '4xl': 'max-w-6xl',
+  '5xl': 'max-w-7xl',
+}
 
 interface ModalProps {
   isOpen: boolean;
@@ -39,25 +43,30 @@ export default function Modal({
   );
 
   useEffect(() => {
-    if (isOpen) {
-      saveFocusForRestore();
-      document.addEventListener('keydown', handleEsc);
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      document.removeEventListener('keydown', handleEsc);
-      document.body.style.overflow = '';
-      restoreFocus();
-    };
-  }, [isOpen, handleEsc]);
+    if (!isOpen) return
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [isOpen, handleEsc])
 
-  const mouseDownTarget = useRef<EventTarget | null>(null);
+  // Separate from the key listener so a new onClose identity does not release
+  // and re-take the lock on every render. The shared lock is ref-counted: this
+  // modal must not clear a lock another overlay is still holding (#1809).
+  useEffect(() => {
+    if (!isOpen) return
+    return lockBodyScroll()
+  }, [isOpen])
+
+  const mouseDownTarget = useRef<EventTarget | null>(null)
 
   if (!isOpen) return null;
 
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
-      className="trek-modal-backdrop trek-backdrop-enter fixed inset-0 z-[10000] flex items-start justify-center bg-[rgba(15,23,42,0.5)] px-4 sm:items-center"
+      // Backdrop and panel are plain boxes: the backdrop only catches the
+      // click-away, the panel only keeps that click from reaching it. Escape
+      // and the header's close button are the keyboard route out.
+      role="presentation"
+      className="fixed inset-0 z-[10000] flex items-start sm:items-center justify-center px-4 trek-modal-backdrop trek-backdrop-enter bg-[rgba(15,23,42,0.5)]"
       style={{ paddingTop: 70, paddingBottom: 'calc(20px + var(--bottom-nav-h))', overflow: 'hidden' }}
       onMouseDown={(e) => {
         mouseDownTarget.current = e.target;
@@ -68,14 +77,21 @@ export default function Modal({
       }}
     >
       <div
-        className={`trek-modal-enter w-full overflow-hidden rounded-2xl shadow-2xl ${sizeClasses[size] || sizeClasses.md} flex max-h-[calc(100dvh-var(--bottom-nav-h)-90px)] flex-col bg-surface-card sm:max-h-[calc(100dvh-90px)]`}
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        className={`
+          trek-modal-enter
+          rounded-2xl overflow-hidden shadow-2xl w-full ${sizeClasses[size] || sizeClasses.md}
+          flex flex-col
+          max-h-[calc(100dvh-var(--bottom-nav-h)-90px)] sm:max-h-[calc(100dvh-90px)]
+          bg-surface-card
+        `}
+        onClick={e => e.stopPropagation()}
       >
         {/* Header — stays put even while the body scrolls */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-edge-secondary p-6">
           <h2 className="text-lg font-semibold text-content">{title}</h2>
           {!hideCloseButton && (
-            <button
+            <button type="button"
               onClick={onClose}
               className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
             >

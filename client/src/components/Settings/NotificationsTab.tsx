@@ -1,11 +1,11 @@
-import { Lock } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { notificationsApi, settingsApi } from '../../api/client';
-import { useTranslation } from '../../i18n';
-import { useToast } from '../shared/Toast';
-import Section from './Section';
-import ToggleSwitch from './ToggleSwitch';
+import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router'
+import { Lock } from 'lucide-react'
+import { useTranslation } from '../../i18n'
+import { notificationsApi, settingsApi } from '../../api/client'
+import { useToast } from '../shared/Toast'
+import ToggleSwitch from './ToggleSwitch'
+import Section from './Section'
 
 interface ChannelDescriptor {
   id: string;
@@ -39,6 +39,7 @@ const EVENT_LABEL_KEYS: Record<string, string> = {
   trip_reminder: 'settings.notifyTripReminder',
   todo_due: 'settings.notifyTodoDue',
   vacay_invite: 'settings.notifyVacayInvite',
+  vacay_share: 'settings.notifyVacayShare',
   photos_shared: 'settings.notifyPhotosShared',
   collab_message: 'settings.notifyCollabMessage',
   packing_tagged: 'settings.notifyPackingTagged',
@@ -119,18 +120,26 @@ export default function NotificationsTab(): React.ReactElement {
   };
 
   const toggle = async (eventType: string, channel: string) => {
-    if (!matrix) return;
-    const current = matrix.preferences[eventType]?.[channel] ?? true;
-    const updated = {
-      ...matrix.preferences,
-      [eventType]: { ...matrix.preferences[eventType], [channel]: !current },
-    };
-    setMatrix((m) => (m ? { ...m, preferences: updated } : m));
-    setSaving(true);
+    if (!matrix) return
+    const current = matrix.preferences[eventType]?.[channel] ?? true
+    setMatrix(m => m ? {
+      ...m,
+      preferences: { ...m.preferences, [eventType]: { ...m.preferences[eventType], [channel]: !current } },
+    } : m)
+    setSaving(true)
     try {
-      await notificationsApi.updatePreferences(updated);
+      // Only the toggled cell goes out. The server merges what it gets, and sending the
+      // whole matrix would carry this render's value for every other cell — a second
+      // toggle made while this request is in flight would be overwritten by it.
+      await notificationsApi.updatePreferences({ [eventType]: { [channel]: !current } })
     } catch {
-      setMatrix((m) => (m ? { ...m, preferences: matrix.preferences } : m));
+      // Only this cell rolls back — restoring the whole snapshot would also undo a
+      // toggle the user made while this request was in flight.
+      setMatrix(m => m ? {
+        ...m,
+        preferences: { ...m.preferences, [eventType]: { ...m.preferences[eventType], [channel]: current } },
+      } : m)
+      toast.error(t('common.error'))
     } finally {
       setSaving(false);
     }
@@ -170,10 +179,10 @@ export default function NotificationsTab(): React.ReactElement {
       await settingsApi.setBulk({
         ntfy_topic: ntfyTopic,
         ntfy_server: ntfyServer,
-        ...(ntfyToken && ntfyToken !== '••••••••' ? { ntfy_token: ntfyToken } : {}),
-      });
-      if (ntfyToken && ntfyToken !== '••••••••') setNtfyTokenIsSet(true);
-      toast.success(t('settings.ntfyUrl.saved'));
+        ...(ntfyToken ? { ntfy_token: ntfyToken } : {}),
+      })
+      if (ntfyToken) setNtfyTokenIsSet(true)
+      toast.success(t('settings.ntfyUrl.saved'))
     } catch {
       toast.error(t('common.error'));
     } finally {
@@ -199,10 +208,12 @@ export default function NotificationsTab(): React.ReactElement {
       const result = await notificationsApi.testNtfy({
         topic: ntfyTopic,
         server: ntfyServer || null,
-        token: ntfyToken && ntfyToken !== '••••••••' ? ntfyToken : null,
-      });
-      if (result.success) toast.success(t('settings.ntfyUrl.testSuccess'));
-      else toast.error(result.error || t('settings.ntfyUrl.testFailed'));
+        // A stored token is only masked in the placeholder, never in state — sending
+        // null makes the server fall back to the saved one.
+        token: ntfyToken || null,
+      })
+      if (result.success) toast.success(t('settings.ntfyUrl.testSuccess'))
+      else toast.error(result.error || t('settings.ntfyUrl.testFailed'))
     } catch {
       toast.error(t('settings.ntfyUrl.testFailed'));
     } finally {
@@ -285,7 +296,7 @@ export default function NotificationsTab(): React.ReactElement {
                   color: 'var(--text-primary)',
                 }}
               />
-              <button
+              <button type="button"
                 onClick={saveWebhookUrl}
                 disabled={webhookSaving}
                 style={{
@@ -301,7 +312,7 @@ export default function NotificationsTab(): React.ReactElement {
               >
                 {t('common.save')}
               </button>
-              <button
+              <button type="button"
                 onClick={testWebhookUrl}
                 disabled={(!webhookUrl && !webhookIsSet) || webhookTesting}
                 style={{
@@ -432,7 +443,7 @@ export default function NotificationsTab(): React.ReactElement {
                 }}
               />
               {ntfyTokenIsSet && (
-                <button
+                <button type="button"
                   onClick={clearNtfyToken}
                   style={{
                     fontSize: 'calc(12px * var(--fs-scale-body, 1))',
@@ -447,7 +458,7 @@ export default function NotificationsTab(): React.ReactElement {
                   {t('common.clear')}
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={saveNtfySettings}
                 disabled={ntfySaving}
                 style={{
@@ -463,7 +474,7 @@ export default function NotificationsTab(): React.ReactElement {
               >
                 {t('common.save')}
               </button>
-              <button
+              <button type="button"
                 onClick={testNtfySettings}
                 disabled={!ntfyTopic || ntfyTesting}
                 style={{
@@ -534,7 +545,7 @@ export default function NotificationsTab(): React.ReactElement {
                   {t('settings.notificationPreferences.configure')}
                 </Link>
               )}
-              <button
+              <button type="button"
                 onClick={() => testChannel(ch)}
                 disabled={!ch.configured || channelTesting === ch.id}
                 style={{

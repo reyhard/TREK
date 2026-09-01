@@ -6,15 +6,30 @@ import type { User } from '../../../src/types';
 
 import type { Response } from 'express';
 import type { Request } from 'express';
-import { describe, it, expect, vi } from 'vitest';
+import { UnifiedMemoriesController } from '../../../src/nest/memories/unified.controller';
+import { ImmichMemoriesController } from '../../../src/nest/memories/immich.controller';
+import { SynologyMemoriesController } from '../../../src/nest/memories/synology.controller';
+import type { MemoriesService } from '../../../src/nest/memories/memories.service';
+import type { AddTripPhotosDto, SynologySettingsDto } from '../../../src/nest/memories/memories.dto';
+import type { User } from '../../../src/types';
 
 const { getClientIp } = vi.hoisted(() => ({ getClientIp: vi.fn(() => '1.2.3.4') }));
-vi.mock('../../../src/services/auditLog', () => ({ getClientIp }));
+vi.mock('../../../src/nest/audit/client-ip', () => ({ getClientIp }));
 
 const user = { id: 7, role: 'user', email: 'u@example.test' } as User;
 
 function makeService(overrides: Partial<MemoriesService> = {}): MemoriesService {
   return { ...overrides } as unknown as MemoriesService;
+}
+
+/**
+ * A DTO type describes a body that already passed the Zod pipe. The two cases
+ * that use this hand a controller a value the pipe would reject, because what
+ * they pin is the hand-rolled coercion running after validation — the leniency
+ * the Express routers had, which the controllers still carry.
+ */
+function offContractBody<T>(body: Record<string, unknown>): T {
+  return body as unknown as T;
 }
 
 type MockRes = Response & {
@@ -84,7 +99,7 @@ describe('UnifiedMemoriesController (parity with /api/integrations/memories/unif
       await new UnifiedMemoriesController(svc).addPhotos(
         user,
         '5',
-        { selections: 'nope', shared: true },
+        offContractBody<AddTripPhotosDto>({ selections: 'nope', shared: true }),
         'sock',
         makeRes(),
       );
@@ -637,7 +652,7 @@ describe('SynologyMemoriesController (parity with /api/integrations/memories/syn
       const svc2 = makeService({ synologyUpdateSettings: vi.fn().mockResolvedValue({ success: true, data: {} }) });
       await new SynologyMemoriesController(svc2).putSettings(
         user,
-        { synology_url: 'u', synology_username: 'a', synology_skip_ssl: 'no' },
+        offContractBody<SynologySettingsDto>({ synology_url: 'u', synology_username: 'a', synology_skip_ssl: 'no' }),
         makeRes(),
       );
       expect(svc2.synologyUpdateSettings).toHaveBeenCalledWith(7, 'u', 'a', '', false);

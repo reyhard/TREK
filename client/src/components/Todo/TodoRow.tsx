@@ -43,34 +43,22 @@ export default function TodoRow({
   const canDrag = canEdit && !!drag;
 
   return (
-    <div
-      key={item.id}
+    <div key={item.id}
+      // Selecting the task has no other trigger, so the row is the control. Its
+      // checkbox and its drag handle answer for themselves, hence the key handler
+      // only fires when the row itself has focus.
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(isSelected ? null : item.id)}
-      onDragOver={
-        canDrag
-          ? (e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-              drag!.onOver(item.id);
-            }
-          : undefined
-      }
-      onDragLeave={
-        canDrag
-          ? (e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) drag!.onOver(-1);
-            }
-          : undefined
-      }
-      onDrop={
-        canDrag
-          ? (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              drag!.onDrop(item.id);
-            }
-          : undefined
-      }
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        onSelect(isSelected ? null : item.id)
+      }}
+      onDragOver={canDrag ? (e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; drag!.onOver(item.id) }) : undefined}
+      onDragLeave={canDrag ? (e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) drag!.onOver(-1) }) : undefined}
+      onDrop={canDrag ? (e => { e.preventDefault(); e.stopPropagation(); drag!.onDrop(item.id) }) : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -92,6 +80,9 @@ export default function TodoRow({
     >
       {canDrag && (
         <div
+          // Dragging is the handle's whole job; the click only keeps the row from
+          // selecting, so the handle stays presentational.
+          role="presentation"
           draggable
           onClick={(e) => e.stopPropagation()}
           onDragStart={(e) => {
@@ -114,20 +105,9 @@ export default function TodoRow({
       )}
 
       {/* Checkbox */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (canEdit) onToggle(item.id, !done);
-        }}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: canEdit ? 'pointer' : 'default',
-          padding: 0,
-          flexShrink: 0,
-          color: done ? '#22c55e' : 'var(--border-primary)',
-        }}
-      >
+      <button type="button" onClick={e => { e.stopPropagation(); if (canEdit) onToggle(item.id, !done) }}
+        style={{ background: 'none', border: 'none', cursor: canEdit ? 'pointer' : 'default', padding: 0, flexShrink: 0,
+          color: done ? '#22c55e' : 'var(--border-primary)' }}>
         {done ? <CheckSquare size={18} /> : <Square size={18} />}
       </button>
 
@@ -163,109 +143,60 @@ export default function TodoRow({
           </div>
         )}
         {/* Inline badges */}
-        {(item.priority || item.due_date || catColor || assignedUser) && (
-          <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
-            {item.priority > 0 && PRIO_CONFIG[item.priority] && (
-              <span
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 3,
-                  padding: '2px 7px',
-                  borderRadius: 5,
-                  fontWeight: 600,
-                  color: PRIO_CONFIG[item.priority].color,
-                  background: `${PRIO_CONFIG[item.priority].color}10`,
-                  border: `1px solid ${PRIO_CONFIG[item.priority].color}25`,
-                }}
-              >
-                <Flag size={9} />
-                {PRIO_CONFIG[item.priority].label}
-              </span>
-            )}
-            {item.due_date && (
-              <span
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 3,
-                  padding: '2px 7px',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  color: isOverdue ? '#ef4444' : 'var(--text-secondary)',
-                  background: isOverdue ? 'rgba(239,68,68,0.08)' : 'var(--bg-hover)',
-                  border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.15)' : 'var(--border-faint)'}`,
-                }}
-              >
-                <Calendar size={9} />
-                {formatDate(item.due_date)}
-              </span>
-            )}
-            {catColor && (
-              <span
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 7px',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  color: 'var(--text-secondary)',
-                  background: 'var(--bg-hover)',
-                  border: '1px solid var(--border-faint)',
-                }}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: catColor, flexShrink: 0 }} />
-                {item.category}
-              </span>
-            )}
-            {assignedUser && (
-              <span
-                style={{
-                  fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 7px',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  color: 'var(--text-secondary)',
-                  background: 'var(--bg-hover)',
-                  border: '1px solid var(--border-faint)',
-                }}
-              >
-                {assignedUser.avatar ? (
-                  <img
-                    src={avatarSrc(assignedUser.avatar)!}
-                    style={{ width: 13, height: 13, borderRadius: '50%', objectFit: 'cover' }}
-                    alt=""
-                  />
-                ) : (
-                  <span
-                    style={{
-                      width: 13,
-                      height: 13,
-                      borderRadius: '50%',
-                      background: 'var(--border-primary)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 'calc(7px * var(--fs-scale-caption, 1))',
-                      color: 'var(--text-faint)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {assignedUser.username.charAt(0).toUpperCase()}
-                  </span>
-                )}
-                {assignedUser.is_guest && <UserRound size={11} style={{ opacity: 0.7 }} />}
-                {assignedUser.username}
-              </span>
-            )}
-          </div>
+        {!!(item.priority || item.due_date || catColor || assignedUser) && (
+        <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+          {item.priority > 0 && PRIO_CONFIG[item.priority] && (
+            <span style={{
+              fontSize: 'calc(10px * var(--fs-scale-caption, 1))', display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 7px', borderRadius: 5, fontWeight: 600,
+              color: PRIO_CONFIG[item.priority].color,
+              background: `${PRIO_CONFIG[item.priority].color}10`,
+              border: `1px solid ${PRIO_CONFIG[item.priority].color}25`,
+            }}>
+              <Flag size={9} />{PRIO_CONFIG[item.priority].label}
+            </span>
+          )}
+          {item.due_date && (
+            <span style={{
+              fontSize: 'calc(10px * var(--fs-scale-caption, 1))', display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 7px', borderRadius: 5, fontWeight: 500,
+              color: isOverdue ? '#ef4444' : 'var(--text-secondary)',
+              background: isOverdue ? 'rgba(239,68,68,0.08)' : 'var(--bg-hover)',
+              border: `1px solid ${isOverdue ? 'rgba(239,68,68,0.15)' : 'var(--border-faint)'}`,
+            }}>
+              <Calendar size={9} />{formatDate(item.due_date)}
+            </span>
+          )}
+          {catColor && (
+            <span style={{
+              fontSize: 'calc(10px * var(--fs-scale-caption, 1))', display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '2px 7px', borderRadius: 5, fontWeight: 500,
+              color: 'var(--text-secondary)', background: 'var(--bg-hover)',
+              border: '1px solid var(--border-faint)',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: catColor, flexShrink: 0 }} />
+              {item.category}
+            </span>
+          )}
+          {assignedUser && (
+            <span style={{
+              fontSize: 'calc(10px * var(--fs-scale-caption, 1))', display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '2px 7px', borderRadius: 5, fontWeight: 500,
+              color: 'var(--text-secondary)', background: 'var(--bg-hover)',
+              border: '1px solid var(--border-faint)',
+            }}>
+              {assignedUser.avatar ? (
+                <img src={avatarSrc(assignedUser.avatar)!} style={{ width: 13, height: 13, borderRadius: '50%', objectFit: 'cover' }} alt="" />
+              ) : (
+                <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--border-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(7px * var(--fs-scale-caption, 1))', color: 'var(--text-faint)', fontWeight: 700 }}>
+                  {assignedUser.username.charAt(0).toUpperCase()}
+                </span>
+              )}
+              {assignedUser.is_guest && <UserRound size={11} style={{ opacity: 0.7 }} />}
+              {assignedUser.username}
+            </span>
+          )}
+        </div>
         )}
       </div>
 

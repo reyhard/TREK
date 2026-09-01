@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 type Placement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -101,40 +101,32 @@ export function Tooltip({ label, placement = 'bottom', delay = 250, disabled, ch
   return (
     <>
       {trigger}
-      {open &&
-        ReactDOM.createPortal(
-          <div
-            ref={tooltipRef}
-            role="tooltip"
-            className="trek-popover-enter border border-edge-faint bg-surface-card text-content"
-            style={{
-              position: 'fixed',
-              top: coords?.top ?? -9999,
-              left: coords?.left ?? -9999,
-              visibility: coords ? 'visible' : 'hidden',
-              pointerEvents: 'none',
-              zIndex: 100000,
-              fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-              fontWeight: 500,
-              padding: '5px 10px',
-              borderRadius: 8,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              fontFamily: 'var(--font-system)',
-              transformOrigin:
-                placement === 'top'
-                  ? 'bottom center'
-                  : placement === 'bottom'
-                    ? 'top center'
-                    : placement === 'left'
-                      ? 'center right'
-                      : 'center left',
-            }}
-          >
-            {label}
-          </div>,
-          document.body
-        )}
+      {open && createPortal(
+        <div
+          ref={tooltipRef}
+          role="tooltip"
+          className="trek-popover-enter bg-surface-card text-content border border-edge-faint"
+          style={{
+            position: 'fixed',
+            top: coords?.top ?? -9999,
+            left: coords?.left ?? -9999,
+            visibility: coords ? 'visible' : 'hidden',
+            pointerEvents: 'none',
+            zIndex: 100000,
+            fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
+            fontWeight: 500,
+            padding: '5px 10px',
+            borderRadius: 8,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            fontFamily: "var(--font-system)",
+            transformOrigin: placement === 'top' ? 'bottom center' : placement === 'bottom' ? 'top center' : placement === 'left' ? 'center right' : 'center left',
+          }}
+        >
+          {label}
+        </div>,
+        document.body,
+      )}
     </>
   );
 }

@@ -1,11 +1,11 @@
-import { db } from '../../db/database';
+import { Body, Controller, Get, HttpCode, HttpException, Param, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { pluginsEnabled } from './kill-switch';
-import { PluginRuntimeService } from './plugin-runtime.service';
 import { PluginsService } from './plugins.service';
-import { Body, Controller, Get, HttpCode, HttpException, Param, Post, Req, UseGuards } from '@nestjs/common';
-
-import type { Request } from 'express';
+import { PluginRuntimeService } from './plugin-runtime.service';
+import { DatabaseService } from '../database/database.service';
+import { PluginUserSettingsUpdateDto } from './plugins.dto';
 
 /**
  * GET/POST /api/plugin-settings/:id — a USER's own `scope:'user'` settings for a
@@ -24,25 +24,22 @@ export class PluginUserSettingsController {
   constructor(
     private readonly plugins: PluginsService,
     private readonly runtime: PluginRuntimeService,
+    private readonly dbs: DatabaseService,
   ) {}
 
   private activeWithUserFields(id: string): boolean {
-    const row = db.prepare("SELECT 1 FROM plugins WHERE id = ? AND status = 'active'").get(id);
+    const row = this.dbs.connection.prepare("SELECT 1 FROM plugins WHERE id = ? AND status = 'active'").get(id);
     return !!row;
   }
 
   @Get(':id')
-  get(
-    @Param('id') id: string,
-    @Req() req: Request & { user?: { id: number } },
-  ): {
+  get(@Param('id') id: string, @Req() req: Request & { user?: { id: number } }): {
     fields: unknown[];
     config: Record<string, unknown>;
     actions: Array<{ key: string; label: string; hint?: string; danger: boolean }>;
   } {
     const userId = req.user?.id;
-    if (!pluginsEnabled() || userId == null || !this.activeWithUserFields(id))
-      return { fields: [], config: {}, actions: [] };
+    if (!pluginsEnabled() || userId == null || !this.activeWithUserFields(id)) return { fields: [], config: {}, actions: [] };
     return {
       fields: this.plugins.userSettingsFields(id),
       config: this.plugins.getUserConfig(id, userId),
@@ -78,12 +75,12 @@ export class PluginUserSettingsController {
   @Post(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { config?: Record<string, unknown> },
+    @Body() body: PluginUserSettingsUpdateDto,
     @Req() req: Request & { user?: { id: number } },
   ): { config: Record<string, unknown> } {
     const userId = req.user?.id;
     if (!pluginsEnabled() || userId == null || !this.activeWithUserFields(id)) return { config: {} };
-    const patch = body?.config && typeof body.config === 'object' ? body.config : {};
+    const patch = body?.config && typeof body.config === 'object' ? (body.config as Record<string, unknown>) : {};
     return { config: this.plugins.updateUserConfig(id, userId, patch) };
   }
 }

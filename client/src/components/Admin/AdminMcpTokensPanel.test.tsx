@@ -49,7 +49,7 @@ describe('AdminMcpTokensPanel', () => {
 
   it('FE-ADMIN-MCP-002: empty state rendered when no tokens', async () => {
     render(<AdminMcpTokensPanel />);
-    await screen.findByText('No MCP tokens have been created yet');
+    expect(await screen.findByText('No MCP tokens have been created yet')).toBeInTheDocument();
   });
 
   it('FE-ADMIN-MCP-003: token list renders correctly', async () => {
@@ -178,7 +178,8 @@ describe('AdminMcpTokensPanel', () => {
         <AdminMcpTokensPanel />
       </>
     );
-    await screen.findByText('Failed to load tokens');
+    render(<><ToastContainer /><AdminMcpTokensPanel /></>);
+    expect(await screen.findByText('Failed to load tokens')).toBeInTheDocument();
   });
 
   it('FE-ADMIN-MCP-011: OAuth sessions loading spinner shown on mount', async () => {
@@ -195,7 +196,7 @@ describe('AdminMcpTokensPanel', () => {
   it('FE-ADMIN-MCP-012: OAuth sessions empty state rendered when no sessions', async () => {
     server.use(http.get('/api/admin/oauth-sessions', () => HttpResponse.json({ sessions: [] })));
     render(<AdminMcpTokensPanel />);
-    await screen.findByText('No active OAuth sessions');
+    expect(await screen.findByText('No active OAuth sessions')).toBeInTheDocument();
   });
 
   it('FE-ADMIN-MCP-013: OAuth sessions list renders with scopes', async () => {
@@ -321,6 +322,6 @@ describe('AdminMcpTokensPanel', () => {
     const deleteBtns = screen.getAllByRole('button', { name: 'Delete' });
     const confirmBtn = deleteBtns.find((b) => !b.title);
     await user.click(confirmBtn ?? deleteBtns[deleteBtns.length - 1]);
-    await screen.findByText('Failed to revoke session');
+    expect(await screen.findByText('Failed to revoke session')).toBeInTheDocument();
   });
 });

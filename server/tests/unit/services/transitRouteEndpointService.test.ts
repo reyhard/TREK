@@ -1,11 +1,14 @@
 import { runMigrations } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
-import { createReservation } from '../../../src/services/reservationService';
-import {
-  TransitRouteEndpointUpdateError,
-  updateTransitRouteEndpoints,
-} from '../../../src/services/transitRouteEndpointService';
+import { TransitRouteEndpointUpdateError } from '../../../src/nest/common/transitRouteEndpointService';
+import type { BudgetService } from '../../../src/nest/budget/budget.service';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+import type { PermissionsService } from '../../../src/nest/permissions/permissions.service';
+import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
+import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
+import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 import { createTrip, createUser } from '../../helpers/factories';
+import { notificationsStub } from '../../helpers/notifications';
 import { resetTestDb } from '../../helpers/test-db';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +25,15 @@ const { testDb, dbMock } = vi.hoisted(() => {
 
 vi.mock('../../../src/db/database', () => dbMock);
 
+const reservations = new ReservationsService(
+  new DatabaseService(testDb),
+  { checkPermission: vi.fn(() => true) } as unknown as PermissionsService,
+  {} as BudgetService,
+  new RealtimeService(),
+  notificationsStub(),
+  new ReservationsReadRepository(new DatabaseService(testDb)),
+);
+
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -36,7 +48,7 @@ function seedTransit() {
     end_date: '2026-10-10',
   });
   const day = testDb.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY date').get(trip.id) as { id: number };
-  const result = createReservation(trip.id, {
+  const result = reservations.create(trip.id, {
     title: 'Fushimi Inari → Kiyomizu-dera',
     type: 'transit',
     status: 'confirmed',
@@ -109,7 +121,7 @@ describe('updateTransitRouteEndpoints', () => {
       .prepare('SELECT * FROM reservation_day_positions WHERE reservation_id = ? ORDER BY day_id')
       .all(reservationId);
 
-    const updated = updateTransitRouteEndpoints(reservationId, trip.id, {
+    const updated = reservations.updateTransitRouteEndpoints(reservationId, trip.id, {
       from: {
         name: 'Keihan Fushimi-Inari Station',
         lat: 34.9685211,
@@ -153,7 +165,7 @@ describe('updateTransitRouteEndpoints', () => {
     [{ to: { name: 'X', lat: 0, lng: 181 } }, 'INVALID_INPUT'],
   ])('rejects invalid input %#', (input, code) => {
     const { trip, reservationId } = seedTransit();
-    expect(() => updateTransitRouteEndpoints(reservationId, trip.id, input as never)).toThrowError(
+    expect(() => reservations.updateTransitRouteEndpoints(reservationId, trip.id, input as never)).toThrowError(
       expect.objectContaining({ code }),
     );
   });
@@ -161,14 +173,14 @@ describe('updateTransitRouteEndpoints', () => {
   it('rejects missing and non-transit reservations', () => {
     const { trip } = seedTransit();
     expect(() =>
-      updateTransitRouteEndpoints(999999, trip.id, {
+      reservations.updateTransitRouteEndpoints(999999, trip.id, {
         from: { name: 'X', lat: 0, lng: 0 },
       }),
     ).toThrowError(expect.objectContaining({ code: 'RESERVATION_NOT_FOUND' }));
 
-    const manual = createReservation(trip.id, { title: 'Train', type: 'train' }).reservation;
+    const manual = reservations.create(trip.id, { title: 'Train', type: 'train' }).reservation;
     expect(() =>
-      updateTransitRouteEndpoints(manual.id, trip.id, {
+      reservations.updateTransitRouteEndpoints(manual.id, trip.id, {
         from: { name: 'X', lat: 0, lng: 0 },
       }),
     ).toThrowError(expect.objectContaining({ code: 'NOT_TRANSIT' }));
@@ -182,7 +194,7 @@ describe('updateTransitRouteEndpoints', () => {
       .all(reservationId);
 
     expect(() =>
-      updateTransitRouteEndpoints(reservationId, trip.id, {
+      reservations.updateTransitRouteEndpoints(reservationId, trip.id, {
         from: { name: 'Changed origin', lat: 34.9, lng: 135.7 },
         to: { name: 'Missing destination', lat: 35, lng: 135.8 },
       }),
@@ -200,7 +212,7 @@ describe('updateTransitRouteEndpoints', () => {
     const newFrom = { name: 'New Origin', lat: 35.0, lng: 135.5 };
     const newTo = { name: 'New Destination', lat: 35.5, lng: 136.0 };
 
-    const updated = updateTransitRouteEndpoints(reservationId, trip.id, {
+    const updated = reservations.updateTransitRouteEndpoints(reservationId, trip.id, {
       from: newFrom,
       to: newTo,
     });
@@ -230,7 +242,7 @@ describe('updateTransitRouteEndpoints', () => {
       .all(reservationId);
 
     expect(() =>
-      updateTransitRouteEndpoints(reservationId, trip.id, {
+      reservations.updateTransitRouteEndpoints(reservationId, trip.id, {
         from: { name: 'Should fail', lat: 35, lng: 135 },
       }),
     ).toThrowError(expect.objectContaining({ code: 'ENDPOINT_STRUCTURE_INVALID' }));

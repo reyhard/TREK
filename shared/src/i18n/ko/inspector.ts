@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': '확정된 예약',
   'inspector.pendingRes': '대기 중인 예약',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': '내비게이션',
+  'inspector.openWith': '다음으로 열기',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.website': '웹사이트 열기',
   'inspector.saveToCollection': '컬렉션에 저장',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': '트랙 색상',
+  'inspector.trackColorAuto': '자동 색상',
+  'inspector.trackColorCustom': '사용자 지정 색상 선택',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

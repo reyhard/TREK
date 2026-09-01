@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Đã xác nhận đặt chỗ',
   'inspector.pendingRes': 'Đang chờ đặt chỗ',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'Điều hướng',
+  'inspector.openWith': 'Mở bằng',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.saveToCollection': 'Lưu vào Bộ sưu tập',
   'inspector.savedToCollection': 'Đã lưu',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'Màu đường đi',
+  'inspector.trackColorAuto': 'Màu tự động',
+  'inspector.trackColorCustom': 'Chọn màu tùy chỉnh',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

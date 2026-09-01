@@ -117,7 +117,8 @@ export default function ShareCollectionModal({
   };
 
   const handleSetRole = async (userId: number, role: CollectionRole) => {
-    setSettingRoleId(userId);
+    if (settingRoleId != null) return
+    setSettingRoleId(userId)
     try {
       await setMemberRole(collectionId, userId, role);
     } catch (err) {

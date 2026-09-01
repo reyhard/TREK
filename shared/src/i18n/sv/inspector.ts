@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Bekräftad bokning',
   'inspector.pendingRes': 'Pendlande bokning',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'Navigation',
+  'inspector.openWith': 'Öppna med',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.website': 'Öppna hemsida',
   'inspector.saveToCollection': 'Spara i samling',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'Spårfärg',
+  'inspector.trackColorAuto': 'Automatisk färg',
+  'inspector.trackColorCustom': 'Välj egen färg',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

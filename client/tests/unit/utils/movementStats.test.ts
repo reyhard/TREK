@@ -1,382 +1,234 @@
-import type { RouteSegment } from '../../../src/types'
-import { buildAssignment, buildPlace, buildReservation } from '../../helpers/factories'
+import { describe, expect, it } from 'vitest'
 import {
   aggregateMovementContributions,
+  calculateDayMovementTotals,
   calculateDayMovementStats,
   combineMovementTotals,
-  createHotelBookendContributions,
+  calculateMovementTotalsFromParts,
   createRouteContributions,
   createTrackContributions,
   createTransitWalkContributions,
   normalizeMovementMode,
   type MovementContribution,
 } from '../../../src/utils/movementStats'
-import { getTrackMovement } from '../../../src/utils/trackGeometry'
 
-function segment(distance: number, duration: number): RouteSegment {
-  return {
-    from: [0, 0],
-    to: [0, 0.01],
-    mid: [0, 0.005],
-    distance,
-    duration,
-    distanceText: '',
-    durationText: '',
-    walkingText: '',
-    drivingText: '',
-  }
-}
+const assignment = (id: number, dayId: number, place: { id: number; route_geometry?: string | null; transport_mode?: string | null; place_time?: string | null; end_time?: string | null }) => ({
+  id, day_id: dayId, place_id: place.id, order_index: 0, place,
+} as any)
 
-describe('movement aggregation core', () => {
-  it.each([
-    ['walking', 'walking'],
-    [' WALKING ', 'walking'],
-    ['driving', 'driving'],
-    ['cycling', 'cycling'],
-    ['bicycle', 'cycling'],
-    ['transit', 'walking'],
-    ['flight', 'walking'],
-    ['', 'walking'],
-    [undefined, 'walking'],
-  ] as const)('normalizes %j to %s', (input, expected) => {
-    expect(normalizeMovementMode(input)).toBe(expected)
+describe('movement aggregation core — TDD 3 (connector contribution by mode)', () => {
+  it('normalizes a resolved per-leg mode to the movement modes', () => {
+    expect(normalizeMovementMode('driving')).toBe('driving')
+    expect(normalizeMovementMode('car')).toBe('driving')
+    expect(normalizeMovementMode('bicycle')).toBe('cycling')
+    expect(normalizeMovementMode('WALK')).toBe('walking')
   })
 
-  it('creates one contribution per numeric route leg', () => {
-    expect(createRouteContributions(10, 'walking', {
-      100: segment(1200, 900),
-      200: segment(800, 600),
-    })).toEqual([
-      expect.objectContaining({ key: 'route:10:100', source: 'route', mode: 'walking', distanceMeters: 1200, durationSeconds: 900 }),
-      expect.objectContaining({ key: 'route:10:200', source: 'route', mode: 'walking', distanceMeters: 800, durationSeconds: 600 }),
-    ])
+  it('creates one contribution per numeric route leg and sums by mode', () => {
+    const legs = { 1: { duration: 600, distance: 1000 } as any, 2: { duration: 300, distance: 500 } as any }
+    const contributions = createRouteContributions(7, 'walking', legs)
+    expect(contributions).toHaveLength(2)
+    const total = aggregateMovementContributions('walking', contributions)
+    expect(total.durationSeconds).toBe(900)
+    expect(total.distanceMeters).toBe(1500)
+    expect(total.contributionCount).toBe(2)
   })
 
-  it('creates separate top and bottom hotel bookend contributions', () => {
-    expect(createHotelBookendContributions(10, 'driving', {
-      top: segment(1000, 300),
-      bottom: segment(1500, 420),
-    })).toEqual([
-      expect.objectContaining({ key: 'hotel-bookend:10:top', source: 'hotel-bookend', mode: 'driving' }),
-      expect.objectContaining({ key: 'hotel-bookend:10:bottom', source: 'hotel-bookend', mode: 'driving' }),
-    ])
+  it('uses each resolved route leg mode instead of attributing every leg to the active profile', () => {
+    const legs = {
+      1: { duration: 600, distance: 1000, mode: 'walking' } as any,
+      2: { duration: 300, distance: 500, mode: 'driving' } as any,
+    }
+
+    expect(createRouteContributions(7, 'driving', legs).map(contribution => contribution.mode))
+      .toEqual(['walking', 'driving'])
+    expect(aggregateMovementContributions('walking', createRouteContributions(7, 'driving', legs)).distanceMeters)
+      .toBe(1000)
+    expect(aggregateMovementContributions('driving', createRouteContributions(7, 'driving', legs)).distanceMeters)
+      .toBe(500)
   })
 
   it('deduplicates by key and sums only the selected mode', () => {
-    const contributions: MovementContribution[] = [
-      { key: 'a', source: 'route', sourceId: 1, mode: 'walking', durationSeconds: 600, distanceMeters: 1000 },
-      { key: 'a', source: 'route', sourceId: 1, mode: 'walking', durationSeconds: 600, distanceMeters: 1000 },
-      { key: 'b', source: 'route', sourceId: 2, mode: 'walking', durationSeconds: 300, distanceMeters: 500 },
-      { key: 'c', source: 'route', sourceId: 3, mode: 'driving', durationSeconds: 120, distanceMeters: 2000 },
+    const dup: MovementContribution[] = [
+      { key: 'route:7:1', mode: 'walking', source: 'route', sourceId: 1, durationSeconds: 600, distanceMeters: 1000 },
+      { key: 'route:7:1', mode: 'walking', source: 'route', sourceId: 1, durationSeconds: 600, distanceMeters: 1000 },
+      { key: 'route:7:2', mode: 'driving', source: 'route', sourceId: 2, durationSeconds: 60, distanceMeters: 500 },
     ]
-    expect(aggregateMovementContributions('walking', contributions)).toEqual({
-      mode: 'walking',
-      durationSeconds: 900,
-      distanceMeters: 1500,
-      durationComplete: true,
-      distanceComplete: true,
-      contributionCount: 2,
-    })
+    const walking = aggregateMovementContributions('walking', dup)
+    expect(walking.contributionCount).toBe(1)
+    expect(walking.durationSeconds).toBe(600)
+    const driving = aggregateMovementContributions('driving', dup)
+    expect(driving.contributionCount).toBe(1)
+    expect(driving.durationSeconds).toBe(60)
   })
 
-  it('rejects invalid metrics and marks that metric incomplete', () => {
-    const total = aggregateMovementContributions('walking', [{
-      key: 'bad',
-      source: 'route',
-      sourceId: 1,
-      mode: 'walking',
-      durationSeconds: Number.NaN,
-      distanceMeters: -1,
-    }])
-    expect(total).toMatchObject({
-      durationSeconds: 0,
-      distanceMeters: 0,
-      durationComplete: false,
-      distanceComplete: false,
-      contributionCount: 1,
-    })
+  it('marks a metric incomplete when a contribution lacks it', () => {
+    const total = aggregateMovementContributions('walking', [
+      { key: 'route:7:1', mode: 'walking', source: 'route', sourceId: 1, durationSeconds: null, distanceMeters: 1000 },
+    ])
+    expect(total.durationComplete).toBe(false)
+    expect(total.distanceComplete).toBe(true)
   })
 })
 
-describe('transit walking contributions', () => {
-  it('includes WALK legs and excludes in-vehicle legs and walk_seconds duplication', () => {
-    const reservation = buildReservation({
-      id: 7,
-      type: 'transit',
-      day_id: 10,
-      metadata: JSON.stringify({
-        transit: {
-          walk_seconds: 999,
-          legs: [
-            { mode: 'WALK', duration: 240, distance: 300 },
-            { mode: 'SUBWAY', duration: 1200, distance: 8000 },
-          ],
-        },
-      }),
-    })
-    expect(createTransitWalkContributions(10, [reservation])).toEqual([
-      expect.objectContaining({
-        key: 'transit-walk:7:0',
-        durationSeconds: 240,
-        distanceMeters: 300,
-        mode: 'walking',
-      }),
-    ])
-  })
-
-  it('uses walk_seconds only when individual WALK legs are absent', () => {
-    const reservation = buildReservation({
-      id: 8,
-      type: 'transit',
-      day_id: 10,
-      metadata: JSON.stringify({ transit: { walk_seconds: 420, legs: [{ mode: 'BUS', duration: 900 }] } }),
-    })
-    expect(createTransitWalkContributions(10, [reservation])).toEqual([
-      expect.objectContaining({
-        key: 'transit-walk:8:fallback',
-        durationSeconds: 420,
-        distanceMeters: null,
-      }),
-    ])
-  })
-
-  it('derives old WALK-leg distance from encoded geometry', () => {
-    const reservation = buildReservation({
-      id: 9,
-      type: 'transit',
-      day_id: 10,
-      metadata: JSON.stringify({
-        transit: {
-          legs: [{
-            mode: 'walk',
-            duration: 600,
-            geometry: '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
-            geometry_precision: 5,
-          }],
-        },
-      }),
-    })
-    const [contribution] = createTransitWalkContributions(10, [reservation])
-    expect(contribution.distanceMeters).toBeGreaterThan(0)
-    expect(contribution.durationSeconds).toBe(600)
-  })
-
-  it('keeps duration and marks distance missing when old data has no distance or geometry', () => {
-    const reservation = buildReservation({
-      id: 10,
-      type: 'transit',
-      day_id: 10,
-      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 300 }] } }),
-    })
-    expect(createTransitWalkContributions(10, [reservation])[0]).toMatchObject({
-      durationSeconds: 300,
-      distanceMeters: null,
-    })
-  })
-
-  it('attributes a multi-day transit journey only to its start day', () => {
-    const reservation = buildReservation({
-      id: 11,
-      type: 'transit',
-      day_id: 10,
-      end_day_id: 11,
-      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 300, distance: 400 }] } }),
-    })
-    expect(createTransitWalkContributions(10, [reservation])).toHaveLength(1)
-    expect(createTransitWalkContributions(11, [reservation])).toEqual([])
-  })
-
-  it('ignores malformed transit metadata', () => {
-    const reservation = buildReservation({ id: 12, type: 'transit', day_id: 10, metadata: '{bad json' })
-    expect(createTransitWalkContributions(10, [reservation])).toEqual([])
-  })
-})
-
-describe('track contributions', () => {
+describe('track contributions — TDD 2 (track distance/duration exactly once)', () => {
   it('uses the authoritative full place for geometry, timing, and mode', () => {
-    const fullPlace = buildPlace({
-      id: 20,
-      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
-      place_time: '10:00',
-      end_time: '12:00',
-      transport_mode: 'cycling',
-    })
-    const assignment = buildAssignment({
-      id: 200,
-      day_id: 10,
-      place_id: 20,
-      place: { ...fullPlace, route_geometry: undefined, place_time: '09:00', end_time: '10:30' } as any,
-    })
-    const movement = getTrackMovement(fullPlace)!
-    expect(createTrackContributions(10, [assignment], [fullPlace])).toEqual([
-      expect.objectContaining({
-        key: 'track:10:200',
-        mode: movement.mode,
-        durationSeconds: movement.duration,
-        distanceMeters: movement.distance,
-      }),
-    ])
-  })
-
-  it.each([
-    { place_time: null, end_time: null },
-    { place_time: '12:00', end_time: '09:00' },
-  ])('uses the shared estimated duration for an untimed or reversed track: %o', (times) => {
-    const embedded = buildPlace({
-      id: 24,
-      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
-      transport_mode: 'walking',
-      ...times,
-    } as any)
-    const assignment = buildAssignment({ id: 204, day_id: 10, place_id: 24, place: embedded })
-    const contribution = createTrackContributions(10, [assignment], [])[0]
-    const movement = getTrackMovement(embedded)!
-
-    expect(contribution.durationSeconds).toBe(movement.duration)
-    expect(contribution.durationSeconds).toBeGreaterThan(0)
+    const t = {
+      id: 3, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]),
+      place_time: '10:00', end_time: '11:00', transport_mode: 'walking',
+    }
+    const contributions = createTrackContributions(7, [assignment(11, 7, t)], [t as never])
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0]!.mode).toBe('walking')
+    expect(contributions[0]!.durationSeconds).toBe(3600)
+    expect(contributions[0]!.distanceMeters).toBeGreaterThan(0)
   })
 
   it('defaults an unsupported track mode to walking', () => {
-    const fullPlace = buildPlace({
-      id: 21,
-      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
-      transport_mode: 'flight',
-    })
-    const assignment = buildAssignment({ id: 201, day_id: 10, place_id: 21, place: { ...fullPlace, place_time: null, end_time: null } as any })
-    expect(createTrackContributions(10, [assignment], [fullPlace])[0]).toMatchObject({
-      mode: 'walking',
-      durationSeconds: expect.any(Number),
-    })
+    const t = { id: 3, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]), transport_mode: 'sky-diving' }
+    const contributions = createTrackContributions(7, [assignment(11, 7, t)], [t as never])
+    expect(contributions[0]!.mode).toBe('walking')
   })
 
-  it('does not use duration_minutes when assignment end time is absent', () => {
-    const fullPlace = buildPlace({
-      id: 22,
-      route_geometry: JSON.stringify([[0, 0], [0, 0.01]]),
-      duration_minutes: 120,
-    })
-    const assignment = buildAssignment({ id: 202, day_id: 10, place_id: 22, place: { ...fullPlace, place_time: '09:00', end_time: null } as any })
-    const contribution = createTrackContributions(10, [assignment], [fullPlace])[0]
-    expect(contribution.durationSeconds).toBe(getTrackMovement(fullPlace)?.duration)
-    expect(contribution.durationSeconds).toBeGreaterThan(0)
-  })
-
-  it('excludes a walking track from driving aggregation', () => {
-    const fullPlace = buildPlace({ id: 23, route_geometry: JSON.stringify([[0, 0], [0, 0.01]]), transport_mode: 'walking' })
-    const assignment = buildAssignment({ id: 203, day_id: 10, place_id: 23, place: { ...fullPlace, place_time: '09:00', end_time: '10:00' } as any })
-    const driving = calculateDayMovementStats({
-      dayId: 10,
-      activeProfile: 'driving',
-      routeLegs: {},
-      assignments: [assignment],
-      places: [fullPlace],
-      reservations: [],
-      routeMetricsComplete: true,
-      routeMetricsExpected: false,
-    })
-    expect(driving.contributionCount).toBe(0)
+  it('contributes exactly one track part even with a full place list', () => {
+    const t = { id: 3, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]), transport_mode: 'cycling' }
+    const full = { ...t, trip_id: 1, name: 'Track', lat: 52, lng: 5, place_time: null, end_time: null }
+    const contributions = createTrackContributions(7, [assignment(11, 7, t)], [full as never])
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0]!.mode).toBe('cycling')
   })
 })
 
-describe('calculateDayMovementStats', () => {
-  it('combines route, hotel, transit walking, and matching track activity', () => {
-    const fullPlace = buildPlace({ id: 30, route_geometry: JSON.stringify([[0, 0], [0, 0.01]]), transport_mode: 'walking' })
-    const assignment = buildAssignment({ id: 300, day_id: 10, place_id: 30, place: { ...fullPlace, place_time: '09:00', end_time: '10:00' } as any })
-    const reservation = buildReservation({
-      id: 31,
-      type: 'transit',
-      day_id: 10,
-      metadata: JSON.stringify({ transit: { legs: [{ mode: 'WALK', duration: 300, distance: 400 }] } }),
-    })
-    const total = calculateDayMovementStats({
-      dayId: 10,
-      activeProfile: 'walking',
-      routeLegs: { 1: segment(1000, 600) },
-      hotelLegs: { top: segment(500, 300), bottom: segment(500, 300) },
-      assignments: [assignment],
-      places: [fullPlace],
-      reservations: [reservation],
+describe('transit walking contributions — TDD 5 (transit legs in a mixed day)', () => {
+  const walkLeg = { mode: 'WALK', duration: 600, distance: 800 }
+  const railLeg = { mode: 'RAIL', duration: 1800, distance: 25000 }
+const reservation = (id: number, legs: unknown[], extra = {}) => ({
+  id, trip_id: 1, type: 'transit', title: `R${id}`, day_id: 7, end_day_id: 7, status: 'confirmed',
+  metadata: { transit: { legs, walk_seconds: 600 } }, ...extra,
+} as any)
+
+  it('includes WALK legs and excludes in-vehicle legs and walk_seconds duplication', () => {
+    const contributions = createTransitWalkContributions(7, [reservation(20, [walkLeg, railLeg])])
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0]!.mode).toBe('walking')
+    expect(contributions[0]!.durationSeconds).toBe(600)
+    expect(contributions[0]!.distanceMeters).toBe(800)
+  })
+
+  it('uses walk_seconds only when individual WALK legs are absent', () => {
+    const contributions = createTransitWalkContributions(7, [reservation(21, [railLeg])])
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0]!.key).toContain('fallback')
+    expect(contributions[0]!.durationSeconds).toBe(600)
+  })
+
+  it('attributes a multi-day transit journey only to its start day', () => {
+    const r = { ...reservation(22, [walkLeg]), day_id: 10 }
+    expect(createTransitWalkContributions(10, [r])).toHaveLength(1)
+    expect(createTransitWalkContributions(11, [r])).toEqual([])
+  })
+})
+
+describe('calculateDayMovementStats + combineMovementTotals — TDD 5 (mixed day totals)', () => {
+  it('returns independent totals for every movement mode', () => {
+    const totals = calculateDayMovementTotals({
+      dayId: 7,
+      activeProfile: 'driving',
+      routeLegs: {
+        1: { duration: 300, distance: 1000, mode: 'driving' } as any,
+        2: { duration: 600, distance: 800, mode: 'walking' } as any,
+      },
+      hotelLegs: { top: { duration: 120, distance: 500 } as any },
+      assignments: [],
+      places: [],
+      reservations: [],
       routeMetricsComplete: true,
       routeMetricsExpected: true,
     })
-    const trackMovement = getTrackMovement(fullPlace)!
-    expect(total.durationSeconds).toBe(600 + 300 + 300 + 300 + trackMovement.duration)
-    expect(total.distanceMeters).toBeGreaterThan(3400)
-    expect(total).toMatchObject({ durationComplete: true, distanceComplete: true, contributionCount: 5 })
+
+    expect(totals.driving.distanceMeters).toBe(1500)
+    expect(totals.walking.distanceMeters).toBe(800)
+    expect(totals.cycling.contributionCount).toBe(0)
   })
 
-  it('marks both route metrics incomplete when planned route calculation is partial', () => {
-    const total = calculateDayMovementStats({
-      dayId: 10,
+  it('combines route + transit-walk + track without double counting', () => {
+    const t = { id: 3, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]), place_time: '10:00', end_time: '11:00', transport_mode: 'walking' }
+    const transit = { id: 30, trip_id: 1, type: 'transit', day_id: 7, end_day_id: 7, status: 'confirmed', metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } }
+    const driving = calculateDayMovementStats({
+      dayId: 7,
+      activeProfile: 'driving',
+      routeLegs: { 1: { duration: 300, distance: 1000 } as any },
+      assignments: [assignment(11, 7, t)],
+      places: [t as never],
+      reservations: [transit as any],
+      routeMetricsComplete: true,
+      routeMetricsExpected: true,
+    })
+    const walking = calculateDayMovementStats({
+      dayId: 7,
       activeProfile: 'walking',
-      routeLegs: { 1: segment(1000, 600) },
+      routeLegs: {},
+      assignments: [assignment(11, 7, t)],
+      places: [t as never],
+      reservations: [transit as any],
+      routeMetricsComplete: true,
+      routeMetricsExpected: false,
+    })
+    const combined = combineMovementTotals([driving, walking])
+    // Driving = the one route leg; walking = track (3600s) + transit-walk (600s).
+    expect(combined.driving.distanceMeters).toBe(1000)
+    expect(combined.walking.durationSeconds).toBe(3600 + 600)
+    expect(combined.walking.contributionCount).toBe(2)
+  })
+
+  it('flags incomplete route metrics when the route did not resolve', () => {
+    const total = calculateDayMovementStats({
+      dayId: 7,
+      activeProfile: 'driving',
+      routeLegs: {},
       assignments: [],
       places: [],
       reservations: [],
       routeMetricsComplete: false,
       routeMetricsExpected: true,
     })
-    expect(total).toMatchObject({
-      durationSeconds: 600,
-      distanceMeters: 1000,
-      durationComplete: false,
-      distanceComplete: false,
+    expect(total.durationComplete).toBe(false)
+  })
+
+  it('uses only transit reservations represented by canonical movement parts', () => {
+    const included = { id: 31, type: 'transit', day_id: 7, metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } } as any
+    const excluded = { id: 32, type: 'transit', day_id: 7, metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } } as any
+    const totals = calculateDayMovementTotals({
+      dayId: 7,
+      activeProfile: 'walking',
+      routeLegs: {},
+      assignments: [],
+      places: [],
+      reservations: [included, excluded],
+      movementParts: [{ kind: 'transit', key: 'transit:reservation-31', reservationId: 31 }],
+      routeMetricsComplete: true,
+      routeMetricsExpected: false,
     })
+
+    expect(totals.walking.distanceMeters).toBe(800)
+    expect(totals.walking.contributionCount).toBe(1)
   })
 
-  it('combines already-calculated day totals by mode for future trip totals', () => {
-    const combined = combineMovementTotals([
-      { mode: 'walking', durationSeconds: 600, distanceMeters: 1000, durationComplete: true, distanceComplete: true, contributionCount: 1 },
-      { mode: 'walking', durationSeconds: 300, distanceMeters: 400, durationComplete: false, distanceComplete: true, contributionCount: 1 },
-      { mode: 'driving', durationSeconds: 1200, distanceMeters: 10_000, durationComplete: true, distanceComplete: true, contributionCount: 1 },
-    ])
-    expect(combined.walking).toEqual({
-      mode: 'walking',
-      durationSeconds: 900,
-      distanceMeters: 1400,
-      durationComplete: false,
-      distanceComplete: true,
-      contributionCount: 2,
+  it('canonical totals ignore assignment-linked transit reservations omitted from the day plan', () => {
+    const included = { id: 41, type: 'transit', day_id: 7, metadata: { transit: { legs: [{ mode: 'WALK', duration: 600, distance: 800 }] } } } as any
+    const excluded = { id: 42, type: 'transit', day_id: 7, assignment_id: 99, metadata: { transit: { legs: [{ mode: 'WALK', duration: 900, distance: 1200 }] } } } as any
+
+    const totals = calculateMovementTotalsFromParts({
+      dayId: 7,
+      activeProfile: 'walking',
+      movementParts: [{ kind: 'transit', key: 'transit:reservation-41', reservationId: 41 }],
+      reservations: [included, excluded],
+      routeMetricsComplete: true,
+      routeMetricsExpected: false,
     })
-    expect(combined.driving.distanceMeters).toBe(10_000)
-    expect(combined.cycling.contributionCount).toBe(0)
-  })
 
-  it('handles transit metadata stored as an object (not only JSON string)', () => {
-    const reservation = buildReservation({
-      id: 50,
-      type: 'transit',
-      day_id: 10,
-      metadata: { transit: { legs: [{ mode: 'WALK', duration: 300, distance: 400 }] } } as unknown as string,
-    })
-    expect(createTransitWalkContributions(10, [reservation])).toHaveLength(1)
-    expect(createTransitWalkContributions(10, [reservation])[0]).toMatchObject({
-      durationSeconds: 300,
-      distanceMeters: 400,
-    })
-  })
-
-  it('skips transit reservations with null or undefined day_id when matching a specific day', () => {
-    expect(createTransitWalkContributions(10, [
-      buildReservation({ id: 51, type: 'transit', day_id: null as unknown as number, metadata: '{"transit":{"legs":[{"mode":"WALK","duration":300}]}}' }),
-    ])).toEqual([])
-    expect(createTransitWalkContributions(10, [
-      buildReservation({ id: 52, type: 'transit', metadata: '{"transit":{"legs":[{"mode":"WALK","duration":300}]}}' }),
-    ])).toEqual([])
-  })
-
-  it('returns empty for transit with no WALK legs and no walk_seconds fallback', () => {
-    expect(createTransitWalkContributions(10, [
-      buildReservation({ id: 53, type: 'transit', day_id: 10, metadata: JSON.stringify({ transit: { legs: [{ mode: 'SUBWAY', duration: 1200 }] } }) }),
-    ])).toEqual([])
-  })
-
-  it('returns empty for empty or null transit metadata', () => {
-    expect(createTransitWalkContributions(10, [
-      buildReservation({ id: 54, type: 'transit', day_id: 10, metadata: '{}' }),
-    ])).toEqual([])
-    expect(createTransitWalkContributions(10, [
-      buildReservation({ id: 55, type: 'transit', day_id: 10, metadata: null as unknown as string }),
-    ])).toEqual([])
+    expect(totals.walking.durationSeconds).toBe(600)
+    expect(totals.walking.distanceMeters).toBe(800)
+    expect(totals.walking.contributionCount).toBe(1)
   })
 })

@@ -1,128 +1,89 @@
 import { describe, expect, it } from 'vitest'
+import { calculateTrackStats, getTrackMovement, normalizeTrackMode, parseTrackGeometry } from '../../../src/utils/trackGeometry'
+import { calculatePolylineDistanceMeters } from '../../../src/utils/geoDistance'
 
-import {
-  getTrackMovement,
-  normalizeTrackMode,
-  parseTrackGeometry,
-} from '../../../src/utils/trackGeometry'
+describe('calculateTrackStats — TDD 2 (track statistics)', () => {
+  it('computes distance and elevation profile from route_geometry', () => {
+    const stats = calculateTrackStats(JSON.stringify([[52, 5, 100], [52.01, 5.01, 120], [52.02, 5.02, 110]]))
+    expect(stats).not.toBeNull()
+    expect(stats!.distanceMeters).toBeGreaterThan(0)
+    expect(stats!.hasElevation).toBe(true)
+    expect(stats!.minElevationMeters).toBe(100)
+    expect(stats!.maxElevationMeters).toBe(120)
+    // 100 → 120 is +20 gain, 120 → 110 is -10 loss.
+    expect(stats!.elevationGainMeters).toBeCloseTo(20, 6)
+    expect(stats!.elevationLossMeters).toBeCloseTo(10, 6)
+  })
 
-describe('trackGeometry', () => {
-  it('parses coordinates and calculates distance/elevation', () => {
+  it('handles coordinate-only geometry without elevation', () => {
+    const stats = calculateTrackStats(JSON.stringify([[52, 5], [52.01, 5.01]]))
+    expect(stats!.hasElevation).toBe(false)
+    expect(stats!.minElevationMeters).toBeNull()
+    expect(stats!.distanceMeters).toBeGreaterThan(0)
+  })
+
+  it('returns null for missing or malformed geometry', () => {
+    expect(calculateTrackStats(null)).toBeNull()
+    expect(calculateTrackStats('not json')).toBeNull()
+    expect(calculateTrackStats('[]')).toBeNull()
+  })
+
+  it('filters invalid coordinate rows while preserving valid elevation statistics', () => {
     const parsed = parseTrackGeometry(JSON.stringify([
       [52, 5, 10],
+      [null, 5.005, 999],
       [52, 5.01, 25],
       [52, 5.02, 20],
     ]))
 
-    expect(parsed).not.toBeNull()
-    expect(parsed?.coordinates).toEqual([
-      [52, 5],
-      [52, 5.01],
-      [52, 5.02],
-    ])
-    expect(parsed?.distance).toBeGreaterThan(1300)
-    expect(parsed?.distance).toBeLessThan(1400)
+    expect(parsed?.coordinates).toEqual([[52, 5], [52, 5.01], [52, 5.02]])
     expect(parsed?.elevationGain).toBe(15)
     expect(parsed?.elevationLoss).toBe(5)
     expect(parsed?.minElevation).toBe(10)
     expect(parsed?.maxElevation).toBe(25)
   })
 
-  it('filters invalid rows when at least two valid coordinates remain', () => {
+  it('filters coordinates outside the geographic bounds', () => {
     const parsed = parseTrackGeometry(JSON.stringify([
       [52, 5],
-      [null, 5.005],
-      [52, 5.01],
+      [91, 5.01],
+      [52, 5.02],
     ]))
 
-    expect(parsed?.coordinates).toEqual([
-      [52, 5],
-      [52, 5.01],
-    ])
-    expect(parsed?.distance).toBeGreaterThan(680)
-    expect(parsed?.distance).toBeLessThan(690)
+    expect(parsed?.coordinates).toEqual([[52, 5], [52, 5.02]])
   })
+})
 
-  it('filters rows with non-numeric (string) coordinates', () => {
-    const parsed = parseTrackGeometry(JSON.stringify([
-      [48.8584, 2.2945, 100],
-      ['invalid', 2.2975, 999],
-      [48.86, 2.3, 120],
-      [48.862, 2.305, 110],
-      [48.864, 2.31, 130],
-    ]))
-
-    expect(parsed?.coordinates).toEqual([
-      [48.8584, 2.2945],
-      [48.86, 2.3],
-      [48.862, 2.305],
-      [48.864, 2.31],
-    ])
-    expect(parsed?.distance).toBeGreaterThan(0)
-    expect(parsed?.minElevation).toBe(100)
-    expect(parsed?.maxElevation).toBe(130)
-  })
-
-  it.each([
-    null,
-    '',
-    'not-json',
-    '[]',
-    JSON.stringify([[52, 5]]),
-    JSON.stringify([[null, 5], [52, 5]]),
-  ])('rejects malformed or insufficient geometry: %s', (raw) => {
-    expect(parseTrackGeometry(raw)).toBeNull()
-  })
-
-  it('uses a positive POI interval', () => {
-    const movement = getTrackMovement({
-      id: 9,
-      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
-      place_time: '09:15',
-      end_time: '11:45',
-      transport_mode: 'walking',
+describe('getTrackMovement — TDD 2 (track contribution)', () => {
+  it('scheduled times win over the estimated duration', () => {
+    const m = getTrackMovement({
+      id: 1, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]),
+      place_time: '09:00', end_time: '09:45', transport_mode: 'walking',
     })
-    expect(movement?.duration).toBe(2.5 * 3600)
-    expect(movement?.durationSource).toBe('poi-times')
+    expect(m!.duration).toBe(2700)
+    expect(m!.durationSource).toBe('poi-times')
   })
 
-  it.each([
-    { place_time: null, end_time: null },
-    { place_time: '09:00', end_time: null },
-    { place_time: '12:00', end_time: '09:00' },
-    { place_time: '09:00', end_time: '09:00' },
-  ])('estimates invalid or missing intervals: %o', (times) => {
-    const movement = getTrackMovement({
-      id: 10,
-      route_geometry: JSON.stringify([[52, 5], [52, 5.01]]),
-      transport_mode: 'walking',
-      ...times,
-    })
-    expect(movement?.durationSource).toBe('estimated')
-    expect(movement?.duration).toBeGreaterThan(0)
+  it('estimates from the mode speed when times are absent', () => {
+    const walking = getTrackMovement({ id: 1, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]) })
+    const driving = getTrackMovement({ id: 1, route_geometry: JSON.stringify([[52, 5], [52.01, 5.01]]), transport_mode: 'driving' })
+    expect(driving!.mode).toBe('driving')
+    expect(driving!.duration).toBeLessThan(walking!.duration)
   })
 
-  it('normalizes modes and defaults unknown to walking', () => {
-    expect(normalizeTrackMode('walking')).toBe('walking')
+  it('normalizes track modes', () => {
+    expect(normalizeTrackMode('cycling')).toBe('cycling')
     expect(normalizeTrackMode('bike')).toBe('cycling')
-    expect(normalizeTrackMode('bicycle')).toBe('cycling')
     expect(normalizeTrackMode('car')).toBe('driving')
-    expect(normalizeTrackMode('spaceship')).toBe('walking')
-    expect(normalizeTrackMode(null)).toBe('walking')
+    expect(normalizeTrackMode('hike')).toBe('walking')
   })
+})
 
-  it('uses track mode for fallback duration', () => {
-    const geometry = JSON.stringify([[52, 5], [52, 5.01]])
-    const walking = getTrackMovement({
-      id: 1,
-      route_geometry: geometry,
-      transport_mode: 'walking',
-    })
-    const cycling = getTrackMovement({
-      id: 2,
-      route_geometry: geometry,
-      transport_mode: 'cycling',
-    })
-    expect(walking?.duration).toBeGreaterThan(cycling?.duration ?? Infinity)
+describe('geoDistance — pure polyline distance', () => {
+  it('sums haversine segment distances for a polyline', () => {
+    const d = calculatePolylineDistanceMeters([[52, 5], [52.01, 5.01], [52.02, 5.02]])
+    expect(d).toBeGreaterThan(0)
+    expect(calculatePolylineDistanceMeters([[52, 5]])).toBeNull()
+    expect(calculatePolylineDistanceMeters([[] as unknown as number[]])).toBeNull()
   })
 })

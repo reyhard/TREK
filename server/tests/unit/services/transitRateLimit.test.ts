@@ -3,7 +3,7 @@ import {
   resetTransitUsageLimits,
   TRANSIT_RATE_LIMITS,
   TRANSIT_RATE_WINDOW_MS,
-} from '../../../src/services/transitRateLimit';
+} from '../../../src/nest/common/transitRateLimit';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 

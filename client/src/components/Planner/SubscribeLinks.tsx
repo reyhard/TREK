@@ -148,7 +148,7 @@ function UrlRow({
         >
           {url}
         </div>
-        <button
+        <button type="button"
           onClick={onCopy}
           title="Copy"
           style={{

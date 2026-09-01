@@ -195,10 +195,13 @@ export default function PhotoProvidersSection(): React.ReactElement {
     if (!testPath) return;
     setProviderTesting((prev) => ({ ...prev, [provider.id]: true }));
     try {
-      const payload = buildProviderPayload(provider);
-      const res = cfg.test_post ? await apiClient.post(testPath, payload) : await apiClient.get(testPath);
-      const ok = !!res.data?.connected;
-      setProviderConnected((prev) => ({ ...prev, [provider.id]: ok }));
+      // Only a POST probe carries the form values. A provider that declares just a
+      // GET (test_get / status_get) is probed against its saved credentials.
+      const res = cfg.test_post
+        ? await apiClient.post(testPath, buildProviderPayload(provider))
+        : await apiClient.get(testPath)
+      const ok = !!res.data?.connected
+      setProviderConnected(prev => ({ ...prev, [provider.id]: ok }))
       if (ok) {
         toast.success(t('memories.connectionSuccess', { provider_name: provider.name }));
       } else {
@@ -259,7 +262,7 @@ export default function PhotoProvidersSection(): React.ReactElement {
           {/* Wraps on mobile so the connection badge drops to its own row
               instead of clipping off the side of the card. */}
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <button type="button"
               onClick={() => handleSaveProvider(provider)}
               disabled={!canSave || !!saving[provider.id] || isProviderSaveDisabled(provider)}
               className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
@@ -273,7 +276,7 @@ export default function PhotoProvidersSection(): React.ReactElement {
             >
               <Save className="h-4 w-4" /> {t('common.save')}
             </button>
-            <button
+            <button type="button"
               onClick={() => handleTestProvider(provider)}
               disabled={!canTest || testing}
               className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"

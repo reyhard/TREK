@@ -1,10 +1,10 @@
-import { ArrowUp, Reply, Smile, X } from 'lucide-react';
-import ReactDOM from 'react-dom';
-import type { User } from '../../types';
-import { EmojiPicker } from './CollabChatEmojiPicker';
-import { ChatMessages } from './CollabChatMessages';
-import { ReactionMenu } from './CollabChatReactionMenu';
-import { useCollabChat } from './useCollabChat';
+import { createPortal } from 'react-dom'
+import { ArrowUp, Reply, Smile, X } from 'lucide-react'
+import type { User } from '../../types'
+import { useCollabChat } from './useCollabChat'
+import { ChatMessages } from './CollabChatMessages'
+import { EmojiPicker } from './CollabChatEmojiPicker'
+import { ReactionMenu } from './CollabChatReactionMenu'
 
 /* ── Main Component ── */
 interface CollabChatProps {
@@ -123,18 +123,10 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               <strong>{replyTo.username}</strong>: {(replyTo.text || '').slice(0, 60)}
             </span>
-            <button
-              onClick={() => setReplyTo(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 2,
-                color: 'var(--text-faint)',
-                display: 'flex',
-                flexShrink: 0,
-              }}
-            >
+            <button type="button" onClick={() => setReplyTo(null)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)',
+              display: 'flex', flexShrink: 0,
+            }}>
               <X size={14} />
             </button>
           </div>
@@ -143,25 +135,12 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
           {/* Emoji button */}
           {canEdit && (
-            <button
-              ref={emojiBtnRef}
-              onClick={() => setShowEmoji(!showEmoji)}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: '50%',
-                border: 'none',
-                background: showEmoji ? 'var(--bg-hover)' : 'transparent',
-                color: 'var(--text-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                padding: 0,
-                flexShrink: 0,
-                transition: 'background 0.15s',
-              }}
-            >
+            <button type="button" ref={emojiBtnRef} onClick={() => setShowEmoji(!showEmoji)} style={{
+              width: 34, height: 34, borderRadius: '50%', border: 'none',
+              background: showEmoji ? 'var(--bg-hover)' : 'transparent',
+              color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', padding: 0, flexShrink: 0, transition: 'background 0.15s',
+            }}>
               <Smile size={20} />
             </button>
           )}
@@ -194,24 +173,13 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
 
           {/* Send */}
           {canEdit && (
-            <button
-              onClick={handleSend}
-              disabled={!text.trim() || sending}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: '50%',
-                border: 'none',
-                background: text.trim() ? '#007AFF' : 'var(--border-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: text.trim() ? 'pointer' : 'default',
-                flexShrink: 0,
-                transition: 'background 0.15s',
-              }}
-            >
+            <button type="button" onClick={handleSend} disabled={!text.trim() || sending} style={{
+              width: 34, height: 34, borderRadius: '50%', border: 'none',
+              background: text.trim() ? '#007AFF' : 'var(--border-primary)',
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: text.trim() ? 'pointer' : 'default', flexShrink: 0,
+              transition: 'background 0.15s',
+            }}>
               <ArrowUp size={18} strokeWidth={2.5} />
             </button>
           )}
@@ -229,16 +197,10 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
       )}
 
       {/* Reaction quick menu (right-click) */}
-      {reactMenu &&
-        ReactDOM.createPortal(
-          <ReactionMenu
-            x={reactMenu.x}
-            y={reactMenu.y}
-            onReact={(emoji) => handleReact(reactMenu.msgId, emoji)}
-            onClose={() => setReactMenu(null)}
-          />,
-          document.body
-        )}
+      {reactMenu && createPortal(
+        <ReactionMenu x={reactMenu.x} y={reactMenu.y} onReact={(emoji) => handleReact(reactMenu.msgId, emoji)} onClose={() => setReactMenu(null)} />,
+        document.body
+      )}
     </div>
   );
 }

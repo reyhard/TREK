@@ -1,10 +1,10 @@
-import { Bell, LogOut, Settings, Shield } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
-import { useTranslation } from '../../i18n';
-import { useAuthStore } from '../../store/authStore';
-import { useInAppNotificationStore } from '../../store/inAppNotificationStore';
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router'
+import { useAuthStore } from '../../store/authStore'
+import { useInAppNotificationStore } from '../../store/inAppNotificationStore'
+import { useTranslation } from '../../i18n'
+import { Bell, Settings, Shield, LogOut } from 'lucide-react'
 
 // Mobile-only: a slim strip at the very top of the dashboard with the
 // notification + profile icons (right-aligned). Scrolls with the page.
@@ -26,7 +26,7 @@ export default function MobileTopBar() {
         className="flex items-center justify-end gap-2 px-4 md:hidden"
         style={{ paddingTop: 'calc(10px + env(safe-area-inset-top, 0px))', paddingBottom: 10 }}
       >
-        <button
+        <button type="button"
           onClick={() => navigate('/notifications')}
           aria-label={t('notifications.title')}
           className="relative grid place-items-center rounded-full transition-transform active:scale-95"
@@ -48,7 +48,7 @@ export default function MobileTopBar() {
             />
           )}
         </button>
-        <button
+        <button type="button"
           onClick={() => setShowProfile(true)}
           aria-label={t('nav.profile')}
           className="grid place-items-center rounded-full text-[12px] font-semibold text-white transition-transform active:scale-95"
@@ -83,12 +83,13 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[300] md:hidden" onClick={onClose}>
+    <div className="fixed inset-0 z-[300] md:hidden" role="presentation" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
         className="absolute bottom-0 left-0 right-0 overflow-hidden rounded-t-2xl bg-white dark:bg-zinc-900"
         style={{ animation: 'slideUp 0.25s ease-out', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        onClick={e => e.stopPropagation()}
       >
         <div className="flex justify-center pb-2 pt-3">
           <div className="h-1 w-10 rounded-full bg-zinc-300 dark:bg-zinc-700" />
@@ -113,8 +114,8 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
 
         <div className="mx-4 h-px bg-zinc-100 dark:bg-zinc-800" />
 
-        <div className="px-2 py-2">
-          <button
+        <div className="py-2 px-2">
+          <button type="button"
             onClick={() => handleNav('/settings')}
             className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-800"
           >
@@ -123,7 +124,7 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
           </button>
 
           {user?.role === 'admin' && (
-            <button
+            <button type="button"
               onClick={() => handleNav('/admin')}
               className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-zinc-50 active:bg-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-800"
             >
@@ -135,8 +136,8 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
 
         <div className="mx-4 h-px bg-zinc-100 dark:bg-zinc-800" />
 
-        <div className="px-2 py-2">
-          <button
+        <div className="py-2 px-2">
+          <button type="button"
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-red-50 active:bg-red-100 dark:hover:bg-red-900/20"
           >

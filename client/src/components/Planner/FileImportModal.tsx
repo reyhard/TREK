@@ -1,10 +1,11 @@
-import { Upload } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
-import { placesApi } from '../../api/client';
-import { useTranslation } from '../../i18n';
-import { useTripStore } from '../../store/tripStore';
-import { useToast } from '../shared/Toast';
+import React from 'react'
+import { createPortal } from 'react-dom'
+import { useState, useRef, useEffect } from 'react'
+import { Upload } from 'lucide-react'
+import { useTranslation } from '../../i18n'
+import { useToast } from '../shared/Toast'
+import { placesApi } from '../../api/client'
+import { useTripStore } from '../../store/tripStore'
 
 interface PlacesImportSummary {
   totalPlacemarks: number;
@@ -216,8 +217,9 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
 
   if (!isOpen) return null;
 
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
+      role="presentation"
       onClick={handleClose}
       className="bg-[rgba(0,0,0,0.4)]"
       style={{
@@ -231,7 +233,8 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        onClick={e => e.stopPropagation()}
         className="bg-surface-card"
         style={{
           borderRadius: 16,
@@ -272,7 +275,8 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
           onChange={handleInputChange}
         />
 
-        <div
+        <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           onDragOver={handleDragOver}
           onDragEnter={handleDragOver}
@@ -325,7 +329,7 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
               {t('places.importFileDropHere')}
             </span>
           )}
-        </div>
+        </button>
 
         {isGpx && (
           <div style={{ marginBottom: 12 }}>
@@ -341,37 +345,14 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
             >
               {t('places.gpxImportTypes')}
             </div>
-            {(['waypoints', 'routes', 'tracks'] as const).map((key) => (
-              <label
-                key={key}
-                onClick={() => setGpxOpts((prev) => ({ ...prev, [key]: !prev[key] }))}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}
-              >
-                <div
-                  className={gpxOpts[key] ? 'bg-accent' : 'bg-transparent'}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 4,
-                    flexShrink: 0,
-                    border: gpxOpts[key] ? 'none' : '1.5px solid var(--border-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {gpxOpts[key] && (
-                    <svg width="10" height="10" viewBox="0 0 10 10">
-                      <polyline
-                        points="1.5,5 4,7.5 8.5,2"
-                        stroke="white"
-                        strokeWidth="1.8"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
+            {(['waypoints', 'routes', 'tracks'] as const).map(key => (
+              <button type="button" key={key} role="checkbox" aria-checked={gpxOpts[key]} onClick={() => setGpxOpts(prev => ({ ...prev, [key]: !prev[key] }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer', width: '100%', border: 'none', background: 'transparent', fontFamily: 'inherit', textAlign: 'left' }}>
+                <div className={gpxOpts[key] ? 'bg-accent' : 'bg-transparent'} style={{
+                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                  border: gpxOpts[key] ? 'none' : '1.5px solid var(--border-primary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {gpxOpts[key] && <svg width="10" height="10" viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2" stroke="white" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                 </div>
                 <span
                   style={{
@@ -388,7 +369,7 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
                         : 'places.gpxImportTracks'
                   )}
                 </span>
-              </label>
+              </button>
             ))}
             {gpxNoneSelected && (
               <div
@@ -415,37 +396,14 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
             >
               {t('places.kmlImportTypes')}
             </div>
-            {(['points', 'paths'] as const).map((key) => (
-              <label
-                key={key}
-                onClick={() => setKmlOpts((prev) => ({ ...prev, [key]: !prev[key] }))}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}
-              >
-                <div
-                  className={kmlOpts[key] ? 'bg-accent' : 'bg-transparent'}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 4,
-                    flexShrink: 0,
-                    border: kmlOpts[key] ? 'none' : '1.5px solid var(--border-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {kmlOpts[key] && (
-                    <svg width="10" height="10" viewBox="0 0 10 10">
-                      <polyline
-                        points="1.5,5 4,7.5 8.5,2"
-                        stroke="white"
-                        strokeWidth="1.8"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
+            {(['points', 'paths'] as const).map(key => (
+              <button type="button" key={key} role="checkbox" aria-checked={kmlOpts[key]} onClick={() => setKmlOpts(prev => ({ ...prev, [key]: !prev[key] }))} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer', width: '100%', border: 'none', background: 'transparent', fontFamily: 'inherit', textAlign: 'left' }}>
+                <div className={kmlOpts[key] ? 'bg-accent' : 'bg-transparent'} style={{
+                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                  border: kmlOpts[key] ? 'none' : '1.5px solid var(--border-primary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {kmlOpts[key] && <svg width="10" height="10" viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2" stroke="white" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                 </div>
                 <span
                   style={{
@@ -456,7 +414,7 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
                 >
                   {t(key === 'points' ? 'places.kmlImportPoints' : 'places.kmlImportPaths')}
                 </span>
-              </label>
+              </button>
             ))}
             {kmlNoneSelected && (
               <div
@@ -514,7 +472,7 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button
+          <button type="button"
             onClick={handleClose}
             style={{
               padding: '8px 16px',
@@ -530,7 +488,7 @@ export default function FileImportModal({ isOpen, onClose, tripId, pushUndo, ini
           >
             {t('common.cancel')}
           </button>
-          <button
+          <button type="button"
             onClick={handleImport}
             disabled={!canImport}
             className={canImport ? 'bg-accent text-accent-text' : 'bg-surface-tertiary text-content-faint'}

@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Geziler',
   'oauth.scope.group.places': 'Yer',
+  'oauth.scope.group.collections': 'Koleksiyonlar',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Ambalaj',
   'oauth.scope.group.todos': 'Yapılacaklar',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Coğrafi',
   'oauth.scope.group.weather': 'Hava durumu',
   'oauth.scope.group.journey': 'Seyahat',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Seyahatleri ve programları görüntüle',
   'oauth.scope.trips:read.description': 'Seyahatleri, günleri, gün notlarını ve üyeleri oku',
   'oauth.scope.trips:write.label': 'Seyahatleri ve programları düzenle',
@@ -27,6 +30,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Yerleri, gün atamalarını, etiketleri ve kategorileri oku',
   'oauth.scope.places:write.label': 'Yerleri yönet',
   'oauth.scope.places:write.description': 'Yerleri, atamaları ve etiketleri oluştur, güncelle ve sil',
+  'oauth.scope.collections:read.label': 'Koleksiyonları görüntüle',
+  'oauth.scope.collections:read.description':
+    'Kayıtlı yer koleksiyonlarını, içindeki yerleri, puanları, etiketleri ve üyeleri okuma',
+  'oauth.scope.collections:write.label': 'Koleksiyonları yönet',
+  'oauth.scope.collections:write.description':
+    'Koleksiyon oluşturma/düzenleme, yerleri kaydetme, puanlama, etiketleme ve kopyalama, listeleri paylaşma',
   'oauth.scope.atlas:read.label': "Atlas'ı Görüntüle",
   'oauth.scope.atlas:read.description': 'Ziyaret edilen ülkeleri, bölgeleri ve yapılacaklar listesini oku',
   'oauth.scope.atlas:write.label': "Atlas'ı Yönet",
@@ -73,6 +82,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:share.label': 'Journey bağlantılarını yönet',
   'oauth.scope.journey:share.description':
     "Journey'ler için herkese açık paylaşım bağlantıları oluştur, güncelle ve iptal et",
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback

@@ -1,19 +1,20 @@
-import type { CollectionLink, CollectionStatus } from '@trek/shared';
-import { Check, Link2, Loader2, MapPin, Plus, Search, Trash2, X } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import Markdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
-import { mapsApi } from '../../api/client';
-import { collectionsApi } from '../../api/collections';
-import { useTranslation } from '../../i18n';
-import { normalizeLinkUrl, STATUS_META, STATUS_ORDER } from '../../pages/collections/collectionsModel';
-import type { Category, TranslationFn } from '../../types';
-import { getApiErrorMessage } from '../../types';
-import MarkdownToolbar from '../Journey/MarkdownToolbar';
-import { getCategoryIcon } from '../shared/categoryIcons';
-import Modal from '../shared/Modal';
-import { useToast } from '../shared/Toast';
+import React, { useEffect, useRef, useState } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import { Search, MapPin, Plus, Loader2, Link2, Trash2, Check, X } from 'lucide-react'
+import Modal from '../shared/Modal'
+import { NumericInput } from '../shared/NumericInput'
+import MarkdownToolbar from '../Journey/MarkdownToolbar'
+import { mapsApi } from '../../api/client'
+import { collectionsApi } from '../../api/collections'
+import { getCategoryIcon } from '../shared/categoryIcons'
+import { useTranslation } from '../../i18n'
+import { useToast } from '../shared/Toast'
+import { getApiErrorMessage } from '../../types'
+import { normalizeLinkUrl, STATUS_META, STATUS_ORDER } from '../../pages/collections/collectionsModel'
+import type { Category, TranslationFn } from '../../types'
+import type { CollectionLink, CollectionStatus } from '@trek/shared'
 
 type MapsPlace = Record<string, unknown>;
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
@@ -36,50 +37,43 @@ interface AddPlaceToCollectionModalProps {
  * markdown description / links, all editable together before saving. Stays open
  * after each add so several places can be added in a row.
  */
-export default function AddPlaceToCollectionModal({
-  isOpen,
-  collectionId,
-  collectionName,
-  categories,
-  onClose,
-  onAdded,
-  t,
-}: AddPlaceToCollectionModalProps): React.ReactElement {
-  const { language } = useTranslation();
-  const toast = useToast();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<MapsPlace[]>([]);
-  const [searching, setSearching] = useState(false);
+export default function AddPlaceToCollectionModal({ isOpen, collectionId, collectionName, categories, onClose, onAdded, t }: AddPlaceToCollectionModalProps): React.ReactElement {
+  const { language } = useTranslation()
+  const toast = useToast()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<MapsPlace[]>([])
+  const [searching, setSearching] = useState(false)
+  // A search that came back empty used to render nothing at all, which reads as
+  // "the dialog is dead". Say so instead (#1921).
+  const [noResults, setNoResults] = useState(false)
   // The picked location (address/coords/ids) plus the editable fields.
-  const [picked, setPicked] = useState<MapsPlace | null>(null);
-  const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [description, setDescription] = useState('');
-  const [links, setLinks] = useState<CollectionLink[]>([]);
-  const [status, setStatus] = useState<CollectionStatus>('idea');
-  const [saving, setSaving] = useState(false);
-  const descRef = useRef<HTMLTextAreaElement>(null);
+  const [picked, setPicked] = useState<MapsPlace | null>(null)
+  const [name, setName] = useState('')
+  // Address + coordinates: prefilled from a picked result, but also directly
+  // typeable so a place can be added by GPS without searching (#1435).
+  const [address, setAddress] = useState('')
+  const [lat, setLat] = useState('')
+  const [lng, setLng] = useState('')
+  const [categoryId, setCategoryId] = useState<number | null>(null)
+  const [description, setDescription] = useState('')
+  const [links, setLinks] = useState<CollectionLink[]>([])
+  const [status, setStatus] = useState<CollectionStatus>('idea')
+  const [saving, setSaving] = useState(false)
+  const descRef = useRef<HTMLTextAreaElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
-  const reset = () => {
-    setQuery('');
-    setResults([]);
-    setPicked(null);
-    setName('');
-    setCategoryId(null);
-    setDescription('');
-    setLinks([]);
-    setStatus('idea');
-  };
-  useEffect(() => {
-    if (!isOpen) reset();
-  }, [isOpen]);
+  const reset = () => { setQuery(''); setResults([]); setNoResults(false); setPicked(null); setName(''); setAddress(''); setLat(''); setLng(''); setCategoryId(null); setDescription(''); setLinks([]); setStatus('idea') }
+  useEffect(() => { if (!isOpen) reset() }, [isOpen])
 
   const search = async () => {
-    if (!query.trim()) return;
-    setSearching(true);
+    if (!query.trim()) return
+    setSearching(true)
+    setNoResults(false)
     try {
-      const res = await mapsApi.search(query, language);
-      setResults((res.places as MapsPlace[]) || []);
+      const res = await mapsApi.search(query, language)
+      const places = (res.places as MapsPlace[]) || []
+      setResults(places)
+      setNoResults(places.length === 0)
     } catch (err) {
       toast.error(getApiErrorMessage(err, t('places.mapsSearchError')));
     } finally {
@@ -87,29 +81,33 @@ export default function AddPlaceToCollectionModal({
     }
   };
 
+  const dismissResults = () => { setResults([]); setNoResults(false) }
+
   const pick = (r: MapsPlace) => {
-    setPicked(r);
-    setName(str(r.name) ?? '');
-    setResults([]);
-    setQuery(str(r.name) ?? query);
-  };
-  const setLink = (i: number, patch: Partial<CollectionLink>) =>
-    setLinks(links.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+    setPicked(r)
+    setName(str(r.name) ?? '')
+    setAddress(str(r.address) ?? '')
+    const la = num(r.lat); const lo = num(r.lng)
+    setLat(la != null ? String(la) : '')
+    setLng(lo != null ? String(lo) : '')
+    setResults([]); setNoResults(false); setQuery(str(r.name) ?? query)
+  }
+  const setLink = (i: number, patch: Partial<CollectionLink>) => setLinks(links.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
 
   const save = async () => {
-    const cleanName = name.trim();
-    if (!cleanName) return;
-    const cleanLinks = links
-      .map((l) => ({ label: l.label?.trim() || undefined, url: normalizeLinkUrl(l.url) }))
-      .filter((l) => l.url);
-    setSaving(true);
+    const cleanName = name.trim()
+    if (!cleanName) return
+    const cleanLinks = links.map(l => ({ label: l.label?.trim() || undefined, url: normalizeLinkUrl(l.url) })).filter(l => l.url)
+    const latNum = lat.trim() ? Number(lat) : Number.NaN
+    const lngNum = lng.trim() ? Number(lng) : Number.NaN
+    setSaving(true)
     try {
       const res = await collectionsApi.savePlace({
         collection_id: collectionId,
         name: cleanName,
-        address: (picked && str(picked.address)) ?? null,
-        lat: (picked && num(picked.lat)) ?? null,
-        lng: (picked && num(picked.lng)) ?? null,
+        address: address.trim() || null,
+        lat: Number.isFinite(latNum) ? latNum : null,
+        lng: Number.isFinite(lngNum) ? lngNum : null,
         google_place_id: (picked && str(picked.google_place_id)) ?? null,
         google_ftid: (picked && str(picked.google_ftid)) ?? null,
         osm_id: (picked && str(picked.osm_id)) ?? null,
@@ -120,13 +118,15 @@ export default function AddPlaceToCollectionModal({
         links: cleanLinks,
         status,
         force: true,
-      });
-      if (res.duplicate) toast.info(t('collections.duplicateWarning'));
-      else {
-        toast.success(t('collections.addedToList', { name: collectionName }));
-        onAdded();
-      }
-      reset();
+      })
+      if (res.duplicate) toast.info(t('collections.duplicateWarning'))
+      else { toast.success(t('collections.addedToList', { name: collectionName })); onAdded() }
+      reset()
+      // The dialog stays open for the next place, so hand the caret back to the
+      // search field. The add button the user just clicked goes disabled with the
+      // cleared name, which drops the focus to <body> and leaves the dialog dead
+      // to the keyboard (#1921).
+      searchRef.current?.focus()
     } catch (err) {
       toast.error(getApiErrorMessage(err, t('common.error')));
     } finally {
@@ -134,7 +134,15 @@ export default function AddPlaceToCollectionModal({
     }
   };
 
-  const address = picked ? str(picked.address) : undefined;
+  const coordPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text').trim()
+    // Same pairs as before, written so no two quantifiers can claim the same
+    // character. In the old form `\d+\.?\d*` and `\s*[,;\s]\s*` were both ambiguous,
+    // which backtracks in O(n^4): a pasted 2 kB of digits and spaces froze the tab.
+    const match = text.match(/^(-?\d+(?:\.\d*)?)(?:\s*[,;]\s*|\s+)(-?\d+(?:\.\d*)?)$/)
+    if (match) { e.preventDefault(); setLat(match[1]); setLng(match[2]) }
+  }
+  const coordInputClass = 'w-full px-3 py-2 rounded-lg border border-edge bg-surface-input text-content text-[14px] outline-none focus:border-accent'
 
   return (
     <Modal
@@ -163,86 +171,67 @@ export default function AddPlaceToCollectionModal({
       }
     >
       <div className="flex flex-col gap-4">
-        {/* Search — picking a result fills the location below */}
-        <div className="relative">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-faint" />
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    search();
-                  }
-                }}
-                placeholder={t('collections.addPlaceSearch')}
-                className="w-full rounded-lg border border-edge bg-surface-input py-2 pl-9 pr-3 text-[14px] text-content outline-none focus:border-accent"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={search}
-              disabled={!query.trim() || searching}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-accent-text disabled:opacity-50"
-            >
-              {searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-              {t('common.search')}
-            </button>
-          </div>
-          {results.length > 0 && (
-            <div className="absolute left-0 right-0 z-20 mt-1.5 flex max-h-[280px] flex-col gap-1 overflow-y-auto rounded-xl border border-edge bg-surface-card p-1.5 shadow-lg">
-              <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-content-faint">
-                  {t('common.search')}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setResults([])}
-                  className="rounded-md p-1 text-content-faint hover:bg-surface-hover hover:text-content"
-                  aria-label={t('common.close')}
-                >
-                  <X size={13} />
-                </button>
+        {/* Search — picking a result fills the location below. Pinned to the top of
+            the scrolling dialog body: the dialog stays open after an add, and the
+            search row used to sit above the viewport once the form was scrolled,
+            so it looked like the button had vanished (#1921). The negative margins
+            let its background cover the body padding while it is stuck. */}
+        <div className="sticky top-0 z-20 -mx-6 -mt-6 -mb-4 px-6 pt-6 pb-4 bg-surface-card">
+          <div className="relative">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-faint" />
+                <input
+                  autoFocus
+                  ref={searchRef}
+                  value={query}
+                  onChange={e => { setQuery(e.target.value); setNoResults(false) }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); search() } }}
+                  placeholder={t('collections.addPlaceSearch')}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-edge bg-surface-input text-content text-[14px] outline-none focus:border-accent"
+                />
               </div>
-              {results.map((r, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => pick(r)}
-                  className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-hover"
-                >
-                  <div className="flex h-8 w-8 min-w-[32px] shrink-0 items-center justify-center rounded-lg bg-surface-secondary text-content-faint">
-                    <MapPin size={15} />
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-[13px] font-semibold text-content">{str(r.name)}</span>
-                    {str(r.address) && (
-                      <span className="truncate text-[11.5px] text-content-faint">{str(r.address)}</span>
-                    )}
-                  </div>
-                </button>
-              ))}
+              <button type="button" onClick={search} disabled={!query.trim() || searching} className="px-4 py-2 rounded-lg bg-accent text-accent-text text-[13px] font-semibold disabled:opacity-50 inline-flex items-center gap-2">
+                {searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                {t('common.search')}
+              </button>
             </div>
-          )}
+            {(results.length > 0 || noResults) && (
+              <div className="absolute z-20 left-0 right-0 mt-1.5 max-h-[280px] overflow-y-auto rounded-xl border border-edge bg-surface-card shadow-lg p-1.5 flex flex-col gap-1">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-content-faint">{t('common.search')}</span>
+                  <button type="button" onClick={dismissResults} className="p-1 rounded-md text-content-faint hover:text-content hover:bg-surface-hover" aria-label={t('common.close')}><X size={13} /></button>
+                </div>
+                {noResults ? (
+                  <div className="px-2.5 py-3 text-center text-[12.5px] text-content-faint">{t('planner.noPlacesFound')}</div>
+                ) : results.map((r, i) => (
+                  <button key={i} type="button" onClick={() => pick(r)} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-left hover:bg-surface-hover transition-colors">
+                    <div className="w-8 h-8 min-w-[32px] rounded-lg bg-surface-secondary flex items-center justify-center text-content-faint shrink-0"><MapPin size={15} /></div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-[13px] font-semibold text-content truncate">{str(r.name)}</span>
+                      {str(r.address) && <span className="text-[11.5px] text-content-faint truncate">{str(r.address)}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Name */}
         <div>
-          <label className="mb-1.5 block text-[12px] font-medium text-content-secondary">{t('common.name')}</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('common.name')}
-            className="w-full rounded-lg border border-edge bg-surface-input px-3 py-2 text-[14px] text-content outline-none focus:border-accent"
-          />
-          {address && (
-            <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-content-faint">
-              <MapPin size={12} /> {address}
-            </div>
-          )}
+          <label className="block text-[12px] font-medium text-content-secondary mb-1.5">{t('common.name')}</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={t('common.name')} className="w-full px-3 py-2 rounded-lg border border-edge bg-surface-input text-content text-[14px] outline-none focus:border-accent" />
+        </div>
+
+        {/* Address + coordinates — editable so a place can be added by GPS alone */}
+        <div>
+          <label className="block text-[12px] font-medium text-content-secondary mb-1.5">{t('places.formAddress')}</label>
+          <input value={address} onChange={e => setAddress(e.target.value)} placeholder={t('places.formAddressPlaceholder')} className={coordInputClass} />
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <NumericInput mode="signed" value={lat} onValueChange={setLat} onPaste={coordPaste} placeholder={t('places.formLat')} className={coordInputClass} />
+            <NumericInput mode="signed" value={lng} onValueChange={setLng} onPaste={coordPaste} placeholder={t('places.formLng')} className={coordInputClass} />
+          </div>
         </div>
 
         {/* Status */}

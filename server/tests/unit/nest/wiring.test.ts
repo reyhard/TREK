@@ -4,8 +4,11 @@ import { DatabaseService } from '../../../src/nest/database/database.service';
 import { HealthController } from '../../../src/nest/health/health.controller';
 import { HttpException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-
-import { describe, it, expect } from 'vitest';
+import { db } from '../../../src/db/database';
+import { AppModule } from '../../../src/nest/app.module';
+import { FeaturesController } from '../../../src/nest/health/features.controller';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+import { AdminGuard } from '../../../src/nest/auth/admin.guard';
 
 function ctx(user: unknown) {
   return { switchToHttp: () => ({ getRequest: () => ({ user }) }) } as never;
@@ -17,7 +20,9 @@ describe('AppModule wiring', () => {
       .overrideProvider(DatabaseService)
       .useValue({ get: () => ({ n: 0 }) })
       .compile();
-    expect(moduleRef.get(HealthController)).toBeInstanceOf(HealthController);
+    // The one test that builds the whole AppModule: resolving a controller out of
+    // it proves every module in the graph compiled, not just this one.
+    expect(moduleRef.get(FeaturesController)).toBeInstanceOf(FeaturesController);
   });
 });
 
@@ -34,7 +39,7 @@ describe('AdminGuard', () => {
 
 describe('DatabaseService (shared connection)', () => {
   it('runs real queries against the existing SQLite connection', () => {
-    const svc = new DatabaseService();
+    const svc = new DatabaseService(db);
     expect(svc.get('SELECT 1 AS one')).toEqual({ one: 1 });
     expect(svc.all('SELECT 1 AS one')).toEqual([{ one: 1 }]);
   });

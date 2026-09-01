@@ -15,6 +15,8 @@ const { pluginsEnabled, getMock } = vi.hoisted(() => ({
 }));
 vi.mock('../../../src/nest/plugins/kill-switch', () => ({ pluginsEnabled }));
 vi.mock('../../../src/db/database', () => ({ db: { prepare: () => ({ get: getMock }) } }));
+import { db as dbConn } from '../../../src/db/database';
+import { DatabaseService } from '../../../src/nest/database/database.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const req = (id?: number) => ({ user: id === undefined ? undefined : { id } }) as any;
@@ -29,7 +31,7 @@ function ctrl() {
   } as unknown as PluginsService;
   // The controller now also takes the runtime (for settings-page actions).
   const runtime = { actionsOf: () => [], invokeAction: vi.fn() } as unknown as PluginRuntimeService;
-  return { c: new PluginUserSettingsController(svc, runtime), svc, runtime };
+  return { c: new PluginUserSettingsController(svc, runtime, new DatabaseService(dbConn)), svc, runtime };
 }
 
 describe('PluginUserSettingsController', () => {

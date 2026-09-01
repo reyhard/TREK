@@ -91,9 +91,9 @@ export default function SaveTripPlacesToListModal({
             <input
               autoFocus
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('collections.copyToTripSearch')}
-              className="w-full rounded-lg border border-edge bg-surface-input py-2 pl-8 pr-3 text-[13px] text-content outline-none focus:border-accent"
+              onChange={e => setSearch(e.target.value)}
+              placeholder={t('collections.searchLists')}
+              className="w-full pl-8 pr-3 py-2 rounded-lg border border-edge bg-surface-input text-content text-[13px] outline-none focus:border-accent"
             />
           </div>
         )}

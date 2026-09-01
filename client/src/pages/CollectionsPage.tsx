@@ -1,61 +1,35 @@
-import {
-  Bookmark,
-  CheckCheck,
-  Copy,
-  CopyPlus,
-  FolderInput,
-  List as ListIcon,
-  Map as MapIcon,
-  Plus,
-  Search,
-  Tags,
-  Trash2,
-  X,
-} from 'lucide-react';
-import React from 'react';
-import AddPlaceToCollectionModal from '../components/Collections/AddPlaceToCollectionModal';
-import BulkAssignLabelModal from '../components/Collections/BulkAssignLabelModal';
-import CollectionFilterBar from '../components/Collections/CollectionFilterBar';
-import CollectionHero from '../components/Collections/CollectionHero';
-import CollectionList from '../components/Collections/CollectionList';
-import CollectionMapPanel from '../components/Collections/CollectionMapPanel';
-import CollectionPlaceDetail from '../components/Collections/CollectionPlaceDetail';
-import CopyToTripModal from '../components/Collections/CopyToTripModal';
-import LabelManager from '../components/Collections/LabelManager';
-import ListEditorModal from '../components/Collections/ListEditorModal';
-import ListsRail from '../components/Collections/ListsRail';
-import MoveToListModal from '../components/Collections/MoveToListModal';
-import ShareCollectionModal from '../components/Collections/ShareCollectionModal';
-import Navbar from '../components/Layout/Navbar';
-import Modal from '../components/shared/Modal';
-import '../styles/collections.css';
-import '../styles/dashboard.css';
-import { useCollections } from './collections/useCollections';
-
-function EmptyState({
-  icon,
-  title,
-  text,
-  action,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  text: string;
-  action?: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <div className="col-emptystate">
-      <div className="ic">{icon}</div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-      {action && <div style={{ marginTop: 18 }}>{action}</div>}
-    </div>
-  );
-}
+import React from 'react'
+import { List as ListIcon, Map as MapIcon, Search, Bookmark, CheckCheck, X, Trash2, Copy, CopyPlus, FolderInput, Plus, Tags, DownloadCloud } from 'lucide-react'
+import Navbar from '../components/Layout/Navbar'
+import Modal from '../components/shared/Modal'
+import ListsRail from '../components/Collections/ListsRail'
+import ListEditorModal from '../components/Collections/ListEditorModal'
+import CollectionHero from '../components/Collections/CollectionHero'
+import CollectionList from '../components/Collections/CollectionList'
+import CollectionFilterBar from '../components/Collections/CollectionFilterBar'
+import CollectionMapPanel from '../components/Collections/CollectionMapPanel'
+import CopyToTripModal from '../components/Collections/CopyToTripModal'
+import MoveToListModal from '../components/Collections/MoveToListModal'
+import ShareCollectionModal from '../components/Collections/ShareCollectionModal'
+import AddPlaceToCollectionModal from '../components/Collections/AddPlaceToCollectionModal'
+import ImportFromTripModal from '../components/Collections/ImportFromTripModal'
+import CollectionPlaceDetail from '../components/Collections/CollectionPlaceDetail'
+import LabelManager from '../components/Collections/LabelManager'
+import BulkAssignLabelModal from '../components/Collections/BulkAssignLabelModal'
+import { useCollections } from './collections/useCollections'
+import EmptyState from '../components/shared/EmptyState'
+import '../styles/dashboard.css'
+import '../styles/collections.css'
 
 export default function CollectionsPage(): React.ReactElement {
-  const c = useCollections();
-  const { t } = c;
+  // ViewportRoute in App.tsx picks the branch now, so the phone screen is a
+  // chunk of its own instead of a dead limb in this one.
+  return <CollectionsPageDesktop />
+}
+
+function CollectionsPageDesktop(): React.ReactElement {
+  const c = useCollections()
+  const { t } = c
 
   const title = c.isAllSaved ? t('collections.allSaved') : (c.activeCollection?.name ?? t('collections.title'));
   const isShared = c.activeCollection?.is_owner === false;
@@ -93,10 +67,10 @@ export default function CollectionsPage(): React.ReactElement {
     if (c.view === 'map') c.setView('list');
   };
 
-  const desktopSplit = c.isWide && mappable.length > 0;
-  const mapShown = mappable.length > 0 && (c.view === 'map' || c.isWide);
-  const mapOverlay = c.isWide && mapShown; // the map carries the toggle + search
-  const canAddPlace = typeof c.activeId === 'number' && c.canEdit; // a real list you can edit
+  const desktopSplit = c.isWide && c.hasMappable
+  const mapShown = c.hasMappable && (c.view === 'map' || c.isWide)
+  const mapOverlay = c.isWide && mapShown // the map carries the toggle + search
+  const canAddPlace = typeof c.activeId === 'number' && c.canEdit // a real list you can edit
 
   const listEl = (
     <CollectionList
@@ -113,6 +87,11 @@ export default function CollectionsPage(): React.ReactElement {
   );
   const mapPanel = (overlay: boolean) => (
     <CollectionMapPanel
+      labelOptions={isRealList ? c.labelOptions : []}
+      labelFilter={c.labelFilter}
+      onLabelFilter={isRealList ? c.setLabelFilter : undefined}
+      canManageLabels={canManageLabels}
+      onManageLabels={() => c.setShowLabelManager(true)}
       places={mappable}
       selectedPlaceId={c.selectedPlaceId}
       onSelect={onMapSelect}
@@ -135,14 +114,22 @@ export default function CollectionsPage(): React.ReactElement {
       counts={c.counts}
       categoryFilter={c.categoryFilter}
       categoryOptions={c.categoryOptions}
+      ratingFilter={c.ratingFilter}
+      sortMode={c.sortMode}
       onStatusFilter={c.setStatusFilter}
       onCategoryFilter={c.setCategoryFilter}
-      showLabels={isRealList}
+      onRatingFilter={c.setRatingFilter}
+      onSortMode={c.setSortMode}
+      canAddPlace={canAddPlace}
+      onAddPlace={() => c.setShowAddPlace(true)}
+      showLabels={isRealList && !mapShown}
       labelOptions={c.labelOptions}
       labelFilter={c.labelFilter}
       onLabelFilter={c.setLabelFilter}
       canManageLabels={canManageLabels}
       onManageLabels={() => c.setShowLabelManager(true)}
+      canImport={canAddPlace}
+      onImport={() => c.setShowImport(true)}
       showSelect={showSelect}
       selectMode={c.selectMode}
       onToggleSelect={() => c.setSelectMode(!c.selectMode)}
@@ -152,15 +139,9 @@ export default function CollectionsPage(): React.ReactElement {
   const listColumn = (
     <>
       {filterBar}
-      {c.visiblePlaces.length > 0 ? (
-        listEl
-      ) : (
-        <EmptyState
-          icon={<Search size={26} />}
-          title={t('collections.empty.noMatchTitle')}
-          text={t('collections.empty.noMatchText')}
-        />
-      )}
+      {c.visiblePlaces.length > 0
+        ? listEl
+        : <EmptyState scene="search" title={t('collections.empty.noMatchTitle')} />}
     </>
   );
 
@@ -173,12 +154,22 @@ export default function CollectionsPage(): React.ReactElement {
     );
   } else if (!hasPlaces) {
     body = (
-      <EmptyState
-        icon={<Bookmark size={26} />}
-        title={t('collections.empty.title')}
-        text={t('collections.empty.text')}
-      />
-    );
+      <div className="flex flex-col items-center">
+        <EmptyState scene="collections" title={t('collections.empty.title')} className={canAddPlace ? 'pb-4' : undefined} />
+        {canAddPlace && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button type="button" onClick={() => c.setShowAddPlace(true)} className="col-cta">
+              <Plus size={16} /> {t('collections.addPlace')}
+            </button>
+            {/* An empty list is exactly where a trip import saves the most typing,
+                so it gets the same billing as adding one place by hand. */}
+            <button type="button" onClick={() => c.setShowImport(true)} className="col-cta col-cta-ghost">
+              <DownloadCloud size={16} /> {t('collections.importFromTrip')}
+            </button>
+          </div>
+        )}
+      </div>
+    )
   } else if (desktopSplit) {
     body = (
       <div className={`col-split${c.view === 'map' ? 'map-full' : ''}`}>
@@ -187,9 +178,9 @@ export default function CollectionsPage(): React.ReactElement {
         </div>
         <div className="col-split-map">{mapPanel(true)}</div>
       </div>
-    );
-  } else if (c.view === 'map' && mappable.length > 0) {
-    body = <div className="col-mapwrap">{mapPanel(false)}</div>;
+    )
+  } else if (c.view === 'map' && c.hasMappable) {
+    body = <div className="col-mapwrap">{mapPanel(false)}</div>
   } else {
     body = listColumn;
   }
@@ -222,16 +213,12 @@ export default function CollectionsPage(): React.ReactElement {
 
           <div className="col-body">
             {noLists ? (
-              <EmptyState
-                icon={<Bookmark size={26} />}
-                title={t('collections.empty.firstTitle')}
-                text={t('collections.empty.firstText')}
-                action={
-                  <button type="button" onClick={() => c.setEditorTarget('new')} className="col-cta">
-                    <Bookmark size={16} /> {t('collections.newList')}
-                  </button>
-                }
-              />
+              <div className="flex flex-col items-center">
+                <EmptyState scene="collections" title={t('collections.empty.firstTitle')} className="pb-4" />
+                <button type="button" onClick={() => c.setEditorTarget('new')} className="col-cta">
+                  <Bookmark size={16} /> {t('collections.newList')}
+                </button>
+              </div>
             ) : (
               <>
                 <div ref={c.heroRef}>
@@ -255,12 +242,12 @@ export default function CollectionsPage(): React.ReactElement {
                   />
                 </div>
 
-                {(!mapOverlay || canAddPlace) && (
+                {!mapOverlay && (
                   <div className="col-toolbar">
                     <button type="button" className="col-rail-toggle" onClick={() => c.setMobileRailOpen(true)}>
                       <Bookmark size={15} /> {t('collections.title')}
                     </button>
-                    {!c.isWide && mappable.length > 0 && (
+                    {!c.isWide && c.hasMappable && (
                       <div className="col-viewseg" role="group" aria-label={t('collections.title')}>
                         <button
                           type="button"
@@ -283,17 +270,6 @@ export default function CollectionsPage(): React.ReactElement {
                           <MapIcon size={16} />
                         </button>
                       </div>
-                    )}
-                    {canAddPlace && (
-                      <button
-                        type="button"
-                        onClick={() => c.setShowAddPlace(true)}
-                        className="col-iconbtn"
-                        aria-label={t('collections.addPlace')}
-                        title={t('collections.addPlace')}
-                      >
-                        <Plus size={16} />
-                      </button>
                     )}
                     <div className="col-toolbar-spacer" />
                     {!mapOverlay && (
@@ -383,7 +359,7 @@ export default function CollectionsPage(): React.ReactElement {
         {/* Mobile rail drawer */}
         {c.mobileRailOpen && (
           <>
-            <div className="col-drawer-backdrop" onClick={() => c.setMobileRailOpen(false)} />
+            <div role="presentation" className="col-drawer-backdrop" onClick={() => c.setMobileRailOpen(false)} />
             <div className="col-drawer">
               <div className="col-drawer-head">
                 <button type="button" onClick={() => c.setMobileRailOpen(false)} aria-label={t('common.close')}>
@@ -409,9 +385,11 @@ export default function CollectionsPage(): React.ReactElement {
             anchorRect={desktopSplit ? c.listColRect : null}
             onClose={c.handleCloseDetail}
             onSetStatus={c.handleDetailStatus}
-            onSave={(patch) => c.updatePlace(c.selectedPlace!.id, patch)}
+            onSave={patch => c.updatePlace(c.selectedPlace!.id, patch)}
+            onUploadImage={file => c.uploadPlaceImage(c.selectedPlace!.id, file)}
             onCopyToTrip={c.openCopyForSelectedPlace}
             onRemove={c.handleDetailRemove}
+            onRate={r => c.handleRatePlace(c.selectedPlace!.id, r)}
             t={t}
           />
         )}
@@ -426,6 +404,19 @@ export default function CollectionsPage(): React.ReactElement {
           categories={c.categories}
           onClose={() => c.setShowAddPlace(false)}
           onAdded={c.handlePlaceAdded}
+          t={t}
+        />
+      )}
+
+      {/* Bulk import of a trip's places into the current list */}
+      {typeof c.activeId === 'number' && c.activeCollection && (
+        <ImportFromTripModal
+          isOpen={c.showImport}
+          collectionId={c.activeId}
+          collectionName={c.activeCollection.name}
+          categories={c.categories}
+          onClose={() => c.setShowImport(false)}
+          onImported={c.handlePlaceAdded}
           t={t}
         />
       )}

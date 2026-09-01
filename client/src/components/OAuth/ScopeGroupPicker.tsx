@@ -89,11 +89,9 @@ export default function ScopeGroupPicker({ selected, onChange, availableScopes }
                         }
                         className="mt-0.5 flex-shrink-0 rounded"
                       />
-                      <div>
-                        <p className="text-xs font-medium text-content">{label}</p>
-                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                          {description}
-                        </p>
+                      <div className="text-xs font-medium text-content">
+                        {label}
+                        <p className="text-xs font-normal" style={{ color: 'var(--text-tertiary)' }}>{description}</p>
                       </div>
                     </label>
                   ))}

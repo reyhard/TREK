@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Onaylanmış Rezervasyon',
   'inspector.pendingRes': 'Bekleyen Rezervasyon',
   'inspector.google': "Google Haritalar'da aç",
+  'inspector.navigation': 'Navigasyon',
+  'inspector.openWith': 'Şununla aç',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.saveToCollection': 'Koleksiyona kaydet',
   'inspector.savedToCollection': 'Kaydedildi',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'İz rengi',
+  'inspector.trackColorAuto': 'Otomatik renk',
+  'inspector.trackColorCustom': 'Özel renk seç',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

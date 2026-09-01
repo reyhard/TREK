@@ -1,7 +1,7 @@
-import { Check, X } from 'lucide-react';
-import { useCallback, useEffect } from 'react';
-import ReactDOM from 'react-dom';
-import { useTranslation } from '../../i18n';
+import React, { useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { Check, X } from 'lucide-react'
+import { useTranslation } from '../../i18n'
 
 interface CopyTripDialogProps {
   isOpen: boolean;
@@ -43,15 +43,23 @@ export default function CopyTripDialog({ isOpen, tripTitle, onClose, onConfirm }
 
   if (!isOpen) return null;
 
-  return ReactDOM.createPortal(
+  return createPortal(
     <div
       className="trek-backdrop-enter fixed inset-0 z-[10000] flex items-center justify-center bg-[rgba(15,23,42,0.5)] px-4"
       style={{ paddingBottom: 'var(--bottom-nav-h)' }}
+      role="button"
+      tabIndex={0}
+      aria-label={t('common.close')}
       onClick={onClose}
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClose() }
+      }}
     >
       <div
-        className="trek-modal-enter w-full max-w-md rounded-2xl bg-surface-card p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+        className="trek-modal-enter rounded-2xl shadow-2xl w-full max-w-md p-6 bg-surface-card"
+        onClick={e => e.stopPropagation()}
       >
         <h3 className="mb-1 text-base font-semibold text-content">{t('dashboard.confirm.copy.title')}</h3>
         <p className="mb-4 text-sm text-content-secondary">{tripTitle}</p>
@@ -86,19 +94,16 @@ export default function CopyTripDialog({ isOpen, tripTitle, onClose, onConfirm }
           </div>
         </div>
 
-        <div className="mt-5 flex justify-end gap-3">
-          <button
+        <div className="flex justify-end gap-3 mt-5">
+          <button type="button"
             onClick={onClose}
             className="rounded-lg border border-edge-secondary px-4 py-2 text-sm font-medium text-content-secondary transition-colors"
           >
             {t('common.cancel')}
           </button>
-          <button
-            onClick={() => {
-              onConfirm();
-              onClose();
-            }}
-            className="rounded-lg bg-content px-4 py-2 text-sm font-medium text-surface-card transition-opacity hover:opacity-90"
+          <button type="button"
+            onClick={() => { onConfirm(); onClose() }}
+            className="px-4 py-2 text-sm font-medium rounded-lg transition-opacity hover:opacity-90 bg-content text-surface-card"
           >
             {t('dashboard.confirm.copy.confirm')}
           </button>

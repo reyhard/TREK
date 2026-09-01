@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Подтверждённое бронирование',
   'inspector.pendingRes': 'Ожидающее бронирование',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'Навигация',
+  'inspector.openWith': 'Открыть в',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.website': 'Открыть сайт',
   'inspector.saveToCollection': 'Сохранить в коллекцию',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'Цвет маршрута',
+  'inspector.trackColorAuto': 'Автоматический цвет',
+  'inspector.trackColorCustom': 'Выбрать свой цвет',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

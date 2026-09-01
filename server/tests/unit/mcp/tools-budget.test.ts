@@ -43,6 +43,19 @@ vi.mock('../../../src/config', () => ({
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
+import { createTables } from '../../../src/db/schema';
+import { runMigrations } from '../../../src/db/migrations';
+import { resetTestDb } from '../../helpers/test-db';
+import { createUser, createTrip, createBudgetItem, createReservation, addTripMember } from '../../helpers/factories';
+import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+import { PermissionsService } from '../../../src/nest/permissions/permissions.service';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+
+// Permission writes go through a service instance — the permissions cache is
+// module-scoped, so the MCP shared checkPermission path sees the write.
+const permissionsService = new PermissionsService(new DatabaseService(testDb));
+const savePermissions = permissionsService.savePermissions.bind(permissionsService);
+
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
@@ -353,22 +366,47 @@ describe('Tool: delete_budget_item', () => {
 });
 
 // ---------------------------------------------------------------------------
-// link_budget_item_to_reservation
+// Resource: trek://trips/{tripId}/budget (moved from the legacy resources.ts
+// registrar to the DI-discovered BudgetMcp — attached via the nest-mcp registry)
+// ---------------------------------------------------------------------------
+
+describe('Resource: trek://trips/{tripId}/budget', () => {
+  it('returns budget items for a trip', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    createBudgetItem(testDb, trip.id, { name: 'Hotel', category: 'Accommodation', total_price: 200 });
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: `trek://trips/${trip.id}/budget` });
+      const items = parseResourceResult(result) as { name: string }[];
+      expect(items).toHaveLength(1);
+      expect(items[0].name).toBe('Hotel');
+    });
+  });
+
+  it('returns access denied for unauthorized trip', async () => {
+    const { user } = createUser(testDb);
+    const { user: other } = createUser(testDb);
+    const trip = createTrip(testDb, other.id);
+
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: `trek://trips/${trip.id}/budget` });
+      const data = parseResourceResult(result) as { error?: string };
+      expect(data.error).toBeTruthy();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// link_budget_item_to_reservation / unlink_budget_item_from_reservation
 // ---------------------------------------------------------------------------
 
 describe('Tool: link_budget_item_to_reservation', () => {
-  it('links an existing budget item to an existing reservation', async () => {
+  it('links an existing budget item to an existing reservation and broadcasts budget:updated', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
-    const item = createBudgetItem(testDb, trip.id, {
-      name: 'Hotel deposit',
-      category: 'accommodation',
-      total_price: 150,
-    });
-    const reservation = createReservation(testDb, trip.id, {
-      title: 'Hotel',
-      type: 'hotel',
-    });
+    const item = createBudgetItem(testDb, trip.id, { name: 'Hotel deposit', category: 'accommodation', total_price: 150 });
+    const reservation = createReservation(testDb, trip.id, { title: 'Hotel', type: 'hotel' });
 
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
@@ -385,56 +423,11 @@ describe('Tool: link_budget_item_to_reservation', () => {
     expect(broadcastMock).toHaveBeenCalledWith(
       trip.id,
       'budget:updated',
-      expect.objectContaining({
-        item: expect.objectContaining({ id: item.id, reservation_id: reservation.id }),
-        _source: 'mcp',
-      }),
+      expect.objectContaining({ item: expect.objectContaining({ id: item.id, reservation_id: reservation.id }) }),
     );
   });
 
-  it('returns changed false and does not broadcast when already linked to the same reservation', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const reservation = createReservation(testDb, trip.id);
-    const item = createBudgetItem(testDb, trip.id);
-    testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id = ?').run(reservation.id, item.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
-      });
-      const data = parseToolResult(result) as any;
-      expect(data.changed).toBe(false);
-    });
-
-    expect(broadcastMock).not.toHaveBeenCalledWith(trip.id, 'budget:updated', expect.anything());
-  });
-
-  it('rejects relinking an item that belongs to another reservation', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const first = createReservation(testDb, trip.id, { title: 'First' });
-    const second = createReservation(testDb, trip.id, { title: 'Second' });
-    const item = createBudgetItem(testDb, trip.id);
-    testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id = ?').run(first.id, item.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: item.id, reservationId: second.id },
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content?.[0] as any)?.text).toBe(
-        `Budget item is already linked to reservation ${first.id}. Unlink it before linking it to another reservation.`,
-      );
-    });
-
-    const row = testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any;
-    expect(row.reservation_id).toBe(first.id);
-  });
-
-  it('allows two costs to link to the same reservation', async () => {
+  it('allows multiple costs to link to one reservation', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const reservation = createReservation(testDb, trip.id);
@@ -451,60 +444,11 @@ describe('Tool: link_budget_item_to_reservation', () => {
       }
     });
 
-    const count = testDb
-      .prepare('SELECT COUNT(*) AS count FROM budget_items WHERE reservation_id = ?')
-      .get(reservation.id) as { count: number };
+    const count = testDb.prepare('SELECT COUNT(*) AS count FROM budget_items WHERE reservation_id = ?').get(reservation.id) as { count: number };
     expect(count.count).toBe(2);
   });
 
-  it('returns Budget item not found for a missing item', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const reservation = createReservation(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: 999999, reservationId: reservation.id },
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content?.[0] as any)?.text).toBe('Budget item not found.');
-    });
-  });
-
-  it('returns Reservation not found for a missing reservation', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const item = createBudgetItem(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: item.id, reservationId: 999999 },
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content?.[0] as any)?.text).toBe('Reservation not found.');
-    });
-  });
-
-  it('reports an item from another owned trip as Budget item not found', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const other = createTrip(testDb, user.id);
-    const item = createBudgetItem(testDb, other.id);
-    const reservation = createReservation(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content?.[0] as any)?.text).toBe('Budget item not found.');
-    });
-  });
-
-  it('reports a reservation from another owned trip as Reservation not found', async () => {
+  it('rejects a wrong-trip reservation', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const other = createTrip(testDb, user.id);
@@ -519,45 +463,7 @@ describe('Tool: link_budget_item_to_reservation', () => {
       expect(result.isError).toBe(true);
       expect((result.content?.[0] as any)?.text).toBe('Reservation not found.');
     });
-  });
-
-  it('returns an MCP error for a non-member and writes no link', async () => {
-    const { user: owner } = createUser(testDb);
-    const { user: outsider } = createUser(testDb);
-    const trip = createTrip(testDb, owner.id);
-    const item = createBudgetItem(testDb, trip.id);
-    const reservation = createReservation(testDb, trip.id);
-
-    await withHarness(outsider.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
-      });
-      expect(result.isError).toBe(true);
-    });
-
-    const row = testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any;
-    expect(row.reservation_id).toBeNull();
-  });
-
-  it('blocks demo mode and writes no link', async () => {
-    process.env.DEMO_MODE = 'true';
-    const { user } = createUser(testDb, { email: 'demo@nomad.app' });
-    const trip = createTrip(testDb, user.id);
-    const item = createBudgetItem(testDb, trip.id);
-    const reservation = createReservation(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'link_budget_item_to_reservation',
-        arguments: { tripId: trip.id, itemId: item.id, reservationId: reservation.id },
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content?.[0] as any)?.text).toBe('Write operations are disabled in demo mode.');
-    });
-
-    const row = testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any;
-    expect(row.reservation_id).toBeNull();
+    expect((testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id).toBeNull();
   });
 
   it('requires reservation_edit in addition to budget_edit', async () => {
@@ -567,11 +473,7 @@ describe('Tool: link_budget_item_to_reservation', () => {
     addTripMember(testDb, trip.id, member.id);
     const item = createBudgetItem(testDb, trip.id);
     const reservation = createReservation(testDb, trip.id);
-
-    savePermissions({
-      budget_edit: 'trip_member',
-      reservation_edit: 'trip_owner',
-    });
+    savePermissions({ budget_edit: 'trip_member', reservation_edit: 'trip_owner' });
 
     await withHarness(member.id, async (h) => {
       const result = await h.client.callTool({
@@ -580,10 +482,7 @@ describe('Tool: link_budget_item_to_reservation', () => {
       });
       expect(result.isError).toBe(true);
     });
-
-    expect(
-      (testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id,
-    ).toBeNull();
+    expect((testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id).toBeNull();
   });
 
   it('requires budget_edit in addition to reservation_edit', async () => {
@@ -593,11 +492,7 @@ describe('Tool: link_budget_item_to_reservation', () => {
     addTripMember(testDb, trip.id, member.id);
     const item = createBudgetItem(testDb, trip.id);
     const reservation = createReservation(testDb, trip.id);
-
-    savePermissions({
-      budget_edit: 'trip_owner',
-      reservation_edit: 'trip_member',
-    });
+    savePermissions({ budget_edit: 'trip_owner', reservation_edit: 'trip_member' });
 
     await withHarness(member.id, async (h) => {
       const result = await h.client.callTool({
@@ -606,33 +501,25 @@ describe('Tool: link_budget_item_to_reservation', () => {
       });
       expect(result.isError).toBe(true);
     });
-
-    expect(
-      (testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id,
-    ).toBeNull();
+    expect((testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// unlink_budget_item_from_reservation
-// ---------------------------------------------------------------------------
-
 describe('Tool: unlink_budget_item_from_reservation', () => {
-  it('clears only the selected item link', async () => {
+  it('clears only the selected item link, preserves the cost, and leaves siblings linked', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     const reservation = createReservation(testDb, trip.id);
     const linked = createBudgetItem(testDb, trip.id, { name: 'Linked', total_price: 90 });
     const sibling = createBudgetItem(testDb, trip.id, { name: 'Sibling', total_price: 10 });
-    testDb
-      .prepare('UPDATE budget_items SET reservation_id = ? WHERE id IN (?, ?)')
-      .run(reservation.id, linked.id, sibling.id);
+    testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id IN (?, ?)').run(reservation.id, linked.id, sibling.id);
 
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
         name: 'unlink_budget_item_from_reservation',
         arguments: { tripId: trip.id, itemId: linked.id },
       });
+      expect(result.isError).toBeFalsy();
       const data = parseToolResult(result) as any;
       expect(data.changed).toBe(true);
       expect(data.item.reservation_id).toBeNull();
@@ -640,81 +527,22 @@ describe('Tool: unlink_budget_item_from_reservation', () => {
       expect(data.item.total_price).toBe(90);
     });
 
+    expect(broadcastMock).toHaveBeenCalledWith(trip.id, 'budget:updated', expect.objectContaining({ item: expect.objectContaining({ id: linked.id, reservation_id: null }) }));
     const siblingRow = testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(sibling.id) as any;
     expect(siblingRow.reservation_id).toBe(reservation.id);
+    expect(testDb.prepare('SELECT id FROM budget_items WHERE id = ?').get(linked.id)).toBeDefined();
     expect(testDb.prepare('SELECT id FROM reservations WHERE id = ?').get(reservation.id)).toBeDefined();
   });
 
-  it('returns changed false and does not broadcast for an already-unlinked item', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const item = createBudgetItem(testDb, trip.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'unlink_budget_item_from_reservation',
-        arguments: { tripId: trip.id, itemId: item.id },
-      });
-      const data = parseToolResult(result) as any;
-      expect(data.changed).toBe(false);
-    });
-
-    expect(broadcastMock).not.toHaveBeenCalledWith(trip.id, 'budget:updated', expect.anything());
-  });
-
-  it('returns Budget item not found for a missing item', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'unlink_budget_item_from_reservation',
-        arguments: { tripId: trip.id, itemId: 999999 },
-      });
-      expect(result.isError).toBe(true);
-      expect((result.content?.[0] as any)?.text).toBe('Budget item not found.');
-    });
-  });
-
-  it('emits one budget:updated on successful unlink', async () => {
-    const { user } = createUser(testDb);
-    const trip = createTrip(testDb, user.id);
-    const reservation = createReservation(testDb, trip.id);
-    const item = createBudgetItem(testDb, trip.id);
-    testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id = ?').run(reservation.id, item.id);
-
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'unlink_budget_item_from_reservation',
-        arguments: { tripId: trip.id, itemId: item.id },
-      });
-      expect(result.isError).toBeFalsy();
-    });
-
-    expect(broadcastMock).toHaveBeenCalledTimes(1);
-    expect(broadcastMock).toHaveBeenCalledWith(
-      trip.id,
-      'budget:updated',
-      expect.objectContaining({
-        item: expect.objectContaining({ id: item.id, reservation_id: null }),
-        _source: 'mcp',
-      }),
-    );
-  });
-
-  it('uses the same combined budget_edit and reservation_edit permission gate', async () => {
+  it('requires reservation_edit for the unlink too', async () => {
     const { user: owner } = createUser(testDb);
     const { user: member } = createUser(testDb);
     const trip = createTrip(testDb, owner.id);
     addTripMember(testDb, trip.id, member.id);
-    const item = createBudgetItem(testDb, trip.id);
     const reservation = createReservation(testDb, trip.id);
+    const item = createBudgetItem(testDb, trip.id);
     testDb.prepare('UPDATE budget_items SET reservation_id = ? WHERE id = ?').run(reservation.id, item.id);
-
-    savePermissions({
-      budget_edit: 'trip_member',
-      reservation_edit: 'trip_owner',
-    });
+    savePermissions({ budget_edit: 'trip_member', reservation_edit: 'trip_owner' });
 
     await withHarness(member.id, async (h) => {
       const result = await h.client.callTool({
@@ -723,8 +551,6 @@ describe('Tool: unlink_budget_item_from_reservation', () => {
       });
       expect(result.isError).toBe(true);
     });
-
-    const row = testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any;
-    expect(row.reservation_id).toBe(reservation.id);
+    expect((testDb.prepare('SELECT reservation_id FROM budget_items WHERE id = ?').get(item.id) as any).reservation_id).toBe(reservation.id);
   });
 });

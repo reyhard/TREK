@@ -1,9 +1,10 @@
-import { AlertTriangle, CheckCircle, Eye, EyeOff, Loader2, RefreshCw, Save, Sun, XCircle } from 'lucide-react';
-import React from 'react';
-import { adminApi, authApi } from '../../api/client';
-import type { TranslationFn } from '../../types';
-import { getApiErrorMessage } from '../../types';
-import type { useAdmin } from './useAdmin';
+import React from 'react'
+import { adminApi, authApi } from '../../api/client'
+import { getApiErrorMessage } from '../../types'
+import { Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, Sun, RefreshCw, AlertTriangle } from 'lucide-react'
+import ToggleSwitch from '../../components/Settings/ToggleSwitch'
+import type { TranslationFn } from '../../types'
+import type { useAdmin } from './useAdmin'
 
 interface AdminSettingsTabProps {
   admin: ReturnType<typeof useAdmin>;
@@ -15,51 +16,20 @@ interface AdminSettingsTabProps {
 export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): React.ReactElement {
   const {
     toast,
-    setPlacesPhotosEnabled,
-    setPlacesAutocompleteEnabled,
-    setPlacesDetailsEnabled,
-    placesPhotosEnabled,
-    setPlacesPhotosEnabledState,
-    placesAutocompleteEnabled,
-    setPlacesAutocompleteEnabledState,
-    placesDetailsEnabled,
-    setPlacesDetailsEnabledState,
-    oidcConfig,
-    setOidcConfig,
-    savingOidc,
-    setSavingOidc,
-    passwordLogin,
-    setPasswordLogin,
-    passwordRegistration,
-    setPasswordRegistration,
-    oidcLogin,
-    setOidcLogin,
-    oidcRegistration,
-    setOidcRegistration,
-    envOverrideOidcOnly,
-    oidcConfigured,
-    requireMfa,
-    passkeyLogin,
-    setPasskeyLogin,
-    passkeyConfigured,
-    webauthnRpId,
-    setWebauthnRpId,
-    webauthnOrigins,
-    setWebauthnOrigins,
-    savingWebauthn,
-    handleSaveWebauthn,
-    allowedFileTypes,
-    setAllowedFileTypes,
-    savingFileTypes,
-    setSavingFileTypes,
-    mapsKey,
-    setMapsKey,
-    unsplashKey,
-    setUnsplashKey,
-    showKeys,
-    savingKeys,
-    validating,
-    validation,
+    setPlacesPhotosEnabled, setPlacesAutocompleteEnabled, setPlacesDetailsEnabled, setPlacesEnrichEnabled,
+    placesPhotosEnabled, setPlacesPhotosEnabledState,
+    placesAutocompleteEnabled, setPlacesAutocompleteEnabledState,
+    placesDetailsEnabled, setPlacesDetailsEnabledState,
+    placesEnrichEnabled, setPlacesEnrichEnabledState,
+    oidcConfig, setOidcConfig, savingOidc, setSavingOidc,
+    passwordLogin, setPasswordLogin, passwordRegistration, setPasswordRegistration,
+    oidcLogin, setOidcLogin, oidcRegistration, setOidcRegistration,
+    envOverrideOidcOnly, oidcConfigured, requireMfa,
+    passkeyLogin, setPasskeyLogin, passkeyConfigured,
+    webauthnRpId, setWebauthnRpId, webauthnOrigins, setWebauthnOrigins, savingWebauthn, handleSaveWebauthn,
+    allowedFileTypes, setAllowedFileTypes, savingFileTypes, setSavingFileTypes,
+    mapsKey, setMapsKey, unsplashKey, setUnsplashKey, showKeys, savingKeys, validating, validation,
+    managed,
     setShowRotateJwtModal,
     handleToggleAuthSetting,
     handleToggleRequireMfa,
@@ -87,7 +57,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
               <p className="text-sm font-medium text-slate-700">{t('admin.passwordLogin')}</p>
               <p className="mt-0.5 text-xs text-slate-400">{t('admin.passwordLoginHint')}</p>
             </div>
-            <button
+            <button type="button"
               disabled={envOverrideOidcOnly || (!passwordLogin && !oidcLogin)}
               onClick={() => handleToggleAuthSetting('password_login', !passwordLogin, setPasswordLogin)}
               title={!passwordLogin && !oidcLogin ? t('admin.lockoutWarning') : undefined}
@@ -105,7 +75,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
               <p className="text-sm font-medium text-slate-700">{t('admin.passwordRegistration')}</p>
               <p className="mt-0.5 text-xs text-slate-400">{t('admin.passwordRegistrationHint')}</p>
             </div>
-            <button
+            <button type="button"
               disabled={envOverrideOidcOnly}
               onClick={() =>
                 handleToggleAuthSetting('password_registration', !passwordRegistration, setPasswordRegistration)
@@ -125,7 +95,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
                 <p className="text-sm font-medium text-slate-700">{t('admin.oidcLogin')}</p>
                 <p className="mt-0.5 text-xs text-slate-400">{t('admin.oidcLoginHint')}</p>
               </div>
-              <button
+              <button type="button"
                 disabled={!passwordLogin && oidcLogin}
                 onClick={() => handleToggleAuthSetting('oidc_login', !oidcLogin, setOidcLogin)}
                 title={!passwordLogin && oidcLogin ? t('admin.lockoutWarning') : undefined}
@@ -145,7 +115,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
                 <p className="text-sm font-medium text-slate-700">{t('admin.oidcRegistration')}</p>
                 <p className="mt-0.5 text-xs text-slate-400">{t('admin.oidcRegistrationHint')}</p>
               </div>
-              <button
+              <button type="button"
                 onClick={() => handleToggleAuthSetting('oidc_registration', !oidcRegistration, setOidcRegistration)}
                 className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${oidcRegistration ? 'bg-content' : 'bg-edge'}`}
               >
@@ -190,6 +160,13 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             </p>
           )}
 
+          {/* The domain passkeys bind to and the origins that may present them
+              follow from the address the instance is served on, which the operator
+              owns. Getting either wrong invalidates every enrolled passkey, and on
+              a shared parent domain a wrong RP ID reaches past this instance
+              entirely — so they are pinned per container, not offered here. The
+              switch above stays: whether to offer passkeys at all is a house rule. */}
+          {!managed && (<>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">{t('admin.passkey.rpId')}</label>
             <p className="mb-1.5 text-xs text-slate-400">{t('admin.passkey.rpIdHint')}</p>
@@ -221,6 +198,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             {savingWebauthn ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {t('common.save')}
           </button>
+          </>)}
         </div>
       </div>
 
@@ -263,8 +241,8 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             placeholder="jpg,png,pdf,doc,docx,xls,xlsx,txt,csv"
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-slate-400"
           />
-          <p className="mt-2 text-xs text-slate-400">{t('admin.fileTypesFormat')}</p>
-          <button
+          <p className="text-xs text-slate-400 mt-2">{t('admin.fileTypesFormat')}</p>
+          <button type="button"
             onClick={async () => {
               setSavingFileTypes(true);
               try {
@@ -289,13 +267,21 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
         </div>
       </div>
 
+      {/* Google and Unsplash come with the instance, and so does what a lookup costs;
+          the per-place toggles only ever traded away quota that is not the customer’s
+          to spend. Weather needs no key at all and has nothing to configure. */}
+      {!managed && (<>
       {/* API Keys */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-6 py-4">
           <h2 className="font-semibold text-slate-900">{t('admin.apiKeys')}</h2>
           <p className="mt-1 text-xs text-slate-400">{t('admin.apiKeysHint')}</p>
         </div>
-        <div className="space-y-4 p-6">
+        <div className="p-6 space-y-4">
+          {/* The two key fields, not the toggles below them: on a centrally
+              administered install the operator supplies the keys, while whether
+              photos and lookups are offered at all stays the admin’s call. */}
+          {!managed && (<>
           {/* Google Maps Key */}
           <div>
             <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -321,7 +307,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
                   {showKeys.maps ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <button
+              <button type="button"
                 onClick={() => handleValidateKey('maps')}
                 disabled={!mapsKey || validating.maps}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -374,6 +360,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             </div>
             <p className="mt-1 text-xs text-slate-400">{t('admin.unsplashKeyHint')}</p>
           </div>
+          </>)}
 
           {/* Place Photos Toggle */}
           <div className="flex items-center justify-between gap-4 border-t border-slate-100 py-3">
@@ -381,25 +368,16 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
               <p className="text-sm font-medium text-slate-700">{t('admin.placesPhotos.title')}</p>
               <p className="mt-0.5 text-xs text-slate-400">{t('admin.placesPhotos.subtitle')}</p>
             </div>
-            <button
-              onClick={async () => {
-                const next = !placesPhotosEnabled;
-                setPlacesPhotosEnabledState(next);
-                setPlacesPhotosEnabled(next);
-                try {
-                  await adminApi.updatePlacesPhotos(next);
-                } catch {
-                  setPlacesPhotosEnabledState(!next);
-                  setPlacesPhotosEnabled(!next);
-                }
+            <ToggleSwitch
+              on={placesPhotosEnabled}
+              label={t('admin.placesPhotos.title')}
+              onToggle={async () => {
+                const next = !placesPhotosEnabled
+                setPlacesPhotosEnabledState(next)
+                setPlacesPhotosEnabled(next)
+                try { await adminApi.updatePlacesPhotos(next) } catch { setPlacesPhotosEnabledState(!next); setPlacesPhotosEnabled(!next) }
               }}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${placesPhotosEnabled ? 'bg-content' : 'bg-edge'}`}
-            >
-              <span
-                className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                style={{ transform: placesPhotosEnabled ? 'translateX(20px)' : 'translateX(0)' }}
-              />
-            </button>
+            />
           </div>
 
           {/* Place Autocomplete Toggle */}
@@ -408,25 +386,16 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
               <p className="text-sm font-medium text-slate-700">{t('admin.placesAutocomplete.title')}</p>
               <p className="mt-0.5 text-xs text-slate-400">{t('admin.placesAutocomplete.subtitle')}</p>
             </div>
-            <button
-              onClick={async () => {
-                const next = !placesAutocompleteEnabled;
-                setPlacesAutocompleteEnabledState(next);
-                setPlacesAutocompleteEnabled(next);
-                try {
-                  await adminApi.updatePlacesAutocomplete(next);
-                } catch {
-                  setPlacesAutocompleteEnabledState(!next);
-                  setPlacesAutocompleteEnabled(!next);
-                }
+            <ToggleSwitch
+              on={placesAutocompleteEnabled}
+              label={t('admin.placesAutocomplete.title')}
+              onToggle={async () => {
+                const next = !placesAutocompleteEnabled
+                setPlacesAutocompleteEnabledState(next)
+                setPlacesAutocompleteEnabled(next)
+                try { await adminApi.updatePlacesAutocomplete(next) } catch { setPlacesAutocompleteEnabledState(!next); setPlacesAutocompleteEnabled(!next) }
               }}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${placesAutocompleteEnabled ? 'bg-content' : 'bg-edge'}`}
-            >
-              <span
-                className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                style={{ transform: placesAutocompleteEnabled ? 'translateX(20px)' : 'translateX(0)' }}
-              />
-            </button>
+            />
           </div>
 
           {/* Place Details Toggle */}
@@ -435,25 +404,34 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
               <p className="text-sm font-medium text-slate-700">{t('admin.placesDetails.title')}</p>
               <p className="mt-0.5 text-xs text-slate-400">{t('admin.placesDetails.subtitle')}</p>
             </div>
-            <button
-              onClick={async () => {
-                const next = !placesDetailsEnabled;
-                setPlacesDetailsEnabledState(next);
-                setPlacesDetailsEnabled(next);
-                try {
-                  await adminApi.updatePlacesDetails(next);
-                } catch {
-                  setPlacesDetailsEnabledState(!next);
-                  setPlacesDetailsEnabled(!next);
-                }
+            <ToggleSwitch
+              on={placesDetailsEnabled}
+              label={t('admin.placesDetails.title')}
+              onToggle={async () => {
+                const next = !placesDetailsEnabled
+                setPlacesDetailsEnabledState(next)
+                setPlacesDetailsEnabled(next)
+                try { await adminApi.updatePlacesDetails(next) } catch { setPlacesDetailsEnabledState(!next); setPlacesDetailsEnabled(!next) }
               }}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${placesDetailsEnabled ? 'bg-content' : 'bg-edge'}`}
-            >
-              <span
-                className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                style={{ transform: placesDetailsEnabled ? 'translateX(20px)' : 'translateX(0)' }}
-              />
-            </button>
+            />
+          </div>
+
+          {/* Place Enrichment Toggle */}
+          <div className="flex items-center justify-between gap-4 py-3 border-t border-slate-100">
+            <div>
+              <p className="text-sm font-medium text-slate-700">{t('admin.placesEnrich.title')}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{t('admin.placesEnrich.subtitle')}</p>
+            </div>
+            <ToggleSwitch
+              on={placesEnrichEnabled}
+              label={t('admin.placesEnrich.title')}
+              onToggle={async () => {
+                const next = !placesEnrichEnabled
+                setPlacesEnrichEnabledState(next)
+                setPlacesEnrichEnabled(next)
+                try { await adminApi.updatePlacesEnrich(next) } catch { setPlacesEnrichEnabledState(!next); setPlacesEnrichEnabled(!next) }
+              }}
+            />
           </div>
 
           {/* Open-Meteo Weather Info */}
@@ -507,7 +485,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             </div>
           </div>
 
-          <button
+          <button type="button"
             onClick={handleSaveApiKeys}
             disabled={savingKeys}
             className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:bg-slate-400"
@@ -522,6 +500,11 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
         </div>
       </div>
 
+      {/* An issuer the instance names can assert any address as verified, and the
+          discovery calls leave from inside the operator’s network. Sign-on is theirs
+          to wire, so the fields are not offered. */}
+      {!managed && (<>
+      </>)}
       {/* OIDC / SSO Configuration */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-6 py-4">
@@ -551,10 +534,9 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             <p className="mt-1 text-xs text-slate-400">{t('admin.oidcIssuerHint')}</p>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Discovery URL <span className="font-normal text-slate-400">(optional)</span>
-            </label>
+            <label htmlFor="oidc-discovery-url" className="block text-sm font-medium text-slate-700 mb-1.5">Discovery URL <span className="text-slate-400 font-normal">(optional)</span></label>
             <input
+              id="oidc-discovery-url"
               type="url"
               value={oidcConfig.discovery_url}
               onChange={(e) => setOidcConfig((c) => ({ ...c, discovery_url: e.target.value }))}
@@ -567,8 +549,9 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             </p>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Client ID</label>
+            <label htmlFor="oidc-client-id" className="block text-sm font-medium text-slate-700 mb-1.5">Client ID</label>
             <input
+              id="oidc-client-id"
               type="text"
               value={oidcConfig.client_id}
               onChange={(e) => setOidcConfig((c) => ({ ...c, client_id: e.target.value }))}
@@ -576,8 +559,9 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Client Secret</label>
+            <label htmlFor="oidc-client-secret" className="block text-sm font-medium text-slate-700 mb-1.5">Client Secret</label>
             <input
+              id="oidc-client-secret"
               type="password"
               value={oidcConfig.client_secret}
               onChange={(e) => setOidcConfig((c) => ({ ...c, client_secret: e.target.value }))}
@@ -585,7 +569,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-slate-400"
             />
           </div>
-          <button
+          <button type="button"
             onClick={async () => {
               setSavingOidc(true);
               try {
@@ -616,6 +600,10 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
           </button>
         </div>
       </div>
+      {/* Rotating the secret signs every user out and fixes nothing an instance admin
+          can reach: the file it writes belongs to the host. */}
+      {!managed && (<>
+      </>)}
       {/* Danger Zone */}
       <div className="overflow-hidden rounded-xl border border-red-200 bg-white">
         <div className="border-b border-red-100 bg-red-50 px-6 py-4">
@@ -632,7 +620,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
                 Generate a new JWT signing secret. All active sessions will be invalidated immediately.
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={() => setShowRotateJwtModal(true)}
               className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
             >
@@ -642,6 +630,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
           </div>
         </div>
       </div>
+      </>)}
     </div>
-  );
+  )
 }

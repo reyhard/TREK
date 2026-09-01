@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
-import type { ChatReaction } from './CollabChat.types';
-import { TwemojiImg } from './CollabChatTwemojiImg';
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { TwemojiImg } from './CollabChatTwemojiImg'
+import type { ChatReaction } from './CollabChat.types'
 
 /* ── Reaction Badge with NOMAD tooltip ── */
 interface ReactionBadgeProps {
@@ -18,9 +18,7 @@ export function ReactionBadge({ reaction, currentUserId, onReact }: ReactionBadg
 
   return (
     <>
-      <button
-        ref={ref}
-        onClick={onReact}
+      <button type="button" ref={ref} onClick={onReact}
         onMouseEnter={() => {
           if (ref.current) {
             const rect = ref.current.getBoundingClientRect();
@@ -56,32 +54,18 @@ export function ReactionBadge({ reaction, currentUserId, onReact }: ReactionBadg
           </span>
         )}
       </button>
-      {hover &&
-        names &&
-        ReactDOM.createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              top: pos.top,
-              left: pos.left,
-              transform: 'translate(-50%, -100%)',
-              pointerEvents: 'none',
-              zIndex: 10000,
-              whiteSpace: 'nowrap',
-              background: 'var(--bg-card, white)',
-              color: 'var(--text-primary, #111827)',
-              fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-              fontWeight: 500,
-              padding: '5px 10px',
-              borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              border: '1px solid var(--border-faint, #e5e7eb)',
-            }}
-          >
-            {names}
-          </div>,
-          document.body
-        )}
+      {hover && names && createPortal(
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, transform: 'translate(-50%, -100%)',
+          pointerEvents: 'none', zIndex: 10000, whiteSpace: 'nowrap',
+          background: 'var(--bg-card, white)', color: 'var(--text-primary, #111827)',
+          fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 500, padding: '5px 10px', borderRadius: 8,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--border-faint, #e5e7eb)',
+        }}>
+          {names}
+        </div>,
+        document.body
+      )}
     </>
   );
 }

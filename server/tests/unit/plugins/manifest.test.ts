@@ -7,6 +7,7 @@ import { parseManifest, ManifestError } from '../../../src/nest/plugins/install/
 import { describe, it, expect } from 'vitest';
 
 const base = { id: 'flight-tracker', name: 'Flight', version: '1.2.0', type: 'widget', apiVersion: 1 };
+const withApi = (apiVersion: unknown) => ({ ...base, apiVersion, trek: '>=3.2.0 <4.0.0' });
 
 describe('parseManifest', () => {
   it('parses a valid manifest with defaults', () => {
@@ -72,6 +73,17 @@ describe('parseManifest', () => {
     expect(m.settings[0]).toMatchObject({ key: 'api_key', secret: true, scope: 'instance' });
   });
 
+  it('parses capabilities.mcpTools when the mcp:tools grant is held', () => {
+    const m = parseManifest({
+      ...base,
+      permissions: ['mcp:tools'],
+      capabilities: { mcpTools: [{ name: 'flight', title: 'Flight', description: 'Live flight status', inputSchema: { code: { type: 'string' } } }] },
+    });
+    expect(m.capabilities?.mcpTools).toEqual([
+      { name: 'flight', title: 'Flight', description: 'Live flight status', inputSchema: { code: { type: 'string' } } },
+    ]);
+  });
+
   it('accepts exact, single-label (self-hoster sibling), and wildcard outbound hosts', () => {
     const m = parseManifest({
       ...base,
@@ -118,9 +130,31 @@ describe('parseManifest', () => {
     ],
     ['not an object', 'nope', /not an object/],
     ['missing name', { id: 'x-plugin', version: '1.0.0', type: 'page' }, /missing\/invalid "name"/],
+    ['mcpTools without grant', { ...base, permissions: [], capabilities: { mcpTools: [{ name: 'flight', description: 'd' }] } }, /mcpTools requires the "mcp:tools" permission/],
+    ['mcpTools not an array', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: 'nope' } }, /mcpTools must be an array/],
+    ['mcpTools too many', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: Array.from({ length: 9 }, (_, i) => ({ name: `t${i}`, description: 'd' })) } }, /at most 8 tools/],
+    ['mcpTools bad name', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'Has Space', description: 'd' }] } }, /invalid tool name/],
+    ['mcpTools missing description', { ...base, permissions: ['mcp:tools'], capabilities: { mcpTools: [{ name: 'flight' }] } }, /requires a description/],
   ])('rejects: %s', (_label, input, re) => {
     expect(() => parseManifest(input)).toThrow(ManifestError);
     expect(() => parseManifest(input)).toThrow(re as RegExp);
+  });
+});
+
+describe('apiVersion', () => {
+  it.each([[0], [-3], [1.5], ['1']])('rejects non-positive-integer %p', (v) => {
+    expect(() => parseManifest(withApi(v))).toThrow('apiVersion must be a positive integer');
+  });
+  it('defaults to 1 when absent', () => {
+    const { apiVersion: _omitted, ...noApi } = base;
+    expect(parseManifest(noApi).apiVersion).toBe(1);
+  });
+  it('tolerates a future apiVersion under discovery (no requireTrek)', () => {
+    expect(parseManifest(withApi(2)).apiVersion).toBe(2);
+  });
+  it('refuses a future apiVersion on install paths (requireTrek)', () => {
+    expect(() => parseManifest(withApi(2), { requireTrek: true }))
+      .toThrow('plugin requires plugin-API v2; this TREK supports v1');
   });
 });
 
@@ -136,6 +170,18 @@ describe('parseManifest capabilities', () => {
   it('accepts the place-detail widget slot (mounts in the place inspector)', () => {
     const pd = parseManifest({ ...base, capabilities: { widget: { slot: 'place-detail' } } });
     expect(pd.capabilities.widget?.slot).toBe('place-detail');
+  });
+
+  it('parses routeProfiles (id shape, label cap, icon trim) and rejects malformed ones', () => {
+    const m = parseManifest({ ...base, capabilities: { routeProfiles: [{ id: 'ev', label: '  EV  ', icon: 'zap' }] } });
+    expect(m.capabilities.routeProfiles).toEqual([{ id: 'ev', label: 'EV', icon: 'zap' }]);
+    // id must be lowercase kebab, ≤24 chars; label required ≤40; max 3; no duplicates
+    expect(() => parseManifest({ ...base, capabilities: { routeProfiles: [{ id: 'EV', label: 'x' }] } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { routeProfiles: [{ id: 'ev' }] } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { routeProfiles: [{ id: 'ev', label: 'L'.repeat(41) }] } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { routeProfiles: [{ id: 'ev', label: 'a' }, { id: 'ev', label: 'b' }] } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { routeProfiles: [1, 2, 3, 4].map(i => ({ id: `p${i}`, label: 'x' })) } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { routeProfiles: 'ev' } })).toThrow(ManifestError);
   });
 
   it('accepts the day-detail widget slot (mounts in the day panel)', () => {

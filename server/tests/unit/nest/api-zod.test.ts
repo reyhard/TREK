@@ -2,7 +2,10 @@
  * zodToOpenApi (#1412): Zod → OpenAPI 3.0 conversion + the degrade path.
  * The end-to-end enricher behaviour is covered by tests/integration/api-docs.
  */
-import { zodToOpenApi } from '../../../src/nest/common/api-zod';
+import { attachZodBodySchemas, zodToOpenApi } from '../../../src/nest/common/api-zod';
+import { ZodValidationPipe } from '../../../src/nest/common/zod-validation.pipe';
+import { METHOD_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
+import { RequestMethod } from '@nestjs/common';
 
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
@@ -27,5 +30,33 @@ describe('zodToOpenApi', () => {
 
   it('degrades to a bare object instead of throwing on a broken schema', () => {
     expect(zodToOpenApi({} as never)).toEqual({ type: 'object' });
+  });
+
+  it('uses the schema passed to a full-body Zod pipe in the OpenAPI request body', () => {
+    const schema = z.object({ name: z.string() });
+    class DemoController {
+      create(): void {}
+    }
+    const handler = DemoController.prototype.create;
+    Reflect.defineMetadata(PATH_METADATA, 'api/demo', DemoController);
+    Reflect.defineMetadata(METHOD_METADATA, RequestMethod.POST, handler);
+    Reflect.defineMetadata(PATH_METADATA, 'create', handler);
+    Reflect.defineMetadata(
+      ROUTE_ARGS_METADATA,
+      { '3:0': { index: 0, data: undefined, pipes: [new ZodValidationPipe(schema)] } },
+      DemoController,
+      'create',
+    );
+
+    const document = { paths: { '/api/demo/create': { post: {} } } } as never;
+    attachZodBodySchemas(
+      { get: () => new Map([['demo', { controllers: new Map([['DemoController', { metatype: DemoController }]]) }]]) } as never,
+      document,
+    );
+
+    expect(document.paths['/api/demo/create'].post.requestBody.content['application/json'].schema).toMatchObject({
+      type: 'object',
+      properties: { name: { type: 'string' } },
+    });
   });
 });

@@ -98,6 +98,7 @@ const trip: TranslationStrings = {
   'transport.modeAutomated': 'Transport automatitzat',
   'transit.sectionTitle': 'Transport públic automatitzat',
   'transit.changeRoute': 'Canviar de ruta',
+  'transit.editEndpoints': 'Edit route endpoints',
   'transit.journey': 'Trajecte en transport públic',
   'transit.pickDay': 'Tria un dia per cercar connexions.',
   'transit.noItinerary': 'Aquesta entrada no té cap itinerari desat — utilitza «Canviar de ruta» per cercar-ne un.',
@@ -105,7 +106,6 @@ const trip: TranslationStrings = {
   'transit.transfersLabel': 'Transbords',
   'transit.walkLabel': 'A peu',
   'transit.searchHint': 'Cerca connexions reals i afegeix-les directament al dia — dades via Transitous.',
-  'transit.editEndpoints': 'Edit route endpoints',
   'transit.endpointEditorTitle': 'Map route endpoints',
   'transit.endpointMapOnlyHint':
     'This changes map pinning only. The saved provider itinerary, route geometry, timing, and transit legs are not changed, and TREK will not add walking connections.',
@@ -120,5 +120,9 @@ const trip: TranslationStrings = {
   'transit.endpointNoChanges': 'Change at least one endpoint before saving.',
   'transit.endpointUpdated': 'Route map endpoints updated',
   'transit.endpointUnavailable': 'This route does not have editable origin and destination endpoint records.',
+  'trip.loadingSteps.pack': 'Fent les maletes...',
+  'trip.loadingSteps.road': 'Sortint de camí...',
+  'trip.loadingSteps.arrive': 'Gairebé hi som...',
+  'trip.toast.tripUpdated': 'Viatge actualitzat',
 };
 export default trip;

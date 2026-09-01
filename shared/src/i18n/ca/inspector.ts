@@ -13,11 +13,16 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'Reserva confirmada',
   'inspector.pendingRes': 'Reserva pendent',
   'inspector.google': 'Obre a Google Maps',
+  'inspector.navigation': 'Navegació',
+  'inspector.openWith': 'Obre amb',
   'inspector.website': 'Obre el lloc web',
   'inspector.addRes': 'Reserva',
   'inspector.editRes': 'Edita la reserva',
   'inspector.participants': 'Participants',
   'inspector.trackStats': 'Dades de la ruta',
+  'inspector.trackColor': 'Color de la ruta',
+  'inspector.trackColorAuto': 'Color automàtic',
+  'inspector.trackColorCustom': 'Tria un color personalitzat',
 
   'inspector.reposition': 'Reposition on map',
   'inspector.moveMarker': 'Move marker',
@@ -32,5 +37,7 @@ const inspector: TranslationStrings = {
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.saveToCollection': 'Desar a la col·lecció',
   'inspector.savedToCollection': 'Desat',
+
+  'inspector.savePosition': 'Save new position',
 };
 export default inspector;

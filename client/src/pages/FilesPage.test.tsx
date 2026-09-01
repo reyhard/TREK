@@ -1,10 +1,10 @@
-import { http, HttpResponse } from 'msw';
 import React from 'react';
-import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, waitFor, act } from '../../tests/helpers/render';
+import { Route, Routes } from 'react-router';
+import { http, HttpResponse } from 'msw';
 import { buildTrip, buildTripFile, buildUser } from '../../tests/helpers/factories';
 import { server } from '../../tests/helpers/msw/server';
-import { act, render, screen, waitFor } from '../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../tests/helpers/store';
 import { useAuthStore } from '../store/authStore';
 import { useTripStore } from '../store/tripStore';

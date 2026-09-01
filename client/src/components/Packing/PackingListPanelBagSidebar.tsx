@@ -1,25 +1,18 @@
-import { Plus } from 'lucide-react';
-import { itemWeight } from './packingListPanel.helpers';
-import { BagCard } from './PackingListPanelBagCard';
-import type { PackingState } from './usePackingListPanel';
+import { Plus } from 'lucide-react'
+import type { PackingState } from './usePackingListPanel'
+import { bagFillPct, countsTowardsMyLoad, itemWeight } from './packingListPanel.helpers'
+import { BagCard } from './PackingListPanelBagCard'
 
 export function BagSidebar(S: PackingState) {
   const {
-    t,
-    bags,
-    items,
-    tripId,
-    tripMembers,
-    canEdit,
-    handleDeleteBag,
-    handleUpdateBag,
-    handleSetBagMembers,
-    showAddBag,
-    setShowAddBag,
-    newBagName,
-    setNewBagName,
-    handleCreateBag,
-  } = S;
+    t, bags, items, tripId, tripMembers, canEdit, currentUserId, handleDeleteBag, handleUpdateBag, handleSetBagMembers,
+    showAddBag, setShowAddBag, newBagName, setNewBagName, handleCreateBag,
+  } = S
+  // These numbers describe what you are carrying. An item someone shared with you stays
+  // in your list, but they are the one bringing it, so it is not your weight (#1767).
+  const myItems = items.filter(i => countsTowardsMyLoad(i, currentUserId))
+  // Reference for bags without a limit of their own — computed once instead of per bag.
+  const heaviestBagWeight = Math.max(...bags.map(b => myItems.filter(i => i.bag_id === b.id).reduce((s, i) => s + itemWeight(i), 0)), 1)
   return (
     <div
       className="hidden xl:block"
@@ -45,16 +38,10 @@ export function BagSidebar(S: PackingState) {
         {t('packing.bags')}
       </div>
 
-      {bags.map((bag) => {
-        const bagItems = items.filter((i) => i.bag_id === bag.id);
-        const totalWeight = bagItems.reduce((sum, i) => sum + itemWeight(i), 0);
-        const maxWeight =
-          bag.weight_limit_grams ||
-          Math.max(
-            ...bags.map((b) => items.filter((i) => i.bag_id === b.id).reduce((s, i) => s + itemWeight(i), 0)),
-            1
-          );
-        const pct = Math.min(100, Math.round((totalWeight / maxWeight) * 100));
+      {bags.map(bag => {
+        const bagItems = myItems.filter(i => i.bag_id === bag.id)
+        const totalWeight = bagItems.reduce((sum, i) => sum + itemWeight(i), 0)
+        const pct = bagFillPct(totalWeight, bag.weight_limit_grams, heaviestBagWeight)
         return (
           <BagCard
             key={bag.id}
@@ -76,9 +63,9 @@ export function BagSidebar(S: PackingState) {
 
       {/* Unassigned */}
       {(() => {
-        const unassigned = items.filter((i) => !i.bag_id);
-        const unassignedWeight = unassigned.reduce((s, i) => s + itemWeight(i), 0);
-        if (unassigned.length === 0) return null;
+        const unassigned = myItems.filter(i => !i.bag_id)
+        const unassignedWeight = unassigned.reduce((s, i) => s + itemWeight(i), 0)
+        if (unassigned.length === 0) return null
         return (
           <div style={{ marginBottom: 14, opacity: 0.6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -124,79 +111,27 @@ export function BagSidebar(S: PackingState) {
           }}
         >
           <span>{t('packing.totalWeight')}</span>
-          <span>
-            {(() => {
-              const w = items.reduce((s, i) => s + itemWeight(i), 0);
-              return w >= 1000 ? `${(w / 1000).toFixed(1)} kg` : `${w} g`;
-            })()}
-          </span>
+          <span>{(() => { const w = myItems.reduce((s, i) => s + itemWeight(i), 0); return w >= 1000 ? `${(w / 1000).toFixed(1)} kg` : `${w} g` })()}</span>
         </div>
       </div>
 
       {/* Add bag */}
-      {canEdit &&
-        (showAddBag ? (
-          <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
-            <input
-              autoFocus
-              value={newBagName}
-              onChange={(e) => setNewBagName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateBag();
-                if (e.key === 'Escape') {
-                  setShowAddBag(false);
-                  setNewBagName('');
-                }
-              }}
-              placeholder={t('packing.bagName')}
-              style={{
-                flex: 1,
-                padding: '5px 8px',
-                borderRadius: 8,
-                border: '1px solid var(--border-primary)',
-                fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-                fontFamily: 'inherit',
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={handleCreateBag}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 8,
-                border: 'none',
-                background: 'var(--text-primary)',
-                color: 'var(--bg-primary)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <Plus size={12} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowAddBag(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              marginTop: 12,
-              padding: '5px 8px',
-              borderRadius: 8,
-              border: '1px dashed var(--border-primary)',
-              background: 'none',
-              cursor: 'pointer',
-              fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-              color: 'var(--text-faint)',
-              fontFamily: 'inherit',
-              width: '100%',
-            }}
-          >
-            <Plus size={11} /> {t('packing.addBag')}
+      {canEdit && (showAddBag ? (
+        <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
+          <input autoFocus value={newBagName} onChange={e => setNewBagName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleCreateBag(); if (e.key === 'Escape') { setShowAddBag(false); setNewBagName('') } }}
+            placeholder={t('packing.bagName')}
+            style={{ flex: 1, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border-primary)', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontFamily: 'inherit', outline: 'none' }} />
+          <button type="button" onClick={handleCreateBag} style={{ padding: '4px 8px', borderRadius: 8, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <Plus size={12} />
           </button>
-        ))}
+        </div>
+      ) : (
+        <button type="button" onClick={() => setShowAddBag(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12, padding: '5px 8px', borderRadius: 8, border: '1px dashed var(--border-primary)', background: 'none', cursor: 'pointer', fontSize: 'calc(11px * var(--fs-scale-caption, 1))', color: 'var(--text-faint)', fontFamily: 'inherit', width: '100%' }}>
+          <Plus size={11} /> {t('packing.addBag')}
+        </button>
+      ))}
     </div>
   );
 }

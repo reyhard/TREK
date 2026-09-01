@@ -9,9 +9,9 @@ export function VerdictSection({ pros, cons }: { pros: string[]; cons: string[] 
   return (
     <div className="mt-5">
       {/* Header — clickable on mobile */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="group mb-3.5 flex w-full items-center gap-2.5 md:pointer-events-none"
+      <button type="button"
+        onClick={() => setOpen(o => !o)}
+        className="md:pointer-events-none w-full flex items-center gap-2.5 mb-3.5 group"
       >
         <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-400">

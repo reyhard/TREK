@@ -21,6 +21,7 @@ function makeSession(overrides: Partial<McpSession> = {}): McpSession {
     clientId: null,
     isStaticToken: false,
     lastActivity: Date.now(),
+    lastClientIp: null,
     ...overrides,
   };
 }

@@ -1,4 +1,10 @@
-import { haversineDistanceMeters, isValidGeoCoordinate } from './polyline'
+/**
+ * Imported-track geometry and movement metrics.
+ *
+ * `route_geometry` stores [lat, lng, elevation?] points. Invalid rows are
+ * ignored, but a track still needs at least two valid points.
+ */
+import { calculatePolylineDistanceMeters, haversineDistanceMeters, isValidGeoCoordinate } from './geoDistance'
 
 export type TrackMode = 'walking' | 'cycling' | 'driving'
 export type TrackDurationSource = 'poi-times' | 'estimated'
@@ -17,6 +23,7 @@ export interface ParsedTrackGeometry {
   start: [number, number]
   end: [number, number]
   distance: number
+  distanceMeters: number
   minElevation: number | null
   maxElevation: number | null
   elevationGain: number
@@ -24,9 +31,21 @@ export interface ParsedTrackGeometry {
 }
 
 export interface TrackMovementMetrics extends ParsedTrackGeometry {
+  geometry: [number, number][]
   mode: TrackMode
   duration: number
   durationSource: TrackDurationSource
+}
+
+export interface TrackStats {
+  points: number[][]
+  distanceMeters: number
+  hasElevation: boolean
+  elevations: number[]
+  minElevationMeters: number | null
+  maxElevationMeters: number | null
+  elevationGainMeters: number
+  elevationLossMeters: number
 }
 
 const SPEED_METERS_PER_SECOND: Record<TrackMode, number> = {
@@ -59,9 +78,8 @@ export function normalizeTrackMode(mode: string | null | undefined): TrackMode {
   }
 }
 
-export function parseTrackGeometry(raw: string | null | undefined): ParsedTrackGeometry | null {
+function parseTrackPoints(raw: string | null | undefined): number[][] | null {
   if (typeof raw !== 'string' || raw.trim() === '') return null
-
   let value: unknown
   try {
     value = JSON.parse(raw)
@@ -70,57 +88,71 @@ export function parseTrackGeometry(raw: string | null | undefined): ParsedTrackG
   }
   if (!Array.isArray(value)) return null
 
-  const points = value.flatMap((row) => {
-    if (!Array.isArray(row) || !isValidGeoCoordinate(row)) return []
-    const elevation = row.length >= 3 && Number.isFinite(row[2]) ? row[2] : null
-    return [{
-      coordinate: [row[0], row[1]] as [number, number],
-      elevation: elevation as number | null,
-    }]
-  })
-  if (points.length < 2) return null
+  const points: number[][] = []
+  for (const rawPoint of value) {
+    if (!Array.isArray(rawPoint) || !isValidGeoCoordinate(rawPoint)) continue
+    const [lat, lng] = rawPoint
+    const elevation = rawPoint.length >= 3 && Number.isFinite(rawPoint[2]) ? Number(rawPoint[2]) : null
+    points.push(elevation == null ? [lat, lng] : [lat, lng, elevation])
+  }
+  return points.length >= 2 ? points : null
+}
 
-  let distance = 0
+export function parseTrackGeometry(routeGeometry: string | null | undefined): ParsedTrackGeometry | null {
+  const points = parseTrackPoints(routeGeometry)
+  if (!points) return null
+  const coordinates = points.map(([lat, lng]) => [lat, lng] as [number, number])
+  const distanceMeters = calculatePolylineDistanceMeters(points)
+  if (distanceMeters == null) return null
+
+  const elevations = points.map(point => point.length >= 3 && Number.isFinite(point[2]) ? point[2]! : null)
   let elevationGain = 0
   let elevationLoss = 0
-  let minElevation: number | null = null
-  let maxElevation: number | null = null
+  for (let index = 1; index < elevations.length; index += 1) {
+    const previous = elevations[index - 1]
+    const current = elevations[index]
+    if (previous == null || current == null) continue
+    const delta = current - previous
+    if (delta > 0) elevationGain += delta
+    else elevationLoss += Math.abs(delta)
+  }
+  const finiteElevations = elevations.filter((elevation): elevation is number => elevation != null)
 
-  points.forEach((point, index) => {
-    if (index > 0) {
-      distance += haversineDistanceMeters(points[index - 1].coordinate, point.coordinate) ?? 0
-      const previousElevation = points[index - 1].elevation
-      if (previousElevation != null && point.elevation != null) {
-        const delta = point.elevation - previousElevation
-        if (delta > 0) elevationGain += delta
-        else elevationLoss += Math.abs(delta)
-      }
-    }
-    if (point.elevation != null) {
-      minElevation = minElevation == null
-        ? point.elevation
-        : Math.min(minElevation, point.elevation)
-      maxElevation = maxElevation == null
-        ? point.elevation
-        : Math.max(maxElevation, point.elevation)
-    }
-  })
-
-  const coordinates = points.map(point => point.coordinate)
   return {
     coordinates,
-    elevations: points.map(point => point.elevation),
-    start: coordinates[0],
-    end: coordinates[coordinates.length - 1],
-    distance,
-    minElevation,
-    maxElevation,
+    elevations,
+    start: coordinates[0]!,
+    end: coordinates[coordinates.length - 1]!,
+    distance: distanceMeters,
+    distanceMeters,
+    minElevation: finiteElevations.length ? Math.min(...finiteElevations) : null,
+    maxElevation: finiteElevations.length ? Math.max(...finiteElevations) : null,
     elevationGain,
     elevationLoss,
   }
 }
 
-export function getTrackMovement(place: TrackPlaceLike): TrackMovementMetrics | null {
+/** Parse `route_geometry` into track stats (distance + elevation profile). */
+export function calculateTrackStats(routeGeometry: string | null | undefined): TrackStats | null {
+  const points = parseTrackPoints(routeGeometry)
+  const parsed = parseTrackGeometry(routeGeometry)
+  if (!points || !parsed) return null
+  const elevations = parsed.elevations.filter((elevation): elevation is number => elevation != null)
+
+  return {
+    points,
+    distanceMeters: parsed.distanceMeters,
+    hasElevation: elevations.length === points.length,
+    elevations,
+    minElevationMeters: parsed.minElevation,
+    maxElevationMeters: parsed.maxElevation,
+    elevationGainMeters: parsed.elevationGain,
+    elevationLossMeters: parsed.elevationLoss,
+  }
+}
+
+export function getTrackMovement(place: TrackPlaceLike | null | undefined): TrackMovementMetrics | null {
+  if (!place) return null
   const geometry = parseTrackGeometry(place.route_geometry)
   if (!geometry) return null
 
@@ -133,6 +165,7 @@ export function getTrackMovement(place: TrackPlaceLike): TrackMovementMetrics | 
 
   return {
     ...geometry,
+    geometry: geometry.coordinates,
     mode,
     duration: scheduledDuration ?? geometry.distance / SPEED_METERS_PER_SECOND[mode],
     durationSource: scheduledDuration == null ? 'estimated' : 'poi-times',

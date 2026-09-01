@@ -16,14 +16,14 @@ function renderRow(overrides: Partial<ComponentProps<typeof DayMovementTotalRow>
   return render(
     <DayMovementTotalRow
       status="complete"
-      profile="walking"
+      mode="walking"
       total={complete}
       distanceUnit="metric"
       calculatingLabel="Calculating..."
       totalLabel="Walking movement total"
       incompleteLabel="Incomplete movement statistics"
       {...overrides}
-    />
+    />,
   );
 }
 
@@ -66,8 +66,8 @@ describe('DayMovementTotalRow', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('uses the driving label and icon branch', () => {
-    renderRow({ profile: 'driving', total: { ...complete, mode: 'driving' }, totalLabel: 'Driving movement total' });
+  it('uses the driving mode branch', () => {
+    renderRow({ mode: 'driving', total: { ...complete, mode: 'driving' }, totalLabel: 'Driving movement total' });
     expect(screen.getByLabelText('Driving movement total')).toBeInTheDocument();
   });
 });

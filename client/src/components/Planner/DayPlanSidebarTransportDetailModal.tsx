@@ -1,14 +1,15 @@
-import { ArrowRight, ExternalLink, FileText, Footprints, Pencil, Ticket } from 'lucide-react';
-import ReactDOM from 'react-dom';
-import Markdown from 'react-markdown';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
-import { useSettingsStore } from '../../store/settingsStore';
-import { useTripStore } from '../../store/tripStore';
-import type { Reservation } from '../../types';
-import { formatTime, splitReservationDateTime } from '../../utils/formatters';
-import { safeParseMetadata } from '../../utils/safeParseMetadata';
-import { RES_ICONS, TRANSPORT_DETAIL_COLORS } from './DayPlanSidebar.constants';
+import { createPortal } from 'react-dom'
+import { Ticket, FileText, ExternalLink, Footprints, ArrowRight, Pencil } from 'lucide-react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import { markdownLinkComponents } from '../shared/markdownLink'
+import { useSettingsStore } from '../../store/settingsStore'
+import { useTripStore } from '../../store/tripStore'
+import { formatTime, splitReservationDateTime } from '../../utils/formatters'
+import { RES_ICONS, TRANSPORT_DETAIL_COLORS } from './DayPlanSidebar.constants'
+import type { Reservation } from '../../types'
+import { safeParseMetadata } from '../../utils/safeParseMetadata'
 
 interface DayPlanSidebarTransportDetailModalProps {
   transportDetail: Reservation | null;
@@ -30,36 +31,25 @@ export function DayPlanSidebarTransportDetailModal({
   locale,
   timeFormat,
 }: DayPlanSidebarTransportDetailModalProps) {
-  if (!transportDetail) return null;
-  return ReactDOM.createPortal(
-    <div
-      className="bg-[rgba(0,0,0,0.3)]"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backdropFilter: 'blur(3px)',
-      }}
+  if (!transportDetail) return null
+  return createPortal(
+    <div className="bg-[rgba(0,0,0,0.3)]" style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'blur(3px)',
+    }}
+      role="button" tabIndex={0} aria-label={t('common.cancel')}
       onClick={() => setTransportDetail(null)}
-    >
-      <div
-        className="bg-surface-card"
-        style={{
-          width: 380,
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          borderRadius: 16,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.22)',
-          padding: '22px 22px 18px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 14,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTransportDetail(null) }
+      }}>
+      <div className="bg-surface-card" role="presentation" style={{
+        width: 380, maxHeight: '80vh', overflowY: 'auto',
+        borderRadius: 16,
+        boxShadow: '0 16px 48px rgba(0,0,0,0.22)', padding: '22px 22px 18px',
+        display: 'flex', flexDirection: 'column', gap: 14,
+      }} onClick={e => e.stopPropagation()}>
         {(() => {
           const res = transportDetail;
           const TransportIcon = RES_ICONS[res.type] || Ticket;
@@ -83,13 +73,18 @@ export function DayPlanSidebarTransportDetailModal({
             if (meta.platform) detailFields.push({ label: t('reservations.meta.platform'), value: meta.platform });
             if (meta.seat) detailFields.push({ label: t('reservations.meta.seat'), value: meta.seat });
           }
-          if (res.confirmation_number)
-            detailFields.push({
-              label: t('reservations.confirmationCode'),
-              value: res.confirmation_number,
-              sensitive: true,
-            });
-          if (res.location) detailFields.push({ label: t('reservations.locationAddress'), value: res.location });
+          if (res.confirmation_number) detailFields.push({ label: t('reservations.confirmationCode'), value: res.confirmation_number, sensitive: true })
+          // A stopover booking can carry its own reference per segment (#1943); the
+          // flat fields above only ever describe the first leg. Marked sensitive so
+          // the blur setting covers them like the booking's own code.
+          if (Array.isArray(meta.legs) && meta.legs.length > 1) {
+            for (const leg of meta.legs) {
+              if (!leg?.confirmation_number) continue
+              const segment = [leg.from, leg.to].filter(Boolean).join(' → ')
+              detailFields.push({ label: segment || t('reservations.confirmationCode'), value: leg.confirmation_number, sensitive: true })
+            }
+          }
+          if (res.location) detailFields.push({ label: t('reservations.locationAddress'), value: res.location })
 
           return (
             <>
@@ -153,23 +148,10 @@ export function DayPlanSidebarTransportDetailModal({
                     })()}
                   </div>
                 </div>
-                <div
-                  className={
-                    res.status === 'confirmed'
-                      ? 'bg-[rgba(22,163,74,0.1)] text-[#16a34a]'
-                      : 'bg-[rgba(217,119,6,0.1)] text-[#d97706]'
-                  }
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: 6,
-                    fontSize: 'calc(10px * var(--fs-scale-caption, 1))',
-                    fontWeight: 600,
-                  }}
-                >
-                  {(res.status === 'confirmed' ? t('planner.resConfirmed') : t('planner.resPending')).replace(
-                    /\s*·\s*$/,
-                    ''
-                  )}
+                <div className={res.status === 'confirmed' ? 'bg-[rgba(22,163,74,0.1)] text-[#16a34a]' : 'bg-[rgba(217,119,6,0.1)] text-[#d97706]'} style={{
+                  padding: '3px 8px', borderRadius: 6, fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600,
+                }}>
+                  {res.status === 'confirmed' ? t('planner.resConfirmed') : t('planner.resPending')}
                 </div>
               </div>
 
@@ -177,47 +159,30 @@ export function DayPlanSidebarTransportDetailModal({
               {detailFields.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {detailFields.map((f, i) => {
-                    const shouldBlur = f.sensitive && useSettingsStore.getState().settings.blur_booking_codes;
+                    const shouldBlur = f.sensitive && useSettingsStore.getState().settings.blur_booking_codes
+                    const valueStyle = {
+                      fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 500, wordBreak: 'break-word',
+                      filter: shouldBlur ? 'blur(5px)' : 'none', transition: 'filter 0.2s',
+                      cursor: shouldBlur ? 'pointer' : 'default',
+                      userSelect: shouldBlur ? 'none' : 'auto',
+                    } as const
                     return (
                       <div key={i} className="bg-surface-tertiary" style={{ padding: '8px 10px', borderRadius: 8 }}>
-                        <div
-                          className="text-content-faint"
-                          style={{
-                            fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.03em',
-                            marginBottom: 3,
-                          }}
-                        >
-                          {f.label}
-                        </div>
-                        <div
-                          onMouseEnter={(e) => {
-                            if (shouldBlur) e.currentTarget.style.filter = 'none';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (shouldBlur) e.currentTarget.style.filter = 'blur(5px)';
-                          }}
-                          onClick={(e) => {
-                            if (shouldBlur) {
-                              const el = e.currentTarget;
-                              el.style.filter = el.style.filter === 'none' ? 'blur(5px)' : 'none';
-                            }
-                          }}
-                          className="text-content"
-                          style={{
-                            fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                            fontWeight: 500,
-                            wordBreak: 'break-word',
-                            filter: shouldBlur ? 'blur(5px)' : 'none',
-                            transition: 'filter 0.2s',
-                            cursor: shouldBlur ? 'pointer' : 'default',
-                            userSelect: shouldBlur ? 'none' : 'auto',
-                          }}
-                        >
-                          {f.value}
-                        </div>
+                        <div className="text-content-faint" style={{ fontSize: 'calc(9px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{f.label}</div>
+                        {/* A hidden booking code is a reveal toggle, so it has to be a real
+                            button; a plain value stays inert text and out of the tab order. */}
+                        {shouldBlur ? (
+                          <button
+                            type="button"
+                            onMouseEnter={e => { e.currentTarget.style.filter = 'none' }}
+                            onMouseLeave={e => { e.currentTarget.style.filter = 'blur(5px)' }}
+                            onClick={e => { const el = e.currentTarget; el.style.filter = el.style.filter === 'none' ? 'blur(5px)' : 'none' }}
+                            className="text-content"
+                            style={{ ...valueStyle, display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit' }}
+                          >{f.value}</button>
+                        ) : (
+                          <div className="text-content" style={valueStyle}>{f.value}</div>
+                        )}
                       </div>
                     );
                   })}
@@ -384,28 +349,8 @@ export function DayPlanSidebarTransportDetailModal({
               {/* Notizen */}
               {res.notes && (
                 <div className="bg-surface-tertiary" style={{ padding: '8px 10px', borderRadius: 8 }}>
-                  <div
-                    className="text-content-faint"
-                    style={{
-                      fontSize: 'calc(9px * var(--fs-scale-caption, 1))',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.03em',
-                      marginBottom: 3,
-                    }}
-                  >
-                    {t('reservations.notes')}
-                  </div>
-                  <div
-                    className="collab-note-md text-content"
-                    style={{
-                      fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                      wordBreak: 'break-word',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{res.notes}</Markdown>
-                  </div>
+                  <div className="text-content-faint" style={{ fontSize: 'calc(9px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{t('reservations.notes')}</div>
+                  <div className="collab-note-md text-content" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', wordBreak: 'break-word', overflowWrap: 'anywhere' }}><Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={markdownLinkComponents}>{res.notes}</Markdown></div>
                 </div>
               )}
 
@@ -433,21 +378,14 @@ export function DayPlanSidebarTransportDetailModal({
                       {t('files.title')}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {resFiles.map((f) => (
-                        <div
-                          key={f.id}
-                          onClick={() => {
-                            setTransportDetail(null);
-                            onNavigateToFiles?.();
-                          }}
+                      {resFiles.map(f => (
+                        <button key={f.id}
+                          type="button"
+                          onClick={() => { setTransportDetail(null); onNavigateToFiles?.() }}
                           className="bg-surface-tertiary"
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            padding: '6px 10px',
-                            borderRadius: 8,
-                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                            borderRadius: 8, cursor: 'pointer', border: 'none', textAlign: 'left', fontFamily: 'inherit',
                             transition: 'background 0.1s',
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
@@ -468,7 +406,7 @@ export function DayPlanSidebarTransportDetailModal({
                             {f.original_name}
                           </span>
                           <ExternalLink size={11} className="text-content-faint" style={{ flexShrink: 0 }} />
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -478,38 +416,18 @@ export function DayPlanSidebarTransportDetailModal({
               {/* Aktionen */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 {onEdit && (
-                  <button
-                    onClick={() => onEdit(res)}
-                    className="bg-surface-tertiary text-content"
-                    style={{
-                      fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                      border: 'none',
-                      borderRadius: 8,
-                      padding: '6px 14px',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontFamily: 'inherit',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                    }}
-                  >
+                  <button type="button" onClick={() => onEdit(res)} className="bg-surface-tertiary text-content" style={{
+                    fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                    border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                  }}>
                     <Pencil size={12} /> {t('common.edit')}
                   </button>
                 )}
-                <button
-                  onClick={() => setTransportDetail(null)}
-                  className="bg-accent text-accent-text"
-                  style={{
-                    fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '6px 16px',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    fontFamily: 'inherit',
-                  }}
-                >
+                <button type="button" onClick={() => setTransportDetail(null)} className="bg-accent text-accent-text" style={{
+                  fontSize: 'calc(12px * var(--fs-scale-body, 1))',
+                  border: 'none', borderRadius: 8, padding: '6px 16px', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit',
+                }}>
                   {t('common.close')}
                 </button>
               </div>

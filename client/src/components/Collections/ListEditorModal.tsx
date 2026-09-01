@@ -1,13 +1,13 @@
-import type { Collection, CollectionLink } from '@trek/shared';
-import { ImagePlus, Link2, Loader2, Plus, Search, Trash2 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import { tripsApi } from '../../api/client';
-import { normalizeLinkUrl } from '../../pages/collections/collectionsModel';
-import { useCollectionStore } from '../../store/collectionStore';
-import type { TranslationFn } from '../../types';
-import { getApiErrorMessage } from '../../types';
-import Modal from '../shared/Modal';
-import { useToast } from '../shared/Toast';
+import React, { useEffect, useRef, useState } from 'react'
+import { ImagePlus, Link2, Plus, Trash2, Search, Loader2 } from 'lucide-react'
+import Modal from '../shared/Modal'
+import { useCollectionStore } from '../../store/collectionStore'
+import { useToast } from '../shared/Toast'
+import { tripsApi } from '../../api/client'
+import { getApiErrorMessage } from '../../utils/apiError'
+import { normalizeLinkUrl } from '../../pages/collections/collectionsModel'
+import type { TranslationFn } from '../../types'
+import type { Collection, CollectionLink } from '@trek/shared'
 
 interface CoverSearchPhoto {
   id: string;
@@ -132,8 +132,10 @@ export default function ListEditorModal({
     setLinks(links.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
   const save = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    const trimmed = name.trim()
+    // Enter fires while the create is still in flight, and `createdId` is only
+    // set once it comes back — without this the second one creates a second list.
+    if (!trimmed || saving) return
     // Normalise + keep only links with a url; drop blank rows.
     const cleanLinks = links
       .map((l) => ({ label: l.label?.trim() || undefined, url: normalizeLinkUrl(l.url) }))

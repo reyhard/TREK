@@ -1,9 +1,9 @@
-import React from 'react';
-import { useParams } from 'react-router-dom';
-import PageShell from '../components/Layout/PageShell';
-import PluginFrame from '../components/Plugins/PluginFrame';
-import { useTranslation } from '../i18n';
-import { usePluginStore } from '../store/pluginStore';
+import React from 'react'
+import { useParams } from 'react-router'
+import PageShell from '../components/Layout/PageShell'
+import PluginFrame from '../components/Plugins/PluginFrame'
+import { usePluginStore } from '../store/pluginStore'
+import { useTranslation } from '../i18n'
 
 /**
  * Full-page host for a `page` plugin (#plugins, M3). Thin by design (no state /
@@ -27,7 +27,7 @@ export default function PluginPage(): React.ReactElement {
   return (
     <PageShell background="var(--bg-secondary)" navOffset="var(--nav-h, 56px)">
       <div style={{ height: 'calc(100vh - var(--nav-h, 56px))' }}>
-        <PluginFrame pluginId={pluginId} title={plugin?.name} fill className="h-full w-full" />
+        <PluginFrame pluginId={pluginId} title={plugin?.name} fill surface="plugin-page" className="w-full h-full" />
       </div>
     </PageShell>
   );

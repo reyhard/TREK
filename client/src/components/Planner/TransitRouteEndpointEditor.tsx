@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useTranslation } from '../../i18n';
 import type { ReservationEndpoint } from '../../types';
 
+export type TransitRouteEndpointEditInput = TransitRouteEndpointsUpdateRequest;
+
 interface EndpointFieldState {
   name: string;
   lat: string;

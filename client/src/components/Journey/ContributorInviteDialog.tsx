@@ -56,10 +56,7 @@ export default function ContributorInviteDialog({
       <div className="flex w-full max-w-[420px] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_20px_40px_rgba(0,0,0,0.2)] dark:bg-zinc-900">
         <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-700">
           <h2 className="text-[16px] font-bold text-zinc-900 dark:text-white">{t('journey.contributors.invite')}</h2>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
             <X size={16} />
           </button>
         </div>
@@ -83,11 +80,11 @@ export default function ContributorInviteDialog({
             {filtered.length === 0 && (
               <p className="py-4 text-center text-[12px] text-zinc-400">{t('journey.contributors.noUsers')}</p>
             )}
-            {filtered.map((u) => (
-              <div
+            {filtered.map(u => (
+              <button type="button"
                 key={u.id}
                 onClick={() => setSelectedUserId(u.id)}
-                className={`flex cursor-pointer items-center gap-2.5 rounded-lg p-2.5 transition-all ${
+                className={`w-full text-left flex items-center gap-2.5 p-2.5 rounded-lg cursor-pointer transition-all ${
                   selectedUserId === u.id
                     ? 'border border-zinc-900 bg-zinc-100 dark:border-white dark:bg-zinc-800'
                     : 'border border-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800'
@@ -105,7 +102,7 @@ export default function ContributorInviteDialog({
                     <Check size={12} />
                   </div>
                 )}
-              </div>
+              </button>
             ))}
           </div>
 
@@ -115,8 +112,8 @@ export default function ContributorInviteDialog({
               {t('journey.invite.role')}
             </label>
             <div className="flex gap-2">
-              {(['viewer', 'editor'] as const).map((r) => (
-                <button
+              {(['viewer', 'editor'] as const).map(r => (
+                <button type="button"
                   key={r}
                   onClick={() => setRole(r)}
                   className={`flex-1 rounded-lg border py-2 text-[12px] font-medium transition-all ${
@@ -132,14 +129,11 @@ export default function ContributorInviteDialog({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-700 dark:bg-zinc-800/50">
-          <button
-            onClick={onClose}
-            className="rounded-lg border border-zinc-200 px-3.5 py-2 text-[13px] font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700"
-          >
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50">
+          <button type="button" onClick={onClose} className="px-3.5 py-2 rounded-lg border border-zinc-200 dark:border-zinc-600 text-[13px] font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">
             {t('common.cancel')}
           </button>
-          <button
+          <button type="button"
             onClick={handleInvite}
             disabled={!selectedUserId || sending}
             className="rounded-lg bg-zinc-900 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"

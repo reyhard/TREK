@@ -13,6 +13,8 @@ const inspector: TranslationStrings = {
   'inspector.confirmedRes': 'حجز مؤكد',
   'inspector.pendingRes': 'حجز قيد الانتظار',
   'inspector.google': 'Google Maps',
+  'inspector.navigation': 'التنقل',
+  'inspector.openWith': 'الفتح باستخدام',
   'inspector.openStreetMap': 'OpenStreetMap',
   'inspector.website': 'فتح الموقع الإلكتروني',
   'inspector.saveToCollection': 'حفظ في مجموعة',
@@ -30,6 +32,11 @@ const inspector: TranslationStrings = {
   'inspector.placeMoved': 'Place moved',
   'inspector.moveFailed': 'Could not move place',
   'inspector.manualCoordinatesRetained': 'The marker was moved manually. Existing place details were kept.',
+  'inspector.trackColor': 'لون المسار',
+  'inspector.trackColorAuto': 'لون تلقائي',
+  'inspector.trackColorCustom': 'اختيار لون مخصص',
+
+  'inspector.savePosition': 'Save new position',
   'inspector.movePermissionDenied': 'You do not have permission to move this place',
 };
 export default inspector;

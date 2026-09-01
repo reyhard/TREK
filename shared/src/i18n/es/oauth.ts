@@ -3,6 +3,7 @@ import type { TranslationStrings } from '../types';
 const oauth: TranslationStrings = {
   'oauth.scope.group.trips': 'Viajes',
   'oauth.scope.group.places': 'Lugares',
+  'oauth.scope.group.collections': 'Colecciones',
   'oauth.scope.group.atlas': 'Atlas',
   'oauth.scope.group.packing': 'Equipaje',
   'oauth.scope.group.todos': 'Tareas',
@@ -14,6 +15,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.group.geo': 'Geo',
   'oauth.scope.group.weather': 'Clima',
   'oauth.scope.group.journey': 'Travesía',
+  'oauth.scope.group.plugins': 'Plugins',
+
   'oauth.scope.trips:read.label': 'Ver viajes e itinerarios',
   'oauth.scope.trips:read.description': 'Leer viajes, días, notas y miembros',
   'oauth.scope.trips:write.label': 'Editar viajes e itinerarios',
@@ -26,6 +29,12 @@ const oauth: TranslationStrings = {
   'oauth.scope.places:read.description': 'Leer lugares, asignaciones de días, etiquetas y categorías',
   'oauth.scope.places:write.label': 'Gestionar lugares',
   'oauth.scope.places:write.description': 'Crear, actualizar y eliminar lugares, asignaciones y etiquetas',
+  'oauth.scope.collections:read.label': 'Ver colecciones',
+  'oauth.scope.collections:read.description':
+    'Leer las colecciones de lugares guardados, sus lugares, valoraciones, etiquetas y miembros',
+  'oauth.scope.collections:write.label': 'Gestionar colecciones',
+  'oauth.scope.collections:write.description':
+    'Crear/editar colecciones, guardar, valorar, etiquetar y copiar lugares, y compartir listas',
   'oauth.scope.atlas:read.label': 'Ver Atlas',
   'oauth.scope.atlas:read.description': 'Leer países visitados, regiones y lista de deseos',
   'oauth.scope.atlas:write.label': 'Gestionar Atlas',
@@ -69,6 +78,8 @@ const oauth: TranslationStrings = {
   'oauth.scope.journey:write.description': 'Crear, actualizar y eliminar travesías y sus entradas',
   'oauth.scope.journey:share.label': 'Gestionar enlaces de travesías',
   'oauth.scope.journey:share.description': 'Crear, actualizar y revocar enlaces públicos de compartir para travesías',
+  'oauth.scope.plugins:use.label': 'Run plugin tools',
+  'oauth.scope.plugins:use.description': 'Let this client call tools published by the plugins an administrator installed and approved. Each plugin acts with the access it was already granted, not with the scopes on this token',
   'oauth.authorize.authorizing': 'Authorizing…', // en-fallback
   'oauth.authorize.loading': 'Loading…', // en-fallback
   'oauth.authorize.errorTitle': 'Authorization Error', // en-fallback
