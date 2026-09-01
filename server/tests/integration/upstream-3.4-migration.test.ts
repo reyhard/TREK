@@ -52,7 +52,7 @@ interface SemanticCheck {
 // ---------------------------------------------------------------------------
 
 const PRE_173_VERSION = 172;
-const PRE_173_SCHEMA_SHA256 = '0d90f420c443de2dd6e56b115a49b21581d1176d47756d7405fcc940e4bfe2a5';
+const PRE_173_SCHEMA_SHA256 = 'acc542ab2fb432cb471710bac3192bf67a17c583d1fa8d75e9010e0b41c2b65f';
 const SCHEMA_PATH = path.resolve(__dirname, '../../src/db/schema.ts');
 
 const MANIFEST = {
