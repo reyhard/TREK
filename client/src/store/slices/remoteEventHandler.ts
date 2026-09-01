@@ -149,6 +149,18 @@ export const DEXIE_WRITERS: Partial<Record<TrekWsTripEventName, DexieWriter>> = 
   'reservation:deleted': async payload => {
     await offlineDb.reservations.delete(payload.reservationId as number)
   },
+  // Persist the reordered rows (post-update Zustand state) so an offline
+  // reload reads the new positions. Only the rows the event addressed are
+  // written — the same minimal surface `budget:reordered` bulk-puts — and the
+  // canonical row comes from state, never from the payload, so a partial
+  // event cannot clobber fields the server did not send.
+  'reservation:positions': async (payload, state) => {
+    const positions = payload.positions as { id: number }[] | undefined
+    if (!Array.isArray(positions)) return
+    const ids = new Set(positions.map(position => position.id))
+    const affected = state.reservations.filter(reservation => ids.has(reservation.id))
+    if (affected.length > 0) await offlineDb.reservations.bulkPut(affected)
+  },
 
   // ── Trip ─────────────────────────────────────────────────────────────────
   'trip:updated': async payload => {
@@ -496,7 +508,10 @@ export const STATE_APPLIERS: Partial<Record<TrekWsTripEventName, StateApplier>> 
   'reservation:positions': (payload, state) => {
     const positions = payload.positions as { id: number; day_plan_position: number }[]
     if (!Array.isArray(positions)) return {}
-    const dayId = payload.day_id as string | number | undefined
+    // The REST route broadcasts `day_id`; the MCP tool emits `dayId`. Accept
+    // both so a day-scoped reorder from either source lands in day_positions
+    // instead of the global slot.
+    const dayId = (payload.day_id ?? payload.dayId) as string | number | undefined
     const positionById = new Map(positions.map(position => [position.id, position.day_plan_position]))
     return {
       reservations: state.reservations.map(reservation => {

@@ -369,4 +369,3 @@ describe('PluginsService error log', () => {
     expect(svc.errors('p')).toEqual([]);
   });
 });
-

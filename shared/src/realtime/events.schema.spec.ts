@@ -123,6 +123,9 @@ const DRIFT_VARIANTS: Partial<Record<TrekWsEventName, Record<string, unknown>[]>
   'budget:reordered': [{ orderedCategories: ['food', 'transport'] }],
   'reservation:created': [{}],
   'reservation:updated': [{}],
+  // Legacy MCP broadcast shape (camelCase `dayId`); the schema union keeps
+  // accepting it so older in-flight payloads never get dropped. New broadcasts
+  // send `day_id`.
   'reservation:positions': [{ positions: [], dayId: 2 }],
   'accommodation:created': [{}],
   'accommodation:updated': [{}],

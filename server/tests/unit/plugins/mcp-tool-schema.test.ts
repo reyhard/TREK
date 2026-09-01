@@ -28,7 +28,7 @@ function advertised(schema: unknown): Record<string, unknown> {
   return z.toJSONSchema(schema as z.ZodType, { io: 'input' }) as Record<string, unknown>;
 }
 
-/** Code points that render as one thing and tokenise as another, or break a line without being 
+/** Code points that render as one thing and tokenise as another, or break a line without being
 . */
 const UNSAFE_CODEPOINTS = [0x2028, 0x2029, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069];
 const hasUnsafeCodepoint = (s: string): boolean =>

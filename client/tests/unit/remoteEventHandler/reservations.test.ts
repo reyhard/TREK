@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useTripStore } from '../../../src/store/tripStore';
 import { resetAllStores } from '../../helpers/store';
 import { buildReservation, buildTrip } from '../../helpers/factories';
+import { offlineDb, clearAll } from '../../../src/db/offlineDb';
 
 beforeEach(() => {
   resetAllStores();
@@ -96,5 +97,146 @@ describe('remoteEventHandler > reservations', () => {
       travelers: [{ user_id: 3, username: 'ada' }],
     });
     expect(useTripStore.getState().reservations[0].travelers).toBeUndefined();
+  });
+
+  it('FE-WSEVT-RESERV-009: reservation:positions with day_id applies day_positions, not global day_plan_position', () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_plan_position: 2,
+      day_positions: null,
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 1.5 }],
+      day_id: 5,
+    });
+    const { reservations } = useTripStore.getState();
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0].day_plan_position).toBe(2);
+    expect(reservations[0].day_positions).toEqual({ '5': 1.5 });
+  });
+
+  it('FE-WSEVT-RESERV-010: reservation:positions with MCP dayId variant applies day_positions, not global day_plan_position', () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_plan_position: 2,
+      day_positions: null,
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 1.5 }],
+      dayId: 5,
+    });
+    const { reservations } = useTripStore.getState();
+    expect(reservations[0].day_plan_position).toBe(2);
+    expect(reservations[0].day_positions).toEqual({ '5': 1.5 });
+  });
+
+  it('FE-WSEVT-RESERV-011: reservation:positions without a day scope updates global day_plan_position', () => {
+    const reservation = buildReservation({ id: 10, title: 'Hotel', day_plan_position: 0, day_positions: null });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 3 }],
+    });
+    const { reservations } = useTripStore.getState();
+    expect(reservations[0].day_plan_position).toBe(3);
+    expect(reservations[0].day_positions).toEqual(null);
+  });
+
+  it('FE-WSEVT-RESERV-012: reservation:positions with day_id preserves day_positions on other days', () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_positions: { '5': 1.0, '6': 2.0 },
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 3.5 }],
+      day_id: 7,
+    });
+    expect(useTripStore.getState().reservations[0].day_positions).toEqual({ '5': 1.0, '6': 2.0, '7': 3.5 });
+  });
+
+  it('FE-WSEVT-RESERV-013: reservation:positions with dayId variant preserves day_positions on other days', () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_positions: { '5': 1.0, '6': 2.0 },
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 3.5 }],
+      dayId: 7,
+    });
+    expect(useTripStore.getState().reservations[0].day_positions).toEqual({ '5': 1.0, '6': 2.0, '7': 3.5 });
+  });
+});
+
+describe('remoteEventHandler > reservations > offline persistence', () => {
+  beforeEach(async () => {
+    await clearAll();
+  });
+
+  it('FE-WSEVT-RESERV-014: reservation:positions with day_id persists day_positions to IndexedDB for offline reload', async () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_plan_position: 2,
+      day_positions: null,
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 1.5 }],
+      day_id: 5,
+    });
+    await vi.waitFor(async () => {
+      const cached = await offlineDb.reservations.get(10);
+      expect(cached?.day_positions).toEqual({ '5': 1.5 });
+    });
+  });
+
+  it('FE-WSEVT-RESERV-015: reservation:positions with MCP dayId variant persists day_positions to IndexedDB for offline reload', async () => {
+    const reservation = buildReservation({
+      id: 10,
+      title: 'Multi-day Train',
+      type: 'transit',
+      day_id: 5,
+      end_day_id: 7,
+      day_plan_position: 2,
+      day_positions: null,
+    });
+    useTripStore.setState({ reservations: [reservation] });
+    useTripStore.getState().handleRemoteEvent({
+      type: 'reservation:positions',
+      positions: [{ id: 10, day_plan_position: 1.5 }],
+      dayId: 5,
+    });
+    await vi.waitFor(async () => {
+      const cached = await offlineDb.reservations.get(10);
+      expect(cached?.day_positions).toEqual({ '5': 1.5 });
+    });
   });
 });

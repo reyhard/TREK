@@ -259,6 +259,30 @@ describe('Tool: reorder_reservations', () => {
     });
   });
 
+  it('broadcasts a day-scoped reorder with the canonical day_id key (not dayId)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { day_number: 1 });
+    const res = createReservation(testDb, trip.id, { title: 'Hotel', type: 'hotel' });
+    await withHarness(user.id, async (h) => {
+      await h.client.callTool({
+        name: 'reorder_reservations',
+        arguments: {
+          tripId: trip.id,
+          positions: [{ id: res.id, day_plan_position: 1 }],
+          dayId: day.id,
+        },
+      });
+      const broadcastPayload = broadcastMock.mock.calls.find(
+        (c: any[]) => c[1] === 'reservation:positions',
+      )?.[2] as Record<string, unknown> | undefined;
+      expect(broadcastPayload).toBeDefined();
+      expect(broadcastPayload.day_id).toBe(day.id);
+      expect(broadcastPayload).not.toHaveProperty('dayId');
+      expect(broadcastPayload.positions).toEqual([{ id: res.id, day_plan_position: 1 }]);
+    });
+  });
+
   it('returns access denied for non-member', async () => {
     const { user } = createUser(testDb);
     const { user: other } = createUser(testDb);

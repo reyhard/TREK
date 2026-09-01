@@ -544,7 +544,9 @@ export class ReservationsMcp {
       return errorResult('dayId does not belong to this trip.');
 
     this.reservations.updatePositions(tripId, positions, dayId);
-    this.guards.safeBroadcast(tripId, 'reservation:positions', { positions, dayId });
+    // `day_id` matches the REST broadcast (reservations.controller.ts) — the
+    // wire contract's canonical key. The tool arg stays camelCase `dayId`.
+    this.guards.safeBroadcast(tripId, 'reservation:positions', { positions, day_id: dayId });
     return ok({ success: true });
   }
 

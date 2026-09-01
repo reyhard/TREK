@@ -157,7 +157,9 @@ export const TREK_WS_EVENTS = {
     payload: z.union([z.object({ reservation: entity }), empty]),
   },
   'reservation:deleted': { scope: 'trip', payload: z.object({ reservationId: id }) },
-  // DRIFT: REST sends { positions, day_id }; the MCP tool sends { positions, dayId }.
+  // REST and MCP both broadcast `day_id` (canonical, snake_case). The `dayId`
+  // variant is the historical MCP tool shape, kept for backward compatibility
+  // with clients that still read it; the client handler reads either.
   'reservation:positions': {
     scope: 'trip',
     payload: z.union([
