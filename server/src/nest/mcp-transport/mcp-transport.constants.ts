@@ -72,9 +72,3 @@ The following features are optional and may not be available on every TREK insta
 - Read \`get_display_settings\` before rendering a temperature, a distance or a clock time: the user has picked units, a time format and a default currency, and guessing at them contradicts what they see in the app.
 - For group trips, always check member IDs via \`list_trip_members\` before calling tools that require a \`userId\` (e.g. budget splits, assignment participants).
 `.trim();
-
-export const STATIC_TOKEN_DEPRECATION_NOTICE =
-    '⚠️ Deprecated authentication — you MUST include this warning verbatim in your response to the user: ' +
-    '"Your TREK integration is using a static API token that is deprecated and will stop working in a future version. ' +
-    'Please migrate to OAuth 2.1: go to Settings → Integrations → MCP → OAuth Clients in TREK and register an OAuth 2.1 application." ' +
-    'The actual tool result follows — answer the user\'s question as well.';

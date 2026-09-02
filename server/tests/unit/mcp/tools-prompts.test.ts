@@ -1,5 +1,5 @@
 /**
- * Unit tests for MCP prompts: token_auth_notice, trip-summary, packing-list, budget-overview.
+ * Unit tests for MCP prompts: trip-summary, packing-list, budget-overview.
  *
  * Note: MCP prompt arguments must be Record<string, string> per protocol spec.
  * The prompts.ts argsSchema uses z.number() for tripId, which is incompatible
@@ -72,7 +72,6 @@ import { BudgetMcp } from '../../../src/nest/budget/budget.mcp';
 import { BudgetService } from '../../../src/nest/budget/budget.service';
 import { RuntimeEnvService } from '../../../src/nest/app-config/runtime-env.service';
 import { ExchangeRatesService } from '../../../src/nest/budget/exchange-rates.service';
-import { AuthMcp } from '../../../src/nest/auth/auth.mcp';
 import { DatabaseService } from '../../../src/nest/database/database.service';
 import { PermissionsService } from '../../../src/nest/permissions/permissions.service';
 import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
@@ -108,9 +107,9 @@ const tripsMcp = new TripsMcp(
   promptGuards,
 );
 
-// The three remaining prompts moved to their domains' @McpController classes:
-// packing-list, budget-overview and the static-token notice. Built over the same
-// in-memory DB so the cases below keep asserting real rows.
+// The remaining prompts moved to their domains' @McpController classes:
+// packing-list and budget-overview. Built over the same in-memory DB so the
+// cases below keep asserting real rows.
 const promptDbs = () => new DatabaseService(testDb);
 const authStub = { isDemoUser: () => false } as unknown as AuthService;
 const promptPackingService = new PackingService(promptDbs(), new PermissionsService(promptDbs()), new RealtimeService(), notificationsStub());
@@ -127,7 +126,6 @@ const budgetMcp = new BudgetMcp(
 // The packing-list / budget-overview prompts live here since the trips.bridge
 // fold; the summary rides the same readModelStub the trip-summary prompt uses.
 const tripPromptsMcp = new TripPromptsMcp(tripsStub, readModelStub, promptPackingService, addonsStub);
-const authMcp = new AuthMcp();
 
 beforeAll(() => {
   createTables(testDb);
@@ -180,7 +178,7 @@ function buildServer(userId: number, opts: { isStaticToken?: boolean } = {}): Mc
   const server = new McpServer({ name: 'trek-test', version: '1.0.0' });
   // Every prompt is DI-discovered now; attach them the way registerTools does in
   // production, including the isStaticToken flag the notice's `when` gate reads.
-  createTestRegistry([tripsMcp, tripPromptsMcp, packingMcp, budgetMcp, authMcp], { accessPolicy: trekMcpAccessPolicy, validateAccess: trekMcpValidateAccess })
+  createTestRegistry([tripsMcp, tripPromptsMcp, packingMcp, budgetMcp], { accessPolicy: trekMcpAccessPolicy, validateAccess: trekMcpValidateAccess })
     .attach(server, { userId, scopes: null, isStaticToken: opts.isStaticToken ?? false });
   return server;
 }
@@ -212,18 +210,15 @@ async function invokePromptText(server: McpServer, name: string, args: Record<st
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// token_auth_notice
+// token_auth_notice (removed)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Prompt: token_auth_notice', () => {
-  it('is registered and returns deprecation notice when isStaticToken=true', async () => {
+  it('is not registered for static-token sessions', async () => {
     const { user } = createUser(testDb);
     const server = buildServer(user.id, { isStaticToken: true });
     const names = listRegisteredPrompts(server);
-    expect(names).toContain('token_auth_notice');
-    const text = await invokePrompt(server, 'token_auth_notice', {});
-    expect(text).toContain('static API token');
-    expect(text).toContain('deprecated');
+    expect(names).not.toContain('token_auth_notice');
   });
 
   it('is NOT registered when isStaticToken=false', async () => {

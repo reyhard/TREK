@@ -10,7 +10,7 @@ import { getMcpSafeUrl } from '../../app-config';
 import { registerTools } from '../../mcp/tools';
 import { sessions, evictOldestSessionForUser } from '../../mcp/sessionManager';
 import { SESSION_TTL_MS, MAX_SESSIONS_PER_USER, KEEPALIVE_MS, isRateLimited } from '../../mcp';
-import { BASE_MCP_INSTRUCTIONS, STATIC_TOKEN_DEPRECATION_NOTICE } from './mcp-transport.constants';
+import { BASE_MCP_INSTRUCTIONS } from './mcp-transport.constants';
 import { AuthService } from '../auth/auth.service';
 import { TokenService } from '../tokens/token.service';
 import { OauthService } from '../oauth/oauth.service';
@@ -258,18 +258,9 @@ export class McpTransportService {
             tools: { listChanged: true },
             prompts: { listChanged: true },
           },
-          instructions: BASE_MCP_INSTRUCTIONS + (isStaticToken ? STATIC_TOKEN_DEPRECATION_NOTICE : ''),
+          instructions: BASE_MCP_INSTRUCTIONS,
         }
     );
-    // Per-session closure: fires the deprecation notice once, on the first tool call.
-    // Tool results are the only mechanism Claude reliably surfaces to the user;
-    // the instructions field is only background context and won't trigger a proactive warning.
-    let _noticeEmitted = false;
-    const getDeprecationNotice = (): string | null => {
-      if (!isStaticToken || _noticeEmitted) return null;
-      _noticeEmitted = true;
-      return STATIC_TOKEN_DEPRECATION_NOTICE;
-    };
 
     // Tool-call audit trail: who called which tool, when, from where. Fired by
     // the registry immediately before each tool handler runs (the nest-mcp
@@ -296,7 +287,7 @@ export class McpTransportService {
       }
     };
 
-    registerTools(this.registry, server, user.id, scopes, isStaticToken, getDeprecationNotice, onInvoke);
+    registerTools(this.registry, server, user.id, scopes, isStaticToken, onInvoke);
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),

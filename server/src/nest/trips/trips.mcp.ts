@@ -228,15 +228,7 @@ export class TripsMcp {
     annotations: TOOL_ANNOTATIONS_READONLY,
   })
   async listTrips({ include_archived }: { include_archived?: boolean }, ctx: McpContext) {
-    const notice = ctx.getDeprecationNotice ? ctx.getDeprecationNotice() : null;
     const trips = this.trips.list(ctx.userId, include_archived ? null : 0);
-    if (notice) return {
-      isError: true as const,
-      content: [
-        { type: 'text' as const, text: notice },
-        { type: 'text' as const, text: JSON.stringify({ trips }, null, 2) },
-      ],
-    };
     return ok({ trips });
   }
 
@@ -275,7 +267,6 @@ export class TripsMcp {
       if (collabFeatures?.polls) pollCount    = this.collab.listPolls(tripId).length;
       if (collabFeatures?.chat)  messageCount = this.collab.countMessages(tripId);
     }
-    const notice = ctx.getDeprecationNotice ? ctx.getDeprecationNotice() : null;
     // The core bucket (trip metadata, members WITH email, days with place
     // coordinates, accommodations) carries confidential PII and itinerary data,
     // so it is gated on trips:read just like the sub-sections below. Without a
@@ -297,13 +288,6 @@ export class TripsMcp {
       todos,
       pollCount,
       messageCount,
-    };
-    if (notice) return {
-      isError: true as const,
-      content: [
-        { type: 'text' as const, text: notice },
-        { type: 'text' as const, text: JSON.stringify(summaryData, null, 2) },
-      ],
     };
     return ok(summaryData);
   }

@@ -70,7 +70,7 @@ describe('registerTools wiring', () => {
     const explicit = () => [];
     const { attach, registry } = spyRegistry();
 
-    registerTools(registry, new McpServer({ name: 't', version: '1' }), 1, null, false, undefined, undefined, explicit);
+    registerTools(registry, new McpServer({ name: 't', version: '1' }), 1, null, false, undefined, explicit);
 
     expect(attach.mock.calls[0][2].dynamicTools).toBe(explicit);
   });

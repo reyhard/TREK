@@ -38,8 +38,6 @@ export interface McpHarnessOptions {
   scopes?: string[] | null;
   /** Whether the session is authenticated via a static API token (default: false) */
   isStaticToken?: boolean;
-  /** Fire-once deprecation-notice closure (default: registerTools' () => null) */
-  getDeprecationNotice?: () => string | null;
   /**
    * Host-contributed tools for this session. Passed explicitly so a suite never
    * has to install the process-level plugin source to exercise the path; left
@@ -50,7 +48,7 @@ export interface McpHarnessOptions {
 }
 
 export async function createMcpHarness(options: McpHarnessOptions): Promise<McpHarness> {
-  const { userId, withTools = true, scopes = null, isStaticToken = false, getDeprecationNotice, dynamicTools } = options;
+  const { userId, withTools = true, scopes = null, isStaticToken = false, dynamicTools } = options;
 
   const server = new McpServer({ name: 'trek-test', version: '1.0.0' });
 
@@ -59,7 +57,7 @@ export async function createMcpHarness(options: McpHarnessOptions): Promise<McpH
     // McpRegistryService to registerTools; the harness has no Nest app, so it
     // builds the same registry by hand (see mcp-test-controllers.ts).
     // registerTools' own ctx construction stays exercised.
-    registerTools(createMcpTestRegistry(), server, userId, scopes ?? null, isStaticToken, getDeprecationNotice, undefined, dynamicTools);
+    registerTools(createMcpTestRegistry(), server, userId, scopes ?? null, isStaticToken, undefined, dynamicTools);
   }
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

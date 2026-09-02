@@ -8,7 +8,6 @@ import { AuthService } from './auth.service';
 import { UserProfileService } from './user-profile.service';
 import { RegistrationInvitesService } from './registration-invites.service';
 import { PasskeyService } from './passkey.service';
-import { AuthMcp } from './auth.mcp';
 import { UserCleanupService } from './user-cleanup.service';
 import { WebauthnConfigService } from './webauthn-config.service';
 import { AppConfigModule } from '../app-config/app-config.module';
@@ -64,7 +63,7 @@ import { AllowedFileTypesModule } from '../files/allowed-file-types.module';
     AllowedFileTypesModule,
     EphemeralTokenModule, RateLimitModule, AuditModule, PermissionsModule, TripMembershipModule, MailerModule, AppConfigModule, TokensModule, BudgetModule],
   controllers: [AuthPublicController, AuthController, PasskeyController],
-  providers: [AuthService, UserProfileService, RegistrationInvitesService, PasskeyService, UserCleanupService, WebauthnConfigService, AuthMcp],
+  providers: [AuthService, UserProfileService, RegistrationInvitesService, PasskeyService, UserCleanupService, WebauthnConfigService],
   exports: [AuthService, RegistrationInvitesService, PasskeyService, UserCleanupService],
 })
 export class AuthModule {}

@@ -522,10 +522,19 @@ describe('MCP transport parity pins (Nest-hosted /mcp)', () => {
     expect(res.status).toBe(200);
   });
 
-  it('MCP-P09 — a static-token session carries the deprecation notice on the first tool call only', async () => {
+  it('MCP-P09 — a static-token session never carries a deprecation notice', async () => {
     const { user } = createUser(testDb);
     const { rawToken } = createMcpToken(testDb, user.id);
     const sessionId = await createSession(rawToken);
+
+    const init = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${rawToken}`)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', method: 'initialize', id: 1, params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } } });
+    expect(init.status).toBe(200);
+    expect(init.text.toLowerCase()).not.toContain('deprecated');
+    expect(init.text.toLowerCase()).not.toContain('static token');
 
     const callBody = { jsonrpc: '2.0', method: 'tools/call', id: 3, params: { name: 'list_trips', arguments: {} } };
     const first = await request(app)
@@ -535,7 +544,9 @@ describe('MCP transport parity pins (Nest-hosted /mcp)', () => {
       .set('Accept', 'application/json, text/event-stream')
       .send(callBody);
     expect(first.status).toBe(200);
-    expect(first.text).toContain('Deprecated authentication');
+    expect(first.text.toLowerCase()).not.toContain('deprecated');
+    expect(first.text.toLowerCase()).not.toContain('static token');
+    expect(first.text.toLowerCase()).not.toContain('migrate to oauth');
 
     const second = await request(app)
       .post('/mcp')
@@ -544,7 +555,9 @@ describe('MCP transport parity pins (Nest-hosted /mcp)', () => {
       .set('Accept', 'application/json, text/event-stream')
       .send({ ...callBody, id: 4 });
     expect(second.status).toBe(200);
-    expect(second.text).not.toContain('Deprecated authentication');
+    expect(second.text.toLowerCase()).not.toContain('deprecated');
+    expect(second.text.toLowerCase()).not.toContain('static token');
+    expect(second.text.toLowerCase()).not.toContain('migrate to oauth');
   });
 
   it('MCP-P13 — an authorized tools/call writes exactly one mcp.tool_call audit row', async () => {
