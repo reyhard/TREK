@@ -80,36 +80,14 @@ export default function TodoListPanel({
 }) {
   // Layout component: state/effects/derived/handlers live in useTodoList.
   const {
-    canEdit,
-    t,
-    formatDate,
-    toggleTodoItem,
-    reorderTodoItems,
-    isMobile,
-    filter,
-    setFilter,
-    selectedId,
-    setSelectedId,
-    isAddingNew,
-    setIsAddingNew,
-    sortByPrio,
-    setSortByPrio,
-    addingCategory,
-    setAddingCategory,
-    newCategoryName,
-    setNewCategoryName,
-    members,
-    categories,
-    today,
-    filtered,
-    selectedItem,
-    totalCount,
-    doneCount,
-    overdueCount,
-    myCount,
-    addCategory,
-    catCount,
-  } = useTodoList(tripId, items, addItemSignal);
+    canEdit, t, formatDate, toggleTodoItem, reorderTodoItems,
+    isMobile, filter, setFilter, selectedId, setSelectedId,
+    isAddingNew, setIsAddingNew, sortByPrio, setSortByPrio, sortByDue, setSortByDue,
+    addingCategory, setAddingCategory, newCategoryName, setNewCategoryName,
+    members, categories, today, filtered, selectedItem,
+    totalCount, doneCount, overdueCount, myCount,
+    addCategory, catCount,
+  } = useTodoList(tripId, items, addItemSignal)
 
   // Plugin-contributed columns/actions for the todo view, keyed by task id (#plugins).
   const contribFor = usePluginViewContributions('todos', tripId);
@@ -117,9 +95,9 @@ export default function TodoListPanel({
   // Drag-to-reorder (#969). Manual ordering only makes sense when the list isn't
   // sorted by priority; a drag within the filtered view is mapped back onto the
   // full item order so unfiltered tasks keep their place.
-  const [dragId, setDragId] = useState<number | null>(null);
-  const [overId, setOverId] = useState<number | null>(null);
-  const canReorder = canEdit && !sortByPrio;
+  const [dragId, setDragId] = useState<number | null>(null)
+  const [overId, setOverId] = useState<number | null>(null)
+  const canReorder = canEdit && !sortByPrio && !sortByDue
 
   const handleReorderDrop = (targetId: number) => {
     const from = dragId;
@@ -230,7 +208,7 @@ export default function TodoListPanel({
         {!isMobile && <div style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600, color: 'var(--text-faint)', padding: '16px 12px 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {t('todo.sidebar.sortBy')}
         </div>}
-        <button type="button" onClick={() => setSortByPrio(v => !v)}
+        <button type="button" onClick={() => { setSortByDue(false); setSortByPrio(v => !v) }}
           title={isMobile ? t('todo.priority') : undefined}
           style={{
             display: 'flex',
@@ -258,6 +236,21 @@ export default function TodoListPanel({
         >
           <Flag size={isMobile ? 18 : 15} style={{ flexShrink: 0, opacity: 0.7 }} />
           {!isMobile && <span style={{ flex: 1, textAlign: 'left' }}>{t('todo.priority')}</span>}
+        </button>
+        <button type="button" onClick={() => { setSortByPrio(false); setSortByDue(v => !v) }}
+          title={isMobile ? t('todo.detail.dueDate') : undefined}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'center' : 'flex-start',
+            gap: isMobile ? 0 : 8, width: '100%', padding: isMobile ? '8px 0' : '7px 12px',
+            border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'calc(13px * var(--fs-scale-body, 1))',
+            background: sortByDue ? '#f59e0b12' : 'transparent',
+            color: sortByDue ? '#f59e0b' : 'var(--text-secondary)',
+            fontWeight: sortByDue ? 600 : 400, transition: 'all 0.1s',
+          }}
+          onMouseEnter={e => { if (!sortByDue) e.currentTarget.style.background = 'var(--bg-hover)' }}
+          onMouseLeave={e => { if (!sortByDue) e.currentTarget.style.background = 'transparent' }}>
+          <Calendar size={isMobile ? 18 : 15} style={{ flexShrink: 0, opacity: 0.7 }} />
+          {!isMobile && <span style={{ flex: 1, textAlign: 'left' }}>{t('todo.detail.dueDate')}</span>}
         </button>
 
         {/* Categories */}

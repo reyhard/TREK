@@ -166,4 +166,14 @@ describe('CollectionList', () => {
     expect(screen.getByText('Blue Bottle Coffee').closest('.col-lrow')).toBeInTheDocument();
     expect(screen.getByText('Golden Gate Bridge').closest('.col-lrow')).toBeInTheDocument();
   });
+
+  it('FE-COMP-COLLIST-011: the row opts out of the global press-scale (#2158)', () => {
+    // jsdom cannot replay the browser mechanics behind #2158: the :active scale on
+    // the row-wide role="button" shifted the status badge out from under the pointer,
+    // so the click retargeted onto the row and opened the place instead of cycling the
+    // status. The data-no-press attribute is the pin.
+    renderList();
+
+    expect(screen.getByText('Blue Bottle Coffee').closest('.col-lrow')).toHaveAttribute('data-no-press');
+  });
 });

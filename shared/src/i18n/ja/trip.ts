@@ -103,6 +103,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': '公共交通機関の自動検索',
   'transit.changeRoute': '経路を変更',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': '詳細を編集',
   'transit.journey': '公共交通機関の経路',
   'transit.pickDay': '接続を検索する日を選択してください。',
   'transit.noItinerary': 'この項目には保存された行程がありません。「経路を変更」から検索してください。',

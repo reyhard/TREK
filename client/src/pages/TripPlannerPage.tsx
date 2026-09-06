@@ -25,6 +25,7 @@ import type { BookingExpenseRequest } from '../components/Planner/BookingCostsSe
 import PluginFrame from '../components/Plugins/PluginFrame'
 import ErrorBoundary from '../components/shared/ErrorBoundary'
 import { lazyWithRetry } from '../utils/lazyWithRetry'
+import { getDayBookendHotels } from '../utils/dayOrder'
 import TripWarningsBanner from '../components/Planner/TripWarningsBanner'
 import Navbar from '../components/Layout/Navbar'
 import { useToast } from '../components/shared/Toast'
@@ -363,6 +364,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
     setShowReservationModal,
     editingReservation,
     setEditingReservation,
+    bookingImportKind, setBookingImportKind, transitRoutesShown,
     showBookingImport,
     setShowBookingImport,
     bookingImportAvailable,
@@ -629,7 +631,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
               dayPlaces={dayPlaces}
               route={route}
               routeVias={routeVias}
-              showTransitRoutes={routeShown}
+              showTransitRoutes={transitRoutesShown}
               // The route toggle belongs to one day, so the map needs that day to
               // know which automated transports may ride it (#2019).
               days={days}
@@ -1097,38 +1099,40 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                 document.body
               )}
 
-            {showDayDetail &&
-              !selectedPlace &&
-              (() => {
-                const currentDay = days.find((d) => d.id === showDayDetail.id) || showDayDetail;
-                const dayAssignments = assignments[String(currentDay.id)] || [];
-                const geoPlace =
-                  dayAssignments.find((a) => a.place?.lat && a.place?.lng)?.place || places.find((p) => p.lat && p.lng);
-                return (
-                  <DayDetailPanel
-                    day={currentDay}
-                    days={days}
-                    places={places}
-                    categories={categories}
-                    tripId={tripId}
-                    assignments={assignments}
-                    reservations={reservations}
-                    lat={geoPlace?.lat}
-                    lng={geoPlace?.lng}
-                    onClose={() => {
-                      setShowDayDetail(null);
-                      handleSelectDay(null);
-                    }}
-                    onAccommodationChange={loadAccommodations}
-                    leftWidth={isMobile ? 0 : leftCollapsed ? 0 : leftWidth}
-                    rightWidth={isMobile ? 0 : rightCollapsed ? 0 : rightWidth}
-                    collapsed={dayDetailCollapsed}
-                    onToggleCollapse={() => setDayDetailCollapsed((c) => !c)}
-                    mobile={isMobile}
-                    onUpdateDayTitle={handleUpdateDayTitle}
-                  />
-                );
-              })()}
+            {showDayDetail && !selectedPlace && (() => {
+              const currentDay = days.find(d => d.id === showDayDetail.id) || showDayDetail
+              const dayAssignments = assignments[String(currentDay.id)] || []
+              // Day-local weather anchor only (#2167): first located stop of THIS day,
+              // else the hotel you wake up in (unconditional bookend lookup, mirroring
+              // useMPlanTimeline) — never a place from another day.
+              const locatedPlace = dayAssignments.find(a => a.place?.lat && a.place?.lng)?.place
+              const weatherHotel = locatedPlace ? undefined : getDayBookendHotels(currentDay, days, tripAccommodations).morning
+              const weatherLat = locatedPlace?.lat ?? weatherHotel?.place_lat ?? null
+              const weatherLng = locatedPlace?.lng ?? weatherHotel?.place_lng ?? null
+              const weatherPlaceName = locatedPlace?.name ?? weatherHotel?.place_name ?? null
+              return (
+                <DayDetailPanel
+                  day={currentDay}
+                  days={days}
+                  places={places}
+                  categories={categories}
+                  tripId={tripId}
+                  assignments={assignments}
+                  reservations={reservations}
+                  lat={weatherLat}
+                  lng={weatherLng}
+                  weatherPlaceName={weatherPlaceName}
+                  onClose={() => { setShowDayDetail(null); handleSelectDay(null) }}
+                  onAccommodationChange={loadAccommodations}
+                  leftWidth={isMobile ? 0 : (leftCollapsed ? 0 : leftWidth)}
+                  rightWidth={isMobile ? 0 : (rightCollapsed ? 0 : rightWidth)}
+                  collapsed={dayDetailCollapsed}
+                  onToggleCollapse={() => setDayDetailCollapsed(c => !c)}
+                  mobile={isMobile}
+                  onUpdateDayTitle={handleUpdateDayTitle}
+                />
+              )
+            })()}
 
             {selectedPlace && !isMobile && (
               <PlaceInspector
@@ -1892,6 +1896,18 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
             setTransportModalAutomated(true);
             setTransitJourney(null);
             setShowTransportModal(true);
+          }}
+          onEditDetails={() => {
+            // Hand off to the full transport editor (travelers, costs, files,
+            // booking code, status) — the same modal mobile opens; an
+            // unchanged-endpoints save keeps the stored itinerary (#2148).
+            const current = reservations.find(r => r.id === transitJourney.id) ?? transitJourney
+            setEditingTransport(current)
+            setTransportModalDayId(current.day_id ?? null)
+            setTransportModalAutomated(false)
+            setTransitPrefill(null)
+            setTransitJourney(null)
+            setShowTransportModal(true)
           }}
         />
       )}

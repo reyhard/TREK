@@ -103,6 +103,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': 'Giao thông công cộng tự động',
   'transit.changeRoute': 'Đổi tuyến',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': 'Chỉnh sửa chi tiết',
   'transit.journey': 'Hành trình giao thông công cộng',
   'transit.pickDay': 'Chọn một ngày để tìm chuyến kết nối.',
   'transit.noItinerary': 'Mục này chưa có lộ trình được lưu — dùng “Đổi tuyến” để tìm một lộ trình.',

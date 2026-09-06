@@ -103,6 +103,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': 'Automatikus tömegközlekedés',
   'transit.changeRoute': 'Útvonal módosítása',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': 'Részletek szerkesztése',
   'transit.journey': 'Tömegközlekedési útvonal',
   'transit.pickDay': 'Válassz egy napot a kapcsolatok kereséséhez.',
   'transit.noItinerary':
