@@ -475,7 +475,7 @@ jobs:
           # New Code is configured as "previous version", so this string is what
           # draws that line — changing it re-bases every "new code" metric.
           # Pinned rather than read from package.json on purpose: keep the
-          # analysed version explicit and in lockstep with the release at 4.1.1.
+          # analysed version explicit and in lockstep with the release at 4.2.0.
           # Bump it here as part of the release, together with the version bump.
           #
           # Everything else — sources, tests, exclusions, the documented
