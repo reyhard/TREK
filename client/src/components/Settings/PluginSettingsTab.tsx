@@ -1,12 +1,13 @@
-import { CheckCircle, Link2, Loader2, Save, Unlink } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { pluginsApi, type PluginAction, type PluginUserSettingField } from '../../api/client';
-import { useTranslation } from '../../i18n';
-import { usePluginStore } from '../../store/pluginStore';
-import PluginFrame from '../Plugins/PluginFrame';
-import PluginIcon from '../shared/PluginIcon';
-import { useToast } from '../shared/Toast';
-import PluginActivityPanel from './PluginActivityPanel';
+import { useEffect, useState } from 'react'
+import { Save, Loader2, Link2, Unlink, CheckCircle } from 'lucide-react'
+import PluginIcon from '../shared/PluginIcon'
+import PluginFrame from '../Plugins/PluginFrame'
+import { pluginsApi, type PluginUserSettingField, type PluginAction } from '../../api/client'
+import { usePluginStore } from '../../store/pluginStore'
+import { useToast } from '../shared/Toast'
+import { useTranslation } from '../../i18n'
+import PluginActivityPanel from './PluginActivityPanel'
+import { seedSettingsValues, findMissingRequired, settingsPatch } from '../Plugins/settingsForm'
 
 /** Host-brokered OAuth: a Connect/Disconnect control. The host runs the whole flow +
  * holds the tokens; this only triggers connect (redirect to the provider) / disconnect. */
@@ -65,7 +66,6 @@ function PluginOAuthSection({
   );
 }
 
-const SECRET_MASK = '••••••••';
 
 /**
  * A user's own per-plugin settings (#plugins). The host renders the plugin's
@@ -85,19 +85,13 @@ function PluginSettingsForm({ id, name, icon }: { id: string; name: string; icon
   const [actionResult, setActionResult] = useState<Record<string, { ok: boolean; message?: string }>>({});
 
   useEffect(() => {
-    let alive = true;
-    pluginsApi
-      .userSettings(id)
-      .then((r) => {
-        if (!alive) return;
-        setFields(r.fields);
-        setActions(r.actions ?? []);
-        const init: Record<string, string | boolean> = {};
-        for (const f of r.fields) {
-          const v = r.config[f.key];
-          init[f.key] = f.input_type === 'checkbox' ? v === true : v == null ? '' : String(v);
-        }
-        setValues(init);
+    let alive = true
+    pluginsApi.userSettings(id)
+      .then(r => {
+        if (!alive) return
+        setFields(r.fields)
+        setActions(r.actions ?? [])
+        setValues(seedSettingsValues(r.fields, r.config))
       })
       .catch(() => {
         if (alive) setFields([]);
@@ -135,25 +129,22 @@ function PluginSettingsForm({ id, name, icon }: { id: string; name: string; icon
   };
 
   const save = async () => {
-    setSaving(true);
+    const missing = findMissingRequired(fields, values)
+    if (missing) {
+      toast.error(t('settings.plugins.requiredMissing', { field: missing.label || missing.key }))
+      return
+    }
+    setSaving(true)
     try {
-      // Skip an untouched secret (still shows the mask) so we never overwrite it with the mask.
-      const patch: Record<string, unknown> = {};
-      for (const f of fields) {
-        const v = values[f.key];
-        if (f.secret && v === SECRET_MASK) continue;
-        patch[f.key] = v;
-      }
-      const r = await pluginsApi.saveUserSettings(id, patch);
-      const next: Record<string, string | boolean> = {};
-      for (const f of fields) {
-        const v = r.config[f.key];
-        next[f.key] = f.input_type === 'checkbox' ? v === true : v == null ? '' : String(v);
-      }
-      setValues(next);
-      toast.success(t('settings.plugins.saved'));
-    } catch {
-      toast.error(t('common.error'));
+      const r = await pluginsApi.saveUserSettings(id, settingsPatch(fields, values))
+      setValues(seedSettingsValues(fields, r.config))
+      toast.success(t('settings.plugins.saved'))
+    } catch (e) {
+      // A 4xx names what the server refused (a required field it knows about and this
+      // stale field list doesn't); a 5xx body is not for the user.
+      const err = e as { response?: { status?: number; data?: { error?: string } } }
+      const refused = err.response?.status && err.response.status < 500 ? err.response.data?.error : undefined
+      toast.error(refused || t('common.error'))
     } finally {
       setSaving(false);
     }

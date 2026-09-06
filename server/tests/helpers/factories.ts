@@ -726,43 +726,32 @@ export interface TestJourneyEntry {
   entry_date: string;
   title: string | null;
   story: string | null;
+  /** 0/1, as the column holds it. */
+  stats_excluded: number;
 }
 
 export function createJourneyEntry(
   db: Database.Database,
   journeyId: number,
   authorId: number,
-  overrides: Partial<{
-    type: string;
-    entry_date: string;
-    title: string;
-    story: string;
-    location_name: string;
-    mood: string;
-    weather: string;
-  }> = {},
+  overrides: Partial<{ type: string; entry_date: string; title: string; story: string; location_name: string; mood: string; weather: string; stats_excluded: number }> = {}
 ): TestJourneyEntry {
   const now = Date.now();
-  const result = db
-    .prepare(
-      `
-    INSERT INTO journey_entries (journey_id, author_id, type, entry_date, title, story, location_name, mood, weather, visibility, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'private', 0, ?, ?)
-  `,
-    )
-    .run(
-      journeyId,
-      authorId,
-      overrides.type ?? 'entry',
-      overrides.entry_date ?? '2026-01-15',
-      overrides.title ?? null,
-      overrides.story ?? null,
-      overrides.location_name ?? null,
-      overrides.mood ?? null,
-      overrides.weather ?? null,
-      now,
-      now,
-    );
+  const result = db.prepare(`
+    INSERT INTO journey_entries (journey_id, author_id, type, entry_date, title, story, location_name, mood, weather, stats_excluded, visibility, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'private', 0, ?, ?)
+  `).run(
+    journeyId, authorId,
+    overrides.type ?? 'entry',
+    overrides.entry_date ?? '2026-01-15',
+    overrides.title ?? null,
+    overrides.story ?? null,
+    overrides.location_name ?? null,
+    overrides.mood ?? null,
+    overrides.weather ?? null,
+    overrides.stats_excluded ?? 0,
+    now, now
+  );
   return db.prepare('SELECT * FROM journey_entries WHERE id = ?').get(result.lastInsertRowid) as TestJourneyEntry;
 }
 

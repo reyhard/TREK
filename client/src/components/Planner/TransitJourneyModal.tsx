@@ -16,7 +16,9 @@ import TransitRouteEndpointEditor, { type TransitRouteEndpointEditInput } from '
  * The journey view for an automated public-transit entry (#1065): a roomy modal
  * around the stop-by-stop itinerary. The title renames inline right in the
  * header, notes get the full width with markdown support, and "Change route"
- * re-enters the transit search pre-seeded with this journey's route.
+ * re-enters the transit search pre-seeded with this journey's route. "Edit
+ * details" hands off to the full transport editor for the booking fields
+ * (travelers, costs, files, code, status — #2148).
  */
 
 interface TransitLegMeta {
@@ -39,6 +41,8 @@ interface TransitJourneyModalProps {
   onSave: (fields: { title: string; notes: string | null; status?: string; confirmation_number?: string | null }) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onChangeRoute: () => void
+  /** Switch to the full transport editor (travelers, costs, files, code, status). */
+  onEditDetails?: () => void
   /** Submit edited origin/destination pins; the parent builds the full endpoints[] and calls the canonical reservation update. */
   onUpdateEndpoints?: (input: TransitRouteEndpointEditInput) => Promise<unknown>
   /** day_edit gate for title/notes/delete/change-route (the modal's own edit affordances). */
@@ -47,7 +51,7 @@ interface TransitJourneyModalProps {
   canEditEndpoints: boolean
 }
 
-export default function TransitJourneyModal({ reservation, onClose, onSave, onDelete, onChangeRoute, onUpdateEndpoints, canEdit, canEditEndpoints }: TransitJourneyModalProps) {
+export default function TransitJourneyModal({ reservation, onClose, onSave, onDelete, onChangeRoute, onEditDetails, onUpdateEndpoints, canEdit, canEditEndpoints }: TransitJourneyModalProps) {
   const { t, locale } = useTranslation()
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   const timeFormat = useSettingsStore(st => st.settings.time_format) || '24h'
@@ -185,7 +189,17 @@ export default function TransitJourneyModal({ reservation, onClose, onSave, onDe
               <RefreshCw size={13} /> {t('transit.changeRoute')}
             </button>
           )}
+          {!editingEndpoints && canEdit && onEditDetails && (
+            <button type="button" onClick={onEditDetails} className="text-content-muted" style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
+              border: '1px solid var(--border-primary)', background: 'none',
+              fontSize: 'calc(12px * var(--fs-scale-body, 1))', cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <Pencil size={13} /> {t('transit.editDetails')}
+            </button>
+          )}
           {!editingEndpoints && (canEdit ? (
+
             <button type="button" onClick={save} disabled={saving || !title.trim() || !dirty} className="bg-[var(--text-primary)] text-[var(--bg-primary)]" style={{
               padding: '8px 20px', borderRadius: 10, border: 'none',
               fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',

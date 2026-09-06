@@ -10,7 +10,7 @@ import { runMigrations } from '../../src/db/migrations';
 import { createTables } from '../../src/db/schema';
 import { authCookie } from '../helpers/auth';
 import { createUser } from '../helpers/factories';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
+import { resetTestDb, resetRateLimits, setAddonEnabled } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
 
 import type { Application } from 'express';
@@ -106,6 +106,8 @@ beforeAll(async () => {
 beforeEach(() => {
   resetTestDb(testDb);
   resetRateLimits(nestApp);
+  // Providers only count as enabled under an enabled journey addon (migration 84 seeds it off).
+  setAddonEnabled(testDb, 'journey', true);
 });
 
 afterAll(async () => {

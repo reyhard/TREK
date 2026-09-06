@@ -19,7 +19,7 @@ import {
   addAlbumLink,
   setImmichCredentials,
 } from '../helpers/factories';
-import { resetTestDb, resetRateLimits } from '../helpers/test-db';
+import { resetTestDb, resetRateLimits, setAddonEnabled } from '../helpers/test-db';
 import type { INestApplication } from '@nestjs/common';
 
 import type { Application } from 'express';
@@ -289,6 +289,8 @@ beforeAll(async () => {
 beforeEach(() => {
   resetTestDb(testDb);
   resetRateLimits(nestApp);
+  // Providers only count as enabled under an enabled journey addon (migration 84 seeds it off).
+  setAddonEnabled(testDb, 'journey', true);
   immichState.albumAssets = DEFAULT_ALBUM_ASSETS.map((a) => ({ ...a }));
   immichState.albumAssetPages = null;
   immichState.searchCalls = [];

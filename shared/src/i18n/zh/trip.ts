@@ -102,6 +102,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': '自动公共交通',
   'transit.changeRoute': '更改路线',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': '编辑详情',
   'transit.journey': '公共交通行程',
   'transit.pickDay': '请选择要查询班次的日期。',
   'transit.noItinerary': '此条目尚未保存行程 — 请使用"更改路线"查询班次。',

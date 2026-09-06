@@ -36,6 +36,7 @@ const geoMock = vi.hoisted(() => ({
   position: null as { lat: number; lng: number; accuracy: number; heading: number | null } | null,
   mode: 'off' as 'off' | 'show' | 'follow',
   error: null as string | null,
+  errorCode: null as string | null,
   cycleMode: vi.fn(),
   setMode: vi.fn(),
 }))
@@ -52,9 +53,7 @@ vi.mock('react-leaflet', () => ({
   // center/zoom are surfaced so tests can assert the camera the map is built
   // with; maxZoom because a cluster refuses to attach to a map without one.
   MapContainer: ({ children, center, zoom, maxZoom }: any) => (
-    <div data-testid="map-container" data-center={JSON.stringify(center)} data-zoom={zoom} data-maxzoom={maxZoom}>
-      {children}
-    </div>
+    <div data-testid="map-container" data-center={JSON.stringify(center)} data-zoom={zoom} data-maxzoom={maxZoom}>{children}</div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
   Marker: ({ children, eventHandlers, position, icon, zIndexOffset, draggable = false }: any) => (
@@ -363,6 +362,14 @@ describe('MapView', () => {
     render(<MapView places={places} />);
     expect(screen.getByTestId('cluster-group')).toBeTruthy();
   });
+
+  it('FE-COMP-MAPVIEW-010b: the map carries a zoom ceiling of its own, whatever the basemap is', () => {
+    // Without it, a vector basemap leaves the map with none and the cluster
+    // above throws on attach, taking the planner to the error boundary. The
+    // ceiling has to sit on the map because only a GridLayer can contribute one.
+    render(<MapView places={[buildMapPlace({ lat: 48.8584, lng: 2.2945 })]} />)
+    expect(screen.getByTestId('map-container').getAttribute('data-maxzoom')).toBe(String(MAP_MAX_ZOOM))
+  })
 
   it('FE-COMP-MAPVIEW-010b: the map carries a zoom ceiling of its own, whatever the basemap is', () => {
     // Without it, a vector basemap leaves the map with none and the cluster

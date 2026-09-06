@@ -103,6 +103,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': 'Automatische ÖPNV-Verbindungen',
   'transit.changeRoute': 'Route ändern',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': 'Details bearbeiten',
   'transit.journey': 'ÖPNV-Verbindung',
   'transit.pickDay': 'Wähle einen Tag, für den Verbindungen gesucht werden sollen.',
   'transit.noItinerary': 'Dieser Eintrag hat keine gespeicherte Verbindung — über „Route ändern" eine suchen.',

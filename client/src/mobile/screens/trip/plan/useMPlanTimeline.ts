@@ -4,7 +4,7 @@ import { useRouteCalculation, type RouteMetricStatus } from '../../../../hooks/u
 import { assignmentsApi, reservationsApi, weatherApi } from '../../../../api/client'
 import { usePluginStore } from '../../../../store/pluginStore'
 import { getDayBookendHotels } from '../../../../utils/dayOrder'
-import { getDisplayTimeForDay, getMergedItems, getTransportForDay } from '../../../../utils/dayMerge'
+import { getDisplayTimeForDay, getMergedItems, getTransportForDay, hasCarrierEndpointOnDay } from '../../../../utils/dayMerge'
 import { calculateMovementTotalsFromParts, normalizeMovementMode, type MovementMode } from '../../../../utils/movementStats'
 import { dayCoMapsUrl, dayGoogleMapsUrl, optimizeDayOrder } from '../lib/dayRoute'
 import {
@@ -53,6 +53,13 @@ export function useMPlanTimeline(planner: TripPlanner) {
       dayId: day.id,
     })
   }, [day, dayAssignments, dayNotes, reservations, days])
+
+  // A carrier with a located endpoint today — the exported deep links need it so
+  // their no-time hotel bookends match the drawn route (#2157).
+  const dayHasCarrier = useMemo(
+    () => !!day && merged.some(it => it.type === 'transport' && hasCarrierEndpointOnDay(it.data, day.id)),
+    [day, merged],
+  )
 
   // Travel-time connectors (walk · distance · drive between consecutive places)
   // are shown permanently on the mobile timeline. The planner's route instance
@@ -123,25 +130,25 @@ export function useMPlanTimeline(planner: TripPlanner) {
   const upNext = useMemo(() => findUpNext(day, dayAssignments, now), [day, dayAssignments, now])
 
   // ── Weather chip — anchored to the day's first located stop, else its hotel ──
-  const weatherCoords = useMemo<{ lat: number; lng: number } | null>(() => {
+  const weatherAnchor = useMemo<{ lat: number; lng: number; name: string | null } | null>(() => {
     const located = dayAssignments.find(a => a.place?.lat != null && a.place?.lng != null)
-    if (located) return { lat: located.place!.lat!, lng: located.place!.lng! }
+    if (located) return { lat: located.place!.lat!, lng: located.place!.lng!, name: located.place!.name ?? null }
     const hotel = day ? getDayBookendHotels(day, days, tripAccommodations).morning : undefined
     if (hotel && hotel.place_lat != null && hotel.place_lng != null) {
-      return { lat: hotel.place_lat, lng: hotel.place_lng }
+      return { lat: hotel.place_lat, lng: hotel.place_lng, name: hotel.place_name ?? null }
     }
     return null
   }, [day, dayAssignments, days, tripAccommodations])
 
   const [weather, setWeather] = useState<WeatherResult | null>(null)
   useEffect(() => {
-    if (!day?.date || !weatherCoords) { setWeather(null); return }
+    if (!day?.date || !weatherAnchor) { setWeather(null); return }
     let cancelled = false
-    weatherApi.get(weatherCoords.lat, weatherCoords.lng, day.date.slice(0, 10))
+    weatherApi.get(weatherAnchor.lat, weatherAnchor.lng, day.date.slice(0, 10), language)
       .then(data => { if (!cancelled) setWeather(data.error ? null : data) })
       .catch(() => { if (!cancelled) setWeather(null) })
     return () => { cancelled = true }
-  }, [day?.date, weatherCoords])
+  }, [day?.date, weatherAnchor, language])
 
   // ── Expanded auto-transit rows ──
   const [openTransitKeys, setOpenTransitKeys] = useState<Set<string>>(new Set())
@@ -326,7 +333,7 @@ export function useMPlanTimeline(planner: TripPlanner) {
     if (!day) return
     const prevIds = dayAssignments.map(a => a.id)
     const result = optimizeDayOrder(
-      day, days, dayAssignments, tripAccommodations, settings.optimize_from_accommodation !== false,
+      day, days, dayAssignments, tripAccommodations, settings.optimize_from_accommodation !== false, dayHasCarrier,
     )
     if (!result) { toast.info(t('dayplan.toast.needTwoPlaces')); return }
     try {
@@ -339,7 +346,7 @@ export function useMPlanTimeline(planner: TripPlanner) {
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t('trip.toast.reorderError'))
     }
-  }, [day, dayAssignments, days, tripAccommodations, settings, tripActions, tripId, pushUndo, updateRouteForDay, toast, t])
+  }, [day, dayAssignments, days, tripAccommodations, settings, dayHasCarrier, tripActions, tripId, pushUndo, updateRouteForDay, toast, t])
 
   const exportGoogleMaps = useCallback(() => {
     if (!day) return
@@ -347,18 +354,19 @@ export function useMPlanTimeline(planner: TripPlanner) {
     // drawn route does — only when the leg is real (#1372, #1465).
     const url = dayGoogleMapsUrl(
       day, days, dayAssignments, tripAccommodations, settings.optimize_from_accommodation !== false,
+      dayHasCarrier,
     )
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
-  }, [day, dayAssignments, days, tripAccommodations, settings])
+  }, [day, dayAssignments, days, tripAccommodations, settings, dayHasCarrier])
 
   const exportCoMaps = useCallback(() => {
     if (!day) return
     const url = dayCoMapsUrl(
       day, days, dayAssignments, tripAccommodations, settings.optimize_from_accommodation !== false,
-      day.default_transport_mode ?? routeProfile,
+      day.default_transport_mode ?? routeProfile, dayHasCarrier,
     )
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
-  }, [day, dayAssignments, days, tripAccommodations, settings, routeProfile])
+  }, [day, dayAssignments, days, tripAccommodations, settings, routeProfile, dayHasCarrier])
 
   const renameDay = useCallback((title: string) => {
     if (!day) return
@@ -406,6 +414,7 @@ export function useMPlanTimeline(planner: TripPlanner) {
   return {
     day, rows, hotelLegs, merged, hotelChips, weather, weatherTemp, upNext,
     movementTotals, movementStatus, distanceUnit, movementModes,
+    weatherPlaceName: weatherAnchor?.name ?? null,
     language, timeFormat: settings.time_format,
     openTransitKeys, toggleTransit,
     moveRow, removeAssignment, editAssignment, editTransport, openTransitJourney,

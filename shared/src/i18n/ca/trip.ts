@@ -99,6 +99,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': 'Transport públic automatitzat',
   'transit.changeRoute': 'Canviar de ruta',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': 'Editar detalls',
   'transit.journey': 'Trajecte en transport públic',
   'transit.pickDay': 'Tria un dia per cercar connexions.',
   'transit.noItinerary': 'Aquesta entrada no té cap itinerari desat — utilitza «Canviar de ruta» per cercar-ne un.',

@@ -103,6 +103,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': 'Transportasi umum otomatis',
   'transit.changeRoute': 'Ubah rute',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': 'Sunting detail',
   'transit.journey': 'Perjalanan transportasi umum',
   'transit.pickDay': 'Pilih hari untuk mencari koneksi.',
   'transit.noItinerary':

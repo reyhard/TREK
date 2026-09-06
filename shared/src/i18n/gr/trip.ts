@@ -103,6 +103,7 @@ const trip: TranslationStrings = {
   'transit.sectionTitle': 'Αυτόματες δημόσιες συγκοινωνίες',
   'transit.changeRoute': 'Αλλαγή διαδρομής',
   'transit.editEndpoints': 'Edit route endpoints',
+  'transit.editDetails': 'Επεξεργασία λεπτομερειών',
   'transit.journey': 'Διαδρομή με δημόσιες συγκοινωνίες',
   'transit.pickDay': 'Επιλέξτε μια ημέρα για αναζήτηση συνδέσεων.',
   'transit.noItinerary':

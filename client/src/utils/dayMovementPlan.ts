@@ -4,8 +4,9 @@
  * imported geometry.
  */
 import type { Accommodation, Assignment, Day, Place, Reservation, Waypoint } from '../types'
-import { getMergedItems, getSpanPhase, getTransportForDay, getTransportRouteEndpoints, TRANSPORT_TYPES } from './dayMerge'
-import { getDayBookendHotels, shouldDrawEveningLeg, shouldDrawMorningLeg } from './dayOrder'
+import { getMergedItems, getSpanPhase, isCarrierTransport, hasCarrierEndpointOnDay, getTransportForDay, getTransportRouteEndpoints, TRANSPORT_TYPES } from './dayMerge'
+import { getDayBookendHotels, shouldDrawEveningLeg, shouldDrawMorningLeg, type CarrierEdge } from './dayOrder'
+import { withinDriveRange } from './geo'
 import { getTrackMovement, type TrackMovementMetrics } from './trackGeometry'
 
 export type ConnectorProfile = 'driving' | 'walking' | 'cycling'
@@ -133,13 +134,31 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
     dayId: day.id,
   }).filter(item => item.type !== 'note')
 
-  const first = timeline[0]
-  const last = timeline[timeline.length - 1]
+  const locatedTimeline = timeline.filter(item => {
+    if (item.type === 'place') {
+      const place = fullPlace(item.data)
+      return getTrackMovement(place) || (finite(place.lat) && finite(place.lng))
+    }
+    const { from, to } = getTransportRouteEndpoints(item.data as Reservation, day.id)
+    return !!from || !!to
+  })
+  const first = locatedTimeline[0]
+  const last = locatedTimeline[locatedTimeline.length - 1]
   const edgeInfo = (item: typeof first, evening = false) => {
-    if (!item || item.type !== 'place') return item ? { isPlace: false, time: null } : undefined
+    if (!item) return undefined
+    if (item.type !== 'place') {
+      const reservation = item.data as Reservation
+      const { from, to } = getTransportRouteEndpoints(reservation, day.id)
+      const endpoint = evening ? (to ?? from) : (from ?? to)
+      const role: CarrierEdge = evening ? (to ? 'arrival' : 'departure') : (from ? 'departure' : 'arrival')
+      return { ...endpoint, isPlace: false, time: null, carrierEdge: isCarrierTransport(reservation) ? role : null }
+    }
     const place = fullPlace(item.data)
-    return { isPlace: true, time: evening ? (place.end_time ?? place.place_time) : place.place_time }
+    const track = getTrackMovement(place)
+    const point = track ? (evening ? track.end : track.start) : [place.lat, place.lng]
+    return { isPlace: true, lat: point[0], lng: point[1], time: evening ? (place.end_time ?? place.place_time) : place.place_time }
   }
+  const dayHasCarrier = transports.some(r => hasCarrierEndpointOnDay(r, day.id))
   const useHotels = options.optimizeFromAccommodation !== false
   const bookends = useHotels ? getDayBookendHotels(day, days, accommodations) : {}
   const hotelAnchor = (hotel: Accommodation | undefined): MovementAnchor | null =>
@@ -148,8 +167,13 @@ export function buildDayMovementPlan(options: BuildDayMovementPlanOptions): DayM
       : null
   const morning = hotelAnchor(bookends.morning)
   const evening = hotelAnchor(bookends.evening)
-  const drawMorning = !!morning && shouldDrawMorningLeg(bookends, day, edgeInfo(first))
-  const drawEvening = !!evening && shouldDrawEveningLeg(bookends, day, edgeInfo(last, true))
+  const reachable = (hotel: MovementAnchor | null, edge: ReturnType<typeof edgeInfo>) =>
+    !hotel || !edge || edge.isPlace || !finite(edge.lat) || !finite(edge.lng)
+      || withinDriveRange(hotel, { lat: edge.lat, lng: edge.lng })
+  const drawMorning = !!morning && shouldDrawMorningLeg(bookends, day, edgeInfo(first), dayHasCarrier)
+    && reachable(morning, edgeInfo(first))
+  const drawEvening = !!evening && shouldDrawEveningLeg(bookends, day, edgeInfo(last, true), dayHasCarrier)
+    && reachable(evening, edgeInfo(last, true))
 
   if (drawMorning && morning) {
     cursor = {
