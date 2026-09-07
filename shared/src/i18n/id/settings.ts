@@ -77,6 +77,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Optimalkan rute dari akomodasi',
   'settings.optimizeFromAccommodationHint':
     'Saat mengoptimalkan suatu hari, mulai rute dari hotel tempatmu bangun pagi dan akhiri di hotel tempatmu check-in malam itu.',
+  'settings.defaultRouteProfile': 'Mode rute default',
+  'settings.defaultRouteProfileHint':
+    'Digunakan untuk perhitungan rute baru saat suatu hari atau segmen perjalanan tidak memiliki moda transportasi sendiri.',
   'settings.notifications': 'Notifikasi',
   'settings.notifyTripInvite': 'Undangan perjalanan',
   'settings.notifyBookingChange': 'Perubahan pemesanan',

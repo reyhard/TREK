@@ -105,6 +105,7 @@ export interface TripFile {
 }
 
 export type DistanceUnit = 'metric' | 'imperial'
+export type DefaultRouteProfile = 'driving' | 'walking'
 
 export interface Settings {
   map_tile_url: string
@@ -121,6 +122,8 @@ export interface Settings {
   map_poi_pill_enabled?: boolean
   map_always_show_routes?: boolean
   optimize_from_accommodation?: boolean
+  /** Built-in planner fallback for routes without a saved day or leg mode. */
+  default_route_profile?: DefaultRouteProfile
   map_provider?: 'leaflet' | 'mapbox-gl' | 'maplibre-gl'
   /** Leaflet base layer: default street tiles or a satellite/aerial view. */
   map_base_layer?: 'default' | 'satellite'

@@ -77,6 +77,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Оптимизировать маршрут от места проживания',
   'settings.optimizeFromAccommodationHint':
     'При оптимизации дня маршрут начинается от отеля, в котором вы просыпаетесь, и заканчивается у того, в который вы заселяетесь вечером.',
+  'settings.defaultRouteProfile': 'Режим маршрута по умолчанию',
+  'settings.defaultRouteProfileHint':
+    'Используется для новых расчётов маршрута, если для дня или отдельного участка не задан собственный способ передвижения.',
   'settings.notifications': 'Уведомления',
   'settings.notifyTripInvite': 'Приглашения в поездку',
   'settings.notifyBookingChange': 'Изменения бронирований',

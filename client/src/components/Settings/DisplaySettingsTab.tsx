@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Languages, Map, ChevronDown, Check, Rocket } from 'lucide-react'
 import { SUPPORTED_LANGUAGES, useTranslation } from '../../i18n'
-import { useSettingsStore, DEFAULT_SETTINGS } from '../../store/settingsStore'
+import { useSettingsStore, DEFAULT_SETTINGS, normalizeDefaultRouteProfile } from '../../store/settingsStore'
 import { useToast } from '../shared/Toast'
 import CustomSelect from '../shared/CustomSelect'
 import { SYMBOLS, currenciesWith } from '../Budget/BudgetPanel.constants'
@@ -38,6 +38,7 @@ export default function DisplaySettingsTab(): React.ReactElement {
 
   const startPage = settings.start_page === 'active_trip' ? 'active_trip' : DEFAULT_START_PAGE
   const startTripTab = settings.start_trip_tab || DEFAULT_START_TRIP_TAB
+  const defaultRouteProfile = normalizeDefaultRouteProfile(settings.default_route_profile)
 
   return (
     <>
@@ -440,6 +441,38 @@ export default function DisplaySettingsTab(): React.ReactElement {
           ))}
         </div>
         <p className="text-xs mt-1 text-content-faint">{t('settings.optimizeFromAccommodationHint')}</p>
+      </div>
+
+      {/* Default route mode for calculations without a saved day or leg mode */}
+      <div>
+        <label className="block text-sm font-medium mb-2 text-content-secondary">{t('settings.defaultRouteProfile')}</label>
+        <div className="flex gap-3">
+          {([
+            { value: 'driving', label: t('dayplan.movement.driving') },
+            { value: 'walking', label: t('dayplan.movement.walking') },
+          ] as const).map(opt => (
+            <button type="button"
+              key={opt.value}
+              aria-pressed={defaultRouteProfile === opt.value}
+              onClick={async () => {
+                try { await updateSetting('default_route_profile', opt.value) }
+                catch (e: unknown) { toast.error(e instanceof Error ? e.message : t('common.error')) }
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 20px', borderRadius: 10, cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 'calc(14px * var(--fs-scale-body, 1))', fontWeight: 500,
+                border: defaultRouteProfile === opt.value ? '2px solid var(--text-primary)' : '2px solid var(--border-primary)',
+                background: defaultRouteProfile === opt.value ? 'var(--bg-hover)' : 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs mt-1 text-content-faint">{t('settings.defaultRouteProfileHint')}</p>
       </div>
       </Section>
     </>

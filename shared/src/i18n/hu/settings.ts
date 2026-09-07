@@ -79,6 +79,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Útvonal optimalizálása a szállástól',
   'settings.optimizeFromAccommodationHint':
     'A nap optimalizálásakor az útvonal annál a szállásnál kezdődjön, ahol felébredsz, és annál érjen véget, ahova este bejelentkezel.',
+  'settings.defaultRouteProfile': 'Alapértelmezett útvonal-mód',
+  'settings.defaultRouteProfileHint':
+    'Új útvonalak számításakor használatos, ha egy napnak vagy egy szakasznak nincs saját közlekedési módja.',
   'settings.notifications': 'Értesítések',
   'settings.notifyTripInvite': 'Utazási meghívók',
   'settings.notifyBookingChange': 'Foglalási változások',

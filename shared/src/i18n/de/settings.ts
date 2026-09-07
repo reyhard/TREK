@@ -80,6 +80,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Route ab der Unterkunft optimieren',
   'settings.optimizeFromAccommodationHint':
     'Beim Optimieren eines Tages startet die Route an der Unterkunft, in der du aufwachst, und endet an der, in die du am Abend eincheckst.',
+  'settings.defaultRouteProfile': 'Standard-Reisemodus',
+  'settings.defaultRouteProfileHint':
+    'Wird für neue Routenberechnungen verwendet, wenn ein Tag oder eine einzelne Strecke keinen eigenen Reisemodus hat.',
   'settings.notifications': 'Mitteilungen',
   'settings.notifyTripInvite': 'Trip-Einladungen',
   'settings.notifyBookingChange': 'Buchungsänderungen',

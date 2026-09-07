@@ -133,6 +133,26 @@ describe('MSettingsGeneral', () => {
     expect(updateSetting).toHaveBeenCalledWith('optimize_from_accommodation', false);
   });
 
+  it('FE-MOB-SET-015: default route mode defaults to Driving and saves Walking/Driving', async () => {
+    const user = userEvent.setup();
+    const updateSetting = vi.fn().mockResolvedValue(undefined);
+    seedStore(useSettingsStore, { settings: buildSettings(), updateSetting });
+    render(<MSettingsGeneral />);
+
+    expect(screen.getByRole('button', { name: 'Driving' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Walking' }));
+    expect(updateSetting).toHaveBeenCalledWith('default_route_profile', 'walking');
+    await user.click(screen.getByRole('button', { name: 'Driving' }));
+    expect(updateSetting).toHaveBeenCalledWith('default_route_profile', 'driving');
+  });
+
+  it('FE-MOB-SET-016: stored Walking preference is selected', () => {
+    seedStore(useSettingsStore, { settings: buildSettings({ default_route_profile: 'walking' }) });
+    render(<MSettingsGeneral />);
+
+    expect(screen.getByRole('button', { name: 'Walking' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('FE-MOB-SET-010: a rejected save shows the server message as a toast', async () => {
     const user = userEvent.setup();
     seedStore(useSettingsStore, {

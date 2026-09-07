@@ -78,6 +78,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Route optimaliseren vanaf accommodatie',
   'settings.optimizeFromAccommodationHint':
     'Begin bij het optimaliseren van een dag de route bij het hotel waar je wakker wordt en eindig bij het hotel waar je die avond incheckt.',
+  'settings.defaultRouteProfile': 'Standaard routemodus',
+  'settings.defaultRouteProfileHint':
+    'Wordt gebruikt voor nieuwe routeberekeningen wanneer een dag of afzonderlijk traject geen eigen vervoerswijze heeft.',
   'settings.notifications': 'Meldingen',
   'settings.notifyTripInvite': 'Reisuitnodigingen',
   'settings.notifyBookingChange': 'Boekingswijzigingen',

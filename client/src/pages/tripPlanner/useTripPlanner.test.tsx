@@ -381,6 +381,56 @@ describe('useTripPlanner — bootstrap', () => {
   })
 })
 
+describe('useTripPlanner — default route profile', () => {
+  it('FE-TP-HOOK-126: missing preference keeps the live route profile on Driving', async () => {
+    setSettings({ default_route_profile: undefined })
+    seedTrip()
+
+    const { result } = await renderPlanner()
+
+    expect(result.current.routeProfile).toBe('driving')
+  })
+
+  it('FE-TP-HOOK-127: a stored Walking preference initializes the live route profile', async () => {
+    setSettings({ default_route_profile: 'walking' })
+    seedTrip()
+
+    const { result } = await renderPlanner()
+
+    expect(result.current.routeProfile).toBe('walking')
+  })
+
+  it('FE-TP-HOOK-128: a late Walking preference updates an untouched live profile', async () => {
+    setSettings({ default_route_profile: undefined })
+    seedTrip()
+    const { result } = await renderPlanner()
+
+    expect(result.current.routeProfile).toBe('driving')
+    act(() => { setSettings({ default_route_profile: 'walking' }) })
+    await waitFor(() => expect(result.current.routeProfile).toBe('walking'))
+  })
+
+  it('FE-TP-HOOK-129: a manually selected live profile wins against a late preference', async () => {
+    setSettings({ default_route_profile: undefined })
+    seedTrip()
+    const { result } = await renderPlanner()
+
+    act(() => { result.current.setRouteProfile('plugin:ev/eco') })
+    act(() => { setSettings({ default_route_profile: 'walking' }) })
+
+    expect(result.current.routeProfile).toBe('plugin:ev/eco')
+  })
+
+  it('FE-TP-HOOK-130: an invalid stored preference safely falls back to Driving', async () => {
+    setSettings({ default_route_profile: 'cycling' as never })
+    seedTrip()
+
+    const { result } = await renderPlanner()
+
+    expect(result.current.routeProfile).toBe('driving')
+  })
+})
+
 describe('useTripPlanner — tabs', () => {
   it('FE-TP-HOOK-015: addon tabs appear only for enabled addons', async () => {
     vi.mocked(addonsApi.enabled).mockResolvedValue({ addons: [{ id: 'packing' }, { id: 'documents' }] })

@@ -90,6 +90,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Optimize route from accommodation',
   'settings.optimizeFromAccommodationHint':
     'When optimizing a day, start the route at the hotel you wake up in and end it at the one you check into that evening.',
+  'settings.defaultRouteProfile': 'Default route mode',
+  'settings.defaultRouteProfileHint':
+    'Used for new route calculations when a day or individual leg does not have its own travel mode.',
   'settings.notifications': 'Notifications',
   'settings.notifyTripInvite': 'Trip invitations',
   'settings.notifyBookingChange': 'Booking changes',

@@ -79,6 +79,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Otimizar rota a partir da hospedagem',
   'settings.optimizeFromAccommodationHint':
     'Ao otimizar um dia, comece a rota no hotel onde você acorda e termine no hotel em que você faz check-in à noite.',
+  'settings.defaultRouteProfile': 'Modo de rota padrão',
+  'settings.defaultRouteProfileHint':
+    'Usado para novos cálculos de rota quando um dia ou trecho individual não tem seu próprio meio de transporte.',
   'settings.notifications': 'Notificações',
   'settings.notifyTripInvite': 'Convites de viagem',
   'settings.notifyBookingChange': 'Alterações de reserva',

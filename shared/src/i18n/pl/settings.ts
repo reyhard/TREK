@@ -77,6 +77,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Optymalizuj trasę od zakwaterowania',
   'settings.optimizeFromAccommodationHint':
     'Przy optymalizacji dnia rozpocznij trasę w hotelu, w którym się budzisz, a zakończ ją w tym, do którego się zameldujesz tego wieczoru.',
+  'settings.defaultRouteProfile': 'Domyślny tryb trasy',
+  'settings.defaultRouteProfileHint':
+    'Używany przy nowych obliczeniach trasy, gdy dzień lub pojedynczy odcinek nie ma własnego środka transportu.',
   'settings.notifications': 'Powiadomienia',
   'settings.notifyTripInvite': 'Zaproszenia do podróży',
   'settings.notifyBookingChange': 'Zmiany w rezerwacjach',

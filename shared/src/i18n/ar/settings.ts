@@ -77,6 +77,8 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'تحسين المسار انطلاقًا من مكان الإقامة',
   'settings.optimizeFromAccommodationHint':
     'عند تحسين يوم ما، يبدأ المسار من الفندق الذي تستيقظ فيه وينتهي عند الفندق الذي تسجّل الوصول إليه في تلك الليلة.',
+  'settings.defaultRouteProfile': 'وضع المسار الافتراضي',
+  'settings.defaultRouteProfileHint': 'يُستخدم عند عدم تحديد وضع مختلف لليوم أو للساق.',
   'settings.notifications': 'الإشعارات',
   'settings.notifyTripInvite': 'دعوات الرحلات',
   'settings.notifyBookingChange': 'تغييرات الحجز',

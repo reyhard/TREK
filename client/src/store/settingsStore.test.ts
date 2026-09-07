@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { DEFAULT_SETTINGS, forgetServerLanguage, normalizeSettings, useSettingsStore } from './settingsStore'
+import { DEFAULT_SETTINGS, forgetServerLanguage, normalizeDefaultRouteProfile, normalizeSettings, useSettingsStore } from './settingsStore'
 import type { Settings } from '../types'
 import { settingsApi } from '../api/client'
 import { clearTileCache } from '../sync/tilePrefetcher'
@@ -36,6 +36,33 @@ describe('settings defaults', () => {
 
   it('SETTINGS-DEFAULTS-003: no CARTO key is shipped, so the field starts empty instead of undefined', () => {
     expect(DEFAULT_SETTINGS.carto_api_key).toBe('')
+  })
+
+  it('SETTINGS-DEFAULTS-004: the planner route fallback is Driving for existing and new users', () => {
+    expect(DEFAULT_SETTINGS.default_route_profile).toBe('driving')
+    expect(useSettingsStore.getState().settings.default_route_profile).toBe('driving')
+  })
+})
+
+describe('settings default route profile', () => {
+  const initialState = useSettingsStore.getState()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSettingsStore.setState(initialState, true)
+  })
+
+  it('SETTINGS-ROUTE-001: loading a stored Walking preference merges it into the settings store', async () => {
+    vi.mocked(settingsApi.get).mockResolvedValue({ settings: { default_route_profile: 'walking' } } as never)
+
+    await useSettingsStore.getState().loadSettings()
+
+    expect(useSettingsStore.getState().settings.default_route_profile).toBe('walking')
+  })
+
+  it('SETTINGS-ROUTE-002: invalid values normalize to Driving', () => {
+    expect(normalizeDefaultRouteProfile('cycling')).toBe('driving')
+    expect(normalizeSettings({ default_route_profile: 'plugin:ev/eco' } as never).default_route_profile).toBe('driving')
   })
 })
 

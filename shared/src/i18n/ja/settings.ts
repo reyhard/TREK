@@ -78,6 +78,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': '宿泊先を起点にルートを最適化',
   'settings.optimizeFromAccommodationHint':
     'その日を最適化する際、朝に目覚める宿泊先を起点にし、その晩にチェックインする宿泊先を終点としてルートを組みます。',
+  'settings.defaultRouteProfile': 'デフォルトのルートモード',
+  'settings.defaultRouteProfileHint':
+    '日または個別の区間に独自の移動手段がない場合に、新しいルート計算で使用します。',
   'settings.notifications': '通知',
   'settings.notifyTripInvite': '旅行の招待',
   'settings.notifyBookingChange': '予約の変更',

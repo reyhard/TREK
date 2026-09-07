@@ -73,6 +73,8 @@ const settings: TranslationStrings = {
   'settings.aiAlwaysRetryHint': '当标准解析器无法读取文件时，自动改用 AI 重试。',
   'settings.optimizeFromAccommodation': '从住宿地优化路线',
   'settings.optimizeFromAccommodationHint': '优化某一天时，路线将从您醒来时所在的酒店出发，并在当晚入住的酒店结束。',
+  'settings.defaultRouteProfile': '默认路线模式',
+  'settings.defaultRouteProfileHint': '当某一天或单个路段没有自己的出行方式时，用于新的路线计算。',
   'settings.notifications': '通知',
   'settings.notifyTripInvite': '旅行邀请',
   'settings.notifyBookingChange': '预订变更',

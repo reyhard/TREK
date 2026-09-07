@@ -79,6 +79,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': '숙소 기준으로 경로 최적화',
   'settings.optimizeFromAccommodationHint':
     '하루 일정을 최적화할 때, 아침에 머무는 숙소에서 경로를 시작하고 그날 저녁에 체크인하는 숙소에서 경로를 끝냅니다.',
+  'settings.defaultRouteProfile': '기본 경로 모드',
+  'settings.defaultRouteProfileHint':
+    '날짜 또는 개별 구간에 별도의 이동 수단이 없을 때 새 경로 계산에 사용됩니다.',
   'settings.notifications': '알림',
   'settings.notifyTripInvite': '여행 초대',
   'settings.notifyBookingChange': '예약 변경',

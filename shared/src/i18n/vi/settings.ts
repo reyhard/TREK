@@ -82,6 +82,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Tối ưu hóa tuyến đường từ chỗ ở',
   'settings.optimizeFromAccommodationHint':
     'Khi tối ưu hóa một ngày, hãy bắt đầu lộ trình tại khách sạn nơi bạn thức dậy và kết thúc tại khách sạn bạn nhận phòng vào tối hôm đó.',
+  'settings.defaultRouteProfile': 'Chế độ tuyến đường mặc định',
+  'settings.defaultRouteProfileHint':
+    'Dùng cho các phép tính tuyến đường mới khi một ngày hoặc chặng riêng lẻ không có phương thức di chuyển riêng.',
   'settings.aiAlwaysRetry': 'Luôn thử lại việc nhập đặt chỗ bằng AI.',
   'settings.aiAlwaysRetryHint':
     'Khi trình phân tích cú pháp tiêu chuẩn không thể đọc được tệp, hãy tự động thử lại bằng AI..',

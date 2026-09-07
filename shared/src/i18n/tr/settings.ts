@@ -80,6 +80,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Rotayı konaklamadan optimize et',
   'settings.optimizeFromAccommodationHint':
     'Bir günü optimize ederken rotaya o sabah uyandığınız otelden başlayın ve akşam giriş yaptığınız otelde sonlandırın.',
+  'settings.defaultRouteProfile': 'Varsayılan rota modu',
+  'settings.defaultRouteProfileHint':
+    'Bir günün veya tek bir etabın kendi ulaşım modu olmadığında yeni rota hesaplamalarında kullanılır.',
   'settings.notifications': 'Bildirimler',
   'settings.notifyTripInvite': 'Seyahat davetleri',
   'settings.notifyBookingChange': 'Rezervasyon değişiklikleri',

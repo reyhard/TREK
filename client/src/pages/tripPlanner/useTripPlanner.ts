@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router'
 import { useTripStore } from '../../store/tripStore'
 import { useCanDo } from '../../store/permissionsStore'
-import { useSettingsStore } from '../../store/settingsStore'
+import { normalizeDefaultRouteProfile, useSettingsStore } from '../../store/settingsStore'
 import { getCached, fetchPhoto } from '../../services/photoService'
 import { useToast } from '../../components/shared/Toast'
 import { Map, Ticket, PackageCheck, Wallet, FolderOpen, Users, Train } from 'lucide-react'
@@ -439,7 +439,20 @@ export function useTripPlanner() {
   // per-day transit filter is off, so the map would draw every automated
   // transport in the trip (#2019).
   const transitRoutesShown = routeShown && selectedDayId != null
-  const [routeProfile, setRouteProfile] = useState<string>('driving')
+  const defaultRouteProfile = normalizeDefaultRouteProfile(settings.default_route_profile)
+  const routeProfileTouchedRef = useRef(false)
+  const [routeProfile, setRouteProfileState] = useState<string>(() => defaultRouteProfile)
+  const setRouteProfile = useCallback((profile: string) => {
+    routeProfileTouchedRef.current = true
+    setRouteProfileState(profile)
+  }, [])
+
+  // Settings are fetched asynchronously and may arrive after this hook mounts.
+  // Apply the account preference only while the live planner picker is untouched,
+  // so a late response cannot overwrite an explicit current-trip choice.
+  useEffect(() => {
+    if (!routeProfileTouchedRef.current) setRouteProfileState(defaultRouteProfile)
+  }, [defaultRouteProfile])
   const [fitKey, setFitKey] = useState<number>(0)
   const initialFitTripId = useRef<number | null>(null)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<'left' | 'timeline' | 'right' | null>(null)

@@ -86,6 +86,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Βελτιστοποίηση διαδρομής από το κατάλυμα',
   'settings.optimizeFromAccommodationHint':
     'Κατά τη βελτιστοποίηση μιας ημέρας, ξεκινήστε τη διαδρομή από το ξενοδοχείο στο οποίο ξυπνάτε και τερματίστε την σε αυτό στο οποίο κάνετε check-in το ίδιο βράδυ.',
+  'settings.defaultRouteProfile': 'Προεπιλεγμένος τρόπος διαδρομής',
+  'settings.defaultRouteProfileHint':
+    'Χρησιμοποιείται για νέους υπολογισμούς διαδρομής όταν μια ημέρα ή ένα επιμέρους σκέλος δεν έχει δικό του τρόπο μετακίνησης.',
   'settings.notifications': 'Ειδοποιήσεις',
   'settings.notifyTripInvite': 'Προσκλήσεις ταξιδιού',
   'settings.notifyBookingChange': 'Αλλαγές κρατήσεων',

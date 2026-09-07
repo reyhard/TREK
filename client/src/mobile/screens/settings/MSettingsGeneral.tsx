@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { ChevronDown, Languages, Map, Rocket } from 'lucide-react'
 import { useTranslation, SUPPORTED_LANGUAGES } from '../../../i18n'
-import { useSettingsStore } from '../../../store/settingsStore'
+import { normalizeDefaultRouteProfile, useSettingsStore } from '../../../store/settingsStore'
 import { useToast } from '../../../components/shared/Toast'
 import { SYMBOLS, currenciesWith } from '../../../components/Budget/BudgetPanel.constants'
 import { TRIP_TAB_IDS, TRIP_TAB_LABEL_KEYS, isTripTabId } from '../../../constants/tripTabs'
 import { DEFAULT_START_PAGE, DEFAULT_START_TRIP_TAB, type StartPage } from '../../../utils/startDestination'
-import type { Settings, DistanceUnit } from '../../../types'
-import { MSetCard, MSetEyebrow, MSetSelectRow, MSetSegments, MSetRow } from './MSettingsUi'
+import type { Settings, DistanceUnit, DefaultRouteProfile } from '../../../types'
+import { MSetCard, MSetEyebrow, MSetSelectRow, MSetSegments, MSetRow, MSetHint } from './MSettingsUi'
 import MToggle from '../../components/MToggle'
 import MSetPickerSheet from './MSetPickerSheet'
 
@@ -139,6 +139,16 @@ export default function MSettingsGeneral() {
       </MSetCard>
 
       <MSetCard title={t('settings.general.travelMap')} icon={Map} className="mt-3">
+        <MSetEyebrow className="mb-[6px]">{t('settings.defaultRouteProfile')}</MSetEyebrow>
+        <MSetSegments<DefaultRouteProfile>
+          value={normalizeDefaultRouteProfile(settings.default_route_profile)}
+          onChange={(v) => save('default_route_profile', v)}
+          options={[
+            { value: 'driving', label: t('dayplan.movement.driving') },
+            { value: 'walking', label: t('dayplan.movement.walking') },
+          ]}
+        />
+        <MSetHint>{t('settings.defaultRouteProfileHint')}</MSetHint>
         <div className="-mt-[6px]">
           {travelRows.map((row) => (
             <MSetRow

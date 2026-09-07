@@ -74,6 +74,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': '從住宿地點最佳化路線',
   'settings.optimizeFromAccommodationHint':
     '最佳化某一天的行程時,路線從你早上起床的飯店出發,並在你當晚入住的飯店結束。',
+  'settings.defaultRouteProfile': '預設路線模式',
+  'settings.defaultRouteProfileHint':
+    '當某一天或個別路段沒有自己的移動方式時，用於新的路線計算。',
   'settings.notifications': '通知',
   'settings.notifyTripInvite': '旅行邀請',
   'settings.notifyBookingChange': '預訂變更',

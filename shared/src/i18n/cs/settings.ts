@@ -76,6 +76,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Optimalizovat trasu od ubytování',
   'settings.optimizeFromAccommodationHint':
     'Při optimalizaci dne začne trasa v hotelu, ve kterém se ráno probudíte, a skončí v hotelu, do kterého se večer ubytujete.',
+  'settings.defaultRouteProfile': 'Výchozí režim trasy',
+  'settings.defaultRouteProfileHint':
+    'Používá se pro nové výpočty tras, když den nebo jednotlivý úsek nemá vlastní způsob dopravy.',
   'settings.notifications': 'Oznámení',
   'settings.notifyTripInvite': 'Pozvánky na cesty',
   'settings.notifyBookingChange': 'Změny rezervací',

@@ -62,6 +62,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': "Optimitza la ruta des de l'allotjament",
   'settings.optimizeFromAccommodationHint':
     "En optimitzar un dia, comença la ruta a l'hotel on despertes i acaba-la en aquell on et registres aquella nit.",
+  'settings.defaultRouteProfile': 'Mode de ruta predeterminat',
+  'settings.defaultRouteProfileHint':
+    'S’utilitza per calcular rutes noves quan un dia o un tram individual no té el seu propi mitjà de transport.',
   'settings.notifications': 'Notificacions',
   'settings.notifyTripInvite': 'Invitacions de viatge',
   'settings.notifyBookingChange': 'Canvis en reserves',

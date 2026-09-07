@@ -268,6 +268,7 @@ export function buildSettings(overrides: Partial<Settings> = {}): Settings {
     time_format: '12h',
     show_place_description: false,
     blur_booking_codes: false,
+    default_route_profile: 'driving',
     ...overrides,
   };
 }

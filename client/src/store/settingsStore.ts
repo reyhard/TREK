@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { settingsApi } from '../api/client'
-import type { Settings, DistanceUnit } from '../types'
+import type { Settings, DistanceUnit, DefaultRouteProfile } from '../types'
 import { DEFAULT_APPEARANCE } from '@trek/shared'
 import { getApiErrorMessage } from '../types'
 import { SUPPORTED_LANGUAGE_CODES } from '../i18n/supportedLanguages'
@@ -11,6 +11,10 @@ import { rememberStartDestination, DEFAULT_START_PAGE, DEFAULT_START_TRIP_TAB } 
 const VALID_TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const
 const VALID_DISTANCE_UNITS: DistanceUnit[] = ['metric', 'imperial']
 const VALID_TIME_FORMATS = ['24h', '12h'] as const
+
+export function normalizeDefaultRouteProfile(value: unknown): DefaultRouteProfile {
+  return value === 'walking' ? 'walking' : 'driving'
+}
 
 export function normalizeSettings(raw: Partial<Settings>): Settings {
   const out = { ...DEFAULT_SETTINGS, ...raw }
@@ -39,6 +43,8 @@ export function normalizeSettings(raw: Partial<Settings>): Settings {
   if (!VALID_TIME_FORMATS.includes(out.time_format as typeof VALID_TIME_FORMATS[number])) {
     out.time_format = DEFAULT_SETTINGS.time_format
   }
+
+  out.default_route_profile = normalizeDefaultRouteProfile(out.default_route_profile)
 
   // Security-sensitive defaults
   if (out.blur_booking_codes === undefined || out.blur_booking_codes === null) {
@@ -112,6 +118,7 @@ export const DEFAULT_SETTINGS: Settings = {
   time_format: '24h',
   show_place_description: false,
   optimize_from_accommodation: true,
+  default_route_profile: 'driving',
   map_provider: 'leaflet',
   map_base_layer: 'default',
   map_poi_pill_enabled: true,
@@ -163,6 +170,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         // Rewritten here so the Map settings input already shows the host that
         // still resolves, and persists it on the next save.
         const incoming = withNormalizedTileUrl({ ...data.settings } as Partial<Settings>)
+        if ('default_route_profile' in incoming) {
+          incoming.default_route_profile = normalizeDefaultRouteProfile(incoming.default_route_profile)
+        }
         set((state) => ({
           settings: { ...state.settings, ...incoming },
           isLoaded: true,
@@ -192,8 +202,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   updateSetting: async (key: keyof Settings, value: Settings[keyof Settings]) => {
-    const next =
-      key === 'map_tile_url' && typeof value === 'string' ? cleanTileTemplate(value) : value
+    const next = key === 'default_route_profile'
+      ? normalizeDefaultRouteProfile(value)
+      : key === 'map_tile_url' && typeof value === 'string' ? cleanTileTemplate(value) : value
     if (key === 'carto_api_key' && next !== get().settings.carto_api_key) void clearTileCache()
     set((state) => ({
       settings: { ...state.settings, [key]: next },
@@ -223,6 +234,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   updateSettings: async (settingsObj: Partial<Settings>) => {
     const patch = withNormalizedTileUrl(settingsObj)
+    if ('default_route_profile' in patch) {
+      patch.default_route_profile = normalizeDefaultRouteProfile(patch.default_route_profile)
+    }
     // Cached tiles are keyed by their full URL, so a new key leaves the whole
     // offline cache stranded behind the old one.
     if ('carto_api_key' in patch && patch.carto_api_key !== get().settings.carto_api_key) {

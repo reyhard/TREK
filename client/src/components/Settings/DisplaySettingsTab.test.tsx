@@ -400,6 +400,29 @@ describe('DisplaySettingsTab – Map and privacy toggles', () => {
 
     expect(screen.getAllByText('Nope').length).toBeGreaterThan(0);
   });
+
+  it('FE-COMP-DISPLAY-053: default route mode defaults to Driving and saves Walking/Driving', async () => {
+    const user = userEvent.setup();
+    const updateSetting = vi.fn().mockResolvedValue(undefined);
+    seedStore(useSettingsStore, { settings: buildSettings(), updateSetting });
+    render(<DisplaySettingsTab />);
+    const block = optionBlock(/default route mode/i);
+
+    expect(within(block).getByRole('button', { name: 'Driving' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(within(block).getByRole('button', { name: 'Walking' }));
+    expect(updateSetting).toHaveBeenCalledWith('default_route_profile', 'walking');
+    await user.click(within(block).getByRole('button', { name: 'Driving' }));
+    expect(updateSetting).toHaveBeenCalledWith('default_route_profile', 'driving');
+  });
+
+  it('FE-COMP-DISPLAY-054: invalid stored default route mode renders Driving safely', () => {
+    seedStore(useSettingsStore, { settings: buildSettings({ default_route_profile: 'cycling' as never }) });
+    render(<DisplaySettingsTab />);
+    const block = optionBlock(/default route mode/i);
+
+    expect(within(block).getByRole('button', { name: 'Driving' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(block).getByRole('button', { name: 'Walking' })).toHaveAttribute('aria-pressed', 'false');
+  });
 });
 
 describe('DisplaySettingsTab – startup destination', () => {

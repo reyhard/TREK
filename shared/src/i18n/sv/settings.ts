@@ -84,6 +84,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': 'Optimera rutten från boendet',
   'settings.optimizeFromAccommodationHint':
     'När du planerar en dag på bästa sätt bör du börja rutten vid det hotell där du vaknar och avsluta den vid det hotell där du checkar in samma kväll.',
+  'settings.defaultRouteProfile': 'Standardläge för rutt',
+  'settings.defaultRouteProfileHint':
+    'Används för nya ruttberäkningar när en dag eller en enskild sträcka saknar eget färdsätt.',
   'settings.notifications': 'Meddelanden',
   'settings.notifyTripInvite': 'Inbjudningar till resor',
   'settings.notifyBookingChange': 'Ändringar i bokningen',

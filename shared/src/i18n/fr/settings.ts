@@ -81,6 +81,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': "Optimiser l'itinéraire depuis l'hébergement",
   'settings.optimizeFromAccommodationHint':
     "Lors de l'optimisation d'une journée, commencez l'itinéraire à l'hôtel où vous vous réveillez et terminez-le à celui où vous arrivez le soir.",
+  'settings.defaultRouteProfile': 'Mode d’itinéraire par défaut',
+  'settings.defaultRouteProfileHint':
+    'Utilisé pour les nouveaux calculs d’itinéraire lorsqu’une journée ou un trajet individuel n’a pas son propre mode de déplacement.',
   'settings.notifications': 'Notifications',
   'settings.notifyTripInvite': 'Invitations de voyage',
   'settings.notifyBookingChange': 'Modifications de réservation',

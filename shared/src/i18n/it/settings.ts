@@ -79,6 +79,9 @@ const settings: TranslationStrings = {
   'settings.optimizeFromAccommodation': "Ottimizza il percorso dall'alloggio",
   'settings.optimizeFromAccommodationHint':
     "Quando ottimizzi un giorno, fa iniziare il percorso dall'hotel in cui ti svegli e terminarlo in quello in cui fai il check-in quella sera.",
+  'settings.defaultRouteProfile': 'Modalità percorso predefinita',
+  'settings.defaultRouteProfileHint':
+    'Usata per i nuovi calcoli del percorso quando un giorno o una singola tratta non ha una propria modalità di viaggio.',
   'settings.notifications': 'Notifiche',
   'settings.notifyTripInvite': 'Inviti di viaggio',
   'settings.notifyBookingChange': 'Modifiche alle prenotazioni',
