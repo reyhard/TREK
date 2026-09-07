@@ -19,9 +19,10 @@ import { createElement, useEffect, useRef } from 'react';
 import { renderIconMarkup } from '../utils/iconMarkup';
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { getCategoryIcon } from '../components/shared/categoryIcons';
-import { CARTO_LIGHT, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_MAX_ZOOM } from '../constants/mapDefaults';
-import { SUPPORTED_LANGUAGES, useTranslation } from '../i18n';
-import { useSettingsStore } from '../store/settingsStore';
+import PublicLanguagePicker from '../components/shared/PublicLanguagePicker';
+import { OFM_POSITRON, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_MAX_ZOOM, attributionForTile } from '../constants/mapDefaults';
+import VectorBasemap from '../components/Map/VectorBasemap';
+import { useTranslation } from '../i18n';
 import { avatarSrc } from '../utils/avatarSrc';
 import { safeHexColor } from '../utils/safeColor';
 import { getMergedItems, getTransportForDay, hidesOnMiddleDay } from '../utils/dayMerge';
@@ -29,7 +30,7 @@ import { isDayInAccommodationRange } from '../utils/dayOrder';
 import { getFlightLegs, getTrainLegs } from '../utils/flightLegs';
 import { splitReservationDateTime } from '../utils/formatters';
 import { computeMapViewport, TILE_SIZE_RASTER } from '../utils/mapViewport';
-import { resolveTileUrl } from '../utils/tileUrl';
+import { resolveBasemap } from '../utils/tileUrl';
 import { safeParseMetadata } from '../utils/safeParseMetadata';
 import { useSharedTrip } from './sharedTrip/useSharedTrip';
 
@@ -186,9 +187,12 @@ export default function SharedTripPage() {
   });
   const initialView = framed ?? { center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM };
 
-  // A visitor of a share link has no settings of their own, so the key travels in
-  // the payload; without it CARTO stamps "API KEY REQUIRED" across every tile.
-  const tileUrl = resolveTileUrl(null, CARTO_LIGHT, cartoApiKey);
+  // A visitor of a share link has no settings of their own, so the basemap is the
+  // app default: OpenFreeMap, a vector style that needs no key at all. The owner's
+  // CARTO key still travels in the payload and is still applied, because the
+  // fallback is only a fallback — a raster template reaching this page keeps
+  // working, and without the key CARTO would stamp "API KEY REQUIRED" over it.
+  const basemap = resolveBasemap(null, OFM_POSITRON, cartoApiKey);
 
   return (
     <div className="bg-surface-secondary" style={{ minHeight: '100vh', fontFamily: 'var(--font-system)' }}>
@@ -332,70 +336,7 @@ export default function SharedTripPage() {
           {t('shared.readOnly')}
         </div>
 
-        {/* Language picker - top right */}
-        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
-          <button type="button"
-            onClick={() => setShowLangPicker((v) => !v)}
-            className="bg-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.7)]"
-            style={{
-              padding: '5px 12px',
-              borderRadius: 20,
-              border: '1px solid rgba(255,255,255,0.15)',
-              backdropFilter: 'blur(8px)',
-              fontSize: 'calc(11px * var(--fs-scale-caption, 1))',
-              fontWeight: 500,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            {SUPPORTED_LANGUAGES.find((l) => l.value === (locale?.split('-')[0] || 'en'))?.label || 'Language'}
-          </button>
-          {showLangPicker && (
-            <div
-              className="bg-white"
-              style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: 6,
-                borderRadius: 10,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                padding: 4,
-                zIndex: 50,
-                minWidth: 150,
-              }}
-            >
-              {SUPPORTED_LANGUAGES.map((lang) => (
-                <button
-                  type="button"
-                  key={lang.value}
-                  onClick={() => {
-                    // Set language locally without API call (shared page has no auth)
-                    useSettingsStore.setState((s) => ({ settings: { ...s.settings, language: lang.value } }));
-                    setShowLangPicker(false);
-                  }}
-                  className="text-[#374151]"
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '6px 12px',
-                    border: 'none',
-                    background: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    fontSize: 'calc(12px * var(--fs-scale-body, 1))',
-                    borderRadius: 6,
-                    fontFamily: 'inherit',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                >
-                  {lang.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <PublicLanguagePicker locale={locale} open={showLangPicker} onOpenChange={setShowLangPicker} />
       </div>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px' }}>
@@ -491,10 +432,15 @@ export default function SharedTripPage() {
                 maxZoom={MAP_MAX_ZOOM}
                 style={{ width: '100%', height: '100%' }}
               >
-                <TileLayer
-                  url={tileUrl}
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
+                {basemap.kind === 'vector' ? (
+                  <VectorBasemap style={basemap.style} />
+                ) : (
+                  <TileLayer
+                    url={basemap.url}
+                    attribution={attributionForTile(basemap.url)}
+                    referrerPolicy="strict-origin-when-cross-origin"
+                  />
+                )}
                 <FitBoundsToPlaces places={mapPlaces} framedOnMount={framed !== null} />
                 {selectedDay && mapPlaces.length > 1 && (
                   <Polyline
