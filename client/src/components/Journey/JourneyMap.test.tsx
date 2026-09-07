@@ -1,5 +1,4 @@
-// FE-COMP-JOURNEYMAP-001 to FE-COMP-JOURNEYMAP-027
-import { buildSettings } from '../../../tests/helpers/factories';
+// FE-COMP-JOURNEYMAP-001 to FE-COMP-JOURNEYMAP-050
 
 vi.mock('../../api/websocket', () => ({
   connect: vi.fn(),
@@ -28,6 +27,10 @@ vi.mock('leaflet', () => {
     setView: vi.fn(),
     flyTo: vi.fn(),
     getZoom: vi.fn(() => 10),
+    // Leaflet throws "Set map center and zoom first." out of these until the map
+    // has a view; the loaded map is the default here, FE-COMP-JOURNEYMAP-050
+    // takes it away for the window that #2254 fell into.
+    getCenter: vi.fn(() => ({ lat: 0, lng: 0 })),
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
     // The photo layer subscribes to zoom/pan and clusters in screen space (#1614).
@@ -54,13 +57,15 @@ vi.mock('leaflet', () => {
   };
 });
 
-import L from 'leaflet';
 import React from 'react';
 import { render, act, fireEvent, waitFor } from '../../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useSettingsStore } from '../../store/settingsStore';
-import type { JourneyMapHandle } from './JourneyMap';
+import { buildSettings } from '../../../tests/helpers/factories';
+import type { Mock } from 'vitest';
+import L from 'leaflet';
 import JourneyMap from './JourneyMap';
+import type { JourneyMapHandle } from './JourneyMap';
 
 // maplibre-gl-leaflet hangs the vector basemap into Leaflet's tile pane. The mock
 // only has to be callable and hand back a layer with the three methods the callers
@@ -91,7 +96,10 @@ const entriesWithoutCoords = [
   { id: 'e3', lat: 0, lng: 0, title: 'Unknown Place', mood: null, entry_date: '2025-06-03' },
 ];
 
-const mixedEntries = [...entriesWithCoords, ...entriesWithoutCoords];
+const mixedEntries = [
+  ...entriesWithCoords,
+  ...entriesWithoutCoords,
+];
 
 // The leaflet mock hands out one shared map/marker instance, so every render
 // resolves to the same spy object.
@@ -107,47 +115,64 @@ beforeEach(() => {
 
 describe('JourneyMap', () => {
   it('FE-COMP-JOURNEYMAP-001: renders map container', () => {
-    const { container } = render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    const { container } = render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
     // The component renders a div with a child div ref for the Leaflet map
     expect(container.firstChild).toBeInTheDocument();
     expect(L.map).toHaveBeenCalled();
   });
 
   it('FE-COMP-JOURNEYMAP-002: renders markers for entries with coordinates', () => {
-    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
     // Two entries with valid lat/lng should produce two markers
     expect(L.marker).toHaveBeenCalledTimes(2);
   });
 
   it('FE-COMP-JOURNEYMAP-003: does not render markers for entries without coordinates', () => {
-    render(<JourneyMap checkins={[]} entries={entriesWithoutCoords} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithoutCoords} />
+    );
     // Entry with lat=0 and lng=0 is filtered out by buildMarkerItems (if (e.lat && e.lng))
     expect(L.marker).not.toHaveBeenCalled();
   });
 
   it('FE-COMP-JOURNEYMAP-004: renders polyline connecting entries', () => {
-    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
     // With 2+ marker items, a route polyline is drawn
     expect(L.polyline).toHaveBeenCalled();
   });
 
   it('FE-COMP-JOURNEYMAP-005: shows entry title in marker tooltip', () => {
-    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
     // Each marker calls bindTooltip with the entry label
     const mockMarkerInstance = (L.marker as any).mock.results[0].value;
-    expect(mockMarkerInstance.bindTooltip).toHaveBeenCalledWith('Paris', expect.objectContaining({ direction: 'top' }));
+    expect(mockMarkerInstance.bindTooltip).toHaveBeenCalledWith(
+      'Paris',
+      expect.objectContaining({ direction: 'top' }),
+    );
   });
 
   it('FE-COMP-JOURNEYMAP-006: exposes imperative handle (focusMarker)', () => {
     const ref = React.createRef<JourneyMapHandle>();
-    render(<JourneyMap ref={ref} checkins={[]} entries={entriesWithCoords} />);
+    render(
+      <JourneyMap ref={ref} checkins={[]} entries={entriesWithCoords} />
+    );
     expect(ref.current).not.toBeNull();
     expect(typeof ref.current!.focusMarker).toBe('function');
     expect(typeof ref.current!.highlightMarker).toBe('function');
   });
 
   it('FE-COMP-JOURNEYMAP-007: renders SVG pin markers via divIcon', () => {
-    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
     // Each marker is created with L.divIcon containing SVG html
     expect(L.divIcon).toHaveBeenCalledTimes(2);
     const firstCall = (L.divIcon as any).mock.calls[0][0];
@@ -162,14 +187,22 @@ describe('JourneyMap', () => {
       { id: 'e1', lat: 48.8566, lng: 2.3522, title: 'Happy Paris', mood: 'happy', entry_date: '2025-06-01' },
       { id: 'e2', lat: 52.52, lng: 13.405, title: 'Sad Berlin', mood: 'sad', entry_date: '2025-06-02' },
     ];
-    render(<JourneyMap checkins={[]} entries={entriesWithMood} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithMood} />
+    );
     // Markers are still created (mood does not prevent rendering)
     expect(L.marker).toHaveBeenCalledTimes(2);
     // Tooltips use the entry titles
     const mockMarker1 = (L.marker as any).mock.results[0].value;
-    expect(mockMarker1.bindTooltip).toHaveBeenCalledWith('Happy Paris', expect.objectContaining({ direction: 'top' }));
+    expect(mockMarker1.bindTooltip).toHaveBeenCalledWith(
+      'Happy Paris',
+      expect.objectContaining({ direction: 'top' }),
+    );
     const mockMarker2 = (L.marker as any).mock.results[1].value;
-    expect(mockMarker2.bindTooltip).toHaveBeenCalledWith('Sad Berlin', expect.objectContaining({ direction: 'top' }));
+    expect(mockMarker2.bindTooltip).toHaveBeenCalledWith(
+      'Sad Berlin',
+      expect.objectContaining({ direction: 'top' }),
+    );
   });
 
   it('FE-COMP-JOURNEYMAP-009: draws route polyline connecting multiple markers', () => {
@@ -178,7 +211,9 @@ describe('JourneyMap', () => {
       { id: 'e2', lat: 52.52, lng: 13.405, title: 'Berlin', mood: null, entry_date: '2025-06-02' },
       { id: 'e3', lat: 41.9028, lng: 12.4964, title: 'Rome', mood: null, entry_date: '2025-06-03' },
     ];
-    render(<JourneyMap checkins={[]} entries={threeEntries} />);
+    render(
+      <JourneyMap checkins={[]} entries={threeEntries} />
+    );
     // Route polyline is drawn for items.length > 1
     expect(L.polyline).toHaveBeenCalled();
     const polylineCall = (L.polyline as any).mock.calls[0];
@@ -191,12 +226,11 @@ describe('JourneyMap', () => {
   it('FE-COMP-JOURNEYMAP-010: fitBounds is called for auto-zoom', () => {
     // Trigger requestAnimationFrame synchronously
     const origRAF = globalThis.requestAnimationFrame;
-    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
-      cb(0);
-      return 0;
-    };
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => { cb(0); return 0; };
 
-    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
 
     const mockMap = (L.map as any).mock.results[0].value;
     // fitBounds is called inside requestAnimationFrame with the collected coordinates
@@ -210,7 +244,9 @@ describe('JourneyMap', () => {
     const singleEntry = [
       { id: 'e1', lat: 48.8566, lng: 2.3522, title: 'Solo Paris', mood: null, entry_date: '2025-06-01' },
     ];
-    render(<JourneyMap checkins={[]} entries={singleEntry} />);
+    render(
+      <JourneyMap checkins={[]} entries={singleEntry} />
+    );
     // One marker created
     expect(L.marker).toHaveBeenCalledTimes(1);
     // No route polyline — polyline is only drawn when items.length > 1
@@ -218,7 +254,9 @@ describe('JourneyMap', () => {
   });
 
   it('FE-COMP-JOURNEYMAP-012: renders zoom control buttons', () => {
-    const { container } = render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    const { container } = render(
+      <JourneyMap checkins={[]} entries={entriesWithCoords} />
+    );
     // The component renders zoom in (+) and zoom out (−) buttons
     const buttons = container.querySelectorAll('button');
     expect(buttons.length).toBe(2);
@@ -364,10 +402,43 @@ describe('JourneyMap', () => {
     }
   });
 
+  it('FE-COMP-JOURNEYMAP-026: dark mode picks the dark basemap', async () => {
+    render(<JourneyMap checkins={[]} entries={entriesWithCoords} dark />);
+    // The default basemap is a vector style now, so it arrives as a style option
+    // rather than as a tile template, and it attaches after a dynamic import.
+    await waitFor(() => {
+      const calls = vi.mocked(maplibreGL).mock.calls;
+      const call = calls[calls.length - 1]?.[0] as { style: string } | undefined;
+      expect(call?.style).toContain('openfreemap.org/styles/dark');
+    });
+  });
+
   it('FE-COMP-JOURNEYMAP-027: a configured tile url overrides the default basemap', () => {
     seedStore(useSettingsStore, { settings: buildSettings({ map_tile_url: 'https://tiles.test/{z}/{x}/{y}.png' }) });
     render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
     expect(vi.mocked(L.tileLayer).mock.calls[0][0]).toBe('https://tiles.test/{z}/{x}/{y}.png');
+  });
+
+  it('FE-COMP-JOURNEYMAP-041: a basemap change restyles in place instead of rebuilding the map (#2097)', async () => {
+    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    const layer = await waitFor(() => {
+      const results = vi.mocked(maplibreGL).mock.results;
+      const made = results[results.length - 1];
+      expect(made).toBeTruthy();
+      return made!.value as { getMaplibreMap: () => { setStyle: ReturnType<typeof vi.fn> } };
+    });
+    const mapsBefore = vi.mocked(L.map).mock.calls.length;
+
+    // A raster template the user configured replaces the vector basemap. The
+    // markers and tracks the map already carries are drawn by the effect that
+    // builds it, so a rebuild here would tear them down mid-flight.
+    act(() => {
+      seedStore(useSettingsStore, { settings: buildSettings({ map_tile_url: 'https://tiles.test/{z}/{x}/{y}.png' }) });
+    });
+
+    expect(vi.mocked(L.map).mock.calls.length).toBe(mapsBefore);
+    expect(mockedMap().remove).not.toHaveBeenCalled();
+    expect(layer.getMaplibreMap().setStyle).not.toHaveBeenCalledWith(expect.stringContaining('tiles.test'));
   });
 
   it('FE-COMP-JOURNEYMAP-028: the activeMarkerId prop flies to that marker after the settle delay', () => {
@@ -626,5 +697,48 @@ describe('JourneyMap', () => {
     const html = vi.mocked(L.divIcon).mock.calls.map(c => String(c[0]?.html)).filter(h => h.includes('/uploads/'));
     expect(html).toHaveLength(1);
     expect(html[0]).not.toMatch(/>\d+</);
+  });
+
+  // #2254 — the map effect defers its opening fitBounds/setView to a rAF, so this
+  // effect can draw while the map still has no center or zoom. Clustering
+  // projects to container pixels, which throws in that window and took the whole
+  // public journey page down with it.
+  it('FE-COMP-JOURNEYMAP-050: waits out a map that has no view yet, then draws on moveend', () => {
+    const noView = () => { throw new Error('Set map center and zoom first.'); };
+    let hasView = false;
+    const photoHtml = () =>
+      vi.mocked(L.divIcon).mock.calls.map(c => String(c[0]?.html)).filter(h => h.includes('/uploads/'));
+
+    // The mock hands out one shared map instance, so it can be reached — and
+    // stripped of its view — before the component ever builds one. Typed down to
+    // the three spies this needs: L.map's signature promises a real Leaflet map.
+    type MapProbe = { getCenter: Mock; latLngToContainerPoint: Mock; on: Mock };
+    L.map(document.createElement('div'));
+    const map = mockedMap() as MapProbe;
+    vi.mocked(L.map).mockClear();
+    map.getCenter.mockImplementation(() => (hasView ? { lat: 0, lng: 0 } : noView()));
+    map.latLngToContainerPoint.mockImplementation(() => (hasView ? { x: 0, y: 0 } : noView()));
+
+    try {
+      // Rendering must survive the viewless window, and draw nothing in it.
+      expect(() =>
+        render(
+          <JourneyMap checkins={[]} entries={[]} photos={[{ id: 'p1', lat: 1, lng: 2, thumbUrl: '/uploads/late.jpg' }]} />,
+        ),
+      ).not.toThrow();
+      expect(photoHtml()).toHaveLength(0);
+
+      // The deferred fitBounds lands: the listener this effect registered redraws.
+      hasView = true;
+      const redraw = map.on.mock.calls.find(c => c[0] === 'moveend')?.[1] as () => void;
+      expect(redraw).toBeTypeOf('function');
+      act(() => { redraw(); });
+
+      expect(photoHtml()).toHaveLength(1);
+      expect(photoHtml()[0]).toContain('/uploads/late.jpg');
+    } finally {
+      map.getCenter.mockImplementation(() => ({ lat: 0, lng: 0 }));
+      map.latLngToContainerPoint.mockImplementation(() => ({ x: 0, y: 0 }));
+    }
   });
 });

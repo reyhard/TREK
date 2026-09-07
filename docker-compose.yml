@@ -87,6 +87,8 @@ services:
 #      - TREK_PLUGIN_NOTIFY_PER_DAY=100 # Max notification sends per plugin per day. Default: 100.
 #      - TREK_PLUGIN_AUDIT_MAX_ROWS=20000 # Max audit log rows retained per plugin. Default: 20000.
 #      - TREK_PLUGIN_MAX_RSS_MB=300 # Max RSS memory per plugin child in MB. Default: 300.
+#      - LLM_TIMEOUT_MS=900000 # Optional. Ceiling (ms) for one AI-parsing call before it is abandoned, applied to every provider and to the HTTP client underneath. Generous by default so heavier documents fit; lower it on a cloud provider to fail fast. Must be a whole number of milliseconds between 1 and 2147483647 — anything else stops the server at startup with the reason. (default: 900000)
+#      - TREK_PLUGINS_IGNORE_TREK_RANGE=true # Optional. Lets plugins whose declared TREK version range predates this build, and plugins that declare none, be installed and activated anyway. Every gate warns instead of refusing; the plugin-API version gate and the Discover compatibility verdict stay hard. Off unless set. (default: off)
 #      - UNSPLASH_ACCESS_KEY= # Optional. Unsplash Access Key for trip-cover / place-image search. Without one, TREK uses Unsplash's unauthenticated endpoint, which some datacenter/VPS IPs are blocked from (#1449). Free key at unsplash.com/developers. Can also be set per-admin in Admin > Settings; the env var overrides that.
 #      - TREK_PLACE_PHOTO_DIR= # Override directory for cached Google Places photo thumbnails. Default: uploads/photos/google. Primarily a test seam — you should not normally need to set this.
     volumes:

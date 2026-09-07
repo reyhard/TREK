@@ -108,14 +108,14 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
       expect(testNtfy).toHaveBeenCalledWith({ topic: 'saved-topic', server: 'https://ntfy.me', token: 'saved-token' });
     });
 
-    it('NTFY-CTRL-001 — user with no token does NOT leak admin token on MASKED placeholder', async () => {
+    it('NTFY-CTRL-001 — user with no token does NOT leak admin token to their own server', async () => {
       const testNtfy = vi.fn().mockResolvedValue({ success: true });
-      const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'user-topic', server: null, token: null });
+      const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'user-topic', server: 'https://user-ntfy.example', token: null });
       const adminNtfyConfig = vi
         .fn()
         .mockReturnValue({ server: 'https://admin-ntfy.example', topic: 'admin-topic', token: 'admin-secret-token' });
       await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { token: MASKED });
-      expect(testNtfy).toHaveBeenCalledWith({ topic: 'user-topic', server: 'https://admin-ntfy.example', token: null });
+      expect(testNtfy).toHaveBeenCalledWith({ topic: 'user-topic', server: 'https://user-ntfy.example', token: null });
     });
 
     it('NTFY-CTRL-002 — user with their own token sends user token, not admin token, on MASKED placeholder', async () => {
@@ -149,6 +149,42 @@ describe('NotificationsController (parity with the legacy /api/notifications rou
         server: 'https://admin-ntfy.example',
         token: 'explicit-body-token',
       });
+    });
+
+    // GHSA-7pqc-fj3c-9346 — the caller picks `server`, so falling back to the
+    // admin token unconditionally handed the operator's decrypted credential to
+    // any host an authenticated user named.
+    it("withholds the operator token when the request names a server that is not the operator's", async () => {
+      const testNtfy = vi.fn().mockResolvedValue({ success: true });
+      const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'mine', server: null, token: null });
+      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://ntfy.operator.example', token: 'operator-token' });
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { server: 'https://listener.attacker.example' });
+      expect(testNtfy).toHaveBeenCalledWith({ topic: 'mine', server: 'https://listener.attacker.example', token: null });
+    });
+
+    it("still sends the operator token to the operator's own server", async () => {
+      const testNtfy = vi.fn().mockResolvedValue({ success: true });
+      const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'mine', server: null, token: null });
+      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://ntfy.operator.example/', token: 'operator-token' });
+      // Trailing slash on one side only: the shared setup, and it must still match.
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { server: 'https://ntfy.operator.example' });
+      expect(testNtfy).toHaveBeenCalledWith({ topic: 'mine', server: 'https://ntfy.operator.example', token: 'operator-token' });
+    });
+
+    it('a plain http twin of the operator server does not pull the token', async () => {
+      const testNtfy = vi.fn().mockResolvedValue({ success: true });
+      const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'mine', server: null, token: null });
+      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://ntfy.operator.example', token: 'operator-token' });
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { server: 'http://ntfy.operator.example' });
+      expect(testNtfy).toHaveBeenCalledWith({ topic: 'mine', server: 'http://ntfy.operator.example', token: null });
+    });
+
+    it('a user with their own token keeps using it anywhere', async () => {
+      const testNtfy = vi.fn().mockResolvedValue({ success: true });
+      const userNtfyConfig = vi.fn().mockReturnValue({ topic: 'mine', server: null, token: 'my-own-token' });
+      const adminNtfyConfig = vi.fn().mockReturnValue({ server: 'https://ntfy.operator.example', token: 'operator-token' });
+      await makeController({ testNtfy, userNtfyConfig, adminNtfyConfig }).testNtfy(user, { server: 'https://somewhere.else.example' });
+      expect(testNtfy).toHaveBeenCalledWith({ topic: 'mine', server: 'https://somewhere.else.example', token: 'my-own-token' });
     });
   });
 
